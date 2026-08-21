@@ -1,0 +1,29 @@
+﻿# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+out/
+
+# Coverage
+coverage/
+*.coverage.*
+
+# Logs
+logs/
+*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+tmp/
+*.tmp
