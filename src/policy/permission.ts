@@ -88,7 +88,7 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         return "allow";
       }
 
-      if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
+      if (call.name === "write_memory" || call.name === "forget_memory" || call.name === "delegate_task") return "allow";
 
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? "";
