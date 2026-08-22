@@ -3,6 +3,7 @@ import type { Session, SessionConfig } from "../../minicore/src/core/index.ts";
 import { createPermissionHandler } from "./policy/permission.ts";
 import { minicodeEstimator, buildSystemPrompt } from "./policy/context.ts";
 import { defaultRecoveryPolicy } from "../../minicore/src/core/recovery.ts";
+import { parallelExecutor } from "./policy/executor.ts";
 import type { ProviderError, RecoveryAction } from "../../minicore/src/core/errors.ts";
 
 // P2 cap wrapper: limit retryAfter to 30s
@@ -18,7 +19,7 @@ const cappedRecovery = {
   },
 };
 
-export async function createMinicodeSession(opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system"> & { systemExtra?: string; cwd?: string; permissionMode?: "auto" | "readonly" | "allow-all" }): Promise<Session> {
+export async function createMinicodeSession(opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor"> & { systemExtra?: string; cwd?: string; permissionMode?: "auto" | "readonly" | "allow-all" }): Promise<Session> {
   const system = await buildSystemPrompt({ cwd: opts.cwd, extra: opts.systemExtra });
   return createCoreSession({
     ...opts,
@@ -26,5 +27,6 @@ export async function createMinicodeSession(opts: Omit<SessionConfig, "permissio
     permissions: createPermissionHandler({ mode: opts.permissionMode ?? "auto", root: opts.cwd }),
     estimator: minicodeEstimator,
     recovery: cappedRecovery,
+    executor: parallelExecutor({ concurrency: 8, writeConcurrency: 2 }),
   });
 }
