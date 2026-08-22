@@ -48,6 +48,9 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
       }
       if (!response.body) throw new ProviderError("network", "empty response body");
 
+      // buffer for tool inputs across deltas — per-stream (was global, now isolated)
+      const pendingTools = new Map<number, { id: string; name: string; args: string }>();
+
       // Anthropic SSE: event: ...\ndata: {...}
       let currentEvent = "";
       for await (const chunk of sseAnthropic(response.body, signal)) {
@@ -116,9 +119,6 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
     },
   };
 }
-
-// buffer for tool inputs across deltas
-const pendingTools = new Map<number, { id: string; name: string; args: string }>();
 
 function toAnthropicMessages(messages: readonly Message[]): unknown[] {
   return messages.map((m) => {
