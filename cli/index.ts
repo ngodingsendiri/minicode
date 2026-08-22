@@ -26,6 +26,7 @@ Options:
   --model <name>      override model
   --session <id>      session id (default random)
   --allow-all         allow all tools (no sandbox)
+  --ask               ask per tool (y/n/a) — human-in-loop
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --interactive       REPL loop (readline)
@@ -128,6 +129,7 @@ if (args.includes("-h") || args.includes("--help")) {
 }
 const verbose = args.includes("--verbose");
 const allowAll = args.includes("--allow-all");
+const ask = args.includes("--ask");
 const interactive = args.includes("--interactive");
 const cwdIdx = args.indexOf("--cwd");
 const cwd = cwdIdx !== -1 ? args[cwdIdx + 1] : undefined;
@@ -143,7 +145,7 @@ const ctxWindowIdx = args.indexOf("--context-window");
 const contextWindowTokens = ctxWindowIdx !== -1 ? Number(args[ctxWindowIdx + 1]) : undefined;
 
 const promptArgs = args.filter((a, i) => {
-  if (a === "--verbose" || a === "--allow-all" || a === "--interactive") return false;
+  if (a === "--verbose" || a === "--allow-all" || a === "--ask" || a === "--interactive") return false;
   if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window") return false;
   if (cwdIdx !== -1 && i === cwdIdx + 1) return false;
   if (resumeIdx !== -1 && i === resumeIdx + 1) return false;
@@ -251,7 +253,7 @@ const session = await createMinicodeSession({
   provider: router,
   tools: allTools,
   cwd,
-  permissionMode: allowAll ? "allow-all" : "auto",
+  permissionMode: allowAll ? "allow-all" : ask ? "ask" : "auto",
   systemExtra,
   model: modelOverride,
   ...(maxSteps ? { maxSteps } : {}),
