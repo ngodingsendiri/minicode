@@ -6,7 +6,7 @@ const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_
 
 const BASH_DENY_RE = [
   /rm\s+-rf\s+(\/|~|\$HOME)/i,
-  /:\(\)\s*\{\s*:\|\:&\s*;\s*\}\s*;/, // fork bomb
+  /:\(\)\s*\{\s*:\|\:&\s*\}\s*;/, // fork bomb :(){ :|:& };:
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
   /\bchmod\s+777\b/i,
