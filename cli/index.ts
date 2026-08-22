@@ -8,12 +8,14 @@ import { createOpenAICompatProvider } from "../../minicore/src/providers/openai-
 import { createAnthropicProvider } from "../src/providers/anthropic.ts";
 import { saveSession, loadSession, listSessions } from "../src/session/persistence.ts";
 import { searchHybrid } from "../src/memory/vector.ts";
+import { createLlmCompaction } from "../src/policy/compaction.ts";
 import { randomUUID } from "node:crypto";
 
 const HELP = `minicode — coding agent on frozen MiniCore
 usage:
   minicode "prompt" [options]
   minicode config <add|list|remove|detect> [options]
+  minicode sessions <list|export> [id]
   echo "prompt" | minicode
 
 Options:
@@ -23,6 +25,10 @@ Options:
   --resume <id>       resume session id
   --model <name>      override model
   --session <id>      session id (default random)
+  --allow-all         allow all tools (no sandbox)
+  --max-steps <n>     max tool steps (default 50)
+  --context-window <n> context window tokens
+  --interactive       REPL loop (readline)
 
 Config:
   minicode config add --baseUrl <url> --apiKey <key> [--id <id>] [--global]
@@ -30,11 +36,40 @@ Config:
   minicode config remove <id>
   minicode config detect --baseUrl <url> --apiKey <key>
 
+Sessions:
+  minicode sessions list
+  minicode sessions export <id> [--jsonl]
+
 Env fallback:
-  AGENT_BASE_URL, OPENAI_API_KEY/AGENT_API_KEY, ANTHROPIC_API_KEY, AGENT_MODEL
+  AGENT_BASE_URL, OPENAI_API_KEY/AGENT_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, AGENT_MODEL
 `;
 
 const args = process.argv.slice(2);
+
+// --- sessions subcommand ---
+if (args[0] === "sessions") {
+  const sub = args[1];
+  if (sub === "list") {
+    const cwdArg = getArg("--cwd");
+    const rows = listSessions(cwdArg);
+    if (rows.length === 0) console.log("(no sessions)");
+    else for (const r of rows) console.log(`${r.id}  ${new Date(r.created_at).toISOString().slice(0, 19)}  ${r.cwd}`);
+    process.exit(0);
+  } else if (sub === "export") {
+    const id = args[2];
+    const asJsonl = args.includes("--jsonl");
+    if (!id) { console.error("usage: minicode sessions export <id> [--jsonl]"); process.exit(1); }
+    const cwdArg = getArg("--cwd");
+    const sess = loadSession(id, cwdArg);
+    if (!sess) { console.error(`session ${id} not found`); process.exit(1); }
+    if (asJsonl) for (const m of sess.messages) console.log(JSON.stringify(m));
+    else console.log(JSON.stringify(sess, null, 2));
+    process.exit(0);
+  } else {
+    console.log(HELP);
+    process.exit(0);
+  }
+}
 
 // --- config subcommand ---
 if (args[0] === "config") {
@@ -92,6 +127,8 @@ if (args.includes("-h") || args.includes("--help")) {
   process.exit(0);
 }
 const verbose = args.includes("--verbose");
+const allowAll = args.includes("--allow-all");
+const interactive = args.includes("--interactive");
 const cwdIdx = args.indexOf("--cwd");
 const cwd = cwdIdx !== -1 ? args[cwdIdx + 1] : undefined;
 const resumeIdx = args.indexOf("--resume");
@@ -100,14 +137,20 @@ const modelIdx = args.indexOf("--model");
 const modelOverride = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
 const sessionIdx = args.indexOf("--session");
 const sessionId = sessionIdx !== -1 ? args[sessionIdx + 1] : randomUUID().slice(0, 8);
+const maxStepsIdx = args.indexOf("--max-steps");
+const maxSteps = maxStepsIdx !== -1 ? Number(args[maxStepsIdx + 1]) : undefined;
+const ctxWindowIdx = args.indexOf("--context-window");
+const contextWindowTokens = ctxWindowIdx !== -1 ? Number(args[ctxWindowIdx + 1]) : undefined;
 
 const promptArgs = args.filter((a, i) => {
-  if (a === "--verbose") return false;
-  if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session") return false;
+  if (a === "--verbose" || a === "--allow-all" || a === "--interactive") return false;
+  if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window") return false;
   if (cwdIdx !== -1 && i === cwdIdx + 1) return false;
   if (resumeIdx !== -1 && i === resumeIdx + 1) return false;
   if (modelIdx !== -1 && i === modelIdx + 1) return false;
   if (sessionIdx !== -1 && i === sessionIdx + 1) return false;
+  if (maxStepsIdx !== -1 && i === maxStepsIdx + 1) return false;
+  if (ctxWindowIdx !== -1 && i === ctxWindowIdx + 1) return false;
   if (a.startsWith("-")) return false;
   return true;
 });
@@ -182,31 +225,60 @@ if (resumeId) {
   }
 }
 
+const compaction = process.env.DEEPSEEK_API_KEY
+  ? createLlmCompaction({ apiKey: process.env.DEEPSEEK_API_KEY, baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1", model: "deepseek-chat" })
+  : undefined;
+
 const session = await createMinicodeSession({
   provider: router,
   tools: allTools,
   cwd,
-  permissionMode: "auto",
+  permissionMode: allowAll ? "allow-all" : "auto",
   systemExtra,
   model: modelOverride,
-});
+  ...(maxSteps ? { maxSteps } : {}),
+  ...(contextWindowTokens ? { contextWindowTokens } : {}),
+  ...(compaction ? { compaction } : {}),
+} as never);
 
 attachRenderer(session.events, { verbose });
 const usage = createUsageCollector(session.events, modelOverride);
 
-try {
-  const result = await session.run(prompt, { model: modelOverride });
-  // persist
+async function persistCurrent(usageData: unknown) {
   try {
-    saveSession(sessionId, cwd, undefined, session.state.history, result.usage);
+    saveSession(sessionId, cwd, undefined, session.state.history, usageData);
+    if (resumeId) saveSession(resumeId, cwd, undefined, session.state.history, usageData);
+  } catch {}
+}
+
+if (interactive) {
+  const { createInterface } = await import("node:readline");
+  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: "minicode> " });
+  rl.prompt();
+  for await (const line of rl) {
+    const q = line.trim();
+    if (!q) { rl.prompt(); continue; }
+    if (q === "exit" || q === "quit") break;
+    try {
+      const res = await session.run(q, { model: modelOverride });
+      const u = usage.get();
+      process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens}\n`);
+      await persistCurrent(res.usage);
+    } catch (e) {
+      process.stderr.write(`\n[error] ${formatError(e)}\n`);
+    }
+    rl.prompt();
+  }
+  rl.close();
+  process.exit(0);
+} else {
+  try {
+    const result = await session.run(prompt, { model: modelOverride });
+    await persistCurrent(result.usage);
     const u = usage.get();
     process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens} cost=${u.cost?.toFixed(4) ?? "?"}\n`);
-  } catch {}
-  // also handle --resume persistence update
-  if (resumeId) {
-    try { saveSession(resumeId, cwd, undefined, session.state.history, result.usage); } catch {}
+  } catch (e) {
+    process.stderr.write(`\n[error] ${formatError(e)}\n`);
+    process.exit(1);
   }
-} catch (e) {
-  process.stderr.write(`\n[error] ${formatError(e)}\n`);
-  process.exit(1);
 }

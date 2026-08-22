@@ -25,5 +25,8 @@ logs/
 *.swp
 .DS_Store
 Thumbs.db
+.minicode/
+*.db
+*.db-journal
 tmp/
 *.tmp

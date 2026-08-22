@@ -2,7 +2,7 @@ import type { PermissionHandler, ToolCall } from "minicore";
 import { resolve, relative, isAbsolute } from "node:path";
 import { cwd } from "node:process";
 
-const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_diff", "git_log"]);
+const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_diff", "git_log", "read_memory"]);
 
 const BASH_DENY_RE = [
   /rm\s+-rf\s+(\/|~|\$HOME)/i,
@@ -48,6 +48,8 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         if (/\b\.env\b|\b\.git\/config\b|\bnode_modules\b/.test(p)) return "deny";
         return "allow";
       }
+
+      if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
 
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? "";

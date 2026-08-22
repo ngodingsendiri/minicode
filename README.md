@@ -23,21 +23,27 @@ bun run typecheck # clean
 bun cli/index.ts "buat http server di src/server.ts" --verbose
 ```
 
-## Tools (9, auto permission)
-`read_file` (2MB guard), `write_file` (mkdir), `edit` (exact unique replace), `glob` (pattern), `grep` (regex), `bash` (30s, abort, 20k trunc), `git_status`/`git_diff`/`git_log`.
+## Tools (12, auto permission — write diizinkan langsung)
+`read_file` (2MB), `write_file` (mkdir), `edit` (unique), `glob`, `grep`, `bash` (30s), `git_status/diff/log`, `read_memory`/`write_memory`/`forget_memory` (hybrid RAG, allow write).
 
-## Providers
-- OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM) via `minicore`
-- Anthropic `src/providers/anthropic.ts` (streaming, tool_use, retryAfter cap 30s)
-- Router `src/providers/router.ts` — fallback `rate_limit/server`, C4 `Uint8Array→base64` fix, by model name
+## Providers (hybrid x-api-key + Bearer)
+- OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM/DeepSeek) via `minicore`
+- Anthropic `src/providers/anthropic.ts` (streaming tool_use, cap 30s)
+- Router `src/providers/router.ts` + Detect `src/providers/detect.ts` — `GET /models` hybrid headers, auto `providerHint`, fallback, C4 base64 fix
+- Config `src/config.ts` `~/.minicode/config.json` + `.minicode/config.json` — `minicode config add --baseUrl --apiKey --id` + `detect`
 
 ## Policy
-- `src/policy/permission.ts` mode `auto` (allow readonly, denylist bash `rm -rf /`, fork bomb, jail `cwd`)
-- `src/policy/context.ts` `minicodeEstimator` (C5 image `bytes*4/3`) + `buildSystemPrompt` (AGENTS.md + git ls-files)
-- `src/session.ts` `createMinicodeSession` — P2 cap 30s
+- `src/policy/permission.ts` auto (readonly allow, write_memory allow, bash denylist `rm -rf /`, jail `cwd`, `.env` deny)
+- `src/policy/context.ts` `minicodeEstimator` C5 + `MEMORY.md` `src/memory/files.ts` + `git ls-files`
+- `src/policy/compaction.ts` LLM Tier-2 `deepseek v4 flash` (`deepseek-chat` via openai-compat, fallback mechanical) — `kind: llm:deepseek-chat`
+- `src/policy/executor.ts` parallel 8 / write 2
+- `src/policy/usage.ts` cost, `src/session.ts` P2 cap 30s
 
-## TUI
-`src/tui/renderer.ts` — event-driven `provider:text` streaming, `execution:*`, `context:compacted`, `usage` (efficient, no deps, ANSI).
+## Memory Hybrid RAG
+`src/memory/vector.ts` sqlite `~/.minicode/vector.db` (local .minicode/ prioritas) `bun:sqlite`, `text-embedding-3-small` hybrid Bearer/x-api-key `vector.ts:55`, fallback keyword, `searchHybrid` 0.7+0.3, `addMemory` after `write_memory`, inject ke systemExtra `cli/index.ts:199`.
+
+## TUI + Sessions
+`src/tui/renderer.ts` efficient ANSI, `src/session/persistence.ts` sqlite `sessions.db` `save/load/list`, CLI `cli/index.ts` `--verbose --allow-all --max-steps --context-window --resume --interactive` + `sessions list/export` `config` hybrid.
 
 ## Aturan
 - Jangan ubah `../minicore/src/core/*` — kalau butuh primitive baru, buktikan dulu tidak bisa sebagai Tool/Provider/Policy.

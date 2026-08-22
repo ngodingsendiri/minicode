@@ -15,6 +15,12 @@ export async function buildSystemPrompt(opts: { cwd?: string; extra?: string } =
   const cwd = opts.cwd ?? process.cwd();
   const parts: string[] = [];
   parts.push("You are Minicode, a coding agent built on MiniCore. Use tools to read, edit, search, and run code. Be concise, deterministic.");
+  // load MEMORY.md (project + global hybrid)
+  try {
+    const { loadMemoryFiles } = await import("../memory/files.ts");
+    const mem = await loadMemoryFiles(cwd);
+    if (mem.trim()) parts.push(`\n# MEMORY (hybrid RAG)\n${mem.slice(0, 4000)}`);
+  } catch {}
   // try load AGENTS.md
   for (const p of ["AGENTS.md", "CLAUDE.md", ".cursorrules"]) {
     try {

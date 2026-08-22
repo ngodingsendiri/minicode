@@ -5,6 +5,7 @@ export { globTool } from "./glob.ts";
 export { grepTool } from "./grep.ts";
 export { bashTool } from "./bash.ts";
 export { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
+export { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 
 import { readFileTool } from "./read_file.ts";
 import { writeFileTool } from "./write_file.ts";
@@ -13,6 +14,7 @@ import { globTool } from "./glob.ts";
 import { grepTool } from "./grep.ts";
 import { bashTool } from "./bash.ts";
 import { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
+import { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 import type { Tool } from "minicore";
 
 export const allTools: Tool[] = [
@@ -25,4 +27,7 @@ export const allTools: Tool[] = [
   gitStatusTool,
   gitDiffTool,
   gitLogTool,
+  readMemoryTool,
+  writeMemoryTool,
+  forgetMemoryTool,
 ];
