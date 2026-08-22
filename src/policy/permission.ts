@@ -45,7 +45,7 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         // reject absolute paths outside root and traversal
         if (isPathOutsideRoot(p, root)) return "deny";
         // reject writing to sensitive files
-        if (/\b\.env\b|\b\.git\/config\b|\bnode_modules\b/.test(p)) return "deny";
+        if (/\.env\b|\.git\/config|node_modules/.test(p)) return "deny";
         return "allow";
       }
 

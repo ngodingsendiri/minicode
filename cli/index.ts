@@ -159,9 +159,27 @@ function readPrompt(): Promise<string> {
   if (process.stdin.isTTY) return Promise.resolve("");
   return new Promise((resolve) => {
     let data = "";
+    let done = false;
+    const t = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve("");
+      }
+    }, 200);
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (c) => (data += c));
-    process.stdin.on("end", () => resolve(data.trim()));
+    process.stdin.on("end", () => {
+      if (!done) {
+        done = true;
+        clearTimeout(t);
+        resolve(data.trim());
+      }
+    });
+    // if stdin already ended
+    if (process.stdin.readableEnded) {
+      clearTimeout(t);
+      resolve("");
+    }
   });
 }
 
