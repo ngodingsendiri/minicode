@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { resolve, relative, isAbsolute, sep } from "node:path";
 import type { TokenEstimator } from "minicore";
 import { DEFAULT_CHARS_PER_TOKEN } from "../../../minicore/src/core/tokens.ts";
 import { loadMemoryFiles } from "../memory/files.ts";
+import { isPathOutsideRoot } from "./jail.ts";
 
 const execAsync = promisify(exec);
 
@@ -17,15 +17,6 @@ export function estimateImageTokens(bytes: number): number {
 }
 
 const MAX_SYSTEM_CHARS = 8000;
-
-function isPathOutsideRoot(p: string, root: string): boolean {
-  if (!p) return true;
-  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p);
-  const rel = relative(root, abs);
-  if (!rel) return false;
-  if (isAbsolute(rel)) return true;
-  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || rel.startsWith("..\\");
-}
 
 export async function buildSystemPrompt(opts: { cwd?: string; extra?: string } = {}): Promise<string> {
   const cwd = opts.cwd ?? process.cwd();

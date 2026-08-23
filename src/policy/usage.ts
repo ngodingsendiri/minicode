@@ -38,11 +38,16 @@ export function createUsageCollector(bus: EventBus, model?: string) {
       total.inputTokens += input;
       total.outputTokens += output;
       total.totalTokens = total.inputTokens + total.outputTokens;
-      if (model) total.cost = costFor(model, total.inputTokens, total.outputTokens);
     }
   });
   return {
-    get: () => ({ ...total }),
+    // cost dihitung saat dipanggil — model efektif bisa disuntik dari pemanggil
+    // (modelOverride) atau dari model yang diset saat kolektor dibuat
+    get: (m?: string) => {
+      const eff = m ?? model;
+      const base: Usage = { ...total };
+      return eff ? { ...base, cost: costFor(eff, base.inputTokens, base.outputTokens) } : base;
+    },
     reset: () => {
       total = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     },

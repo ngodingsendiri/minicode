@@ -1,6 +1,7 @@
 import type { Tool } from "minicore";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { isPathOutsideRoot } from "../policy/jail.ts";
 
 async function walkGrep(
   dir: string,
@@ -66,6 +67,7 @@ export const grepTool: Tool = {
   },
   async execute({ pattern, cwd, include, limit }, ctx) {
     const root = (cwd as string) ?? ".";
+    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`);
     const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500);
     let re: RegExp;
     try {

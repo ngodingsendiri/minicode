@@ -38,6 +38,25 @@ function open(cwd?: string): Database {
   return db;
 }
 
+// JSON-safe serialization: konten binary (Uint8Array) jangan di-stringify jadi
+// array ribuan angka — cukup placeholder agar DB tidak menggembung.
+function safeContent(value: unknown): string {
+  if (value instanceof Uint8Array) return `[binary: ${value.length} bytes]`;
+  if (Array.isArray(value)) {
+    for (const p of value) {
+      if (p instanceof Uint8Array) return `[binary: ${value.length} parts]`;
+      if (p && typeof p === "object" && (p as { data?: unknown }).data instanceof Uint8Array) {
+        return `[binary: ${value.length} parts (image)]`;
+      }
+    }
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export function saveSession(id: string, cwd: string | undefined, system: string | undefined, messages: readonly unknown[], usage: unknown) {
   const db = open(cwd);
   const now = Date.now();
@@ -45,11 +64,22 @@ export function saveSession(id: string, cwd: string | undefined, system: string 
     const existing = db.prepare("SELECT created_at, updated_at FROM sessions WHERE id = ?").get(id) as { created_at: number; updated_at: number | null } | null;
     const createdAt = existing?.created_at ?? now;
     db.prepare("INSERT OR REPLACE INTO sessions (id, created_at, updated_at, cwd, system) VALUES (?, ?, ?, ?, ?)").run(id, createdAt, now, cwd ?? "", system ?? "");
-    db.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
     const ins = db.prepare("INSERT INTO messages (session_id, seq, role, content, toolCalls, ts) VALUES (?, ?, ?, ?, ?, ?)");
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown };
-      ins.run(id, i, m.role, JSON.stringify(m.content), JSON.stringify(m.toolCalls ?? null), now);
+    const known = (db.prepare("SELECT COUNT(*) as c FROM messages WHERE session_id = ?").get(id) as { c: number } | null)?.c ?? 0;
+    if (messages.length >= known) {
+      // incremental append-only: cukup insert pesan baru (umumnya 1 turn)
+      for (let i = known; i < messages.length; i++) {
+        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown };
+        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), now);
+      }
+    } else {
+      // history menyusut (compaction/reset) → tulis ulang penuh agar tidak ada
+      // pesan basi yang tertinggal untuk resume
+      db.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown };
+        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), now);
+      }
     }
     if (usage) {
       const maxRow = db.prepare("SELECT MAX(turn_idx) as m FROM turns WHERE session_id = ?").get(id) as { m: number | null } | null;
@@ -64,6 +94,14 @@ export function saveSession(id: string, cwd: string | undefined, system: string 
   }
 }
 
+function parseContent(s: string): unknown {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s; // placeholder "[binary: N bytes]" atau data yang bukan JSON
+  }
+}
+
 export function loadSession(id: string, cwd?: string): { messages: unknown[]; system?: string; cwd?: string } | null {
   const db = open(cwd);
   const sess = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as { system: string; cwd: string } | null;
@@ -74,8 +112,8 @@ export function loadSession(id: string, cwd?: string): { messages: unknown[]; sy
   const rows = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY seq").all(id) as { role: string; content: string; toolCalls: string }[];
   const messages = rows.map((r) => ({
     role: r.role,
-    content: JSON.parse(r.content),
-    ...(r.toolCalls && r.toolCalls !== "null" ? { toolCalls: JSON.parse(r.toolCalls) } : {}),
+    content: parseContent(r.content),
+    ...(r.toolCalls && r.toolCalls !== "null" ? { toolCalls: parseContent(r.toolCalls) } : {}),
   }));
   db.close();
   return { messages, system: sess.system, cwd: sess.cwd };
@@ -104,15 +142,3 @@ export function deleteSession(id: string, cwd?: string) {
   }
 }
 
-export function vacuumSessions(cwd?: string) {
-  const db = open(cwd);
-  try {
-    // keep only 100 most recent sessions
-    db.exec(`DELETE FROM sessions WHERE id NOT IN (SELECT id FROM sessions ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100)`);
-    db.exec(`DELETE FROM messages WHERE session_id NOT IN (SELECT id FROM sessions)`);
-    db.exec(`DELETE FROM turns WHERE session_id NOT IN (SELECT id FROM sessions)`);
-    db.exec("VACUUM");
-  } finally {
-    db.close();
-  }
-}

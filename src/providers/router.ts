@@ -1,7 +1,5 @@
 import type { ModelProvider, StreamRequest, ProviderEvent } from "../../../minicore/src/core/provider.ts";
 import { ProviderError } from "../../../minicore/src/core/errors.ts";
-import { createOpenAICompatProvider } from "../../../minicore/src/providers/openai-compat.ts";
-import { createAnthropicProvider } from "./anthropic.ts";
 
 export interface RouterConfig {
   providers: ModelProvider[];
@@ -74,36 +72,3 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
   };
 }
 
-export function createDefaultRouter(opts: {
-  openaiBaseUrl?: string;
-  openaiApiKey?: string;
-  openaiModels?: string[];
-  anthropicApiKey?: string;
-  anthropicModels?: string[];
-}): ModelProvider {
-  const providers: ModelProvider[] = [];
-  if (opts.openaiApiKey || opts.openaiBaseUrl) {
-    providers.push(
-      createOpenAICompatProvider({
-        baseUrl: opts.openaiBaseUrl ?? "https://api.openai.com/v1",
-        apiKey: opts.openaiApiKey,
-        models: opts.openaiModels ?? ["gpt-4o-mini"],
-        defaultModel: opts.openaiModels?.[0] ?? "gpt-4o-mini",
-      }),
-    );
-  }
-  if (opts.anthropicApiKey) {
-    providers.push(
-      createAnthropicProvider({
-        apiKey: opts.anthropicApiKey,
-        models: opts.anthropicModels ?? ["claude-sonnet-4"],
-        defaultModel: opts.anthropicModels?.[0] ?? "claude-sonnet-4",
-      }),
-    );
-  }
-  if (providers.length === 0) {
-    // dummy for tests
-    providers.push(createOpenAICompatProvider({ baseUrl: "https://api.openai.com/v1", models: ["dummy"] }));
-  }
-  return createRouterProvider({ providers });
-}

@@ -17,10 +17,6 @@ function dbPath(cwd?: string): string {
   return global;
 }
 
-export function getVectorDbPath(cwd?: string): string {
-  return dbPath(cwd);
-}
-
 function open(cwd?: string): Database {
   const p = dbPath(cwd);
   const db = new Database(p);

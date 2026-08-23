@@ -83,7 +83,8 @@ export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {
     try {
       msg = JSON.parse(line);
     } catch {
-      replyError(undefined, -32700, "parse error");
+      // per JSON-RPC spec: parse error wajib dibalas dengan id:null
+      send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
       return;
     }
 

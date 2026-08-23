@@ -28,7 +28,8 @@ export const readMemoryTool: Tool = {
       const baseUrl = process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1";
       const apiKey = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY ?? process.env.AGENT_API_KEY ?? "";
       hits = await searchHybrid(q, { topK: (topK as number) ?? 5, cwd, ...(apiKey ? { baseUrl, apiKey } : {}) });
-    } catch {
+    } catch (e) {
+      process.stderr.write(`[warn] memory vector fallback keyword-only: ${(e as Error).message}\n`);
       hits = await searchHybrid(q, { topK: (topK as number) ?? 5, cwd });
     }
     const file = await readMemoryFile(cwd);
@@ -65,11 +66,14 @@ export const writeMemoryTool: Tool = {
       const apiKey = process.env.DEEPSEEK_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY ?? "";
       if (apiKey) await addMemory(t, { baseUrl, apiKey, cwd });
       else await addMemory(t, { cwd });
-    } catch {
+    } catch (e) {
+      process.stderr.write(`[warn] memory vector embedding failed: ${(e as Error).message}\n`);
       // fallback keyword-only
       try {
         await addMemory(t, { cwd });
-      } catch {}
+      } catch (e2) {
+        process.stderr.write(`[warn] memory keyword-only fallback failed: ${(e2 as Error).message}\n`);
+      }
     }
     return `saved to ${path}: ${t.slice(0, 100)}`;
   },

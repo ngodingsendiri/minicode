@@ -1,0 +1,18 @@
+import { resolve, relative, isAbsolute, sep } from "node:path";
+
+// Satu sumber untuk aturan sandbox path — dipakai permission layer + setiap tool
+// (defense-in-depth). File .env / .git/config / node_modules dianggap sensitif.
+export const SENSITIVE_RE = /(^|[\/\\])\.env(\.|$|[\/\\])|\.git[\/\\]config|node_modules/;
+
+export function isSensitive(p: string): boolean {
+  return SENSITIVE_RE.test(p);
+}
+
+export function isPathOutsideRoot(p: string, root: string): boolean {
+  if (!p) return false;
+  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p);
+  const rel = relative(root, abs);
+  if (!rel) return false; // same directory
+  if (isAbsolute(rel)) return true; // different drive on Windows
+  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || rel.startsWith("..\\");
+}

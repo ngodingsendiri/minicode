@@ -2,8 +2,8 @@
 
 > Coding agent minimal di atas kernel beku MiniCore. Ramping, clean, profesional — tidak menambah primitive, hanya layer agencode.
 
-**Versi:** 0.1.3 — audit 100% + extreme test suite (59 test). 0% sentuh `minicore`. Security hardening: symlink realpath escape-check, denylist `${HOME}`/`truncate`/`mv /etc`, executor order-preserving mixed-step.
-**Prinsip:** `minicore` tidak disentuh (`../minicore/src/core/*` 148 test FREEZE). Semua perbaikan sebagai Tool / Policy / Provider di sini.
+**Versi:** 0.2.0 — hardening keamanan + compaction LLM ter-wire + persistence incremental (71 test).
+**Prinsip:** `minicore` inti di-freeze — satu-satunya patch yang diizinkan adalah seam **additif backward-compatible** (field opsional `compactAsync` di loop compaction). Semua perbaikan lain sebagai Tool / Policy / Provider di sini.
 
 ## Peta Pohon Komponen
 
@@ -11,6 +11,7 @@
 minicode/
 │
 ├── cli/index.ts — ENTRY POINT (headless / interactive / --tui)
+│   ├── cli/args.ts                    # pure arg-parsing (getArg/promptFromArgs/readPrompt) — testable
 │   ├── minicode "<prompt>"            → loadConfig → Router → RAG → MCP/LSP → createMinicodeSession → EventBus → persist
 │   ├── config add|list|remove|detect       # provider OpenAI/Anthropic hybrid Bearer+x-api-key
 │   ├── config mcp add|list|remove          # server lokal stdio
@@ -46,25 +47,27 @@ minicode/
 ├── src/providers/
 │   ├── anthropic.ts   SSE streaming, pendingTools per-stream, 429→30s, context map, max_tokens configurable, DOMException abort, usage message_delta
 │   ├── detect.ts      GET /models hybrid Bearer + x-api-key, timeout 4s/5s per fetch
+│   ├── build.ts       buildProviderList(cfg) — satu sumber bangun provider (hybrid), dipakai CLI+sub-agent
 │   └── router.ts      route by model (last wins local), fallback rate_limit/server/network clone retryAfter, C4 Uint8Array→base64
 │
 ├── src/policy/
-│   ├── permission.ts  READONLY+=mcp_list+lsp_*, denylist rm -rf/*|shred|sudo+cw, SENSITIVE_RE, isPathOutsideRoot sep-aware, cwd jail, dynamic mcp allow
+│   ├── jail.ts        isPathOutsideRoot + isSensitive — satu sumber jail, dipakai permission + semua tool
+│   ├── permission.ts  READONLY+=mcp_list+lsp_*, denylist 27 regex, GATED delegate_task/mcp_call (TTY prompt / non-TTY deny), wildcard MCP ditutup, cwd jail
 │   ├── context.ts     buildSystemPrompt async static import + MAX 8000 chars + cwd jail + estimator helper
-│   ├── compaction.ts  mechanical sync (LLM async via compactWithLlm dedup getKeptCount + head 400 + abort-aware)
+│   ├── compaction.ts  mechanical sync default + LLM async via compactWithLlm (seam kernel compactAsync, fallback otomatis; dedup getKeptCount + head 400 + abort-aware)
 │   ├── executor.ts    order-preserving 8 / write 2 semaphore + abortError, WRITE_TOOLS+=write_memory
-│   └── usage.ts       cost pricing sorted + deepseek-chat/reasoner (fix gpt-4o vs gpt-4o-mini)
+│   └── usage.ts       cost pricing sorted + deepseek-chat/reasoner (fix gpt-4o vs gpt-4o-mini) + cost dihitung saat get()
 │
 ├── src/memory/
 │   ├── files.ts       MEMORY.md global+local, appendFile atomic + 200k guard
 │   └── vector.ts      vector.db WAL+b busy_timeout, toBlob align-safe, LIMIT 500, embed timeout 3.5s, deleteMemoryByQuery tx, localDir-aware
 │
-├── src/session/persistence.ts — sessions.db WAL+b busy_timeout, sessions(updated_at) + idx, save transaction + list ORDER BY updated_at, vacuum
+├── src/session/persistence.ts — sessions.db WAL+b busy_timeout, sessions(updated_at) + idx, save transaction + list ORDER BY updated_at; persistence incremental append-only + placeholder binary
 │
 ├── src/mcp/
-│   ├── transport.ts   JSON-RPC newline stdio, pending+timeout, killSignal on close only
+│   ├── transport.ts   JSON-RPC newline stdio, pending+timeout, killSignal on close only, log JSON invalid
 │   ├── client.ts      discover→initialize fallback, tools/list, wrap "{server}.{tool}"
-│   └── server.ts      curated tools, permission aktif, isError, ping
+│   └── server.ts      curated tools, permission aktif, isError, ping, parse-error balas {id:null}
 │
 ├── src/lsp/
 │   └── client.ts      Content-Length framing, initialize, didOpen/didChange versioned, diagnostics poll, findSymbolPosition \b word-boundary, start-once guard
@@ -125,28 +128,29 @@ PermissionHandler (denylist+SENSITIVE_RE+jail+cwd) → validateArgs (kernel) →
 5. **Error → result** — tidak crash parent
 6. **Pool(3)** — queue abort-aware
 
-## Perubahan Penting (audit 100% + extreme test — 35 file)
+## Perubahan Penting (audit + hardening — 71 test)
 
-* **Security** — symlink realpath escape-check (`read/write/edit`), denylist `${HOME}`/`truncate`/`mv /etc`, config+allowlist atomic chmod 600
-* **Session/Persistence** — WAL + `updated_at` + transaction + vacuum, `vector` WAL align-safe LIMIT 500, `files` append atomic 200k guard
+* **Security v0.2** — auto mode perketat: `delegate_task`/`mcp_call` di-gate (prompt TTY / tolak non-TTY), wildcard MCP ditutup (tool dinamis hanya server terdaftar), denylist bash +11 regex (interpreter `-c/-e`, `base64|sh`, `printenv`, baca `.env`), **bash env kredensial di-strip**, jail terpusat `src/policy/jail.ts` + diterapkan juga di `glob`/`grep`
+* **Core seam** — kernel minicore dibuka seam additif `compactAsync` (backward-compatible); LLM compaction ter-wire otomatis di loop dengan fallback mechanical
+* **Session/Persistence** — WAL + `updated_at` + transaction, persistence **incremental append-only** (fallback rewrite saat history menyusut), content `Uint8Array` → placeholder, `vector` WAL align-safe LIMIT 500, `files` append atomic 200k guard
 * **Config** — validasi schema, id dedup hash, merge local→akhir (router default benar), `remove --global/--local`
-* **Providers** — router fallback `network` clone-error, anthropic `max_tokens` + usage message_delta, detect timeout 4s
-* **Policy** — executor order-preserving (mixed step sequential, pure-read 8×, pure-write cap 2), usage anti double-count + pricing gpt-4.1/o1/o3/gemini/deepseek, compaction dedup getKeptCount + abort-aware
-* **Tools** — grep include RegExp + null-byte skip, glob `{a,b}`, git paralel Promise.all timeout 8s, bash cwd jail, memory cwd-aware, task event-forward parent (cost tracking) + explore lsp/mcp_list
-* **MCP/LSP** — transport circular-safe + backpressure + rl leak, client discover 2s, server INTERNAL_TOOLS += write/forget_memory; LSP KIND 26 + formatPos line:char + exit auto-restart + didClose cleanup
+* **Providers** — router fallback `network` clone-error, anthropic `max_tokens` + usage message_delta, detect timeout 4s, build provider dedup `src/providers/build.ts`
+* **Policy** — executor order-preserving (mixed step sequential, pure-read 8×, pure-write cap 2), usage anti double-count + cost dihitung saat get() dengan model efektif, compaction dedup getKeptCount + abort-aware
+* **Tools** — grep include RegExp + null-byte skip, glob `{a,b}`, git paralel Promise.all timeout 8s, bash cwd jail + env-sanitize, memory cwd-aware, task event-forward parent (cost tracking) + explore lsp/mcp_list
+* **MCP/LSP** — transport circular-safe + backpressure + rl leak + log JSON invalid, parse-error balas `{id:null}` per spec; LSP KIND 26 + formatPos line:char + exit auto-restart + didClose cleanup
 * **Hooks** — allowlist merge global+local atomic chmod600
 * **Skills** — frontmatter `\n---` safe, recursive dir, slug name, `$ARGUMENTS`
-* **CLI** — `--timeout` flag (0=Infinity), RAG all providers, promptArgs knownFlags only, resume cap 2000, readPrompt 500ms
+* **CLI** — `--timeout` flag (0=Infinity), RAG all providers, promptArgs knownFlags only, resume cap 2000, readPrompt 500ms, arg-parsing dipecah `cli/args.ts` (testable)
 * **TUI** — text cap 20k, args circular-safe, formatError `?? ""`, detach idempotent
 
 ## Test Suite
 
-59 test (`bun test`) — 24 core + 35 extreme (`test/extreme.test.ts`): busy/abort/timeout/max_steps session, corrupt persistence, invalid config, router all-fail/clone, deny-bypass 11 varian, tool-pairing invariant, executor order+cap, symlink escape, glob brace, grep include/null, bash cwd jail, vector roundtrip, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count, EventBus crash-isolation/detach, retry-then-throw.
+71 test (`bun test` — 71 di minicode + 152 di minicore): busy/abort/timeout/max_steps session, corrupt persistence + incremental + binary placeholder, invalid config, router all-fail/clone, deny-bypass 23 varian + allow-controls + auto-gate delegate/mcp + wildcard MCP, tool-pairing invariant, executor order+cap, symlink escape, glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize, vector roundtrip, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cost, EventBus crash-isolation/detach, retry-then-throw, cli-args parsing, compactAsync seam kernel (prefer + fallback).
 
 ## Known Limitations
 
 1. Butuh `bun` (`bun install && bun test`). Symlink test skip di Windows tanpa privilege.
 2. MCP server v1 hanya `tools` (belum `resources/prompts`).
 3. `vector.db` `LIMIT 500` — paging belum untuk memory >5k.
-4. Bash security = regex denylist — bypassable via `python -c`/base64 pipe. v0.2: allowlist mode / sandbox.
-5. CLI/TUI belum punya test langsung (tested via integration).
+4. Bash security = regex denylist (sudah +env-sanitize + interpreter block) — tetap bukan sandbox penuh. v0.3: allowlist command / sandbox OS-level.
+5. CLI dipecah sebagian (`cli/args.ts` sudah ada test); subcommand & REPL masih via integration.

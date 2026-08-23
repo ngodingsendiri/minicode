@@ -39,7 +39,9 @@ export class McpTransport {
           if (msg.error) p.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
           else p.resolve(msg.result);
         }
-      } catch {}
+      } catch (e) {
+        process.stderr.write(`[mcp] ignoring invalid JSON from server: ${(e as Error).message}\n`);
+      }
     });
   }
 

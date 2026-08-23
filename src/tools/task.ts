@@ -2,7 +2,7 @@ import type { Tool } from "minicore";
 import { createMinicodeSession } from "../session.ts";
 import { createRouterProvider } from "../providers/router.ts";
 import { createOpenAICompatProvider } from "../../../minicore/src/providers/openai-compat.ts";
-import { createAnthropicProvider } from "../providers/anthropic.ts";
+import { buildProviderList } from "../providers/build.ts";
 import { loadConfig } from "../config.ts";
 import { Pool } from "../agents/pool.ts";
 
@@ -10,14 +10,7 @@ const pool = new Pool(3);
 
 async function getProvider() {
   const cfg = await loadConfig();
-  const providers = [];
-  for (const p of cfg.providers) {
-    if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
-      providers.push(createAnthropicProvider({ apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, defaultModel: p.models[0] }) as unknown as ReturnType<typeof createOpenAICompatProvider>);
-    } else {
-      providers.push(createOpenAICompatProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models, defaultModel: p.models[0] }));
-    }
-  }
+  const providers = buildProviderList(cfg);
   if (providers.length === 0) {
     const baseUrl = process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1";
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY ?? "";

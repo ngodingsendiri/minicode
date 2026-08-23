@@ -1,6 +1,7 @@
 import type { Tool } from "minicore";
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { isPathOutsideRoot } from "../policy/jail.ts";
 
 async function walk(dir: string, pattern: RegExp, out: string[], root: string, limit: number, signal: AbortSignal) {
   if (signal.aborted) throw new Error("aborted");
@@ -45,6 +46,7 @@ export const globTool: Tool = {
   },
   async execute({ pattern, cwd, limit }, ctx) {
     const root = (cwd as string) ?? ".";
+    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`);
     const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500);
     const re = globToRegExp(pattern as string);
     const out: string[] = [];

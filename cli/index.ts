@@ -1,11 +1,13 @@
 ﻿#!/usr/bin/env bun
-import { createDefaultRouter, createRouterProvider } from "../src/providers/router.ts";
+import { createRouterProvider } from "../src/providers/router.ts";
+import { buildProviderList } from "../src/providers/build.ts";
+import { getArg as rawGetArg, readPrompt, promptFromArgs } from "./args.ts";
 import { createMinicodeSession } from "../src/session.ts";
 import { allTools, withMcpTools } from "../src/tools/index.ts";
 import { attachRenderer, formatError } from "../src/tui/renderer.ts";
 import { createUsageCollector } from "../src/policy/usage.ts";
 import { attachInkRenderer } from "../src/tui/ink.tsx";
-import { loadConfig, saveProvider, removeProvider, detectAndSave, saveMcpServer, removeMcpServer, saveLspServer, removeLspServer } from "../src/config.ts";
+import { loadConfig, removeProvider, detectAndSave, saveMcpServer, removeMcpServer, saveLspServer, removeLspServer } from "../src/config.ts";
 import { createOpenAICompatProvider } from "../../minicore/src/providers/openai-compat.ts";
 import { createAnthropicProvider } from "../src/providers/anthropic.ts";
 import { saveSession, loadSession, listSessions } from "../src/session/persistence.ts";
@@ -249,8 +251,7 @@ if (args[0] === "config") {
 }
 
 function getArg(name: string): string | undefined {
-  const idx = args.indexOf(name);
-  return idx !== -1 ? args[idx + 1] : undefined;
+  return rawGetArg(args, name);
 }
 
 // --- skills subcommand ---
@@ -298,52 +299,7 @@ const contextWindowTokens = ctxWindowIdx !== -1 ? Number(args[ctxWindowIdx + 1])
 const timeoutIdx = args.indexOf("--timeout");
 const timeoutMs = timeoutIdx !== -1 ? Number(args[timeoutIdx + 1]) : undefined;
 
-const promptArgs = args.filter((a, i) => {
-  if (a === "--verbose" || a === "--allow-all" || a === "--ask" || a === "--interactive" || a === "--tui") return false;
-  if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window" || a === "--timeout") return false;
-  if (cwdIdx !== -1 && i === cwdIdx + 1) return false;
-  if (resumeIdx !== -1 && i === resumeIdx + 1) return false;
-  if (modelIdx !== -1 && i === modelIdx + 1) return false;
-  if (sessionIdx !== -1 && i === sessionIdx + 1) return false;
-  if (maxStepsIdx !== -1 && i === maxStepsIdx + 1) return false;
-  if (ctxWindowIdx !== -1 && i === ctxWindowIdx + 1) return false;
-  if (timeoutIdx !== -1 && i === timeoutIdx + 1) return false;
-  // only filter known flags, not prompt words like "-123"
-  const knownFlags = new Set(["-h","--help","--verbose","--allow-all","--ask","--interactive","--tui","--cwd","--resume","--model","--session","--max-steps","--context-window","--timeout"]);
-  if (knownFlags.has(a)) return false;
-  if (a.startsWith("-") && knownFlags.has(a.split("=")[0]!)) return false;
-  return true;
-});
-
-function readPrompt(): Promise<string> {
-  if (process.stdin.isTTY) return Promise.resolve("");
-  return new Promise((resolve) => {
-    let data = "";
-    let done = false;
-    const t = setTimeout(() => {
-      if (!done) {
-        done = true;
-        resolve("");
-      }
-    }, 500);
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (c) => (data += c));
-    process.stdin.on("end", () => {
-      if (!done) {
-        done = true;
-        clearTimeout(t);
-        resolve(data.trim());
-      }
-    });
-    // if stdin already ended
-    if (process.stdin.readableEnded) {
-      clearTimeout(t);
-      resolve("");
-    }
-  });
-}
-
-const prompt = promptArgs.join(" ") || (await readPrompt());
+const prompt = promptFromArgs(args) || (await readPrompt());
 // no prompt + TTY → masuk mode chat interaktif otomatis (bukan error)
 const enterRepl = interactive || (!prompt && process.stdin.isTTY);
 if (!prompt && !enterRepl) {
@@ -373,26 +329,14 @@ try {
 // --- provider: load config + env fallback (hybrid x-api-key) ---
 const cfg = await loadConfig(cwd);
 type Provider = ReturnType<typeof createOpenAICompatProvider>;
-function buildProviders(list: typeof cfg.providers): Provider[] {
-  const out: Provider[] = [];
-  for (const p of list) {
-    // hybrid: try to infer provider type
-    if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
-      out.push(createAnthropicProvider({ apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, defaultModel: p.models[0] }) as unknown as Provider);
-    } else {
-      out.push(createOpenAICompatProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models, defaultModel: p.models[0] }));
-    }
-  }
-  return out;
-}
-let providers = buildProviders(cfg.providers);
+let providers = buildProviderList(cfg);
 
 // first-run wizard — guided setup saat belum ada provider sama sekali
 async function setupWizard(): Promise<boolean> {
   if (!process.stdin.isTTY) return false;
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log("\n╭─ minicode v0.1.3 — setup pertama kali");
+  console.log("\n╭─ minicode v0.2.0 — setup pertama kali");
   console.log("│ Butuh satu LLM provider. Enter = OpenRouter default.");
   const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
   const baseUrl = await ask("│ Base URL [https://openrouter.ai/api/v1]: ");
@@ -425,7 +369,7 @@ if (providers.length === 0 && (enterRepl || prompt)) {
   const ok = await setupWizard();
   if (ok) {
     const cfg2 = await loadConfig(cwd);
-    providers = buildProviders(cfg2.providers);
+    providers = buildProviderList(cfg2);
   }
 }
 if (providers.length === 0) {
@@ -541,7 +485,7 @@ if (useInk) {
     attachRenderer(session.events, { verbose });
   }
 } else attachRenderer(session.events, { verbose });
-const usage = createUsageCollector(session.events, modelOverride);
+const usage = createUsageCollector(session.events, modelOverride ?? cfg.providers[0]?.models[0]);
 
 async function persistCurrent(usageData: unknown) {
   try {
@@ -553,7 +497,7 @@ async function persistCurrent(usageData: unknown) {
 if (enterRepl) {
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: "minicode> " });
-  process.stderr.write(`minicode v0.1.3 — ketik prompt, /skill, atau exit\n`);
+  process.stderr.write(`minicode v0.2.0 — ketik prompt, /skill, atau exit\n`);
   rl.prompt();
   for await (const line of rl) {
     const q = line.trim();

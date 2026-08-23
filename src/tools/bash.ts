@@ -1,14 +1,17 @@
 ﻿import type { Tool } from "minicore";
 import { spawn } from "node:child_process";
-import { resolve, relative, isAbsolute, sep } from "node:path";
+import { isPathOutsideRoot } from "../policy/jail.ts";
 
-function isOutsideRoot(p: string, root: string): boolean {
-  if (!p) return false;
-  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p);
-  const rel = relative(root, abs);
-  if (!rel) return false;
-  if (isAbsolute(rel)) return true;
-  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || rel.startsWith("..\\");
+const SECRET_ENV_RE = /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY)/i;
+
+// jangan biarkan shell membaca kredensial dari env — kurangi eksfiltrasi rahasia
+function stripSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (SECRET_ENV_RE.test(k)) continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 export const bashTool: Tool = {
@@ -26,10 +29,10 @@ export const bashTool: Tool = {
   },
   async execute({ cmd, cwd, timeoutMs }, ctx) {
     const c = cwd as string | undefined;
-    if (c && isOutsideRoot(c, process.cwd())) throw new Error(`cwd outside workspace: ${c}`);
+    if (c && isPathOutsideRoot(c, process.cwd())) throw new Error(`cwd outside workspace: ${c}`);
     const timeout = timeoutMs ?? 30_000;
     return await new Promise((resolve, reject) => {
-      const p = spawn(cmd as string, { shell: true, cwd: c, signal: ctx.signal });
+      const p = spawn(cmd as string, { shell: true, cwd: c, env: stripSecrets(process.env), signal: ctx.signal });
       let out = "", err = "";
       p.stdout.on("data", (d) => (out += d));
       p.stderr.on("data", (d) => (err += d));

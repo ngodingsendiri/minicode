@@ -5,6 +5,8 @@ import { loadAllowlist, matchAllowlist } from "../src/hooks/index.ts";
 import { createPermissionHandler } from "../src/policy/permission.ts";
 import { Pool } from "../src/agents/pool.ts";
 import { minicodeEstimator, estimateImageTokens } from "../src/policy/context.ts";
+import { createLlmCompaction, compactWithLlm } from "../src/policy/compaction.ts";
+import { ContextStore } from "../../minicore/src/core/index.ts";
 
 const tmp = ".tmp-skills-test";
 
@@ -47,9 +49,22 @@ test("permission readonly denies delegate/mcp/lsp write tools", async () => {
   expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "x" } } as never, {} as never)).toBe("deny");
 });
 
-test("auto allows delegate_task (sub-agent policy)", async () => {
+test("auto gates delegate_task/mcp_call without TTY (sub-agent policy)", async () => {
   const h = createPermissionHandler({ mode: "auto" });
-  expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "explore src" } } as never, {} as never)).toBe("allow");
+  expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "explore src" } } as never, {} as never)).toBe("deny");
+  expect(await h.check({ id: "1", name: "mcp_call", args: { server: "x", tool: "y" } } as never, {} as never)).toBe("deny");
+});
+
+test("auto gates unknown dotted MCP tool (wildcard bypass closed)", async () => {
+  const h = createPermissionHandler({ mode: "auto" });
+  expect(await h.check({ id: "1", name: "evil.tool", args: {} } as never, {} as never)).toBe("deny");
+});
+
+test("auto allows local trusted surface", async () => {
+  const h = createPermissionHandler({ mode: "auto" });
+  expect(await h.check({ id: "1", name: "write_file", args: { path: "a/b.txt", content: "x" } } as never, {} as never)).toBe("allow");
+  expect(await h.check({ id: "1", name: "write_memory", args: { text: "note" } } as never, {} as never)).toBe("allow");
+  expect(await h.check({ id: "1", name: "bash", args: { cmd: "ls && echo ok" } } as never, {} as never)).toBe("allow");
 });
 
 test("pool concurrency limits parallel runs", async () => {
@@ -75,4 +90,38 @@ test("estimator + image tokens", () => {
   expect(minicodeEstimator("abcd")).toBe(1);
   expect(minicodeEstimator("abcde")).toBe(2);
   expect(estimateImageTokens(1024 * 1024)).toBeGreaterThan(300000);
+});
+
+test("createLlmCompaction sync compact falls back to mechanical", () => {
+  const strategy = createLlmCompaction();
+  const store = new ContextStore();
+  store.appendAll([
+    { role: "user", content: "u1" },
+    { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "echo", args: {} }] },
+    { role: "tool", toolCallId: "c1", name: "echo", content: "a" },
+    { role: "user", content: "u2" },
+  ]);
+  const out = strategy.compact(store, { keepRecentTurns: 1 });
+  expect(out[0]?.role).toBe("user");
+  expect(out[0]?.content).toContain("u1");
+});
+
+test("compactWithLlm noFallback throws without provider, sync fallback otherwise", async () => {
+  const store = new ContextStore();
+  store.appendAll([
+    { role: "user", content: "u1" },
+    { role: "user", content: "u2" },
+  ]);
+  // tanpa provider + noFallback → throw
+  await expect(compactWithLlm(store, { keepRecentTurns: 1 }, undefined, true)).rejects.toThrow(/no provider/);
+  // tanpa provider + fallback → mechanical
+  const out = await compactWithLlm(store, { keepRecentTurns: 1 });
+  expect(out.length).toBeGreaterThan(0);
+});
+
+test("createLlmCompaction compactAsync rejects without provider (loop falls back)", async () => {
+  const strategy = createLlmCompaction();
+  const store = new ContextStore();
+  store.appendAll([{ role: "user", content: "u1" }, { role: "user", content: "u2" }]);
+  await expect(strategy.compactAsync!(store, { keepRecentTurns: 1 }, new AbortController().signal)).rejects.toThrow();
 });

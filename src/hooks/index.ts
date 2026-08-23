@@ -1,12 +1,7 @@
-import type { ToolCall, ToolResult } from "../../../minicore/src/core/types.ts";
+import type { ToolCall } from "../../../minicore/src/core/types.ts";
 import { readFile, writeFile, mkdir, chmod, rename } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
-
-export interface Hooks {
-  beforeTool?(call: ToolCall): Promise<"allow" | "deny" | undefined>;
-  afterTool?(call: ToolCall, result: ToolResult): Promise<void>;
-}
 
 export interface Allowlist {
   allowed: string[]; // entries like "bash:echo hi" or "write_file:.tmp/*"
@@ -57,24 +52,6 @@ export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
     if (pat.includes(":")) return re.test(key);
     return re.test(call.name) || re.test(key);
   });
-}
-
-export function createHooks(opts: { cwd?: string; hooks?: Hooks } = {}): Hooks & { allowlist: Allowlist } {
-  let allowlist: Allowlist = { allowed: [] };
-  // load async but keep sync for now — caller can await loadAllowlist separately
-  return {
-    allowlist,
-    async beforeTool(call: ToolCall) {
-      if (opts.hooks?.beforeTool) {
-        const r = await opts.hooks.beforeTool(call);
-        if (r) return r;
-      }
-      return undefined;
-    },
-    async afterTool(call: ToolCall, result: ToolResult) {
-      if (opts.hooks?.afterTool) await opts.hooks.afterTool(call, result);
-    },
-  } as Hooks & { allowlist: Allowlist };
 }
 
 export async function promptAsk(call: ToolCall): Promise<"allow" | "deny" | "always"> {

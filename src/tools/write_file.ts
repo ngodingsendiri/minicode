@@ -1,16 +1,7 @@
 import type { Tool } from "minicore";
 import { mkdir, writeFile, stat, rename, realpath } from "node:fs/promises";
-import { dirname, resolve, relative, isAbsolute, sep, basename } from "node:path";
-
-const SENSITIVE_RE = /(^|[\/\\])\.env(\.|$|[\/\\])|\.git[\/\\]config|node_modules/;
-
-function isOutsideRoot(p: string, root: string): boolean {
-  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p);
-  const rel = relative(root, abs);
-  if (!rel) return false;
-  if (isAbsolute(rel)) return true;
-  return rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || rel.startsWith("..\\");
-}
+import { dirname, resolve, isAbsolute, basename } from "node:path";
+import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts";
 
 export const writeFileTool: Tool = {
   name: "write_file",
@@ -28,14 +19,14 @@ export const writeFileTool: Tool = {
     ctx.signal.throwIfAborted();
     const p = path as string;
     const root = process.cwd();
-    if (isOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`);
-    if (SENSITIVE_RE.test(p)) throw new Error(`blocked sensitive file: ${p}`);
+    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`);
+    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`);
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p);
     // resolve symlink to prevent symlink escape (parent dir + file itself)
     const realDir = await realpath(dirname(abs)).catch(() => dirname(abs));
     const fileReal = await realpath(abs).catch(() => null);
     const realAbs = fileReal ?? resolve(realDir, basename(abs));
-    if (isOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`);
+    if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`);
     await mkdir(dirname(realAbs), { recursive: true });
     // guard large write
     const c = content as string;

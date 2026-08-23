@@ -17,9 +17,30 @@ export interface LlmCompactionOptions {
 export function createLlmCompaction(opts: LlmCompactionOptions = {}): CompactionStrategy {
   const fallback = opts.fallback ?? mechanicalCompaction;
   return {
-    kind: fallback.kind, // sync kernel requires mechanical; async LLM is via compactWithLlm() helper
+    // Kernel sekarang memanggil compactAsync bila ada (seam baru di loop.ts).
+    // compact() sinkron tetap jadi fallback aman bila LLM gagal / tidak terkonfigurasi.
+    kind: "llm-mechanical",
     compact(store: ContextStore, cOpts: { keepRecentTurns: number }): readonly import("../../../minicore/src/core/types.ts").Message[] {
       return fallback.compact(store, cOpts);
+    },
+    async compactAsync(store: ContextStore, cOpts: { keepRecentTurns: number }, signal: AbortSignal): Promise<readonly import("../../../minicore/src/core/types.ts").Message[]> {
+      // cap 15s — jangan biarkan LLM summary memblokir loop terlalu lama;
+      // kalau gagal/timeout, loop otomatis fallback ke compact() sinkron.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(new Error("llm compaction timeout")), 15_000);
+      const onAbort = () => ac.abort(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        return await compactWithLlm(
+          store,
+          { keepRecentTurns: cOpts.keepRecentTurns, provider: opts.provider, model: opts.model, baseUrl: opts.baseUrl, apiKey: opts.apiKey },
+          ac.signal,
+          true, // noFallback: biarkan loop yang memutuskan fallback ke sync
+        );
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+      }
     },
   };
 }
@@ -43,11 +64,13 @@ function getKeptCount(messages: readonly import("../../../minicore/src/core/type
   return kept;
 }
 
-// Async helper — call explicitly before budget critical, or via wrapper that pre-compacts
+// Async helper — call explicitly before budget critical, or via wrapper that pre-compacts.
+// noFallback=true: tidak memanggil mechanical fallback (biarkan loop yang menanganinya).
 export async function compactWithLlm(
   store: ContextStore,
   opts: { keepRecentTurns: number; provider?: ModelProvider; model?: string; baseUrl?: string; apiKey?: string },
   signal?: AbortSignal,
+  noFallback = false,
 ): Promise<readonly import("../../../minicore/src/core/types.ts").Message[]> {
   const keep = opts.keepRecentTurns;
   const messages = store.messages;
@@ -60,7 +83,10 @@ export async function compactWithLlm(
     (opts.apiKey
       ? createOpenAICompatProvider({ baseUrl: opts.baseUrl ?? "https://api.deepseek.com/v1", apiKey: opts.apiKey!, models: [opts.model ?? "deepseek-chat"], defaultModel: opts.model ?? "deepseek-chat" })
       : undefined);
-  if (!provider) return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
+  if (!provider) {
+    if (noFallback) throw new Error("no provider for LLM compaction");
+    return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
+  }
 
   // use safe head like mechanical: content truncated, tool results omitted
   const { contentToText } = await import("../../../minicore/src/core/tokens.ts");
@@ -87,6 +113,7 @@ export async function compactWithLlm(
   } catch (e) {
     if (signal?.aborted) throw e;
     if ((e as Error).name === "AbortError") throw e;
+    if (noFallback) throw e;
     return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
   }
   const lruSummary = { role: "user" as const, content: `Previous context (LLM summarized):\n${summary.slice(0, 2000)}` };
