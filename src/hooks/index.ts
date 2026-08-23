@@ -1,6 +1,6 @@
 import type { ToolCall, ToolResult } from "../../../minicore/src/core/types.ts";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, writeFile, mkdir, chmod, rename } from "node:fs/promises";
+import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 
 export interface Hooks {
@@ -16,35 +16,46 @@ const GLOBAL_ALLOW = join(homedir(), ".minicode", "allowlist.json");
 const LOCAL_ALLOW = ".minicode/allowlist.json";
 
 export async function loadAllowlist(cwd?: string): Promise<Allowlist> {
-  const path = resolve(cwd ?? process.cwd(), LOCAL_ALLOW);
-  try {
-    const txt = await readFile(path, "utf8");
-    return JSON.parse(txt);
-  } catch {}
+  let globalList: Allowlist = { allowed: [] };
+  let localList: Allowlist = { allowed: [] };
   try {
     const txt = await readFile(GLOBAL_ALLOW, "utf8");
-    return JSON.parse(txt);
+    const parsed = JSON.parse(txt) as Allowlist;
+    if (Array.isArray(parsed.allowed)) globalList = parsed;
   } catch {}
-  return { allowed: [] };
+  try {
+    const path = resolve(cwd ?? process.cwd(), LOCAL_ALLOW);
+    const txt = await readFile(path, "utf8");
+    const parsed = JSON.parse(txt) as Allowlist;
+    if (Array.isArray(parsed.allowed)) localList = parsed;
+  } catch {}
+  // merge global+local, dedup
+  const merged = new Set<string>([...globalList.allowed, ...localList.allowed]);
+  return { allowed: [...merged] };
 }
 
-export async function saveAllowlist(entry: string, cwd?: string) {
-  const path = resolve(cwd ?? process.cwd(), LOCAL_ALLOW);
-  await mkdir(join(path, ".."), { recursive: true }).catch(() => {});
+export async function saveAllowlist(entry: string, cwd?: string, opts: { global?: boolean } = {}) {
+  const path = opts.global ? GLOBAL_ALLOW : resolve(cwd ?? process.cwd(), LOCAL_ALLOW);
+  await mkdir(dirname(path), { recursive: true }).catch(() => {});
   let list: Allowlist = { allowed: [] };
   try {
-    list = JSON.parse(await readFile(path, "utf8"));
+    const parsed = JSON.parse(await readFile(path, "utf8")) as Allowlist;
+    if (Array.isArray(parsed.allowed)) list = parsed;
   } catch {}
   if (!list.allowed.includes(entry)) list.allowed.push(entry);
-  await writeFile(path, JSON.stringify(list, null, 2), "utf8");
+  const tmp = `${path}.tmp.${process.pid}`;
+  await writeFile(tmp, JSON.stringify(list, null, 2), "utf8");
+  try { await chmod(tmp, 0o600); } catch {}
+  await rename(tmp, path);
+  try { await chmod(path, 0o600); } catch {}
 }
 
 export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
   const key = `${call.name}:${JSON.stringify(call.args).slice(0, 200)}`;
   return allowlist.some((pat) => {
-    // simple glob: pat may contain * or exact
     const re = new RegExp("^" + pat.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$");
-    return re.test(key) || re.test(call.name);
+    if (pat.includes(":")) return re.test(key);
+    return re.test(call.name) || re.test(key);
   });
 }
 
