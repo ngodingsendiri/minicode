@@ -1,0 +1,78 @@
+import { expect, test } from "bun:test";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { loadSkills, findSkill, renderSkill, skillsToSystemPrompt } from "../src/skills/loader.ts";
+import { loadAllowlist, matchAllowlist } from "../src/hooks/index.ts";
+import { createPermissionHandler } from "../src/policy/permission.ts";
+import { Pool } from "../src/agents/pool.ts";
+import { minicodeEstimator, estimateImageTokens } from "../src/policy/context.ts";
+
+const tmp = ".tmp-skills-test";
+
+test("skills: load, find, render", async () => {
+  await mkdir(`${tmp}/.minicode/skills`, { recursive: true });
+  await writeFile(
+    `${tmp}/.minicode/skills/review.md`,
+    `---\nname: review\ndescription: Review code\n---\nReview this code: {{args}}`,
+  );
+  const all = await loadSkills(tmp);
+  expect(all.length).toBe(1);
+  expect(all[0]!.name).toBe("review");
+  const found = await findSkill("review", tmp);
+  expect(found?.description).toBe("Review code");
+  const rendered = await renderSkill(found!, "src/a.ts");
+  expect(rendered).toContain("src/a.ts");
+  expect(skillsToSystemPrompt(all)).toContain("/review");
+  // /name with args via findSkill
+  const foundSlash = await findSkill("/review", tmp);
+  expect(foundSlash?.name).toBe("review");
+  await rm(tmp, { recursive: true, force: true });
+});
+
+test("hooks allowlist match", () => {
+  const call = { id: "1", name: "bash", args: { cmd: "echo hi" } };
+  expect(matchAllowlist(call as never, [])).toBe(false);
+  expect(matchAllowlist(call as never, ["bash"])).toBe(true);
+  const callWrite = { id: "2", name: "write_file", args: { path: "a.txt" } };
+  expect(matchAllowlist(callWrite as never, ['write_file:{"path":"a.txt"}'])).toBe(true);
+  expect(matchAllowlist(callWrite as never, ['write_file:{"path":"b.txt"}'])).toBe(false);
+});
+
+test("allowlist load empty when missing", async () => {
+  const l = await loadAllowlist(".tmp-nonexistent-dir");
+  expect(l.allowed).toEqual([]);
+});
+
+test("permission readonly denies delegate/mcp/lsp write tools", async () => {
+  const h = createPermissionHandler({ mode: "readonly" });
+  expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "x" } } as never, {} as never)).toBe("deny");
+});
+
+test("auto allows delegate_task (sub-agent policy)", async () => {
+  const h = createPermissionHandler({ mode: "auto" });
+  expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "explore src" } } as never, {} as never)).toBe("allow");
+});
+
+test("pool concurrency limits parallel runs", async () => {
+  const pool = new Pool(2);
+  let running = 0;
+  let maxRunning = 0;
+  const tasks = Array(6)
+    .fill(0)
+    .map(() =>
+      pool.run(async () => {
+        running++;
+        maxRunning = Math.max(maxRunning, running);
+        await new Promise((r) => setTimeout(r, 20));
+        running--;
+        return "done";
+      }),
+    );
+  await Promise.all(tasks);
+  expect(maxRunning).toBe(2);
+});
+
+test("estimator + image tokens", () => {
+  expect(minicodeEstimator("abcd")).toBe(1);
+  expect(minicodeEstimator("abcde")).toBe(2);
+  expect(estimateImageTokens(1024 * 1024)).toBeGreaterThan(300000);
+});

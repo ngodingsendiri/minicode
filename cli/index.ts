@@ -11,7 +11,8 @@ import { saveSession, loadSession, listSessions } from "../src/session/persisten
 import { searchHybrid } from "../src/memory/vector.ts";
 import { createLlmCompaction } from "../src/policy/compaction.ts";
 import { connectAll as mcpConnectAll, closeAll as mcpCloseAll } from "../src/mcp/client.ts";
-import { configureServers as lspConfigure, closeAll as lspCloseAll } from "../src/lsp/client.ts";
+import { configureServers as lspConfigure, closeAllLsp as lspCloseAll } from "../src/lsp/client.ts";
+import { loadSkills, findSkill, renderSkill, skillsToSystemPrompt } from "../src/skills/loader.ts";
 import type { Tool } from "minicore";
 import { randomUUID } from "node:crypto";
 
@@ -22,6 +23,7 @@ usage:
   minicode config mcp <add|list|remove> [options]
   minicode config lsp <add|list|remove> [options]
   minicode mcp serve [--allow-all] [--all-tools]
+  minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
   minicode sessions <list|export> [id]
   echo "prompt" | minicode
 
@@ -241,6 +243,21 @@ function getArg(name: string): string | undefined {
   return idx !== -1 ? args[idx + 1] : undefined;
 }
 
+// --- skills subcommand ---
+if (args[0] === "skills") {
+  const cwdArg = getArg("--cwd");
+  const all = await loadSkills(cwdArg);
+  if (args[1] === "list" || !args[1]) {
+    if (all.length === 0) console.log("(no skills — add .minicode/skills/*.md with frontmatter name/description)");
+    else for (const s of all) console.log(`/${s.name}  ${s.description}`);
+  } else if (args[1] === "show") {
+    const s = await findSkill(args[2] ?? "", cwdArg);
+    if (!s) { console.error(`skill ${args[2]} not found`); process.exit(1); }
+    console.log(`${s.description}\n\n${s.body}`);
+  }
+  process.exit(0);
+}
+
 if (args.includes("-h") || args.includes("--help")) {
   console.log(HELP);
   process.exit(0);
@@ -310,6 +327,21 @@ if (!prompt) {
   process.exit(1);
 }
 
+// --- skills: expand /name args into rendered prompt ---
+let effectivePrompt = prompt;
+try {
+  if (prompt.startsWith("/")) {
+    const spaceIdx = prompt.indexOf(" ");
+    const skillName = spaceIdx === -1 ? prompt.slice(1) : prompt.slice(1, spaceIdx);
+    const skillArgs = spaceIdx === -1 ? "" : prompt.slice(spaceIdx + 1);
+    const skill = await findSkill(skillName, cwd);
+    if (skill) {
+      effectivePrompt = await renderSkill(skill, skillArgs);
+      console.error(`[skill /${skill.name}]`);
+    }
+  }
+} catch {}
+
 // --- provider: load config + env fallback (hybrid x-api-key) ---
 const cfg = await loadConfig(cwd);
 let providers: ReturnType<typeof createOpenAICompatProvider>[] = [];
@@ -346,6 +378,13 @@ try {
     const hits = await searchHybrid(prompt, { baseUrl, apiKey, cwd, topK: 5 });
     if (hits.length) systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`;
   }
+} catch {}
+
+// --- skills list into system prompt ---
+try {
+  const allSkills = await loadSkills(cwd);
+  const skillPrompt = skillsToSystemPrompt(allSkills);
+  if (skillPrompt) systemExtra = (systemExtra ?? "") + skillPrompt;
 } catch {}
 
 // --- resume: load previous messages as systemExtra ---
@@ -426,7 +465,13 @@ if (interactive) {
     if (!q) { rl.prompt(); continue; }
     if (q === "exit" || q === "quit") break;
     try {
-      const res = await session.run(q, { model: modelOverride });
+      const res = await session.run(q.startsWith("/") ? (await (async () => {
+        const spaceIdx = q.indexOf(" ");
+        const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx);
+        const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
+        const skill = await findSkill(skillName, cwd).catch(() => undefined);
+        return skill ? await renderSkill(skill, skillArgs) : q;
+      })()) : q, { model: modelOverride });
       const u = usage.get();
       process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens}\n`);
       await persistCurrent(res.usage);
@@ -442,7 +487,7 @@ if (interactive) {
   process.exit(0);
 } else {
   try {
-    const result = await session.run(prompt, { model: modelOverride });
+    const result = await session.run(effectivePrompt, { model: modelOverride });
     await persistCurrent(result.usage);
     const u = usage.get();
     process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens} cost=${u.cost?.toFixed(4) ?? "?"}\n`);
