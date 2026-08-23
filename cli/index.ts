@@ -1,4 +1,5 @@
-﻿import { createDefaultRouter, createRouterProvider } from "../src/providers/router.ts";
+﻿#!/usr/bin/env bun
+import { createDefaultRouter, createRouterProvider } from "../src/providers/router.ts";
 import { createMinicodeSession } from "../src/session.ts";
 import { allTools, withMcpTools } from "../src/tools/index.ts";
 import { attachRenderer, formatError } from "../src/tui/renderer.ts";
@@ -19,14 +20,15 @@ import { resolve as resolvePath } from "node:path";
 
 const HELP = `minicode — coding agent on frozen MiniCore
 usage:
-  minicode "prompt" [options]
+  minicode                        # mode chat interaktif (setup wizard saat pertama)
+  minicode "prompt" [options]     # sekali jalan
+  echo "prompt" | minicode        # via pipe
   minicode config <add|list|remove|detect> [options]
   minicode config mcp <add|list|remove> [options]
   minicode config lsp <add|list|remove> [options]
   minicode mcp serve [--allow-all] [--all-tools]
   minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
   minicode sessions <list|export> [id]
-  echo "prompt" | minicode
 
 Options:
   -h, --help          show help
@@ -342,9 +344,15 @@ function readPrompt(): Promise<string> {
 }
 
 const prompt = promptArgs.join(" ") || (await readPrompt());
-if (!prompt) {
-  process.stderr.write("usage: bun cli/index.ts <prompt>\n");
+// no prompt + TTY → masuk mode chat interaktif otomatis (bukan error)
+const enterRepl = interactive || (!prompt && process.stdin.isTTY);
+if (!prompt && !enterRepl) {
+  process.stderr.write("usage: minicode \"prompt\"  |  minicode (mode interaktif)\n");
   process.exit(1);
+}
+if (useTui && !prompt) {
+  // TUI butuh satu run untuk render; tanpa prompt fallback ke REPL
+  process.stderr.write("[tui] butuh prompt — fallback ke mode interaktif\n");
 }
 
 // --- skills: expand /name args into rendered prompt ---
@@ -364,25 +372,64 @@ try {
 
 // --- provider: load config + env fallback (hybrid x-api-key) ---
 const cfg = await loadConfig(cwd);
-let providers: ReturnType<typeof createOpenAICompatProvider>[] = [];
-for (const p of cfg.providers) {
-  // hybrid: try to infer provider type
-  if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
-    providers.push(createAnthropicProvider({ apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, defaultModel: p.models[0] }) as unknown as ReturnType<typeof createOpenAICompatProvider>);
-  } else {
-    providers.push(createOpenAICompatProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models, defaultModel: p.models[0] }));
+type Provider = ReturnType<typeof createOpenAICompatProvider>;
+function buildProviders(list: typeof cfg.providers): Provider[] {
+  const out: Provider[] = [];
+  for (const p of list) {
+    // hybrid: try to infer provider type
+    if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
+      out.push(createAnthropicProvider({ apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, defaultModel: p.models[0] }) as unknown as Provider);
+    } else {
+      out.push(createOpenAICompatProvider({ baseUrl: p.baseUrl, apiKey: p.apiKey, models: p.models, defaultModel: p.models[0] }));
+    }
+  }
+  return out;
+}
+let providers = buildProviders(cfg.providers);
+
+// first-run wizard — guided setup saat belum ada provider sama sekali
+async function setupWizard(): Promise<boolean> {
+  if (!process.stdin.isTTY) return false;
+  const { createInterface } = await import("node:readline");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  console.log("\n╭─ minicode v0.1.3 — setup pertama kali");
+  console.log("│ Butuh satu LLM provider. Enter = OpenRouter default.");
+  const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
+  const baseUrl = await ask("│ Base URL [https://openrouter.ai/api/v1]: ");
+  const apiKey = await ask("│ API Key (sk-...): ");
+  rl.close();
+  if (!apiKey) { console.log("│ Dibatalkan — set OPENAI_API_KEY nanti kalau mau.\n╰─"); return false; }
+  try {
+    const url = baseUrl || "https://openrouter.ai/api/v1";
+    const entry = await detectAndSave(url, apiKey);
+    console.log(`│ ✓ tersimpan "${entry.id}" — ${entry.models.length} model ditemukan (${entry.providerHint})`);
+    console.log("╰─ siap! ketik prompt langsung.\n");
+    return true;
+  } catch (e) {
+    console.log(`│ ✗ detect gagal: ${formatError(e)}`);
+    console.log("╰─ cek apiKey/baseUrl lalu ulangi: minicode config add --baseUrl <url> --apiKey <key>\n");
+    return false;
   }
 }
+
 // env fallback if no config
 if (providers.length === 0) {
   const baseUrl = process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1";
   const apiKey = process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY;
   if (apiKey) providers.push(createOpenAICompatProvider({ baseUrl, apiKey, models: [process.env.AGENT_MODEL ?? "gpt-4o-mini"], defaultModel: process.env.AGENT_MODEL ?? "gpt-4o-mini" }));
   const anthKey = process.env.ANTHROPIC_API_KEY;
-  if (anthKey) providers.push(createAnthropicProvider({ apiKey: anthKey, models: [process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4"] }) as unknown as ReturnType<typeof createOpenAICompatProvider>);
+  if (anthKey) providers.push(createAnthropicProvider({ apiKey: anthKey, models: [process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4"] }) as unknown as Provider);
+}
+// wizard fallback kalau masih kosong
+if (providers.length === 0 && (enterRepl || prompt)) {
+  const ok = await setupWizard();
+  if (ok) {
+    const cfg2 = await loadConfig(cwd);
+    providers = buildProviders(cfg2.providers);
+  }
 }
 if (providers.length === 0) {
-  console.error("no provider configured — run: minicode config add --baseUrl <url> --apiKey <key>  or set OPENAI_API_KEY");
+  console.error("no provider configured — jalankan `minicode` untuk setup wizard,\natau: minicode config add --baseUrl <url> --apiKey <key>, atau set OPENAI_API_KEY");
   process.exit(1);
 }
 const router = createRouterProvider({ providers });
@@ -485,7 +532,7 @@ const session = await createMinicodeSession({
   ...(compaction ? { compaction } : {}),
 } as never);
 
-const useInk = useTui && !interactive;
+const useInk = useTui && !enterRepl && !!prompt;
 let detachInk: (() => void) | undefined;
 if (useInk) {
   try {
@@ -503,9 +550,10 @@ async function persistCurrent(usageData: unknown) {
   } catch {}
 }
 
-if (interactive) {
+if (enterRepl) {
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: "minicode> " });
+  process.stderr.write(`minicode v0.1.3 — ketik prompt, /skill, atau exit\n`);
   rl.prompt();
   for await (const line of rl) {
     const q = line.trim();

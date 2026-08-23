@@ -27,16 +27,23 @@ minicode (coding-agent, depends file:../minicore)
 
 ## Quickstart
 ```bash
-bun install
-bun test          # 59 tests (24 core + 35 extreme: busy/abort/symlink/deny-bypass/pool-cap)
-bun run typecheck # clean
-minicode config add --baseUrl https://openrouter.ai/api/v1 --apiKey sk-or-...
-bun cli/index.ts "buat http server" --verbose        # headless
-bun cli/index.ts --interactive                        # REPL
-bun cli/index.ts --tui "refactor src/utils"           # Ink TUI
-bun cli/index.ts --ask "deploy script"                # human-in-loop y/n/a
-bun cli/index.ts --timeout 300000 "task panjang"      # hard deadline 5 menit
-bun cli/index.ts "/review src/a.ts"                   # skill slash-command
+# sekali saja — install & setup (butuh bun >= 1.0)
+git clone https://github.com/ngodingsendiri/minicode && cd minicode
+bun install && bun link
+
+# sekarang jalan di mana aja:
+minicode                # mode chat interaktif + wizard setup pertama kali
+minicode "buat http server" --verbose   # sekali jalan
+```
+
+Wizard pertama cuma minta Base URL (Enter = OpenRouter) + API Key, auto-detect models, tersimpan selamanya.
+
+```bash
+minicode --tui "refactor src/utils"     # Ink TUI
+minicode --ask "deploy script"          # human-in-loop y/n/a
+minicode --timeout 300000 "task panjang"
+minicode "/review src/a.ts"             # skill slash-command
+bun test                                # 59 tests
 ```
 
 ## Tools (20)

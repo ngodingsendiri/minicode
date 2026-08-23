@@ -4,6 +4,9 @@
   "description": "Minicode: agencode/coding-agent built on frozen MiniCore runtime",
   "type": "module",
   "private": true,
+  "bin": {
+    "minicode": "./cli/index.ts"
+  },
   "engines": {
     "bun": ">=1.0.0"
   },
