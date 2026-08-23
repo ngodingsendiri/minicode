@@ -16,26 +16,31 @@ export interface LlmCompactionOptions {
 
 export function createLlmCompaction(opts: LlmCompactionOptions = {}): CompactionStrategy {
   const fallback = opts.fallback ?? mechanicalCompaction;
-  const model = opts.model ?? "deepseek-chat"; // v4 flash alias
-  const baseUrl = opts.baseUrl ?? process.env.DEEPSEEK_BASE_URL ?? process.env.AGENT_BASE_URL ?? "https://api.deepseek.com/v1";
-  const apiKey = opts.apiKey ?? process.env.DEEPSEEK_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY;
-
-  // provider lazy
-  let provider: ModelProvider | undefined = opts.provider;
-  if (!provider && apiKey) {
-    provider = createOpenAICompatProvider({ baseUrl, apiKey, models: [model], defaultModel: model });
-  }
-
   return {
-    kind: `llm:${model}`,
+    kind: fallback.kind, // sync kernel requires mechanical; async LLM is via compactWithLlm() helper
     compact(store: ContextStore, cOpts: { keepRecentTurns: number }): readonly import("../../../minicore/src/core/types.ts").Message[] {
-      // sync fallback — LLM is async, but CompactionStrategy is sync per minicore.
-      // For true async LLM, we do best-effort sync fallback to mechanical,
-      // and expose async helper for explicit use via createMinicodeSession.
-      // To keep kernel sync, we return mechanical here; async LLM is via compactAsync().
       return fallback.compact(store, cOpts);
     },
   };
+}
+
+// shared kept calculation — mirrors mechanicalCompaction logic, single source for both sync/async
+function getKeptCount(messages: readonly import("../../../minicore/src/core/types.ts").Message[], keepRecentTurns: number): number {
+  let kept = 0, turns = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    kept++;
+    if (messages[i]!.role === "user") turns++;
+    if (turns >= keepRecentTurns) break;
+  }
+  while (kept < messages.length) {
+    const cut = messages.length - kept;
+    const firstKept = messages[cut]!;
+    const prev = messages[cut - 1];
+    const extendsPair = firstKept.role === "tool" && prev !== undefined && (prev.role === "tool" || (prev.role === "assistant" && (prev as unknown as { toolCalls?: unknown[] }).toolCalls !== undefined));
+    if (extendsPair) kept++;
+    else break;
+  }
+  return kept;
 }
 
 // Async helper — call explicitly before budget critical, or via wrapper that pre-compacts
@@ -46,20 +51,7 @@ export async function compactWithLlm(
 ): Promise<readonly import("../../../minicore/src/core/types.ts").Message[]> {
   const keep = opts.keepRecentTurns;
   const messages = store.messages;
-  let kept = 0, turns = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    kept++;
-    if (messages[i]!.role === "user") turns++;
-    if (turns >= keep) break;
-  }
-  while (kept < messages.length) {
-    const cut = messages.length - kept;
-    const firstKept = messages[cut]!;
-    const prev = messages[cut - 1];
-    const extendsPair = firstKept.role === "tool" && prev !== undefined && (prev.role === "tool" || (prev.role === "assistant" && (prev as unknown as { toolCalls?: unknown[] }).toolCalls !== undefined));
-    if (extendsPair) kept++;
-    else break;
-  }
+  const kept = getKeptCount(messages, keep);
   if (kept >= messages.length) return messages;
   const prefix = messages.slice(0, messages.length - kept);
 
@@ -70,7 +62,19 @@ export async function compactWithLlm(
       : undefined);
   if (!provider) return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
 
-  const summaryPrompt = `Summarize this conversation prefix for compaction. Keep key decisions, file paths, tool results errors, and next steps. Be concise (max 800 tokens). Prefix:\n${prefix.map((m) => `${m.role}: ${JSON.stringify(m).slice(0, 500)}`).join("\n").slice(0, 8000)}`;
+  // use safe head like mechanical: content truncated, tool results omitted
+  const { contentToText } = await import("../../../minicore/src/core/tokens.ts");
+  const head = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n)}…`);
+  const lineFor = (m: import("../../../minicore/src/core/types.ts").Message): string => {
+    if (m.role === "user") return `- user: ${head(contentToText(m.content), 400)}`;
+    if (m.role === "assistant") {
+      const calls = (m.toolCalls ?? []).map((c) => `${c.name}(${head(JSON.stringify(c.args), 80)})`).join(", ");
+      return `- assistant${calls ? ` [${calls}]` : ""}: ${head(contentToText(m.content), 400)}`;
+    }
+    if (m.isError) return `- tool(${m.name}): ${head(String(m.content), 200)}`;
+    return `- tool(${m.name}): <result omitted>`;
+  };
+  const summaryPrompt = `Summarize this conversation prefix for compaction. Keep key decisions, file paths, tool results errors, and next steps. Be concise (max 800 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 8000)}`;
 
   let summary = "";
   try {
@@ -80,7 +84,9 @@ export async function compactWithLlm(
       if (ev.type === "finish") break;
     }
     if (!summary.trim()) throw new Error("empty summary");
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    if ((e as Error).name === "AbortError") throw e;
     return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
   }
   const lruSummary = { role: "user" as const, content: `Previous context (LLM summarized):\n${summary.slice(0, 2000)}` };
