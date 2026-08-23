@@ -35,7 +35,15 @@ export function attachRenderer(bus: EventBus, opts: { verbose?: boolean } = {}) 
     }
   });
   bus.on("step:started", (e) => {
-    const calls = e.step.toolCalls.map((tc) => `${tc.name}(${JSON.stringify(tc.args).slice(0, 80)})`).join(", ");
+    const calls = e.step.toolCalls.map((tc) => {
+      let argStr: string;
+      try {
+        argStr = JSON.stringify(tc.args) ?? "";
+      } catch {
+        argStr = "[circular]";
+      }
+      return `${tc.name}(${argStr.slice(0, 80)})`;
+    }).join(", ");
     process.stderr.write(c.cyan(`\n[step ${e.step.index}] tool_calls: ${calls}\n`));
   });
   bus.on("execution:started", (e) => {
@@ -57,8 +65,8 @@ export function attachRenderer(bus: EventBus, opts: { verbose?: boolean } = {}) 
 
 export function formatError(e: unknown): string {
   if (e && typeof e === "object" && "kind" in (e as Record<string, unknown>)) {
-    const ae = e as { kind: string; message: string };
-    return `${ae.kind}: ${ae.message}`;
+    const ae = e as { kind: string; message?: string };
+    return `${ae.kind}: ${ae.message ?? ""}`;
   }
   if (e instanceof Error) return e.message;
   return String(e);

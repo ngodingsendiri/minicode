@@ -16,13 +16,26 @@ function parseFrontmatter(txt: string): { meta: Record<string, string>; body: st
   const meta: Record<string, string> = {};
   let body = txt;
   if (txt.startsWith("---")) {
-    const end = txt.indexOf("---", 3);
+    // find closing --- at start of line (avoid body "---" hr)
+    const end = txt.indexOf("\n---", 3);
     if (end !== -1) {
+      const closeEnd = end + 4; // \n--- + \n?
       for (const line of txt.slice(3, end).split("\n")) {
-        const idx = line.indexOf(":");
-        if (idx > 0) meta[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const idx = trimmed.indexOf(":");
+        if (idx > 0) {
+          const key = trimmed.slice(0, idx).trim();
+          let val = trimmed.slice(idx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          meta[key] = val;
+        }
       }
-      body = txt.slice(end + 3).trim();
+      body = txt.slice(closeEnd).trim();
+      // strip leading --- line leftover
+      if (body.startsWith("---")) body = body.slice(3).trim();
     }
   }
   return { meta, body };
@@ -31,16 +44,23 @@ function parseFrontmatter(txt: string): { meta: Record<string, string>; body: st
 async function loadDir(dir: string, out: Skill[]) {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const e of entries) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) {
+      // recursive 1-level deep for nested skills
+      await loadDir(full, out);
+      continue;
+    }
     if (!e.isFile() || !e.name.endsWith(".md")) continue;
-    const path = join(dir, e.name);
-    const txt = await readFile(path, "utf8").catch(() => "");
+    const txt = await readFile(full, "utf8").catch(() => "");
     if (!txt.trim()) continue;
     const { meta, body } = parseFrontmatter(txt);
+    const rawName = meta.name ?? e.name.replace(/\.md$/, "");
+    const name = rawName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
     out.push({
-      name: meta.name ?? e.name.replace(/\.md$/, ""),
+      name: name || rawName,
       description: meta.description ?? body.split("\n")[0]?.slice(0, 100) ?? "",
       body,
-      path,
+      path: full,
     });
   }
 }
@@ -56,7 +76,7 @@ export async function loadSkills(cwd = process.cwd()): Promise<Skill[]> {
 }
 
 export async function renderSkill(skill: Skill, args: string): Promise<string> {
-  return skill.body.replace(/\{\{args\}\}/g, args).replace(/\{\{args\}\}/g, args);
+  return skill.body.replace(/\{\{args\}\}/g, args).replace(/\$ARGUMENTS/g, args);
 }
 
 export async function findSkill(name: string, cwd = process.cwd()): Promise<Skill | undefined> {

@@ -17,9 +17,9 @@ async function readTarget(file: string): Promise<{ abs: string; text: string }> 
 }
 
 function formatPos(p: unknown): string {
-  const r = p as { range?: { start?: { line?: number } }; uri?: string; targetUri?: string };
+  const r = p as { range?: { start?: { line?: number; character?: number } }; uri?: string; targetUri?: string };
   const uri = r.uri ?? r.targetUri ?? "?";
-  const line = r.range?.start?.line != null ? `:${(r.range.start.line ?? 0) + 1}` : "";
+  const line = r.range?.start?.line != null ? `:${(r.range.start.line ?? 0) + 1}:${(r.range.start.character ?? 0) + 1}` : "";
   return `${uri}${line}`;
 }
 
@@ -147,10 +147,10 @@ export const lspSymbolsTool: Tool = {
       const { abs, text } = await readTarget(String(file));
       const result = await lspCall(abs, text, "textDocument/documentSymbol", { textDocument: { uri: toUri(abs) } });
       if (!result || !Array.isArray(result) || result.length === 0) return "(no symbols)";
-      const KIND = ["File", "Module", "Namespace", "Package", "Class", "Method", "Property", "Field", "Constructor", "Enum", "Interface", "Function", "Variable", "Constant"];
+      const KIND = ["File","Module","Namespace","Package","Class","Method","Property","Field","Constructor","Enum","Interface","Function","Variable","Constant","String","Number","Boolean","Array","Object","Key","Null","EnumMember","Struct","Event","Operator","TypeParameter"];
       return result.map((s) => {
         const sym = s as { name?: string; kind?: number; range?: { start?: { line?: number } } };
-        const kind = KIND[sym.kind ?? 1] ?? "?";
+        const kind = KIND[(sym.kind ?? 1) - 1] ?? "?";
         const line = (sym.range?.start?.line ?? 0) + 1;
         return `${line}: [${kind}] ${sym.name}`;
       }).join("\n");

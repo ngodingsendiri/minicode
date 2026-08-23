@@ -17,7 +17,7 @@ function InkApp({ bus, verbose }: { bus: EventBus; verbose?: boolean }) {
   useEffect(() => {
     const offs: (() => void)[] = [];
     offs.push(bus.on("provider:text", (e) => {
-      setText((t) => t + e.text);
+      setText((t) => (t + e.text).slice(-20000));
       if (!doneRef.current) setStatus("running");
     }));
     offs.push(
@@ -41,7 +41,8 @@ function InkApp({ bus, verbose }: { bus: EventBus; verbose?: boolean }) {
     }));
     offs.push(bus.on("step:started", (e) => {
       setSteps(e.step.index);
-      setLogs((l) => [...l.slice(-20), `[step ${e.step.index}] ${e.step.toolCalls.map((c) => c.name).join(", ")}`]);
+      const calls = e.step.toolCalls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(0, 40)})`).join(", ");
+      setLogs((l) => [...l.slice(-20), `[step ${e.step.index}] ${calls}`]);
     }));
     offs.push(bus.on("execution:started", (e) => setLogs((l) => [...l.slice(-20), `→ ${e.execution.call.name}`])));
     offs.push(bus.on("execution:completed", (e) => setLogs((l) => [...l.slice(-20), e.execution.result.isError ? `✗ ${e.execution.call.name}` : `✓ ${e.execution.call.name}`])));
@@ -97,7 +98,13 @@ export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean } = {
       exitOnCtrlC: false,
       patchConsole: true,
     });
-    return () => instance.unmount();
+    let unmounted = false;
+    const detach = () => {
+      if (unmounted) return;
+      unmounted = true;
+      instance.unmount();
+    };
+    return detach;
   } catch {
     return () => {};
   }

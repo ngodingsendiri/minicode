@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn("git", args, { cwd, signal });
+    const p = spawn("git", args, { cwd, signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) });
     let out = "", err = "";
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));
@@ -27,10 +27,13 @@ export const gitStatusTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd }, ctx) {
-    const a = await runGit(["status", "--porcelain"], cwd as string | undefined, ctx.signal);
-    const b = await runGit(["diff", "--stat"], cwd as string | undefined, ctx.signal);
-    const c = await runGit(["log", "--oneline", "-10"], cwd as string | undefined, ctx.signal);
-    return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${c || "(no log)"}`;
+    const c = cwd as string | undefined;
+    const [a, b, d] = await Promise.all([
+      runGit(["status", "--porcelain"], c, ctx.signal),
+      runGit(["diff", "--stat"], c, ctx.signal),
+      runGit(["log", "--oneline", "-10"], c, ctx.signal),
+    ]);
+    return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${d || "(no log)"}`;
   },
 };
 

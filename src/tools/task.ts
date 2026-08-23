@@ -48,7 +48,7 @@ export const delegateTaskTool: Tool = {
     const { allTools } = await import("./index.ts");
     const base = allTools.filter((t) => t.name !== "delegate_task" && t.name !== "write_memory" && t.name !== "forget_memory");
     const subTools = m === "explore"
-      ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log"].includes(t.name))
+      ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log", "lsp_diagnostics", "lsp_definition", "lsp_hover", "mcp_list"].includes(t.name))
       : base;
 
     return await pool.run(async () => {
@@ -60,13 +60,25 @@ export const delegateTaskTool: Tool = {
         return `[sub-agent error] provider: ${(e as Error).message}`;
       }
 
+      // inherit parent cwd if available (for --cwd case)
+      const parentCwd = (ctx as unknown as { cwd?: string })?.cwd ?? process.cwd();
       const session = await createMinicodeSession({
         provider,
         tools: subTools,
-        cwd: process.cwd(),
+        cwd: parentCwd,
         permissionMode: "auto",
         maxSteps: cap,
+        timeoutMs: 120_000,
         systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory or forget_memory (isolated). Parent task: ${String(prompt).slice(0, 200)}`,
+      });
+
+      // forward sub-agent observability to parent (usage + progress) so cost tracking
+      // and TUI include sub-agent; text/history stay isolated
+      const offUsage = session.events.on("provider:extension", (e) => {
+        try { ctx.emit(e); } catch {}
+      });
+      const offExec = session.events.on("execution:completed", (e) => {
+        try { ctx.emit(e); } catch {}
       });
 
       try {
@@ -75,6 +87,9 @@ export const delegateTaskTool: Tool = {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return `[sub-agent ${m} error] ${msg.slice(0, 500)}`;
+      } finally {
+        offUsage();
+        offExec();
       }
     }, ctx.signal);
   },

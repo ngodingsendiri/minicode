@@ -20,8 +20,9 @@ async function walk(dir: string, pattern: RegExp, out: string[], root: string, l
 }
 
 function globToRegExp(glob: string): RegExp {
-  // very small subset: * => [^/]*, ** => .*, ? => ., {a,b} handled naively
   let esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  // handle {a,b} → (a|b)
+  esc = esc.replace(/\\\{([^}]+)\\\}/g, (_m, inner: string) => `(${inner.split(",").map((s) => s.trim().replace(/[.+^${}()|[\]\\]/g, "\\$&")).join("|")})`);
   esc = esc.replace(/\*\*/g, "§§");
   esc = esc.replace(/\*/g, "[^/]*");
   esc = esc.replace(/§§/g, ".*");

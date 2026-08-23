@@ -9,6 +9,7 @@ async function walkGrep(
   root: string,
   limit: number,
   signal: AbortSignal,
+  includeRe?: RegExp | null,
 ) {
   if (signal.aborted) throw new Error("aborted");
   if (out.length >= limit) return;
@@ -17,24 +18,36 @@ async function walkGrep(
     if (out.length >= limit) break;
     if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue;
     const full = join(dir, e.name);
+    const rel = relative(root, full).replace(/\\/g, "/");
     if (e.isDirectory()) {
-      await walkGrep(full, re, out, root, limit, signal);
+      await walkGrep(full, re, out, root, limit, signal, includeRe);
     } else {
-      // skip binary by extension
+      if (includeRe && !includeRe.test(rel) && !includeRe.test(e.name)) continue;
       if (/\.(png|jpg|jpeg|gif|webp|pdf|zip|exe|dll|bin)$/i.test(e.name)) continue;
       const st = await stat(full).catch(() => null);
       if (!st || st.size > 1_000_000) continue;
       const text = await readFile(full, "utf8").catch(() => "");
+      if (text.includes("\0")) continue;
       const lines = text.split("\n");
       for (let i = 0; i < lines.length; i++) {
+        re.lastIndex = 0;
         if (re.test(lines[i]!)) {
-          const rel = relative(root, full);
           out.push(`${rel}:${i + 1}: ${lines[i]!.slice(0, 300)}`);
           if (out.length >= limit) break;
         }
       }
     }
   }
+}
+
+function includeToRegExp(include: string): RegExp | null {
+  if (!include) return null;
+  let esc = include.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  esc = esc.replace(/\*\*/g, "§§");
+  esc = esc.replace(/\*/g, "[^/]*");
+  esc = esc.replace(/§§/g, ".*");
+  esc = esc.replace(/\?/g, ".");
+  return new RegExp("^" + esc + "$");
 }
 
 export const grepTool: Tool = {
@@ -51,7 +64,7 @@ export const grepTool: Tool = {
     required: ["pattern"],
     additionalProperties: false,
   },
-  async execute({ pattern, cwd, limit }, ctx) {
+  async execute({ pattern, cwd, include, limit }, ctx) {
     const root = (cwd as string) ?? ".";
     const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500);
     let re: RegExp;
@@ -60,9 +73,10 @@ export const grepTool: Tool = {
     } catch (e) {
       throw new Error(`invalid regex: ${(e as Error).message}`);
     }
+    const incRe = include ? includeToRegExp(include as string) : null;
     const out: string[] = [];
-    await walkGrep(root, re, out, root, lim, ctx.signal);
-    if (out.length === 0) return `no matches for /${pattern}/ in ${root}`;
+    await walkGrep(root, re, out, root, lim, ctx.signal, incRe);
+    if (out.length === 0) return `no matches for /${pattern}/ in ${root}${include ? ` (include ${include})` : ""}`;
     return out.join("\n");
   },
 };
