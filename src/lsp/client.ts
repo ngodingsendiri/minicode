@@ -70,7 +70,10 @@ class LspConnection {
     });
     this.proc.on("error", (err) => this.failAll(err));
     this.proc.on("exit", (code) => {
-      if (this.started) this.failAll(new Error(`LSP server ${this.entry.ext} exited (${code})`));
+      const wasStarted = this.started;
+      this.started = false;
+      this.starting = undefined;
+      if (wasStarted) this.failAll(new Error(`LSP server ${this.entry.ext} exited (${code})`));
     });
     this.proc.stderr?.on("data", (d: Buffer) => process.stderr.write(`[lsp${this.entry.ext}] ${d.toString().trim().slice(0, 500)}\n`));
     this.proc.stdout!.on("data", (chunk: Buffer) => this.handleData(chunk));
@@ -148,6 +151,12 @@ class LspConnection {
     if (!this.proc) return;
     try { await this.request("shutdown", {}, 2_000); } catch {}
     try { this.notify("exit"); } catch {}
+    // send didClose for all opened docs
+    for (const uri of this.opened.keys()) {
+      try { this.notify("textDocument/didClose", { textDocument: { uri } }); } catch {}
+    }
+    this.opened.clear();
+    this.diagnostics.clear();
     try { this.proc.stdin?.end(); } catch {}
     this.killSignal.abort();
     await new Promise<void>((r) => {
@@ -240,7 +249,11 @@ export interface LspPositionResult {
 }
 
 export function findSymbolPosition(text: string, symbol: string): LspPositionResult["position"] | null {
-  const idx = text.indexOf(symbol);
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // prefer word-boundary match to avoid hitting comments/import substrings; fallback to plain indexOf
+  const re = new RegExp(`\\b${escaped}\\b`);
+  const m = re.exec(text);
+  const idx = m?.index ?? text.indexOf(symbol);
   if (idx === -1) return null;
   const before = text.slice(0, idx).split("\n");
   return { line: before.length - 1, character: before[before.length - 1]!.length };

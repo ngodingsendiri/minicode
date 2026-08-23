@@ -32,7 +32,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
     models: config.providers.flatMap((p) => [...p.models]),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const fixed = fixRequest(request);
-      // route by model name
+      // route by model name — last match wins (local overrides global)
       let target: ModelProvider | undefined;
       if (fixed.model) {
         for (const p of config.providers) if (p.models.includes(fixed.model)) target = p;
@@ -40,24 +40,24 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       target ??= byId.get(defaultId) ?? config.providers[0];
       if (!target) throw new ProviderError("unknown", "no provider configured");
 
-      // fallback on rate_limit/server
+      // fallback on rate_limit/server/network
       const tried = new Set<string>();
       let current: ModelProvider | undefined = target;
       while (current) {
         tried.add(current.id);
         try {
           for await (const ev of current.stream(fixed, signal)) {
-            // P2 cap: if provider yields retryAfter via error, it will throw ProviderError, not yield
             yield ev;
           }
           return;
         } catch (e) {
           if (e instanceof ProviderError) {
-            // cap retryAfter
+            // cap retryAfter without mutating original
+            let err: ProviderError = e;
             if (e.retryAfterMs != null && e.retryAfterMs > maxRetry) {
-              (e as unknown as { retryAfterMs: number }).retryAfterMs = maxRetry;
+              err = new ProviderError(e.category, e.message, maxRetry);
             }
-            const canFallback = (e.category === "rate_limit" || e.category === "server") && tried.size < config.providers.length;
+            const canFallback = (err.category === "rate_limit" || err.category === "server" || err.category === "network") && tried.size < config.providers.length;
             if (canFallback) {
               const next = config.providers.find((p) => !tried.has(p.id));
               if (next) {
@@ -65,6 +65,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
                 continue;
               }
             }
+            throw err;
           }
           throw e;
         }

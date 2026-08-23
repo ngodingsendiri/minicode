@@ -10,7 +10,8 @@ export interface McpServeOptions {
 }
 
 // tool internal minicode — tidak relevan/berbahaya jika dipanggil dari agent eksternal
-const INTERNAL_TOOLS = new Set(["delegate_task", "mcp_call", "mcp_list"]);
+// write_memory/forget_memory juga di-exclude biar AI luar tidak polusi vector.db global
+const INTERNAL_TOOLS = new Set(["delegate_task", "mcp_call", "mcp_list", "write_memory", "forget_memory"]);
 
 const SERVER_INFO = { name: "minicode", version: "0.1.0" };
 const PROTOCOL_VERSION = "2026-07-28";

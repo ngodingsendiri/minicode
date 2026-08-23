@@ -34,7 +34,7 @@ class McpConnection {
           "io.modelcontextprotocol/clientInfo": { name: "minicode", version: "0.1.0" },
           "io.modelcontextprotocol/clientCapabilities": { tools: {} },
         },
-      }, 5_000) as Record<string, unknown>;
+      }, 2_000) as Record<string, unknown>;
       if (disc?.capabilities) handshakeOk = true;
     } catch {
       try {
@@ -42,7 +42,7 @@ class McpConnection {
           protocolVersion: "2026-07-28",
           capabilities: { tools: {} },
           clientInfo: { name: "minicode", version: "0.1.0" },
-        }, 5_000);
+        }, 3_000);
         // wajib per spec: notification initialized setelah initialize
         this.transport.notify("notifications/initialized", {});
         handshakeOk = true;

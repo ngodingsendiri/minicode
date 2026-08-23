@@ -9,6 +9,7 @@ export interface AnthropicConfig {
   baseUrl?: string; // default https://api.anthropic.com
   models: readonly string[];
   defaultModel?: string;
+  maxTokens?: number;
 }
 
 export function createAnthropicProvider(config: AnthropicConfig): ModelProvider {
@@ -21,7 +22,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
-        max_tokens: 4096,
+        max_tokens: config.maxTokens ?? 4096,
         system: request.system,
         messages: toAnthropicMessages(request.messages),
         tools: request.tools?.length ? toAnthropicTools(request.tools) : undefined,
@@ -62,21 +63,19 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
           const delta = (data as any).delta;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
             yield { type: "text", text: delta.text };
-          } else if (delta?.type === "input_json_delta" && typeof delta.partial_json === "string") {
-            // accumulate tool args delta - anthropic streams tool input as partial_json
-            // we need to buffer per content index; simplify: emit as extension and accumulate
-            // For minimal, treat as text for now and let loop handle? Instead buffer.
-            // We'll buffer in map similar to openai
-            // To keep adapter simple, we store partials and emit at content_block_stop
-            // So we need outer buffering - handled below via toolInputBuffers
           }
         } else if (currentEvent === "message_delta") {
-          const stop = (data as any).delta?.stop_reason;
+          const d = (data as any).delta;
+          const stop = d?.stop_reason;
           if (stop) {
-            // map finish
             if (stop === "tool_use") yield { type: "finish", reason: "tool_calls" };
             else if (stop === "max_tokens") yield { type: "finish", reason: "length" };
             else yield { type: "finish", reason: "stop" };
+          }
+          // Anthropic also sends usage in message_delta
+          const usage = (data as any).usage ?? d?.usage;
+          if (usage && (usage.input_tokens != null || usage.output_tokens != null)) {
+            yield { type: "extension", kind: "usage", data: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } };
           }
         } else if ((data as any).type === "message_start") {
           const usage = (data as any).message?.usage;
@@ -173,7 +172,7 @@ async function* sseAnthropic(body: ReadableStream<Uint8Array>, signal: AbortSign
   let evt = "";
   try {
     while (true) {
-      if (signal.aborted) throw new Error("AbortError");
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });

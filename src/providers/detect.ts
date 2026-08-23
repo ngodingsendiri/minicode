@@ -24,7 +24,7 @@ async function tryFetchModels(baseUrl: string, headers: Record<string, string>, 
   ];
   for (const url of urls) {
     try {
-      const res = await fetch(url, { headers, signal });
+      const res = await fetch(url, { headers, signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]) });
       if (!res.ok) continue;
       const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] };
       const data = json.data ?? json.models ?? [];
@@ -41,8 +41,9 @@ async function tryFetchModels(baseUrl: string, headers: Record<string, string>, 
 }
 
 export async function detectModels(baseUrl: string, apiKey: string, signal?: AbortSignal): Promise<DetectResult> {
-  const sig = signal ?? new AbortController().signal;
+  const sig = signal ?? AbortSignal.timeout(5000);
   for (const h of hybridHeaders(apiKey)) {
+    if (sig.aborted) break;
     const models = await tryFetchModels(baseUrl, h, sig);
     if (models && models.length) {
       const hint = models.some((m) => m.includes("claude")) ? "anthropic" : models.some((m) => m.includes("gpt") || m.includes("o1")) ? "openai" : "unknown";

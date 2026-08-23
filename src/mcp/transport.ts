@@ -24,6 +24,8 @@ export class McpTransport {
       if (!this.closed) this.failAll(new Error(`MCP server exited with code ${code}`));
     });
     this.proc.stderr?.on("data", (d: Buffer) => process.stderr.write(`[mcp:${command}] ${d.toString().trim()}\n`));
+    // ensure previous rl closed if reconnecting (defensive)
+    if (this.rl) try { this.rl.close(); } catch {}
 
     this.rl = createInterface({ input: this.proc.stdout! });
     this.rl.on("line", (line) => {
@@ -78,7 +80,14 @@ export class McpTransport {
 
   private write(msg: unknown) {
     if (!this.proc?.stdin) throw new Error("transport not connected");
-    this.proc.stdin.write(JSON.stringify(msg) + "\n");
+    let line: string;
+    try {
+      line = JSON.stringify(msg) + "\n";
+    } catch {
+      throw new Error("circular JSON in MCP message");
+    }
+    const ok = this.proc.stdin.write(line);
+    if (!ok) this.proc.stdin.once("drain", () => {});
   }
 
   private failAll(err: Error) {
