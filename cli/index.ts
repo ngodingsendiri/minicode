@@ -1,20 +1,27 @@
 ﻿import { createDefaultRouter, createRouterProvider } from "../src/providers/router.ts";
 import { createMinicodeSession } from "../src/session.ts";
-import { allTools } from "../src/tools/index.ts";
+import { allTools, withMcpTools } from "../src/tools/index.ts";
 import { attachRenderer, formatError } from "../src/tui/renderer.ts";
 import { createUsageCollector } from "../src/policy/usage.ts";
-import { loadConfig, saveProvider, removeProvider, detectAndSave } from "../src/config.ts";
+import { attachInkRenderer } from "../src/tui/ink.tsx";
+import { loadConfig, saveProvider, removeProvider, detectAndSave, saveMcpServer, removeMcpServer, saveLspServer, removeLspServer } from "../src/config.ts";
 import { createOpenAICompatProvider } from "../../minicore/src/providers/openai-compat.ts";
 import { createAnthropicProvider } from "../src/providers/anthropic.ts";
 import { saveSession, loadSession, listSessions } from "../src/session/persistence.ts";
 import { searchHybrid } from "../src/memory/vector.ts";
 import { createLlmCompaction } from "../src/policy/compaction.ts";
+import { connectAll as mcpConnectAll, closeAll as mcpCloseAll } from "../src/mcp/client.ts";
+import { configureServers as lspConfigure, closeAll as lspCloseAll } from "../src/lsp/client.ts";
+import type { Tool } from "minicore";
 import { randomUUID } from "node:crypto";
 
 const HELP = `minicode — coding agent on frozen MiniCore
 usage:
   minicode "prompt" [options]
   minicode config <add|list|remove|detect> [options]
+  minicode config mcp <add|list|remove> [options]
+  minicode config lsp <add|list|remove> [options]
+  minicode mcp serve [--allow-all] [--all-tools]
   minicode sessions <list|export> [id]
   echo "prompt" | minicode
 
@@ -30,12 +37,28 @@ Options:
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --interactive       REPL loop (readline)
+  --tui               Ink TUI (efficient, selectable, token bar)
 
 Config:
   minicode config add --baseUrl <url> --apiKey <key> [--id <id>] [--global]
   minicode config list
   minicode config remove <id>
   minicode config detect --baseUrl <url> --apiKey <key>
+
+MCP:
+  minicode config mcp add <id> --command <cmd> --args "<arg1,arg2>" [--env K=V] [--global|--local]
+  minicode config mcp list
+  minicode config mcp remove <id>
+
+LSP:
+  minicode config lsp add <ext> --command <cmd> [--args "<arg1,arg2>"] [--env K=V] [--global|--local]
+  minicode config lsp list
+  minicode config lsp remove <ext>
+
+MCP Server (expose minicode tools ke app AI lain):
+  minicode mcp serve                    # curated tools, permission auto
+  minicode mcp serve --all-tools        # termasuk delegate_task dll
+  minicode mcp serve --allow-all        # tanpa permission check (hati-hati)
 
 Sessions:
   minicode sessions list
@@ -69,6 +92,25 @@ if (args[0] === "sessions") {
   } else {
     console.log(HELP);
     process.exit(0);
+  }
+}
+
+// --- mcp server mode ---
+if (args[0] === "mcp") {
+  const sub = args[1];
+  if (sub === "serve") {
+    const { serveMcp } = await import("../src/mcp/server.ts");
+    const cwdArg = getArg("--cwd");
+    if (cwdArg) process.chdir(cwdArg);
+    await serveMcp({
+      allowAll: args.includes("--allow-all"),
+      allTools: args.includes("--all-tools"),
+      root: cwdArg,
+    });
+    process.exit(0);
+  } else {
+    console.log(HELP);
+    process.exit(sub === undefined || sub === "--help" || sub === "-h" ? 0 : 1);
   }
 }
 
@@ -112,6 +154,82 @@ if (args[0] === "config") {
     const res = await detectModels(baseUrl, apiKey);
     console.log(`detected ${res.models.length} models (${res.providerHint}):\n${res.models.join("\n")}`);
     process.exit(0);
+  } else if (sub === "mcp") {
+    const mcpSub = args[2];
+    if (mcpSub === "add") {
+      const id = args[3];
+      const command = getArg("--command");
+      const cmdArgsRaw = getArg("--args");
+      const isGlobal = !args.includes("--local");
+      if (!id || !command || !cmdArgsRaw) {
+        console.error('usage: minicode config mcp add <id> --command <cmd> --args "<arg1,arg2>" [--env K=V] [--global|--local]');
+        process.exit(1);
+      }
+      const cmdArgs = cmdArgsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+      const env: Record<string, string> = {};
+      for (const kv of (getArg("--env") ?? "").split(",")) {
+        const [k, ...rest] = kv.split("=");
+        if (k && rest.length) env[k.trim()] = rest.join("=").trim();
+      }
+      await saveMcpServer({ id, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) }, { global: isGlobal });
+      console.log(`saved mcp server ${id}: ${command} ${cmdArgs.join(" ")}`);
+      process.exit(0);
+    } else if (mcpSub === "list") {
+      const cfg = await loadConfig();
+      if (!cfg.mcpServers?.length) console.log("(no mcp servers — add via minicode config mcp add)");
+      else for (const m of cfg.mcpServers) console.log(`${m.id}  ${m.command} ${m.args.join(" ")}`);
+      process.exit(0);
+    } else if (mcpSub === "remove") {
+      const id = args[3];
+      if (!id) {
+        console.error("usage: minicode config mcp remove <id>");
+        process.exit(1);
+      }
+      await removeMcpServer(id);
+      console.log(`removed mcp server ${id}`);
+      process.exit(0);
+    } else {
+      console.log(HELP);
+      process.exit(0);
+    }
+  } else if (sub === "lsp") {
+    const lspSub = args[2];
+    if (lspSub === "add") {
+      const ext = args[3];
+      const command = getArg("--command");
+      const cmdArgsRaw = getArg("--args") ?? "";
+      const isGlobal = !args.includes("--local");
+      if (!ext || !command) {
+        console.error('usage: minicode config lsp add <ext> --command <cmd> [--args "<arg1,arg2>"] [--env K=V] [--global|--local]');
+        process.exit(1);
+      }
+      const cmdArgs = cmdArgsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+      const env: Record<string, string> = {};
+      for (const kv of (getArg("--env") ?? "").split(",")) {
+        const [k, ...rest] = kv.split("=");
+        if (k && rest.length) env[k.trim()] = rest.join("=").trim();
+      }
+      await saveLspServer({ ext, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) }, { global: isGlobal });
+      console.log(`saved lsp server ${ext}: ${command} ${cmdArgs.join(" ")}`);
+      process.exit(0);
+    } else if (lspSub === "list") {
+      const cfg = await loadConfig();
+      if (!cfg.lspServers?.length) console.log("(no lsp servers — add via minicode config lsp add)");
+      else for (const l of cfg.lspServers) console.log(`${l.ext}  ${l.command} ${l.args.join(" ")}`);
+      process.exit(0);
+    } else if (lspSub === "remove") {
+      const ext = args[3];
+      if (!ext) {
+        console.error("usage: minicode config lsp remove <ext>");
+        process.exit(1);
+      }
+      await removeLspServer(ext);
+      console.log(`removed lsp server ${ext}`);
+      process.exit(0);
+    } else {
+      console.log(HELP);
+      process.exit(0);
+    }
   } else {
     console.log(HELP);
     process.exit(0);
@@ -131,6 +249,7 @@ const verbose = args.includes("--verbose");
 const allowAll = args.includes("--allow-all");
 const ask = args.includes("--ask");
 const interactive = args.includes("--interactive");
+const useTui = args.includes("--tui");
 const cwdIdx = args.indexOf("--cwd");
 const cwd = cwdIdx !== -1 ? args[cwdIdx + 1] : undefined;
 const resumeIdx = args.indexOf("--resume");
@@ -145,7 +264,7 @@ const ctxWindowIdx = args.indexOf("--context-window");
 const contextWindowTokens = ctxWindowIdx !== -1 ? Number(args[ctxWindowIdx + 1]) : undefined;
 
 const promptArgs = args.filter((a, i) => {
-  if (a === "--verbose" || a === "--allow-all" || a === "--ask" || a === "--interactive") return false;
+  if (a === "--verbose" || a === "--allow-all" || a === "--ask" || a === "--interactive" || a === "--tui") return false;
   if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window") return false;
   if (cwdIdx !== -1 && i === cwdIdx + 1) return false;
   if (resumeIdx !== -1 && i === resumeIdx + 1) return false;
@@ -249,9 +368,28 @@ const compaction = process.env.DEEPSEEK_API_KEY
   ? createLlmCompaction({ apiKey: process.env.DEEPSEEK_API_KEY, baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1", model: "deepseek-chat" })
   : undefined;
 
+// --- MCP: connect servers from config, merge tools ---
+let sessionTools: Tool[] = allTools;
+try {
+  if (cfg.mcpServers?.length) {
+    const mcpTools = await mcpConnectAll(cfg.mcpServers);
+    if (mcpTools.length) sessionTools = withMcpTools(allTools, mcpTools);
+  }
+} catch (e) {
+  process.stderr.write(`[mcp] init failed: ${formatError(e)}\n`);
+}
+
+// --- LSP: register servers from config (lazy spawn on first tool call) ---
+try {
+  if (cfg.lspServers?.length) lspConfigure(cfg.lspServers);
+} catch (e) {
+  process.stderr.write(`[lsp] init failed: ${formatError(e)}\n`);
+}
+process.on("exit", () => { void mcpCloseAll(); void lspCloseAll(); });
+
 const session = await createMinicodeSession({
   provider: router,
-  tools: allTools,
+  tools: sessionTools,
   cwd,
   permissionMode: allowAll ? "allow-all" : ask ? "ask" : "auto",
   systemExtra,
@@ -261,7 +399,15 @@ const session = await createMinicodeSession({
   ...(compaction ? { compaction } : {}),
 } as never);
 
-attachRenderer(session.events, { verbose });
+const useInk = useTui && !interactive;
+let detachInk: (() => void) | undefined;
+if (useInk) {
+  try {
+    detachInk = attachInkRenderer(session.events, { verbose });
+  } catch {
+    attachRenderer(session.events, { verbose });
+  }
+} else attachRenderer(session.events, { verbose });
 const usage = createUsageCollector(session.events, modelOverride);
 
 async function persistCurrent(usageData: unknown) {
@@ -290,6 +436,9 @@ if (interactive) {
     rl.prompt();
   }
   rl.close();
+  if (detachInk) detachInk();
+  await mcpCloseAll();
+  await lspCloseAll();
   process.exit(0);
 } else {
   try {
@@ -299,6 +448,16 @@ if (interactive) {
     process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens} cost=${u.cost?.toFixed(4) ?? "?"}\n`);
   } catch (e) {
     process.stderr.write(`\n[error] ${formatError(e)}\n`);
+    if (detachInk) detachInk();
+    await mcpCloseAll();
+    await lspCloseAll();
     process.exit(1);
   }
+  if (detachInk) {
+    // give Ink a moment to render final frame
+    await new Promise((r) => setTimeout(r, 200));
+    detachInk();
+  }
+  await mcpCloseAll();
+  await lspCloseAll();
 }

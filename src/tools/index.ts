@@ -7,6 +7,8 @@ export { bashTool } from "./bash.ts";
 export { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
 export { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 export { delegateTaskTool } from "./task.ts";
+export { mcpCallTool, mcpListTool } from "./mcp_call.ts";
+export { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool } from "./lsp.ts";
 
 import { readFileTool } from "./read_file.ts";
 import { writeFileTool } from "./write_file.ts";
@@ -17,6 +19,8 @@ import { bashTool } from "./bash.ts";
 import { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
 import { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 import { delegateTaskTool } from "./task.ts";
+import { mcpCallTool, mcpListTool } from "./mcp_call.ts";
+import { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool } from "./lsp.ts";
 import type { Tool } from "minicore";
 
 export const allTools: Tool[] = [
@@ -33,4 +37,17 @@ export const allTools: Tool[] = [
   writeMemoryTool,
   forgetMemoryTool,
   delegateTaskTool,
+  mcpListTool,
+  mcpCallTool,
+  lspDiagnosticsTool,
+  lspDefinitionTool,
+  lspReferencesTool,
+  lspHoverTool,
+  lspSymbolsTool,
 ];
+
+// MCP server tools (prefixed "serverid.toolname") di-append runtime via connectAll()
+export function withMcpTools(base: Tool[], mcpTools: Tool[]): Tool[] {
+  const seen = new Set(base.map((t) => t.name));
+  return [...base, ...mcpTools.filter((t) => !seen.has(t.name))];
+}

@@ -1,20 +1,25 @@
-﻿{
+{
   "name": "minicode",
   "version": "0.1.0",
   "description": "Minicode: agencode/coding-agent built on frozen MiniCore runtime",
   "type": "module",
   "private": true,
-  "engines": { "bun": ">=1.0.0" },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
   "scripts": {
     "test": "bun test",
     "typecheck": "bun x tsc --noEmit",
     "dev": "bun src/index.ts"
   },
   "dependencies": {
-    "minicore": "file:../minicore"
+    "ink": "^7.1.1",
+    "minicore": "file:../minicore",
+    "react": "^19.2.8"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
-    "@types/node": "^26.2.0"
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18"
   }
 }

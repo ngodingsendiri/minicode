@@ -13,7 +13,9 @@
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
   "include": ["src", "test"]
 }

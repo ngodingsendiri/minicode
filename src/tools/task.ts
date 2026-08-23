@@ -29,37 +29,53 @@ async function getProvider() {
 
 export const delegateTaskTool: Tool = {
   name: "delegate_task",
-  description: "Delegasikan sub-task ke agen isolasi (explore/plan). Prompt ringkas, return summary. Isolasi ContextStore.",
+  description: "Delegasikan sub-task ke agen isolasi (explore/plan). Prompt ringkas, return summary. Isolasi ContextStore, memory, signal, dan budget.",
   parameters: {
     type: "object",
     properties: {
       prompt: { type: "string", description: "instruksi untuk sub-agent" },
       mode: { type: "string", enum: ["explore", "plan"], description: "explore=read-only, plan=read+write" },
+      maxSteps: { type: "number", description: "max steps untuk sub-agent (default explore=5 plan=15)" },
     },
     required: ["prompt"],
     additionalProperties: false,
   },
-  async execute({ prompt, mode }, ctx) {
+  async execute({ prompt, mode, maxSteps }, ctx) {
     const m = (mode as string) ?? "explore";
-    // isolasi: sub-agent pakai tools read-only jika explore, semua kecuali delegate_task untuk hindari rekursi
+    const requested = Number(maxSteps);
+    const cap = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), 50) : m === "explore" ? 5 : 15;
+
     const { allTools } = await import("./index.ts");
-    const base = allTools.filter((t) => t.name !== "delegate_task");
-    const subTools = m === "explore" ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log"].includes(t.name)) : base;
+    const base = allTools.filter((t) => t.name !== "delegate_task" && t.name !== "write_memory" && t.name !== "forget_memory");
+    const subTools = m === "explore"
+      ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log"].includes(t.name))
+      : base;
 
     return await pool.run(async () => {
       ctx.signal.throwIfAborted();
-      const provider = await getProvider();
+      let provider;
+      try {
+        provider = await getProvider();
+      } catch (e) {
+        return `[sub-agent error] provider: ${(e as Error).message}`;
+      }
+
       const session = await createMinicodeSession({
         provider,
         tools: subTools,
         cwd: process.cwd(),
         permissionMode: "auto",
-        systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Parent task: ${String(prompt).slice(0, 200)}`,
+        maxSteps: cap,
+        systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory or forget_memory (isolated). Parent task: ${String(prompt).slice(0, 200)}`,
       });
-      // sub-agent tidak pakai vector RAG parent untuk isolasi, tapi boleh pakai memory read
-      const res = await session.run(String(prompt));
-      // budget isolasi: sub-agent cost tidak double-count ke parent (hanya return text)
-      return `sub-agent (${m}) done: ${res.finalText?.slice(0, 2000) ?? "(no output)"} [steps ${res.usage.steps}]`;
-    });
+
+      try {
+        const res = await session.run(String(prompt), { signal: ctx.signal });
+        return `sub-agent (${m}) done: ${res.finalText?.slice(0, 2000) ?? "(no output)"} [steps ${res.usage.steps}]`;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return `[sub-agent ${m} error] ${msg.slice(0, 500)}`;
+      }
+    }, ctx.signal);
   },
 };
