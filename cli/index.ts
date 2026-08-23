@@ -15,6 +15,7 @@ import { configureServers as lspConfigure, closeAllLsp as lspCloseAll } from "..
 import { loadSkills, findSkill, renderSkill, skillsToSystemPrompt } from "../src/skills/loader.ts";
 import type { Tool } from "minicore";
 import { randomUUID } from "node:crypto";
+import { resolve as resolvePath } from "node:path";
 
 const HELP = `minicode — coding agent on frozen MiniCore
 usage:
@@ -38,6 +39,7 @@ Options:
   --ask               ask per tool (y/n/a) — human-in-loop
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
+  --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
   --interactive       REPL loop (readline)
   --tui               Ink TUI (efficient, selectable, token bar)
 
@@ -138,12 +140,14 @@ if (args[0] === "config") {
     process.exit(0);
   } else if (sub === "remove") {
     const id = args[2];
+    const isGlobal = !args.includes("--local");
+    const cwdArg = getArg("--cwd");
     if (!id) {
-      console.error("usage: minicode config remove <id>");
+      console.error("usage: minicode config remove <id> [--global|--local] [--cwd <dir>]");
       process.exit(1);
     }
-    await removeProvider(id);
-    console.log(`removed ${id}`);
+    await removeProvider(id, { global: isGlobal, cwd: cwdArg });
+    console.log(`removed ${id} (${isGlobal ? "global" : "local"})`);
     process.exit(0);
   } else if (sub === "detect") {
     const baseUrl = getArg("--baseUrl");
@@ -183,12 +187,14 @@ if (args[0] === "config") {
       process.exit(0);
     } else if (mcpSub === "remove") {
       const id = args[3];
+      const isGlobal = !args.includes("--local");
+      const cwdArg = getArg("--cwd");
       if (!id) {
-        console.error("usage: minicode config mcp remove <id>");
+        console.error("usage: minicode config mcp remove <id> [--global|--local]");
         process.exit(1);
       }
-      await removeMcpServer(id);
-      console.log(`removed mcp server ${id}`);
+      await removeMcpServer(id, { global: isGlobal, cwd: cwdArg });
+      console.log(`removed mcp server ${id} (${isGlobal ? "global" : "local"})`);
       process.exit(0);
     } else {
       console.log(HELP);
@@ -221,12 +227,14 @@ if (args[0] === "config") {
       process.exit(0);
     } else if (lspSub === "remove") {
       const ext = args[3];
+      const isGlobal = !args.includes("--local");
+      const cwdArg = getArg("--cwd");
       if (!ext) {
-        console.error("usage: minicode config lsp remove <ext>");
+        console.error("usage: minicode config lsp remove <ext> [--global|--local]");
         process.exit(1);
       }
-      await removeLspServer(ext);
-      console.log(`removed lsp server ${ext}`);
+      await removeLspServer(ext, { global: isGlobal, cwd: cwdArg });
+      console.log(`removed lsp server ${ext} (${isGlobal ? "global" : "local"})`);
       process.exit(0);
     } else {
       console.log(HELP);
@@ -268,7 +276,13 @@ const ask = args.includes("--ask");
 const interactive = args.includes("--interactive");
 const useTui = args.includes("--tui");
 const cwdIdx = args.indexOf("--cwd");
-const cwd = cwdIdx !== -1 ? args[cwdIdx + 1] : undefined;
+const cwdRaw = cwdIdx !== -1 ? args[cwdIdx + 1] : undefined;
+const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined;
+if (cwd) {
+  try {
+    process.chdir(cwd);
+  } catch {}
+}
 const resumeIdx = args.indexOf("--resume");
 const resumeId = resumeIdx !== -1 ? args[resumeIdx + 1] : undefined;
 const modelIdx = args.indexOf("--model");
@@ -279,17 +293,23 @@ const maxStepsIdx = args.indexOf("--max-steps");
 const maxSteps = maxStepsIdx !== -1 ? Number(args[maxStepsIdx + 1]) : undefined;
 const ctxWindowIdx = args.indexOf("--context-window");
 const contextWindowTokens = ctxWindowIdx !== -1 ? Number(args[ctxWindowIdx + 1]) : undefined;
+const timeoutIdx = args.indexOf("--timeout");
+const timeoutMs = timeoutIdx !== -1 ? Number(args[timeoutIdx + 1]) : undefined;
 
 const promptArgs = args.filter((a, i) => {
   if (a === "--verbose" || a === "--allow-all" || a === "--ask" || a === "--interactive" || a === "--tui") return false;
-  if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window") return false;
+  if (a === "--cwd" || a === "--resume" || a === "--model" || a === "--session" || a === "--max-steps" || a === "--context-window" || a === "--timeout") return false;
   if (cwdIdx !== -1 && i === cwdIdx + 1) return false;
   if (resumeIdx !== -1 && i === resumeIdx + 1) return false;
   if (modelIdx !== -1 && i === modelIdx + 1) return false;
   if (sessionIdx !== -1 && i === sessionIdx + 1) return false;
   if (maxStepsIdx !== -1 && i === maxStepsIdx + 1) return false;
   if (ctxWindowIdx !== -1 && i === ctxWindowIdx + 1) return false;
-  if (a.startsWith("-")) return false;
+  if (timeoutIdx !== -1 && i === timeoutIdx + 1) return false;
+  // only filter known flags, not prompt words like "-123"
+  const knownFlags = new Set(["-h","--help","--verbose","--allow-all","--ask","--interactive","--tui","--cwd","--resume","--model","--session","--max-steps","--context-window","--timeout"]);
+  if (knownFlags.has(a)) return false;
+  if (a.startsWith("-") && knownFlags.has(a.split("=")[0]!)) return false;
   return true;
 });
 
@@ -303,7 +323,7 @@ function readPrompt(): Promise<string> {
         done = true;
         resolve("");
       }
-    }, 200);
+    }, 500);
     process.stdin.setEncoding("utf8");
     process.stdin.on("data", (c) => (data += c));
     process.stdin.on("end", () => {
@@ -367,16 +387,38 @@ if (providers.length === 0) {
 }
 const router = createRouterProvider({ providers });
 
-// --- vector hybrid RAG ---
+// --- vector hybrid RAG (try all providers until embedding succeeds) ---
 let systemExtra: string | undefined;
 try {
-  // try to use first provider's baseUrl/apiKey for embeddings (hybrid x-api-key)
-  const firstCfg = cfg.providers[0];
-  const baseUrl = firstCfg?.baseUrl ?? process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1";
-  const apiKey = firstCfg?.apiKey ?? process.env.OPENAI_API_KEY ?? "";
-  if (apiKey) {
-    const hits = await searchHybrid(prompt, { baseUrl, apiKey, cwd, topK: 5 });
-    if (hits.length) systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`;
+  const candidates: { baseUrl: string; apiKey: string }[] = [];
+  for (const p of cfg.providers) if (p.apiKey) candidates.push({ baseUrl: p.baseUrl, apiKey: p.apiKey });
+  if (process.env.AGENT_BASE_URL || process.env.OPENAI_API_KEY) {
+    candidates.push({
+      baseUrl: process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1",
+      apiKey: process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY ?? "",
+    });
+  }
+  if (candidates.length === 0 && (cfg.providers[0]?.apiKey || process.env.OPENAI_API_KEY)) {
+    candidates.push({
+      baseUrl: cfg.providers[0]?.baseUrl ?? "https://api.openai.com/v1",
+      apiKey: cfg.providers[0]?.apiKey ?? process.env.OPENAI_API_KEY ?? "",
+    });
+  }
+  let hits: { text: string; score: number }[] = [];
+  for (const c of candidates) {
+    if (!c.apiKey) continue;
+    try {
+      hits = await searchHybrid(prompt, { baseUrl: c.baseUrl, apiKey: c.apiKey, cwd, topK: 5 });
+      if (hits.length) break;
+    } catch {}
+  }
+  if (hits.length) systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`;
+  // fallback keyword-only if no embedding key worked but hits still possible via keyword
+  if (!hits.length && candidates.length === 0) {
+    try {
+      hits = await searchHybrid(prompt, { cwd, topK: 5 });
+      if (hits.length) systemExtra = `\n# Relevant memory (keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`;
+    } catch {}
   }
 } catch {}
 
@@ -387,15 +429,15 @@ try {
   if (skillPrompt) systemExtra = (systemExtra ?? "") + skillPrompt;
 } catch {}
 
-// --- resume: load previous messages as systemExtra ---
+// --- resume: load previous messages as systemExtra (cap 2000 to keep total <8000) ---
 if (resumeId) {
   const prev = loadSession(resumeId, cwd);
   if (prev) {
     const transcript = prev.messages.map((m: unknown) => {
       const msg = m as { role: string; content: unknown };
-      const txt = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content).slice(0, 200);
+      const txt = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content).slice(0, 150);
       return `${msg.role}: ${txt}`;
-    }).join("\n").slice(0, 4000);
+    }).join("\n").slice(0, 2000);
     systemExtra = (systemExtra ?? "") + `\n# Previous session ${resumeId}\n${transcript}`;
     console.error(`[resume ${resumeId} ${prev.messages.length} msgs]`);
   } else {
@@ -424,7 +466,11 @@ try {
 } catch (e) {
   process.stderr.write(`[lsp] init failed: ${formatError(e)}\n`);
 }
-process.on("exit", () => { void mcpCloseAll(); void lspCloseAll(); });
+// explicit cleanup is awaited at normal exit paths below; 'exit' is sync-only so no async here.
+// keep sync best-effort for unexpected exit
+process.on("exit", () => {
+  // sync: abort signals already via killSignal in transports
+});
 
 const session = await createMinicodeSession({
   provider: router,
@@ -435,6 +481,7 @@ const session = await createMinicodeSession({
   model: modelOverride,
   ...(maxSteps ? { maxSteps } : {}),
   ...(contextWindowTokens ? { contextWindowTokens } : {}),
+  ...(timeoutMs !== undefined ? { timeoutMs: timeoutMs === 0 ? Infinity : timeoutMs } : {}),
   ...(compaction ? { compaction } : {}),
 } as never);
 
@@ -474,7 +521,8 @@ if (interactive) {
       })()) : q, { model: modelOverride });
       const u = usage.get();
       process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens}\n`);
-      await persistCurrent(res.usage);
+      await persistCurrent(u);
+      usage.reset();
     } catch (e) {
       process.stderr.write(`\n[error] ${formatError(e)}\n`);
     }
@@ -488,8 +536,8 @@ if (interactive) {
 } else {
   try {
     const result = await session.run(effectivePrompt, { model: modelOverride });
-    await persistCurrent(result.usage);
     const u = usage.get();
+    await persistCurrent(u);
     process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens} cost=${u.cost?.toFixed(4) ?? "?"}\n`);
   } catch (e) {
     process.stderr.write(`\n[error] ${formatError(e)}\n`);
