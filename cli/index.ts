@@ -563,7 +563,7 @@ const cpTurnOff = session.events.on("turn:completed", (e) => {
 // ── Auto-verify & self-heal ──
 const verifyEnabled = args.includes("--verify");
 const verifyCommand = verifyEnabled
-  ? (process.env.MINICODE_VERIFY_CMD ?? detectVerifyCommand(cwd) ?? "")
+  ? (process.env.MINICODE_VERIFY_CMD ?? cfg.verifyCommand ?? detectVerifyCommand(cwd) ?? "")
   : "";
 const verifyActive = verifyCommand.length > 0;
 

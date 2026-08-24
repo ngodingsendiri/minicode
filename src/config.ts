@@ -29,6 +29,7 @@ export interface MinicodeConfig {
   providers: ProviderEntry[];
   mcpServers?: McpServerEntry[];
   lspServers?: LspServerEntry[];
+  verifyCommand?: string;
 }
 
 const GLOBAL = join(homedir(), ".minicode", "config.json");
@@ -39,7 +40,8 @@ function normalizeConfig(raw: unknown): MinicodeConfig {
   const providers = Array.isArray(cfg?.providers) ? (cfg.providers as ProviderEntry[]).filter((p) => p && typeof p.id === "string" && typeof p.baseUrl === "string") : [];
   const mcpServers = Array.isArray(cfg?.mcpServers) ? (cfg.mcpServers as McpServerEntry[]).filter((m) => m && typeof m.id === "string" && typeof m.command === "string") : undefined;
   const lspServers = Array.isArray(cfg?.lspServers) ? (cfg.lspServers as LspServerEntry[]).filter((l) => l && typeof l.ext === "string" && typeof l.command === "string") : undefined;
-  return { providers, ...(mcpServers ? { mcpServers } : {}), ...(lspServers ? { lspServers } : {}) };
+  const verifyCommand = typeof cfg?.verifyCommand === "string" ? (cfg.verifyCommand as string) : undefined;
+  return { providers, ...(mcpServers ? { mcpServers } : {}), ...(lspServers ? { lspServers } : {}), ...(verifyCommand ? { verifyCommand } : {}) };
 }
 
 async function writeConfigAtomic(path: string, cfg: MinicodeConfig): Promise<void> {
@@ -99,6 +101,7 @@ export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
     providers: [...map.values()],
     mcpServers: [...mcpMap.values()],
     lspServers: [...lspMap.values()],
+    ...(localCfg.verifyCommand ?? globalCfg.verifyCommand ? { verifyCommand: localCfg.verifyCommand ?? globalCfg.verifyCommand } : {}),
   };
 }
 

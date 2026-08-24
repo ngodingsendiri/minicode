@@ -22,6 +22,9 @@ function langFor(file: string): string {
     case ".rs": return "rs";
     case ".java": return "java";
     case ".c": case ".cpp": case ".h": case ".hpp": return "c";
+    case ".cs": return "cs";
+    case ".rb": return "rb";
+    case ".php": return "php";
     default: return "";
   }
 }
@@ -64,6 +67,24 @@ const PATTERNS: Record<string, LinePattern[]> = {
     { re: /^[A-Za-z_][\w\s*]*\b(\w+)\s*\([^)]*\)\s*\{/, render: (m) => `function ${m[1]}(...)` },
     { re: /^(?:struct|enum)\s+(\w+)/, render: (m) => `${m[0].startsWith("struct") ? "struct" : "enum"} ${m[1]}` },
   ],
+  cs: [
+    { re: /^(?:public|private|protected|internal|static|sealed|abstract|partial|\s)*\bclass\s+(\w+)/, render: (m) => `class ${m[1]}` },
+    { re: /^(?:public|private|protected|internal|\s)*\binterface\s+(\w+)/, render: (m) => `interface ${m[1]}` },
+    { re: /^\s*(?:public|private|protected|internal|static|\s)*\b\w+\s+(\w+)\s*\(/, render: (m) => `method ${m[1]}(...)` },
+    { re: /^\s*namespace\s+([\w.]+)/, render: (m) => `namespace ${m[1]}` },
+  ],
+  rb: [
+    { re: /^\s*class\s+(\w+)/, render: (m) => `class ${m[1]}` },
+    { re: /^\s*module\s+(\w+)/, render: (m) => `module ${m[1]}` },
+    { re: /^\s*def\s+(\w+)/, render: (m) => `def ${m[1]}(...)` },
+  ],
+  php: [
+    { re: /^\s*(?:abstract|final)?\s*class\s+(\w+)/, render: (m) => `class ${m[1]}` },
+    { re: /^\s*interface\s+(\w+)/, render: (m) => `interface ${m[1]}` },
+    { re: /^\s*trait\s+(\w+)/, render: (m) => `trait ${m[1]}` },
+    { re: /^\s*(?:public|private|protected|static)?\s*function\s+(\w+)\s*\(/, render: (m) => `function ${m[1]}(...)` },
+    { re: /^\s*namespace\s+([\w\\]+)/, render: (m) => `namespace ${m[1]}` },
+  ],
 };
 
 // Ekstrak simbol dari konten file berdasarkan bahasa. Deterministik & cepat (regex).
@@ -96,6 +117,34 @@ export function extractSymbols(content: string, lang: string): string[] {
 function isSourceFile(f: string): boolean {
   const dot = f.lastIndexOf(".");
   return dot !== -1 && SOURCE_EXTS.has(f.slice(dot).toLowerCase());
+}
+
+// Ranking sederhana ala PageRank: file yang banyak di-import file lain
+// mendapat skor lebih tinggi → tampil lebih awal di repo-map (hemat token).
+function rankFiles(files: string[], cwd: string): string[] {
+  const basenameToFiles = new Map<string, string[]>();
+  for (const f of files) {
+    const base = f.slice(f.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "");
+    if (!base) continue;
+    const list = basenameToFiles.get(base) ?? [];
+    list.push(f);
+    basenameToFiles.set(base, list);
+  }
+  const scores = new Map<string, number>();
+  for (const f of files) scores.set(f, 0);
+  for (const f of files) {
+    let content: string;
+    try { content = readFileSync(resolve(cwd, f), "utf8"); } catch { continue; }
+    for (const [base, targets] of basenameToFiles) {
+      if (f === targets[0] && targets.length === 1) continue; // jangan hit diri sendiri bila unik
+      // deteksi import yang menyebut basename target
+      const importRe = new RegExp(`(?:import|from|require)\\s*["'\`][^"'\`]*${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^"'\`]*["'\`]`, "i");
+      if (importRe.test(content)) {
+        for (const t of targets) scores.set(t, (scores.get(t) ?? 0) + 1);
+      }
+    }
+  }
+  return [...files].sort((a, b) => (scores.get(b) ?? 0) - (scores.get(a) ?? 0));
 }
 
 async function walkForFiles(root: string, rel: string, out: string[], limit: number): Promise<void> {
@@ -131,8 +180,9 @@ function cachePath(cwd: string): string {
 export async function buildRepoMap(cwd: string = process.cwd(), opts: { limit?: number } = {}): Promise<string> {
   const limit = opts.limit ?? MAX_FILES;
   const files = await listSourceFiles(cwd, limit);
+  const ranked = rankFiles(files, cwd);
   const parts: string[] = [];
-  for (const f of files) {
+  for (const f of ranked) {
     const abs = resolve(cwd, f);
     try {
       const st = statSync(abs);

@@ -2,10 +2,12 @@
 // ```lang ... ``` → baris pembuka berlabel + baris penutup, agar blok kode
 // terlihat jelas di viewport respons.
 
+import { highlightCode } from "./highlight.ts";
+
 const BAR = "─".repeat(3);
 
 export function decorateMarkdown(text: string): string {
-  if (!text.includes("```")) return text;
+  if (!text.includes("```") && !text.includes("~~~")) return text;
   const lines = text.split("\n");
   const out: string[] = [];
   let inFence = false;
@@ -24,7 +26,7 @@ export function decorateMarkdown(text: string): string {
       }
       continue;
     }
-    out.push(line);
+    out.push(inFence && fenceLang ? highlightCode(line, fenceLang) : line);
   }
   return out.join("\n");
 }

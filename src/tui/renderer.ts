@@ -151,6 +151,23 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       return;
     }
 
+    // Highlighted preview for grep (file:line: content)
+    if (toolName === "grep" && typeof args.pattern === "string") {
+      const raw = String(r.content);
+      const previewLines = raw.split("\n").slice(0, 6).map((line) => {
+        const m = /^([^:]+:[^:]+:\s*)(.*)$/.exec(line);
+        if (!m) return line;
+        const prefix = m[1]!;
+        const code = m[2]!;
+        const ext = prefix.slice(prefix.lastIndexOf(".")).toLowerCase();
+        const lang = [".ts", ".tsx", ".js", ".jsx", ".py"].includes(ext) ? (ext === ".py" ? "python" : "typescript") : "";
+        return prefix + (lang ? highlightCode(code, lang) : code);
+      });
+      const more = raw.split("\n").length > 6 ? c.dim(`\n    ... (${raw.split("\n").length - 6} more)`) : "";
+      process.stderr.write(`  ${c.green(glyphs.check)} ${c.bold(toolName)} ${c.dim(`/${String(args.pattern).slice(0, 40)}/`)}\n    ${previewLines.join("\n    ")}${more}\n`);
+      return;
+    }
+
     // Default compact preview
     const rawContent = String(r.content).trim();
     const firstLine = rawContent.split("\n")[0] ?? "";
