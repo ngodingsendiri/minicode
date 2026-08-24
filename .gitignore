@@ -31,3 +31,4 @@ Thumbs.db
 tmp/
 *.tmp
 .tmp-*/
+bench/results.json
