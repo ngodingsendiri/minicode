@@ -5,7 +5,7 @@ const isWindows = process.platform === "win32";
 const supportsUtf8 = !isWindows || (process.env.WT_SESSION != null || process.env.TERM_PROGRAM != null || process.env.LANG?.includes("UTF-8") || process.env.LC_ALL?.includes("UTF-8"));
 
 // ── Color support detection ──
-const noColor = process.env.NO_COLOR != null && process.env.NO_COLOR !== "0";
+const noColor = (process.env.NO_COLOR != null && process.env.NO_COLOR !== "0") || process.env.MINICODE_THEME === "minimal";
 const hasTruecolor = process.env.COLORTERM === "truecolor" || process.env.COLORTERM === "24bit";
 const has256 = process.env.TERM?.includes("256color") ?? false;
 // Level: 0=mono, 1=16-color, 2=256-color, 3=truecolor

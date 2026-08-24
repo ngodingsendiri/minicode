@@ -1,27 +1,43 @@
 // Markdown decoration — Ubuntu Server style.
-// Code fence → indentasi 2-space dengan syntax highlight (tanpa separator).
+// Heading → bold, bullet → indentasi, code fence → indentasi + syntax highlight.
 
 import { highlightCode } from "./highlight.ts";
+import { c } from "./theme.ts";
 
 export function decorateMarkdown(text: string): string {
-  if (!text.includes("```") && !text.includes("~~~")) return text;
   const lines = text.split("\n");
   const out: string[] = [];
   let inFence = false;
   let fenceLang = "";
+
   for (const line of lines) {
+    // Code fence handling
     const fence = /^\s*(```+|~~~+)([A-Za-z0-9_+.-]*)\s*$/.exec(line);
     if (fence) {
-      if (!inFence) {
-        inFence = true;
-        fenceLang = fence[2] ?? "";
-        continue;
-      }
-      inFence = false;
-      fenceLang = "";
+      inFence = !inFence;
+      fenceLang = inFence ? (fence[2] ?? "") : "";
       continue;
     }
-    out.push(inFence && fenceLang ? "  " + highlightCode(line, fenceLang) : line);
+
+    // Inside code fence → indentasi + syntax highlight
+    if (inFence && fenceLang) {
+      out.push("  " + highlightCode(line, fenceLang));
+      continue;
+    }
+
+    // Headings (# ## ###) → bold
+    if (/^#{1,3}\s/.test(line)) {
+      out.push(c.bold(line));
+      continue;
+    }
+
+    // Bullet list → indentasi
+    if (/^\s*[-*]\s/.test(line)) {
+      out.push("  " + line.trimStart());
+      continue;
+    }
+
+    out.push(line);
   }
   return out.join("\n");
 }
