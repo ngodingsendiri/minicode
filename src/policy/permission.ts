@@ -5,7 +5,7 @@ import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hook
 import { isPathOutsideRoot, isSensitive } from "./jail.ts";
 import { getMcpServerIds } from "../mcp/client.ts";
 
-const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_diff", "git_log", "read_memory", "mcp_list", "lsp_diagnostics", "lsp_definition", "lsp_references", "lsp_hover", "lsp_symbols"]);
+const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_diff", "git_log", "read_memory", "mcp_list", "lsp_diagnostics", "lsp_definition", "lsp_references", "lsp_hover", "lsp_symbols", "lsp_workspace_symbols"]);
 
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
 // Wajib approval user (prompt) jika TTY, atau ditolak jika non-TTY.

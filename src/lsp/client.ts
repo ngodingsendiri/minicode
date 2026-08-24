@@ -85,6 +85,7 @@ class LspConnection {
         processId: process.pid,
         rootUri: pathToFileURL(resolvePath(rootPath)).href,
         capabilities: {
+          workspace: { symbol: {} },
           textDocument: {
             publishDiagnostics: { relatedInformation: false },
             hover: { contentFormat: ["markdown", "plaintext"] },
@@ -277,4 +278,42 @@ export async function closeAllLsp(): Promise<void> {
   for (const conn of activeServers.values()) {
     try { await conn.stop(); } catch {}
   }
+}
+
+export interface WorkspaceSymbol {
+  name: string;
+  kind: number;
+  location: { uri: string; range?: { start?: { line?: number } } };
+  containerName?: string;
+}
+
+// Query workspace symbols across all configured LSP servers (best-effort).
+// Returns merged, deduped symbols. Empty query "" should return top symbols
+// on servers that support it; we cap and timeout per server.
+export async function workspaceSymbols(query: string, timeoutMs = 4000): Promise<WorkspaceSymbol[]> {
+  const conns = [...activeServers.values()];
+  if (conns.length === 0) return [];
+  const results = await Promise.all(
+    conns.map(async (conn) => {
+      try {
+        await conn.start(process.cwd());
+        const res = (await conn.request("workspace/symbol", { query }, timeoutMs)) as WorkspaceSymbol[] | null;
+        return Array.isArray(res) ? res : [];
+      } catch {
+        return [] as WorkspaceSymbol[];
+      }
+    }),
+  );
+  const seen = new Set<string>();
+  const merged: WorkspaceSymbol[] = [];
+  for (const list of results) {
+    for (const s of list) {
+      const key = `${s.location.uri}::${s.name}::${s.kind}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(s);
+      }
+    }
+  }
+  return merged;
 }

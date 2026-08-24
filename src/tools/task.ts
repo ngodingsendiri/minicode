@@ -41,7 +41,7 @@ export const delegateTaskTool: Tool = {
     const { allTools } = await import("./index.ts");
     const base = allTools.filter((t) => t.name !== "delegate_task" && t.name !== "write_memory" && t.name !== "forget_memory");
     const subTools = m === "explore"
-      ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log", "lsp_diagnostics", "lsp_definition", "lsp_hover", "mcp_list"].includes(t.name))
+      ? base.filter((t) => ["read_file", "glob", "grep", "read_memory", "git_status", "git_log", "lsp_diagnostics", "lsp_definition", "lsp_hover", "lsp_workspace_symbols", "mcp_list"].includes(t.name))
       : base;
 
     return await pool.run(async () => {

@@ -2,7 +2,7 @@ import type { Tool } from "minicore";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { pathToFileURL } from "node:url";
-import { lspDiagnostics, lspCall, findSymbolPosition, getConfiguredExts } from "../lsp/client.ts";
+import { lspDiagnostics, lspCall, findSymbolPosition, getConfiguredExts, workspaceSymbols } from "../lsp/client.ts";
 
 const SEVERITY = ["Error", "Warn", "Info", "Hint"];
 
@@ -153,6 +153,33 @@ export const lspSymbolsTool: Tool = {
         const kind = KIND[(sym.kind ?? 1) - 1] ?? "?";
         const line = (sym.range?.start?.line ?? 0) + 1;
         return `${line}: [${kind}] ${sym.name}`;
+      }).join("\n");
+    } catch (e) {
+      return `[lsp] ${(e as Error).message}`;
+    }
+  },
+};
+
+export const lspWorkspaceSymbolsTool: Tool = {
+  name: "lsp_workspace_symbols",
+  description: "Cari simbol di seluruh workspace via LSP (workspace/symbol). Query kosong = simbol populer. Butuh LSP server terkonfigurasi.",
+  parameters: {
+    type: "object",
+    properties: { query: { type: "string", description: "kata kunci simbol, kosong untuk semua" } },
+    required: [],
+    additionalProperties: false,
+  },
+  async execute({ query }, ctx) {
+    ctx.signal.throwIfAborted();
+    if (getConfiguredExts().length === 0) return "(no LSP servers configured — add via minicode config lsp add)";
+    try {
+      const symbols = await workspaceSymbols((query as string) ?? "", 5000);
+      if (!symbols.length) return "(no symbols)";
+      const KIND = ["File","Module","Namespace","Package","Class","Method","Property","Field","Constructor","Enum","Interface","Function","Variable","Constant","String","Number","Boolean","Array","Object","Key","Null","EnumMember","Struct","Event","Operator","TypeParameter"];
+      return symbols.slice(0, 50).map((s) => {
+        const kind = KIND[(s.kind ?? 1) - 1] ?? "?";
+        const uri = s.location.uri ?? "?";
+        return `[${kind}] ${s.name}${s.containerName ? ` (${s.containerName})` : ""} — ${uri}`;
       }).join("\n");
     } catch (e) {
       return `[lsp] ${(e as Error).message}`;

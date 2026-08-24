@@ -9,7 +9,7 @@ export { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
 export { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 export { delegateTaskTool } from "./task.ts";
 export { mcpCallTool, mcpListTool } from "./mcp_call.ts";
-export { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool } from "./lsp.ts";
+export { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool, lspWorkspaceSymbolsTool } from "./lsp.ts";
 
 import { readFileTool } from "./read_file.ts";
 import { writeFileTool } from "./write_file.ts";
@@ -22,7 +22,7 @@ import { gitStatusTool, gitDiffTool, gitLogTool } from "./git.ts";
 import { readMemoryTool, writeMemoryTool, forgetMemoryTool } from "./memory.ts";
 import { delegateTaskTool } from "./task.ts";
 import { mcpCallTool, mcpListTool } from "./mcp_call.ts";
-import { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool } from "./lsp.ts";
+import { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool, lspSymbolsTool, lspWorkspaceSymbolsTool } from "./lsp.ts";
 import type { Tool } from "minicore";
 
 export const allTools: Tool[] = [
@@ -47,6 +47,7 @@ export const allTools: Tool[] = [
   lspReferencesTool,
   lspHoverTool,
   lspSymbolsTool,
+  lspWorkspaceSymbolsTool,
 ];
 
 // MCP server tools (prefixed "serverid.toolname") di-append runtime via connectAll()

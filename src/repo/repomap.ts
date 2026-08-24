@@ -1,8 +1,9 @@
 import { readFileSync, statSync, mkdirSync, writeFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 const execAsync = promisify(exec);
 
@@ -156,10 +157,55 @@ function signature(files: string[], cwd: string): string {
   return sig;
 }
 
+// Coba bangun repo-map via LSP workspace/symbol (lebih akurat dari regex).
+// Best-effort: timeout cepat, fallback ke regex bila LSP tak tersedia/kosong.
+async function buildRepoMapLsp(cwd: string): Promise<string | null> {
+  try {
+    const { getConfiguredExts, workspaceSymbols } = await import("../lsp/client.ts");
+    if (getConfiguredExts().length === 0) return null;
+    const symbols = await workspaceSymbols("", 4000);
+    if (!symbols.length) return null;
+    const KIND = ["File","Module","Namespace","Package","Class","Method","Property","Field","Constructor","Enum","Interface","Function","Variable","Constant","String","Number","Boolean","Array","Object","Key","Null","EnumMember","Struct","Event","Operator","TypeParameter"];
+    const byFile = new Map<string, string[]>();
+    for (const s of symbols.slice(0, 200)) {
+      let file: string;
+      try {
+        file = relative(cwd, fileURLToPath(s.location.uri)).replace(/\\/g, "/");
+      } catch {
+        continue;
+      }
+      const kind = KIND[(s.kind ?? 1) - 1] ?? "?";
+      const label = `${kind} ${s.name}${s.containerName ? ` (${s.containerName})` : ""}`;
+      const list = byFile.get(file) ?? [];
+      if (list.length < 8 && !list.includes(label)) list.push(label);
+      byFile.set(file, list);
+    }
+    if (byFile.size === 0) return null;
+    const parts: string[] = [];
+    for (const [file, syms] of byFile) parts.push(`${file}:\n${syms.map((x) => `  ${x}`).join("\n")}`);
+    const map = parts.join("\n").slice(0, MAX_REPOMAP_CHARS);
+    return map || null;
+  } catch {
+    return null;
+  }
+}
+
 // Load repo-map, pakai cache di .minicode/repomap.json bila file tak berubah.
 export async function loadRepoMap(cwd: string = process.cwd()): Promise<string> {
   const files = await listSourceFiles(cwd, MAX_FILES);
   if (files.length === 0) return "";
+  // Coba LSP dulu (best-effort, cepat) — bila berhasil, pakai itu
+  const lspMap = await buildRepoMapLsp(cwd);
+  if (lspMap) {
+    // cache LSP map juga (pakai sig yang sama agar invalidasi tetap benar)
+    const sig = signature(files, cwd);
+    const cp = cachePath(cwd);
+    try {
+      mkdirSync(resolve(cwd, ".minicode"), { recursive: true });
+      writeFileSync(cp, JSON.stringify({ sig, map: lspMap }));
+    } catch {}
+    return lspMap;
+  }
   const sig = signature(files, cwd);
   const cp = cachePath(cwd);
   try {
