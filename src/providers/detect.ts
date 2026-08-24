@@ -46,7 +46,9 @@ export async function detectModels(baseUrl: string, apiKey: string, signal?: Abo
     if (sig.aborted) break;
     const models = await tryFetchModels(baseUrl, h, sig);
     if (models && models.length) {
-      const hint = models.some((m) => m.includes("claude")) ? "anthropic" : models.some((m) => m.includes("gpt") || m.includes("o1")) ? "openai" : "unknown";
+      // Prioritas: baseUrl (anthropic.com → anthropic) → nama model (claude/gpt)
+      // Gateway seperti b.ai, OpenRouter: baseUrl TIDAK anthropic → openai-compat
+      const hint = baseUrl.includes("anthropic") ? "anthropic" : "openai";
       return { models, providerHint: hint as DetectResult["providerHint"] };
     }
   }

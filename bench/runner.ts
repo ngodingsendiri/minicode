@@ -42,6 +42,9 @@ async function main(): Promise<void> {
   const results: Record<string, unknown>[] = [];
   for (const task of tasks) {
     const dir = await task.setup();
+    // tools memakai process.cwd() sebagai root — chdir ke dir task lalu kembali
+    const prevCwd = process.cwd();
+    process.chdir(dir);
     const session = await createMinicodeSession({ provider, tools: allTools, cwd: dir, permissionMode: "auto" });
     const usage = createUsageCollector(session.events);
     const t0 = Date.now();
@@ -59,9 +62,12 @@ async function main(): Promise<void> {
     // --fake: provider palsu tak pernah benar-benar mengedit file → anggap passed bila harness jalan tanpa error
     const verify = fake ? { ...rawVerify, passed: true } : rawVerify;
     await task.cleanup(dir);
+    process.chdir(prevCwd);
     const passed = verify.passed && !error;
     results.push({ id: task.id, description: task.description, passed, steps, durationMs, inputTokens: u.inputTokens, outputTokens: u.outputTokens, totalTokens: u.totalTokens, cost: u.cost, error, detail: verify.detail });
     process.stdout.write(`${passed ? "PASS" : "FAIL"} ${task.id} steps=${steps} tokens=${u.totalTokens} ${durationMs}ms${error ? ` error=${error.slice(0, 80)}` : ""}\n`);
+    // beri jeda antar task untuk hindari rate limit (provider gratis/quota)
+    if (!fake && error?.includes("429")) await new Promise((r) => setTimeout(r, 10000));
   }
 
   const resolved = results.filter((r) => r.passed).length;

@@ -298,7 +298,7 @@ const ctx = await createCliSession({
 if (enterRepl) {
   await runRepl(ctx);
 } else {
-  const { session, usage, modelRef, budget: b, cwd: c, sessionId: sid, persistCurrent, runPromptWithVerify, close } = ctx;
+  const { session, usage, modelRef, budget: b, cwd: wcwd, sessionId: sid, persistCurrent, runPromptWithVerify, close } = ctx;
   const t0 = Date.now();
   try {
     await runPromptWithVerify(effectivePrompt);
@@ -312,10 +312,10 @@ if (enterRepl) {
     if (overBudget) { await close(); process.exit(1); }
     const costBadge = u.cost != null ? ` cost=$${u.cost.toFixed(4)}` : "";
     process.stderr.write(c.dim(`\n[session ${sid} saved · in=${u.inputTokens} out=${u.outputTokens}${costBadge}]\n`));
-    writeTrace(c, { sessionId: sid, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelRef.current, ok: true });
+    writeTrace(wcwd, { sessionId: sid, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelRef.current, ok: true });
   } catch (e) {
     process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`);
-    writeTrace(c, { sessionId: sid, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: usage.get(modelRef.current).inputTokens, outputTokens: usage.get(modelRef.current).outputTokens, model: modelRef.current, ok: false, error: formatError(e) });
+    writeTrace(wcwd, { sessionId: sid, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: usage.get(modelRef.current).inputTokens, outputTokens: usage.get(modelRef.current).outputTokens, model: modelRef.current, ok: false, error: formatError(e) });
     await close();
     process.exit(1);
   }
