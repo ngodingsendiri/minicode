@@ -50,7 +50,6 @@ export function runInDocker(
     "--network", opts.network ?? "none",
     "--memory", opts.memory ?? process.env.MINICODE_SANDBOX_MEMORY ?? "512m",
     "--cpus", String(opts.cpus ?? 1),
-    "--pull", "never",
     image,
     "sh", "-c", command,
   ];

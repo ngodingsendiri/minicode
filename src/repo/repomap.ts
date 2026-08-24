@@ -192,30 +192,32 @@ async function buildRepoMapLsp(cwd: string): Promise<string | null> {
 
 // Load repo-map, pakai cache di .minicode/repomap.json bila file tak berubah.
 export async function loadRepoMap(cwd: string = process.cwd()): Promise<string> {
+  // Env MINICODE_REPOMAP=regex → skip LSP (paksa regex, lebih cepat)
+  const forceRegex = process.env.MINICODE_REPOMAP === "regex";
   const files = await listSourceFiles(cwd, MAX_FILES);
   if (files.length === 0) return "";
-  // Coba LSP dulu (best-effort, cepat) — bila berhasil, pakai itu
-  const lspMap = await buildRepoMapLsp(cwd);
-  if (lspMap) {
-    // cache LSP map juga (pakai sig yang sama agar invalidasi tetap benar)
-    const sig = signature(files, cwd);
-    const cp = cachePath(cwd);
-    try {
-      mkdirSync(resolve(cwd, ".minicode"), { recursive: true });
-      writeFileSync(cp, JSON.stringify({ sig, map: lspMap }));
-    } catch {}
-    return lspMap;
-  }
   const sig = signature(files, cwd);
   const cp = cachePath(cwd);
+  // Cache hit → langsung pakai (tanpa LSP, cepat)
   try {
-    const cached = JSON.parse(readFileSync(cp, "utf8")) as { sig?: string; map?: string };
+    const cached = JSON.parse(readFileSync(cp, "utf8")) as { sig?: string; map?: string; lsp?: boolean };
     if (cached.sig === sig && typeof cached.map === "string") return cached.map;
   } catch {}
+  // Cache miss → coba LSP dulu (best-effort), fallback ke regex
+  if (!forceRegex) {
+    const lspMap = await buildRepoMapLsp(cwd);
+    if (lspMap) {
+      try {
+        mkdirSync(resolve(cwd, ".minicode"), { recursive: true });
+        writeFileSync(cp, JSON.stringify({ sig, map: lspMap, lsp: true }));
+      } catch {}
+      return lspMap;
+    }
+  }
   const map = await buildRepoMap(cwd, { limit: MAX_FILES });
   try {
     mkdirSync(resolve(cwd, ".minicode"), { recursive: true });
-    writeFileSync(cp, JSON.stringify({ sig, map }));
+    writeFileSync(cp, JSON.stringify({ sig, map, lsp: false }));
   } catch {}
   return map;
 }

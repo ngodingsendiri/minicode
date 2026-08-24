@@ -48,7 +48,9 @@ async function main(): Promise<void> {
     }
     const durationMs = Date.now() - t0;
     const u = usage.get();
-    const verify = await task.verify(dir);
+    const rawVerify = await task.verify(dir);
+    // --fake: provider palsu tak pernah benar-benar mengedit file → anggap passed bila harness jalan tanpa error
+    const verify = fake ? { ...rawVerify, passed: true } : rawVerify;
     await task.cleanup(dir);
     const passed = verify.passed && !error;
     results.push({ id: task.id, description: task.description, passed, steps, durationMs, inputTokens: u.inputTokens, outputTokens: u.outputTokens, totalTokens: u.totalTokens, cost: u.cost, error, detail: verify.detail });

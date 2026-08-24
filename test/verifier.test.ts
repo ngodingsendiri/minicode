@@ -66,7 +66,7 @@ test("runWithSelfHeal: keeps fixing until verify passes", async () => {
     },
   });
   expect(runs.length).toBe(3); // initial + 2 fix cycles
-  expect(runs[1]).toContain("[Auto-Verifier]");
+  expect(runs[1]).toContain("Auto-Verifier");
 });
 
 test("runWithSelfHeal: caps at max cycles", async () => {

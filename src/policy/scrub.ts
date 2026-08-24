@@ -12,7 +12,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b(AKIA[0-9A-Z]{16})\b/g,
   // Private key PEM blocks — lazy dot-all, aman karena terbatas ukuran file (2MB)
   /-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----/g,
-  // Generic api_key / secret / token = <value>
+  // Generic api_key / secret / token = <value> — whitelist test/example/mock
   /\b(?:api[_-]?key|apikey|secret[_-]?key|access[_-]?token|auth[_-]?token|password)\s*[:=]\s*["']?[A-Za-z0-9_\-]{16,}["']?/gi,
   // Bearer token header
   /\bbearer\s+[A-Za-z0-9._-]{20,}\b/gi,
@@ -23,11 +23,15 @@ const SECRET_PATTERNS: RegExp[] = [
 ];
 
 // Redact secrets dalam teks. Ganti match dengan [REDACTED].
+// Whitelist: bila value mengandung test/example/mock → jangan redact (hindari false positive).
 export function scrubSecrets(text: string): string {
   if (!text) return text;
   let out = text;
   for (const re of SECRET_PATTERNS) {
-    out = out.replace(re, "[REDACTED]");
+    out = out.replace(re, (m) => {
+      if (/test|example|mock/i.test(m)) return m;
+      return "[REDACTED]";
+    });
   }
   return out;
 }
