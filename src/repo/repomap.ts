@@ -1,5 +1,5 @@
 import { readFileSync, statSync, mkdirSync, writeFileSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, stat, readFile } from "node:fs/promises";
 import { join, resolve, relative } from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
@@ -119,11 +119,26 @@ function isSourceFile(f: string): boolean {
   return dot !== -1 && SOURCE_EXTS.has(f.slice(dot).toLowerCase());
 }
 
+// Baca konten file sumber (async) — dipakai sekali untuk ranking + ekstraksi simbol.
+async function readSourceContents(files: string[], cwd: string): Promise<{ path: string; content: string }[]> {
+  const out: { path: string; content: string }[] = [];
+  for (const f of files) {
+    try {
+      const abs = resolve(cwd, f);
+      const st = await stat(abs);
+      if (!st.isFile() || st.size > MAX_FILE_BYTES) continue;
+      const content = await readFile(abs, "utf8");
+      out.push({ path: f, content });
+    } catch {}
+  }
+  return out;
+}
+
 // Ranking sederhana ala PageRank: file yang banyak di-import file lain
 // mendapat skor lebih tinggi → tampil lebih awal di repo-map (hemat token).
-function rankFiles(files: string[], cwd: string): string[] {
+function rankByImport(files: { path: string; content: string }[]): string[] {
   const basenameToFiles = new Map<string, string[]>();
-  for (const f of files) {
+  for (const { path: f } of files) {
     const base = f.slice(f.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "");
     if (!base) continue;
     const list = basenameToFiles.get(base) ?? [];
@@ -131,20 +146,17 @@ function rankFiles(files: string[], cwd: string): string[] {
     basenameToFiles.set(base, list);
   }
   const scores = new Map<string, number>();
-  for (const f of files) scores.set(f, 0);
-  for (const f of files) {
-    let content: string;
-    try { content = readFileSync(resolve(cwd, f), "utf8"); } catch { continue; }
+  for (const { path: f } of files) scores.set(f, 0);
+  for (const { path: f, content } of files) {
     for (const [base, targets] of basenameToFiles) {
       if (f === targets[0] && targets.length === 1) continue; // jangan hit diri sendiri bila unik
-      // deteksi import yang menyebut basename target
       const importRe = new RegExp(`(?:import|from|require)\\s*["'\`][^"'\`]*${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^"'\`]*["'\`]`, "i");
       if (importRe.test(content)) {
         for (const t of targets) scores.set(t, (scores.get(t) ?? 0) + 1);
       }
     }
   }
-  return [...files].sort((a, b) => (scores.get(b) ?? 0) - (scores.get(a) ?? 0));
+  return [...files.map((f) => f.path)].sort((a, b) => (scores.get(b) ?? 0) - (scores.get(a) ?? 0));
 }
 
 async function walkForFiles(root: string, rel: string, out: string[], limit: number): Promise<void> {
@@ -180,17 +192,16 @@ function cachePath(cwd: string): string {
 export async function buildRepoMap(cwd: string = process.cwd(), opts: { limit?: number } = {}): Promise<string> {
   const limit = opts.limit ?? MAX_FILES;
   const files = await listSourceFiles(cwd, limit);
-  const ranked = rankFiles(files, cwd);
+  // baca sekali → dipakai untuk ranking DAN simbol (tanpa double-read)
+  const contents = await readSourceContents(files, cwd);
+  const ranked = rankByImport(contents);
+  const byPath = new Map(contents.map((c) => [c.path, c.content]));
   const parts: string[] = [];
   for (const f of ranked) {
-    const abs = resolve(cwd, f);
-    try {
-      const st = statSync(abs);
-      if (!st.isFile() || st.size > MAX_FILE_BYTES) continue;
-      const content = readFileSync(abs, "utf8");
-      const symbols = extractSymbols(content, langFor(f));
-      if (symbols.length) parts.push(`${f}:\n${symbols.map((s) => `  ${s}`).join("\n")}`);
-    } catch {}
+    const content = byPath.get(f);
+    if (content == null) continue;
+    const symbols = extractSymbols(content, langFor(f));
+    if (symbols.length) parts.push(`${f}:\n${symbols.map((s) => `  ${s}`).join("\n")}`);
   }
   return parts.join("\n").slice(0, MAX_REPOMAP_CHARS);
 }

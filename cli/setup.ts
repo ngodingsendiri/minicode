@@ -18,7 +18,7 @@ import { configureServers as lspConfigure, closeAllLsp as lspCloseAll } from "..
 import { loadSkills, skillsToSystemPrompt, type Skill } from "../src/skills/loader.ts";
 import { c } from "../src/tui/theme.ts";
 import { runSetupWizard } from "./wizard.ts";
-import { recordCheckpointFromSnapshots } from "../src/session/checkpoint.ts";
+import { recordCheckpointFromSnapshots, snapshotWorkspace } from "../src/session/checkpoint.ts";
 import { runWithSelfHeal, runVerify, detectVerifyCommand } from "../src/policy/verifier.ts";
 import { createRateLimiter, type RateLimiter } from "../src/policy/ratelimit.ts";
 import type { Tool, Message, Session } from "minicore";
@@ -179,26 +179,17 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   const effectiveInitialModel = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default";
 
-  // ── Shadow checkpoint: capture pre/post-edit per turn ──
-  const preEditSnapshots = new Map<string, { path: string; content: string | null }>();
+  // ── Shadow checkpoint ──
+  // Pre-turn: snapshot seluruh workspace (menangkap perubahan bash/git, bukan cuma
+  // edit/write_file). Post-edit: untuk /redo, dari tool yang mengubah file.
+  let preTurnPromise: Promise<Awaited<ReturnType<typeof snapshotWorkspace>>> | null = null;
   const postEditSnapshots = new Map<string, { path: string; content: string | null }>();
-  session.events.on("execution:started", (e) => {
-    const name = e.execution.call.name;
-    if (name !== "edit" && name !== "write_file") return;
-    const p = (e.execution.call.args as { path?: string })?.path;
-    if (!p || preEditSnapshots.has(p)) return;
-    const abs = resolvePath(cwd ?? ".", p);
-    let content: string | null;
-    try {
-      content = readFileSync(abs, "utf8");
-    } catch {
-      content = null;
-    }
-    preEditSnapshots.set(p, { path: p.replace(/\\/g, "/"), content });
+  session.events.on("turn:started", () => {
+    preTurnPromise = snapshotWorkspace(cwd ?? ".", 200);
   });
   session.events.on("execution:completed", (e) => {
     const name = e.execution.call.name;
-    if (name !== "edit" && name !== "write_file") return;
+    if (name !== "edit" && name !== "write_file" && name !== "apply_patch") return;
     const p = (e.execution.call.args as { path?: string })?.path;
     if (!p) return;
     const abs = resolvePath(cwd ?? ".", p);
@@ -208,10 +199,10 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       postEditSnapshots.set(p, { path: p.replace(/\\/g, "/"), content: null });
     }
   });
-  session.events.on("turn:completed", (e) => {
-    const snapshots = [...preEditSnapshots.values()];
+  session.events.on("turn:completed", async (e) => {
+    const snapshots = (await preTurnPromise) ?? [];
     const redoSnapshots = [...postEditSnapshots.values()];
-    preEditSnapshots.clear();
+    preTurnPromise = null;
     postEditSnapshots.clear();
     if (snapshots.length === 0) return;
     recordCheckpointFromSnapshots(sessionId, e.result.usage.turns, snapshots, `turn ${e.result.usage.turns}`, cwd, redoSnapshots).catch(() => {});

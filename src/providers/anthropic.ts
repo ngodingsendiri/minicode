@@ -98,6 +98,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
                 outputTokens: usage.output_tokens,
                 cacheReadTokens: usage.cache_read_input_tokens,
                 cacheWriteTokens: usage.cache_creation_input_tokens,
+                cacheIncluded: true, // Anthropic: input_tokens sudah termasuk cache
               },
             };
           }
@@ -112,6 +113,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
                 outputTokens: usage.output_tokens,
                 cacheReadTokens: usage.cache_read_input_tokens,
                 cacheWriteTokens: usage.cache_creation_input_tokens,
+                cacheIncluded: true,
               },
             };
           }

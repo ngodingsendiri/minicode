@@ -5,15 +5,16 @@ import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hook
 import { isPathOutsideRoot, isSensitive } from "./jail.ts";
 import { getMcpServerIds } from "../mcp/client.ts";
 
+export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist";
+
 const READONLY_TOOLS = new Set(["read_file", "glob", "grep", "git_status", "git_diff", "git_log", "read_memory", "mcp_list", "lsp_diagnostics", "lsp_definition", "lsp_references", "lsp_hover", "lsp_symbols", "lsp_workspace_symbols"]);
 
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
-// Wajib approval user (prompt) jika TTY, atau ditolak jika non-TTY.
 const GATED_TOOLS = new Set(["delegate_task", "mcp_call"]);
 
 const BASH_DENY_RE = [
-  /rm\s+[^;|]*-r[f]*\s+[^;|]*(\/\*?|~|(\$HOME|\$\{HOME\})|--no-preserve-root)/i, // rm -rf /, /*, ~, $HOME/${HOME}, --no-preserve-root
-  /:\(\)\s*\{\s*:\|\:&\s*\}\s*;/, // fork bomb :(){ :|:& };:
+  /rm\s+[^;|]*-r[f]*\s+[^;|]*(\/\*?|~|(\$HOME|\$\{HOME\})|--no-preserve-root)/i,
+  /:\(\)\s*\{\s*:\|\:&\s*\}\s*;/,
   /\bmkfs\b/i,
   /\bdd\s+if=/i,
   /\bchmod\s+(-R\s+)?777\b/i,
@@ -28,8 +29,7 @@ const BASH_DENY_RE = [
   /\bpowershell\b.*-EncodedCommand/i,
   />\s*\/dev\/sda/i,
   />\s*\/dev\/nvme/i,
-  /:\s*>\s*\/dev\/null.*&/i, // fork bomb variant
-  // Hardening v0.2 — interpreter exec / obfuscation / secret exfil
+  /:\s*>\s*\/dev\/null.*&/i,
   /\b(?:python|python2|python3|pypy)\s+-c\b/i,
   /\b(?:sh|bash|dash|zsh|ksh)\s+-c\b/i,
   /\b(?:node|perl)\s+-(?:e|pe|ne)\b/i,
@@ -42,20 +42,10 @@ const BASH_DENY_RE = [
   /\b(?:cat|less|more|head|tail|type|grep|sed|awk|cut|sort|xargs)\b[^\n]*\s+\.env(?:[^.\w]|$)/i,
 ];
 
-export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist";
-
 const DEFAULT_BASH_ALLOWLIST = [
-  "git status*",
-  "git diff*",
-  "git log*",
-  "git branch*",
-  "bun test*",
-  "bun x tsc*",
-  "npm run *",
-  "bun run *",
-  "echo *",
-  "ls*",
-  "cat *",
+  "git status*", "git diff*", "git log*", "git branch*",
+  "bun test*", "bun x tsc*", "npm run *", "bun run *",
+  "echo *", "ls*", "cat *",
 ];
 
 function matchBashAllowlist(cmd: string, pattern: string): boolean {
@@ -67,6 +57,10 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
   const mode = opts.mode ?? "auto";
   const root = resolve(opts.root ?? cwd());
   let allowlistCache: string[] | null = null;
+  // bash allowlist di-cache sekali (bukan baca env tiap panggilan)
+  const envRaw = process.env.MINICODE_BASH_ALLOWLIST;
+  const bashAllowlist = envRaw ? envRaw.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_BASH_ALLOWLIST;
+
   async function getAllowlist(): Promise<string[]> {
     if (allowlistCache) return allowlistCache;
     try {
@@ -78,12 +72,18 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
     }
   }
 
-  // Tool MCP dinamis berformat "serverId.toolName" — hanya valid bila server
-  // benar-benar terdaftar. Menutup bypass wildcard `*` lama.
   function isRegisteredMcp(name: string): boolean {
     const dot = name.indexOf(".");
-    if (dot === -1) return false;
-    return getMcpServerIds().includes(name.slice(0, dot));
+    return dot !== -1 && getMcpServerIds().includes(name.slice(0, dot));
+  }
+
+  function isGated(name: string): boolean {
+    return GATED_TOOLS.has(name) || (name.includes(".") && !isRegisteredMcp(name));
+  }
+
+  function bashDenied(cmd: string): boolean {
+    for (const re of BASH_DENY_RE) if (re.test(cmd)) return true;
+    return false;
   }
 
   function saveAlways(call: ToolCall): Promise<void> {
@@ -92,12 +92,57 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
     return saveAllowlist(key, root).catch(() => {});
   }
 
+  // data-driven: tiap mode = satu fungsi keputusan (tanpa cabang saling tumpang tindih)
+  const handlers: Record<PermissionMode, (call: ToolCall, args: Record<string, unknown> | null) => Promise<"allow" | "deny">> = {
+    "allow-all": async () => "allow",
+    readonly: async (call) => (READONLY_TOOLS.has(call.name) ? "allow" : "deny"),
+    plan: async (call) => (READONLY_TOOLS.has(call.name) ? "allow" : "deny"),
+    allowlist: async (call, args) => {
+      if (call.name === "bash") {
+        const cmd = (args?.cmd as string) ?? "";
+        if (!cmd.trim() || bashDenied(cmd)) return "deny";
+        return bashAllowlist.some((pat) => matchBashAllowlist(cmd, pat)) ? "allow" : "deny";
+      }
+      if (isGated(call.name)) return "deny";
+      if (call.name === "write_file" || call.name === "edit") return "allow";
+      if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
+      return READONLY_TOOLS.has(call.name) ? "allow" : "deny";
+    },
+    ask: async (call, args) => {
+      if (READONLY_TOOLS.has(call.name)) return "allow";
+      const list = await getAllowlist();
+      if (matchAllowlist(call, list)) return "allow";
+      if (call.name === "bash") {
+        const cmd = (args?.cmd as string) ?? "";
+        if (!cmd.trim() || bashDenied(cmd)) return "deny";
+      } else if (isGated(call.name)) {
+        return await promptAskOr(call, () => "deny");
+      }
+      const ans = await promptAsk(call);
+      if (ans === "always") { await saveAlways(call); return "allow"; }
+      return ans === "allow" ? "allow" : "deny";
+    },
+    auto: async (call, args) => {
+      if (READONLY_TOOLS.has(call.name)) return "allow";
+      if (isGated(call.name)) return await promptAskOr(call, () => "deny");
+      if (call.name.includes(".") && isRegisteredMcp(call.name)) return "allow"; // MCP terdaftar
+      if (call.name === "write_file" || call.name === "edit") return "allow";
+      if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
+      if (call.name === "bash") {
+        const cmd = (args?.cmd as string) ?? "";
+        if (!cmd.trim() || bashDenied(cmd)) return "deny";
+        return "allow";
+      }
+      return "deny";
+    },
+  };
+
   return {
     async check(call: ToolCall): Promise<"allow" | "deny"> {
       if (mode === "allow-all") return "allow";
-
-      // universal file-path jail (applies even to readonly/ask before any allow)
       const earlyArgs = call.args as Record<string, unknown> | null;
+
+      // universal file-path jail (applies to all modes before any allow)
       if (call.name === "write_file" || call.name === "edit" || call.name === "read_file") {
         const p = (earlyArgs?.path as string) ?? "";
         if (!p || isPathOutsideRoot(p, root) || isSensitive(p)) return "deny";
@@ -106,87 +151,21 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         const f = (earlyArgs?.file as string) ?? "";
         if (f && (isPathOutsideRoot(f, root) || isSensitive(f))) return "deny";
       }
-      // cwd jail for tools that accept cwd
       const cwdArg = (earlyArgs?.cwd as string) ?? "";
       if (cwdArg && (call.name === "bash" || call.name === "glob" || call.name === "grep" || call.name.startsWith("git_"))) {
         if (isPathOutsideRoot(cwdArg, root)) return "deny";
       }
 
-      // mcp_call/delegate_task belum tentu readonly; MCP dinamis hanya jika terdaftar
-      const isGated = GATED_TOOLS.has(call.name) || (call.name.includes(".") && !isRegisteredMcp(call.name));
-
-      if (mode === "allowlist") {
-        if (call.name === "bash") {
-          const cmd = (earlyArgs?.cmd as string) ?? "";
-          if (!cmd.trim()) return "deny";
-          for (const re of BASH_DENY_RE) if (re.test(cmd)) return "deny";
-          const raw = process.env.MINICODE_BASH_ALLOWLIST;
-          const allowlist = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_BASH_ALLOWLIST;
-          if (!allowlist.some((pat) => matchBashAllowlist(cmd, pat))) return "deny";
-          return "allow";
-        }
-        // non-bash: allow file ops + readonly, deny gated/external
-        if (isGated) return "deny";
-        if (call.name === "write_file" || call.name === "edit") return "allow";
-        if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
-        if (READONLY_TOOLS.has(call.name)) return "allow";
-        return "deny";
-      }
-
-      if ((mode === "readonly" || mode === "plan") && !READONLY_TOOLS.has(call.name)) return "deny";
-      if (READONLY_TOOLS.has(call.name)) return "allow";
-
-      if (mode === "ask") {
-        const list = await getAllowlist();
-        if (matchAllowlist(call, list)) return "allow";
-        // still run auto checks to deny dangerous before asking
-        if (call.name === "bash") {
-          const cmd = (earlyArgs?.cmd as string) ?? "";
-          if (!cmd.trim()) return "deny";
-          for (const re of BASH_DENY_RE) if (re.test(cmd)) return "deny";
-          // permit bash to fall through to prompt
-        } else if (isGated) {
-          return await promptAskOr(call, () => "deny");
-        }
-        const ans = await promptAsk(call);
-        if (ans === "always") {
-          await saveAlways(call);
-          return "allow";
-        }
-        return ans === "allow" ? "allow" : "deny";
-      }
-
-      // auto mode
-      if (isGated) {
-        return await promptAskOr(call, () => "deny");
-      }
-
-      // local trusted surface (after jail above): file writes + project memory
-      if (call.name === "write_file" || call.name === "edit") return "allow";
-      if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
-
-      if (call.name === "bash") {
-        const cmd = (earlyArgs?.cmd as string) ?? "";
-        if (!cmd.trim()) return "deny";
-        for (const re of BASH_DENY_RE) if (re.test(cmd)) return "deny";
-        return "allow";
-      }
-
-      // default deny unknown tools
-      return "deny";
+      return handlers[mode](call, earlyArgs);
     },
   };
 
-  // auto mode tanpa TTY → tolak; dengan TTY → tanya user (y/n/a)
   async function promptAskOr(call: ToolCall, noTty: () => "deny"): Promise<"allow" | "deny"> {
     if (!process.stdin.isTTY) return noTty();
     const list = await getAllowlist();
     if (matchAllowlist(call, list)) return "allow";
     const ans = await promptAsk(call);
-    if (ans === "always") {
-      await saveAlways(call);
-      return "allow";
-    }
+    if (ans === "always") { await saveAlways(call); return "allow"; }
     return ans === "allow" ? "allow" : "deny";
   }
 }

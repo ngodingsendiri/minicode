@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, readdir } from "node:fs/promises";
 import { join, resolve, relative, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isPathOutsideRoot } from "../policy/jail.ts";
@@ -62,6 +62,31 @@ export async function captureFileSnapshot(filePath: string, cwd: string = proces
   } catch {
     return { path: rel, content: null };
   }
+}
+
+// Snapshot seluruh workspace (maks `limit` file) — menangkap perubahan apa pun
+// termasuk bash/git (bukan cuma edit/write_file). Dipakai /undo per turn.
+async function walkFiles(root: string, rel: string, out: string[], limit: number): Promise<void> {
+  if (out.length >= limit) return;
+  const dir = rel ? join(root, rel) : root;
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const e of entries) {
+    if (out.length >= limit) break;
+    if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue;
+    const r = rel ? `${rel}/${e.name}` : e.name;
+    if (e.isDirectory()) await walkFiles(root, r, out, limit);
+    else out.push(r);
+  }
+}
+
+export async function snapshotWorkspace(cwd: string = process.cwd(), limit = 200): Promise<FileSnapshot[]> {
+  const files: string[] = [];
+  await walkFiles(cwd, "", files, limit);
+  const snaps: FileSnapshot[] = [];
+  for (const f of files) {
+    snaps.push(await captureFileSnapshot(resolve(cwd, f), cwd));
+  }
+  return snaps;
 }
 
 export async function recordCheckpoint(

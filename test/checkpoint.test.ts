@@ -1,5 +1,5 @@
 import { expect, test, beforeEach, afterEach } from "bun:test";
-import { recordCheckpoint, recordCheckpointFromSnapshots, captureFileSnapshot, undoLastCheckpoint, redoLastCheckpoint } from "../src/session/checkpoint.ts";
+import { recordCheckpoint, recordCheckpointFromSnapshots, captureFileSnapshot, snapshotWorkspace, undoLastCheckpoint, redoLastCheckpoint } from "../src/session/checkpoint.ts";
 import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
@@ -76,4 +76,14 @@ test("checkpoint: undo skips paths outside workspace (jail)", async () => {
   expect(res.restoredFiles.some((f) => f.includes("skipped"))).toBe(true);
   expect(await readFile(outside, "utf8")).toBe("sensitive"); // tidak tertimpa
   await rm(outside, { force: true }).catch(() => {});
+});
+
+test("checkpoint: snapshotWorkspace captures files (bash/git mutations undoable)", async () => {
+  await writeFile(join(testDir, "a.ts"), "export const a = 1;\n", "utf8");
+  await mkdir(join(testDir, ".minicode"), { recursive: true });
+  await writeFile(join(testDir, ".minicode", "ignore-me.txt"), "ignored", "utf8");
+  const snaps = await snapshotWorkspace(testDir, 200);
+  expect(snaps.some((s) => s.path === "a.ts")).toBe(true);
+  // .minicode (dot dir) dilewati
+  expect(snaps.some((s) => s.path.includes("ignore-me"))).toBe(false);
 });
