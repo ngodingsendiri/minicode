@@ -1,11 +1,14 @@
 import type { ModelProvider, StreamRequest, ProviderEvent } from "../../../minicore/src/core/provider.ts";
 import { ProviderError } from "../../../minicore/src/core/errors.ts";
+import type { RateLimiter } from "../policy/ratelimit.ts";
 
 export interface RouterConfig {
   providers: ModelProvider[];
   defaultProviderId?: string;
   // P2 cap
   maxRetryAfterMs?: number; // default 30_000
+  // Token bucket rate limiter (opsional) — cegah request beruntun kena 429
+  limiter?: RateLimiter;
 }
 
 // C4 fix: convert Uint8Array tool content to base64 before provider sees it
@@ -18,6 +21,15 @@ function fixRequest(req: StreamRequest): StreamRequest {
     return m;
   });
   return { ...req, messages };
+}
+
+// Fallback provider mungkin tidak mendukung nama model request asli (mis. gpt-4o
+// dipakai ke Anthropic). Substitusi ke model default provider agar tidak 400.
+function requestFor(current: ModelProvider, fixed: StreamRequest): StreamRequest {
+  if (fixed.model && !current.models.includes(fixed.model) && current.models[0]) {
+    return { ...fixed, model: current.models[0] };
+  }
+  return fixed;
 }
 
 export function createRouterProvider(config: RouterConfig): ModelProvider {
@@ -44,7 +56,9 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       while (current) {
         tried.add(current.id);
         try {
-          for await (const ev of current.stream(fixed, signal)) {
+          // rate limit: tunggu token bucket sebelum tiap request
+          if (config.limiter) await config.limiter.acquire();
+          for await (const ev of current.stream(requestFor(current, fixed), signal)) {
             yield ev;
           }
           return;

@@ -13,7 +13,9 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "bun x tsc --noEmit",
-    "dev": "bun cli/index.ts"
+    "dev": "bun cli/index.ts",
+    "bench": "bun bench/runner.ts",
+    "bench:smoke": "bun bench/runner.ts --fake"
   },
   "dependencies": {
     "ink": "^7.1.1",

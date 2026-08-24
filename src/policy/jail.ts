@@ -2,7 +2,8 @@ import { resolve, relative, isAbsolute, sep } from "node:path";
 
 // Satu sumber untuk aturan sandbox path — dipakai permission layer + setiap tool
 // (defense-in-depth). File .env / .git/config / node_modules dianggap sensitif.
-export const SENSITIVE_RE = /(^|[\/\\])\.env(\.|$|[\/\\])|\.git[\/\\]config|node_modules/;
+// v0.2.0: tambah .ssh, .aws, .npmrc, .netrc, .git/credentials, private keys, .kube.
+export const SENSITIVE_RE = /(?:^|[\/\\])(?:\.env(?:\.|$|[\/\\])|\.git[\/\\](?:config|credentials)|\.ssh[\/\\]|\.aws[\/\\]|\.npmrc(?:\.|$|[\/\\])|\.netrc(?:\.|$|[\/\\])|\.kube[\/\\]|id_(?:rsa|ecdsa|ed25519|dsa)(?:\.(?:pub|ppk))?$)|node_modules|\.(?:pem|key|p12)$/i;
 
 export function isSensitive(p: string): boolean {
   return SENSITIVE_RE.test(p);

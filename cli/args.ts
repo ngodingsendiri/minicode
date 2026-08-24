@@ -1,7 +1,7 @@
 // Pure arg-parsing helpers — dipisah dari cli/index.ts agar mudah diuji.
 const BOOLEAN_FLAGS = new Set(["--verbose", "--allow-all", "--ask", "--interactive", "--tui"]);
-const VALUE_FLAGS = new Set(["--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout"]);
-const KNOWN_FLAGS = new Set(["-h", "--help", "--verbose", "--allow-all", "--ask", "--interactive", "--tui", "--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout"]);
+const VALUE_FLAGS = new Set(["--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout", "--sandbox", "--ratelimit"]);
+const KNOWN_FLAGS = new Set(["-h", "--help", "--verbose", "--allow-all", "--ask", "--interactive", "--tui", "--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout", "--verify", "--sandbox", "--ratelimit"]);
 
 export function getArg(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);
@@ -17,6 +17,8 @@ export function promptFromArgs(argv: string[]): string {
   const maxStepsIdx = idx("--max-steps");
   const ctxWindowIdx = idx("--context-window");
   const timeoutIdx = idx("--timeout");
+  const sandboxIdx = idx("--sandbox");
+  const ratelimitIdx = idx("--ratelimit");
   // only filter known flags, not prompt words like "-123"
   return argv
     .filter((a, i) => {
@@ -29,6 +31,8 @@ export function promptFromArgs(argv: string[]): string {
       if (maxStepsIdx !== -1 && i === maxStepsIdx + 1) return false;
       if (ctxWindowIdx !== -1 && i === ctxWindowIdx + 1) return false;
       if (timeoutIdx !== -1 && i === timeoutIdx + 1) return false;
+      if (sandboxIdx !== -1 && i === sandboxIdx + 1) return false;
+      if (ratelimitIdx !== -1 && i === ratelimitIdx + 1) return false;
       if (KNOWN_FLAGS.has(a)) return false;
       if (a.startsWith("-") && KNOWN_FLAGS.has(a.split("=")[0]!)) return false;
       return true;

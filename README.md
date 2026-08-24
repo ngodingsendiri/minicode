@@ -1,10 +1,10 @@
-﻿# Minicode
+# Minicode
 
 Coding agent built on **MiniCore** (`../minicore` v0.1.0, 152 tests — seam additif `compactAsync` terbuka).
 
-**v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, jail terpusat), compaction LLM async ter-wire di kernel, persistence incremental, CLI dipecah & testable, providers build dedup, 71 test.
+**v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, secret scrubber, jail terpusat), TUI & Terminal UX (visual diff cards, tab completion, persistent history, masked wizard, spinner, markdown code fence), **prompt caching Anthropic**, **fuzzy edit** + **apply_patch** (search/replace), **shadow checkpoint `/undo` `/redo`**, **repo-map** (simbol per file), **auto-verify `--verify`** (self-heal), **resume sejati** (full history ke kernel), **rate limiter** + **Docker sandbox**, telemetry JSON, compaction LLM async, persistence incremental, 128 test + bench harness.
 
-MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 20 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite.
+MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 21 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
 ## Hubungan
 ```
@@ -13,16 +13,16 @@ minicore (zero-dep, 16 modul — inti di-freeze; hanya seam additif `compactAsyn
 minicode (coding-agent, depends file:../minicore)
   ├─ src/tools/     → 20 Tool (fs/bash/git/memory/task/mcp/lsp) + symlink jail defense-in-depth
   ├─ src/agents/    → Pool concurrency 3 (sub-agent isolasi, abort-aware)
-  ├─ src/hooks/     → allowlist merge global+local atomic chmod600 + promptAsk [y/n/a]
+  ├─ src/hooks/     → allowlist merge global+local atomic chmod600 + promptAsk card [y/n/a]
   ├─ src/policy/    → permission auto|ask|readonly|allow-all, executor order-preserving 8/2,
   │                   compaction mechanical sync + LLM async (compactAsync seam kernel, fallback aman)
   ├─ src/providers/ → openai-compat + anthropic + router fallback rate_limit/server/network
   ├─ src/mcp/       → client/server/transport stdio (backpressure, circular-safe)
   ├─ src/lsp/       → client diagnostics/definition/references/hover/symbols (didClose cleanup)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
-  ├─ src/tui/       → renderer ANSI + ink.tsx (--tui, text cap 20k)
+  ├─ src/tui/       → theme ANSI, highlight, diff visualizer, spinner, table & Ink TUI v2
   ├─ docs/          → ARCHITECTURE.md
-  └─ cli/           → tri-mode headless/interactive/TUI (--timeout flag)
+  └─ cli/           → REPL (tab completion, multiline, history, slash commands), wizard, subcommands
 ```
 
 ## Quickstart
@@ -36,18 +36,21 @@ minicode                # mode chat interaktif + wizard setup pertama kali
 minicode "buat http server" --verbose   # sekali jalan
 ```
 
-Wizard pertama cuma minta Base URL (Enter = OpenRouter) + API Key, auto-detect models, tersimpan selamanya.
+Wizard pertama menyajikan preset penyedia LLM (OpenRouter, OpenAI, Anthropic, DeepSeek, Ollama, Custom), input API Key ter-masking (`••••`), dan auto-detect models.
 
 ```bash
-minicode --tui "refactor src/utils"     # Ink TUI
-minicode --ask "deploy script"          # human-in-loop y/n/a
-minicode --timeout 300000 "task panjang"
+minicode --tui "refactor src/utils"     # Ink TUI Dashboard (split-view & token gauge)
+minicode --ask "deploy script"          # human-in-loop confirmation card
+minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah run
+minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral
+minicode --ratelimit 30 "task"          # batasi request LLM (rpm)
 minicode "/review src/a.ts"             # skill slash-command
-bun test                                # 71 tests
+bun test                                # 128 tests
+bun run bench:smoke                     # benchmark smoke (tanpa API key)
 ```
 
-## Tools (20)
-FS `read_file`(2MB+realpath jail) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic) · search `glob`({a,b}, cwd jail) `grep`(include filter, null-byte skip, cwd jail) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, **env kredensial di-strip**) · git `git_status/diff/log`(timeout 8s paralel) · memory `read/write/forget_memory` (hybrid RAG WAL) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols`(\b word-boundary)
+## Tools (21)
+FS `read_file`(2MB+realpath jail, **secret-scrubbed**) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, **env kredensial di-strip**, **Docker sandbox optional**) · git `git_status/diff/log`(timeout 8s paralel) · memory `read/write/forget_memory` (hybrid RAG WAL) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols`(\b word-boundary)
 
 ## Providers (hybrid x-api-key + Bearer)
 OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM/DeepSeek), Anthropic streaming tool_use cap 30s max_tokens configurable, Router fallback rate_limit/server/network clone-error + C4 base64 fix + P2 retryAfter cap. Detect `GET /models` timeout 4s. Config global+local merge (local prioritas) atomic write + chmod 600. Build provider terpusat di `src/providers/build.ts`.
@@ -63,6 +66,13 @@ config.json/allowlist.json → atomic tmp+rename + chmod 600 · MCP serve curate
 
 ## Skills
 `.minicode/skills/**/*.md` (recursive) frontmatter `name/description` + body `{{args}}` atau `$ARGUMENTS`. Nama auto-slug (`My Skill`→`my-skill`). `minicode skills list/show`, prompt `/name args`.
+
+## Verification & Benchmark
+- **Auto-verify** (`--verify`): deteksi command (`typecheck` → `test` → `tsconfig`) atau `MINICODE_VERIFY_CMD`; loop self-heal maks 3 siklus.
+- **Repo-map**: simbol per file (TS/Py/Go/Rust/Java/C) di-cache `.minicode/repomap.json`, disuntik ke system prompt.
+- **Secret scrubber**: `sk-`, `ghp_`, `AKIA`, PEM, JWT, Bearer, `api_key=...` di-redact sebelum sampai ke LLM (read_file/bash/grep).
+- **Telemetry**: `.minicode/traces.jsonl` — satu baris JSON per run (tokens, steps, cost, durasi).
+- **Benchmark**: `bun run bench` (butuh provider) / `bun run bench:smoke` (fake, untuk CI) → `bench/results.json` (resolve rate, steps, token, cost).
 
 ## Aturan
 - Jangan mengubah perilaku `../minicore/src/core/*` — satu-satunya pengecualian: seam **additif & backward-compatible** (mis. field opsional `compactAsync`) yang dibuka dari layer agencode. Kalau butuh primitive baru, buktikan dulu tidak bisa sebagai Tool/Provider/Policy.

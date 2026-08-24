@@ -2,6 +2,7 @@ import type { Tool } from "minicore";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { isPathOutsideRoot } from "../policy/jail.ts";
+import { scrubSecrets } from "../policy/scrub.ts";
 
 async function walkGrep(
   dir: string,
@@ -33,7 +34,7 @@ async function walkGrep(
       for (let i = 0; i < lines.length; i++) {
         re.lastIndex = 0;
         if (re.test(lines[i]!)) {
-          out.push(`${rel}:${i + 1}: ${lines[i]!.slice(0, 300)}`);
+          out.push(`${rel}:${i + 1}: ${scrubSecrets(lines[i]!.slice(0, 300))}`);
           if (out.length >= limit) break;
         }
       }

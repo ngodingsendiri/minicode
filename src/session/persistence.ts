@@ -22,11 +22,11 @@ function open(cwd?: string): Database {
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA synchronous=NORMAL;`);
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, created_at INTEGER, cwd TEXT, system TEXT);
-    CREATE TABLE IF NOT EXISTS messages (session_id TEXT, seq INTEGER, role TEXT, content TEXT, toolCalls TEXT, ts INTEGER, PRIMARY KEY(session_id, seq));
+    CREATE TABLE IF NOT EXISTS messages (session_id TEXT, seq INTEGER, role TEXT, content TEXT, toolCalls TEXT, toolCallId TEXT, name TEXT, ts INTEGER, PRIMARY KEY(session_id, seq));
     CREATE TABLE IF NOT EXISTS turns (session_id TEXT, turn_idx INTEGER, usage TEXT, ts INTEGER, PRIMARY KEY(session_id, turn_idx));
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
   `);
-  // migration: add updated_at column if missing (for old DBs)
+  // migration: add updated_at, toolCallId, name jika kolom lama (backward-compat)
   try {
     const cols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[];
     if (!cols.some((c) => c.name === "updated_at")) {
@@ -34,6 +34,13 @@ function open(cwd?: string): Database {
       db.exec("UPDATE sessions SET updated_at = created_at WHERE updated_at IS NULL");
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)`);
+  } catch {}
+  try {
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+    if (!msgCols.some((c) => c.name === "toolCallId")) {
+      db.exec("ALTER TABLE messages ADD COLUMN toolCallId TEXT");
+      db.exec("ALTER TABLE messages ADD COLUMN name TEXT");
+    }
   } catch {}
   return db;
 }
@@ -64,21 +71,21 @@ export function saveSession(id: string, cwd: string | undefined, system: string 
     const existing = db.prepare("SELECT created_at, updated_at FROM sessions WHERE id = ?").get(id) as { created_at: number; updated_at: number | null } | null;
     const createdAt = existing?.created_at ?? now;
     db.prepare("INSERT OR REPLACE INTO sessions (id, created_at, updated_at, cwd, system) VALUES (?, ?, ?, ?, ?)").run(id, createdAt, now, cwd ?? "", system ?? "");
-    const ins = db.prepare("INSERT INTO messages (session_id, seq, role, content, toolCalls, ts) VALUES (?, ?, ?, ?, ?, ?)");
+    const ins = db.prepare("INSERT INTO messages (session_id, seq, role, content, toolCalls, toolCallId, name, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     const known = (db.prepare("SELECT COUNT(*) as c FROM messages WHERE session_id = ?").get(id) as { c: number } | null)?.c ?? 0;
     if (messages.length >= known) {
       // incremental append-only: cukup insert pesan baru (umumnya 1 turn)
       for (let i = known; i < messages.length; i++) {
-        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown };
-        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), now);
+        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown; toolCallId?: string; name?: string };
+        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), m.toolCallId ?? null, m.name ?? null, now);
       }
     } else {
       // history menyusut (compaction/reset) → tulis ulang penuh agar tidak ada
       // pesan basi yang tertinggal untuk resume
       db.prepare("DELETE FROM messages WHERE session_id = ?").run(id);
       for (let i = 0; i < messages.length; i++) {
-        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown };
-        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), now);
+        const m = messages[i] as { role: string; content: unknown; toolCalls?: unknown; toolCallId?: string; name?: string };
+        ins.run(id, i, m.role, safeContent(m.content), safeContent(m.toolCalls ?? null), m.toolCallId ?? null, m.name ?? null, now);
       }
     }
     if (usage) {
@@ -109,11 +116,13 @@ export function loadSession(id: string, cwd?: string): { messages: unknown[]; sy
     db.close();
     return null;
   }
-  const rows = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY seq").all(id) as { role: string; content: string; toolCalls: string }[];
+  const rows = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY seq").all(id) as { role: string; content: string; toolCalls: string; toolCallId: string | null; name: string | null }[];
   const messages = rows.map((r) => ({
     role: r.role,
     content: parseContent(r.content),
     ...(r.toolCalls && r.toolCalls !== "null" ? { toolCalls: parseContent(r.toolCalls) } : {}),
+    ...(r.toolCallId ? { toolCallId: r.toolCallId } : {}),
+    ...(r.name ? { name: r.name } : {}),
   }));
   db.close();
   return { messages, system: sess.system, cwd: sess.cwd };

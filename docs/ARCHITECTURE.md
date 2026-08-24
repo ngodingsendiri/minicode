@@ -2,8 +2,8 @@
 
 > Coding agent minimal di atas kernel beku MiniCore. Ramping, clean, profesional — tidak menambah primitive, hanya layer agencode.
 
-**Versi:** 0.2.0 — hardening keamanan + compaction LLM ter-wire + persistence incremental (71 test).
-**Prinsip:** `minicore` inti di-freeze — satu-satunya patch yang diizinkan adalah seam **additif backward-compatible** (field opsional `compactAsync` di loop compaction). Semua perbaikan lain sebagai Tool / Policy / Provider di sini.
+**Versi:** 0.2.0 — agencode produksi: verifier/self-heal, repo-map, secret scrubber, rate limiter, Docker sandbox, apply_patch, resume sejati, telemetry (128 test + bench).
+**Prinsip:** `minicore` inti di-freeze — satu-satunya patch yang diizinkan adalah seam **additif backward-compatible** (mis. field opsional `compactAsync` & `initialMessages` di kernel). Semua perbaikan lain sebagai Tool / Policy / Provider di sini.
 
 ## Peta Pohon Komponen
 
@@ -35,34 +35,44 @@ minicode/
 ├── src/tools/ — 20 tools
 │   ├── read_file.ts   2MB cap, jail + SENSITIVE_RE defense-in-depth
 │   ├── write_file.ts  mkdir -p, jail + sensitive block
-│   ├── edit.ts        exact oldString unique, jail
-│   ├── glob.ts / grep.ts  walk ignore .git/node_modules, limit 500, grep include→RegExp
-│   ├── bash.ts        30s timeout, SIGTERM→SIGKILL(2s), abort-aware
+│   ├── edit.ts        fuzzy 4-level (exact/CRLF/trimmed/indent), jail
+│   ├── patch.ts       apply_patch SEARCH/REPLACE multi-hunk (a la Aider), fuzzy match
+│   ├── glob.ts / grep.ts  walk ignore .git/node_modules, limit 500, grep include→RegExp, scrub line
+│   ├── bash.ts        30s timeout, SIGTERM→SIGKILL(2s), abort-aware, env-strip, Docker sandbox opsional
 │   ├── git.ts         git_status/diff/log (spawn + signal, abort)
 │   ├── memory.ts      read/write/forget → MEMORY.md(append atomic 200k guard) + vector hybrid cwd-aware + forget tx
-│   ├── task.ts        delegate_task (explore=5/plan=15, clamp 1..50, Pool(3), filter memory, error→result)
+│   ├── task.ts        delegate_task (explore=5/plan=15, clamp 1..50, Pool(3), filter memory, error→result, forward execution:started)
 │   ├── mcp_call.ts    mcp_list / mcp_call + dynamic server.tool
 │   └── lsp.ts         lsp_diagnostics/definition/references/hover/symbols (\b)
 │
 ├── src/providers/
-│   ├── anthropic.ts   SSE streaming, pendingTools per-stream, 429→30s, context map, max_tokens configurable, DOMException abort, usage message_delta
+│   ├── anthropic.ts   SSE streaming, pendingTools per-stream, 429→30s, prompt caching ephemeral, cache token usage, baseUrl /v1 normalize, tool_result group
 │   ├── detect.ts      GET /models hybrid Bearer + x-api-key, timeout 4s/5s per fetch
 │   ├── build.ts       buildProviderList(cfg) — satu sumber bangun provider (hybrid), dipakai CLI+sub-agent
-│   └── router.ts      route by model (last wins local), fallback rate_limit/server/network clone retryAfter, C4 Uint8Array→base64
+│   └── router.ts      route by model, fallback + substitusi model target, rate limiter, C4 base64 fix
 │
 ├── src/policy/
-│   ├── jail.ts        isPathOutsideRoot + isSensitive — satu sumber jail, dipakai permission + semua tool
-│   ├── permission.ts  READONLY+=mcp_list+lsp_*, denylist 27 regex, GATED delegate_task/mcp_call (TTY prompt / non-TTY deny), wildcard MCP ditutup, cwd jail
-│   ├── context.ts     buildSystemPrompt async static import + MAX 8000 chars + cwd jail + estimator helper
-│   ├── compaction.ts  mechanical sync default + LLM async via compactWithLlm (seam kernel compactAsync, fallback otomatis; dedup getKeptCount + head 400 + abort-aware)
-│   ├── executor.ts    order-preserving 8 / write 2 semaphore + abortError, WRITE_TOOLS+=write_memory
-│   └── usage.ts       cost pricing sorted + deepseek-chat/reasoner (fix gpt-4o vs gpt-4o-mini) + cost dihitung saat get()
+│   ├── jail.ts        isPathOutsideRoot + isSensitive (SSH/AWS/npmrc/key/pem) — dipakai semua tool
+│   ├── permission.ts  READONLY+=mcp_list+lsp_*, denylist 27 regex, GATED delegate_task/mcp_call, wildcard MCP ditutup, cwd jail
+│   ├── context.ts     buildSystemPrompt + repo-map (loadRepoMap) + MAX 8000 chars
+│   ├── compaction.ts  mechanical sync default + LLM async via compactWithLlm (seam kernel compactAsync)
+│   ├── verifier.ts    runVerify + detectVerifyCommand + runWithSelfHeal (3 siklus) + appendLspDiagnostics
+│   ├── scrub.ts       secret scrubber (sk-/ghp_/AKIA/PEM/JWT/Bearer/api_key) — read_file/bash/grep
+│   ├── ratelimit.ts   token bucket rate limiter (dipakai router)
+│   ├── executor.ts    order-preserving 8 / write 2 semaphore + abortError
+│   └── usage.ts       cost pricing + cache read/write tokens
+│
+├── src/repo/repomap.ts — extractSymbols (TS/Py/Go/Rust/Java/C), buildRepoMap, cache .minicode/repomap.json
+├── src/sandbox/docker.ts — runInDocker ephemeral (--network none, mem/CPU cap), path mount Windows
+├── src/telemetry/trace.ts — .minicode/traces.jsonl (JSON per run)
 │
 ├── src/memory/
 │   ├── files.ts       MEMORY.md global+local, appendFile atomic + 200k guard
-│   └── vector.ts      vector.db WAL+b busy_timeout, toBlob align-safe, LIMIT 500, embed timeout 3.5s, deleteMemoryByQuery tx, localDir-aware
+│   └── vector.ts      vector.db WAL+b busy_timeout, toBlob align-safe, LIMIT 500, embed timeout 3.5s, deleteMemoryByQuery SQL instr, localDir-aware
 │
-├── src/session/persistence.ts — sessions.db WAL+b busy_timeout, sessions(updated_at) + idx, save transaction + list ORDER BY updated_at; persistence incremental append-only + placeholder binary
+├── src/session/
+│   ├── persistence.ts sessions.db WAL+b, persistence incremental, placeholder binary, toolCallId/name (resume sejati)
+│   └── checkpoint.ts  pre+post snapshot per turn (undo/redo), jail path, cap 50
 │
 ├── src/mcp/
 │   ├── transport.ts   JSON-RPC newline stdio, pending+timeout, killSignal on close only, log JSON invalid
@@ -73,20 +83,21 @@ minicode/
 │   └── client.ts      Content-Length framing, initialize, didOpen/didChange versioned, diagnostics poll, findSymbolPosition \b word-boundary, start-once guard
 │
 ├── src/agents/pool.ts — semaphore 3, queue abort-aware
-├── src/hooks/index.ts — allowlist.json, matchAllowlist colon-aware, promptAsk y/n/a
+├── src/hooks/index.ts — allowlist.json, matchAllowlist colon-aware, promptAsk card y/n/a
 ├── src/skills/loader.ts — frontmatter quote-aware, render {{args}} single replace
 │
 ├── src/tui/
-│   ├── renderer.ts    ANSI (default)
-│   └── ink.tsx        Ink React (--tui) status/step/usage/compact
+│   ├── renderer.ts    ANSI (default) + diff card + spinner + bash highlight
+│   ├── ink.tsx        Ink React (--tui) split-view + token gauge + markdown fence
+│   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI
 │
-├── test/ bun:test — 24 test
-│   ├── smoke.test.ts, tools.test.ts, providers.test.ts, hooks.test.ts, skills-hooks.test.ts, persistence-vector.test.ts
+├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI)
+├── test/ bun:test — 128 test
 │
-├── .minicode/ (gitignored) — sessions.db / vector.db / allowlist.json / skills/*.md
+├── .minicode/ (gitignored) — sessions.db / vector.db / allowlist.json / skills / checkpoints / repomap.json / traces.jsonl
 │
 └── ../minicore/ KERNEL BEKU
-    └── src/core/ STATE/MODEL/ACTION/LOOP + EventBus/ContextStore/budget/recovery/compaction — 148 test
+    └── src/core/ STATE/MODEL/ACTION/LOOP + EventBus/ContextStore/budget/recovery/compaction + seam compactAsync & initialMessages — 153 test
 ```
 
 ## Alur Data
@@ -145,12 +156,14 @@ PermissionHandler (denylist+SENSITIVE_RE+jail+cwd) → validateArgs (kernel) →
 
 ## Test Suite
 
-71 test (`bun test` — 71 di minicode + 152 di minicore): busy/abort/timeout/max_steps session, corrupt persistence + incremental + binary placeholder, invalid config, router all-fail/clone, deny-bypass 23 varian + allow-controls + auto-gate delegate/mcp + wildcard MCP, tool-pairing invariant, executor order+cap, symlink escape, glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize, vector roundtrip, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cost, EventBus crash-isolation/detach, retry-then-throw, cli-args parsing, compactAsync seam kernel (prefer + fallback).
+128 test (`bun test` — 128 di minicode + 153 di minicore): busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name), invalid config, router all-fail/clone + model substitution + rate limiter, deny-bypass 23 varian + auto-gate delegate/mcp + sensitive path + wildcard MCP, executor order+cap + abort-no-leak, symlink escape, glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme.
 
 ## Known Limitations
 
 1. Butuh `bun` (`bun install && bun test`). Symlink test skip di Windows tanpa privilege.
 2. MCP server v1 hanya `tools` (belum `resources/prompts`).
 3. `vector.db` `LIMIT 500` — paging belum untuk memory >5k.
-4. Bash security = regex denylist (sudah +env-sanitize + interpreter block) — tetap bukan sandbox penuh. v0.3: allowlist command / sandbox OS-level.
-5. CLI dipecah sebagian (`cli/args.ts` sudah ada test); subcommand & REPL masih via integration.
+4. Bash security = regex denylist + env-sanitize + secret scrubber + **Docker sandbox opsional** (`--sandbox docker`) — sandbox default masih berbasis regex; pada Windows Docker butuh Docker Desktop + pull image.
+5. Repo-map berbasis regex (bukan AST penuh) — akurat untuk simbol level-dasar; LSP `workspace/symbol` sebagai peningkatan berikutnya.
+6. Resume sejati sudah ada (initialMessages); snapshot/kompaksi tetap via kernel.
+7. Benchmark `bench/runner.ts` butuh provider ber-API-key untuk hasil nyata (`--fake` hanya smoke).

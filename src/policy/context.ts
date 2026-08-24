@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import type { TokenEstimator } from "minicore";
 import { DEFAULT_CHARS_PER_TOKEN } from "../../../minicore/src/core/tokens.ts";
 import { loadMemoryFiles } from "../memory/files.ts";
-import { isPathOutsideRoot } from "./jail.ts";
+import { loadRepoMap } from "../repo/repomap.ts";
 
 const execAsync = promisify(exec);
 
@@ -35,14 +35,18 @@ export async function buildSystemPrompt(opts: { cwd?: string; extra?: string } =
       break;
     } catch {}
   }
-  // git ls-files — async, non-blocking, 2s timeout, jail cwd
-  if (!isPathOutsideRoot(cwd, process.cwd())) {
-    try {
+  // Repo-map compact (simbol per file) — cache di .minicode/repomap.json.
+  // Bila tidak ada source file, fallback ke daftar flat git ls-files.
+  try {
+    const repoMap = await loadRepoMap(cwd);
+    if (repoMap) {
+      parts.push(`\n# Repo map (symbols)\n${repoMap}`);
+    } else {
       const { stdout } = await execAsync("git ls-files", { cwd, timeout: 2000, encoding: "utf8" } as unknown as never);
-      const files = (stdout as unknown as string).trim().split("\n").slice(0, 80).join("\n");
+      const files = (stdout as unknown as string).trim().split("\n").slice(0, 60).join("\n");
       if (files) parts.push(`\n# Repo files (sample)\n${files}`);
-    } catch {}
-  }
+    }
+  } catch {}
   if (opts.extra) parts.push(opts.extra);
   const full = parts.join("\n\n");
   // single total budget — keep system prompt lean

@@ -1,6 +1,7 @@
 ﻿export { readFileTool } from "./read_file.ts";
 export { writeFileTool } from "./write_file.ts";
 export { editTool } from "./edit.ts";
+export { applyPatchTool } from "./patch.ts";
 export { globTool } from "./glob.ts";
 export { grepTool } from "./grep.ts";
 export { bashTool } from "./bash.ts";
@@ -13,6 +14,7 @@ export { lspDiagnosticsTool, lspDefinitionTool, lspReferencesTool, lspHoverTool,
 import { readFileTool } from "./read_file.ts";
 import { writeFileTool } from "./write_file.ts";
 import { editTool } from "./edit.ts";
+import { applyPatchTool } from "./patch.ts";
 import { globTool } from "./glob.ts";
 import { grepTool } from "./grep.ts";
 import { bashTool } from "./bash.ts";
@@ -27,6 +29,7 @@ export const allTools: Tool[] = [
   readFileTool,
   writeFileTool,
   editTool,
+  applyPatchTool,
   globTool,
   grepTool,
   bashTool,

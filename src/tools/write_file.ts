@@ -2,6 +2,7 @@ import type { Tool } from "minicore";
 import { mkdir, writeFile, stat, rename, realpath } from "node:fs/promises";
 import { dirname, resolve, isAbsolute, basename } from "node:path";
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts";
+import { appendLspDiagnostics } from "../policy/verifier.ts";
 
 export const writeFileTool: Tool = {
   name: "write_file",
@@ -36,6 +37,7 @@ export const writeFileTool: Tool = {
     await writeFile(tmp, c, "utf8");
     await rename(tmp, realAbs);
     const st = await stat(realAbs).catch(() => null);
-    return `wrote ${realAbs} (${st?.size ?? c.length} bytes)`;
+    const base = `wrote ${realAbs} (${st?.size ?? c.length} bytes)`;
+    return await appendLspDiagnostics(realAbs, c, base);
   },
 };

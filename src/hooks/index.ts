@@ -2,6 +2,7 @@ import type { ToolCall } from "../../../minicore/src/core/types.ts";
 import { readFile, writeFile, mkdir, chmod, rename } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
+import { c, box } from "../tui/theme.ts";
 
 export interface Allowlist {
   allowed: string[]; // entries like "bash:echo hi" or "write_file:.tmp/*"
@@ -56,11 +57,29 @@ export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
 
 export async function promptAsk(call: ToolCall): Promise<"allow" | "deny" | "always"> {
   if (!process.stdin.isTTY) return "deny";
+
   const { createInterface } = await import("node:readline");
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  const q = `${call.name} ${JSON.stringify(call.args).slice(0, 120)} — allow? [y/n/a] `;
-  const ans: string = await new Promise((resolve) => rl.question(q, resolve));
+
+  const toolName = call.name;
+  const args = (call.args ?? {}) as Record<string, unknown>;
+
+  let actionSummary = "";
+  if (args.command) actionSummary = `Command: ${String(args.command).slice(0, 100)}`;
+  else if (args.path) actionSummary = `File: ${String(args.path)}`;
+  else if (args.query) actionSummary = `Query: ${String(args.query)}`;
+  else actionSummary = `Args: ${JSON.stringify(args).slice(0, 100)}`;
+
+  process.stdout.write(`\n${c.yellow(box.topLeft + box.horizontal.repeat(4))} ${c.bold("Action Confirmation Required")} ${c.yellow(box.horizontal.repeat(28))}\n`);
+  process.stdout.write(`${c.yellow(box.vertical)} Tool:   ${c.bold(c.cyan(toolName))}\n`);
+  process.stdout.write(`${c.yellow(box.vertical)} ${actionSummary}\n`);
+  process.stdout.write(`${c.yellow(box.tRight + box.horizontal.repeat(58))}\n`);
+
+  const promptText = `${c.yellow(box.vertical)} ${c.bold("[y]")} Allow once  ${c.bold("[a]")} Always for session  ${c.bold("[n]")} Deny: `;
+  const ans: string = await new Promise((resolve) => rl.question(promptText, resolve));
   rl.close();
+  process.stdout.write(`${c.yellow(box.bottomLeft + box.horizontal.repeat(58))}\n\n`);
+
   const a = ans.trim().toLowerCase();
   if (a === "a" || a === "always") return "always";
   if (a === "y" || a === "yes") return "allow";

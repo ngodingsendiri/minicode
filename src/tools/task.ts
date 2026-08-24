@@ -66,11 +66,16 @@ export const delegateTaskTool: Tool = {
       });
 
       // forward sub-agent observability to parent (usage + progress) so cost tracking
-      // and TUI include sub-agent; text/history stay isolated
+      // dan TUI/checkpoint ikut; text/history tetap terisolasi
       const offUsage = session.events.on("provider:extension", (e) => {
         try { ctx.emit(e); } catch {}
       });
       const offExec = session.events.on("execution:completed", (e) => {
+        try { ctx.emit(e); } catch {}
+      });
+      // forward execution:started juga → parent bisa capture pre-edit state untuk
+      // /undo atas perubahan file yang dilakukan sub-agent
+      const offExecStarted = session.events.on("execution:started", (e) => {
         try { ctx.emit(e); } catch {}
       });
 
@@ -83,6 +88,7 @@ export const delegateTaskTool: Tool = {
       } finally {
         offUsage();
         offExec();
+        offExecStarted();
       }
     }, ctx.signal);
   },

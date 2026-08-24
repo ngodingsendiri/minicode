@@ -1,0 +1,187 @@
+import { readFile, writeFile, mkdir, rm } from "node:fs/promises";
+import { join, resolve, relative, dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { isPathOutsideRoot } from "../policy/jail.ts";
+
+const MAX_CHECKPOINTS = 50;
+
+export interface FileSnapshot {
+  path: string; // relative path
+  content: string | null; // null means file was deleted/didn't exist
+}
+
+export interface Checkpoint {
+  id: string;
+  turn: number;
+  timestamp: string;
+  description: string;
+  snapshots: FileSnapshot[]; // pre-edit state (untuk /undo)
+  redoSnapshots?: FileSnapshot[]; // post-edit state (untuk /redo)
+}
+
+export interface CheckpointManifest {
+  sessionId: string;
+  currentIndex: number; // pointer in history
+  checkpoints: Checkpoint[];
+}
+
+function getCheckpointDir(sessionId: string, cwd: string = process.cwd()): string {
+  return resolve(cwd, ".minicode", "checkpoints", sessionId);
+}
+
+function getManifestPath(sessionId: string, cwd: string = process.cwd()): string {
+  return join(getCheckpointDir(sessionId, cwd), "manifest.json");
+}
+
+export async function loadCheckpointManifest(sessionId: string, cwd?: string): Promise<CheckpointManifest> {
+  const path = getManifestPath(sessionId, cwd);
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw) as CheckpointManifest;
+  } catch {
+    return { sessionId, currentIndex: -1, checkpoints: [] };
+  }
+}
+
+export async function saveCheckpointManifest(manifest: CheckpointManifest, cwd?: string): Promise<void> {
+  const dir = getCheckpointDir(manifest.sessionId, cwd);
+  await mkdir(dir, { recursive: true }).catch(() => {});
+  const path = getManifestPath(manifest.sessionId, cwd);
+  const tmp = `${path}.tmp.${process.pid}`;
+  await writeFile(tmp, JSON.stringify(manifest, null, 2), "utf8");
+  const { rename } = await import("node:fs/promises");
+  await rename(tmp, path);
+}
+
+export async function captureFileSnapshot(filePath: string, cwd: string = process.cwd()): Promise<FileSnapshot> {
+  const rel = relative(cwd, filePath).replace(/\\/g, "/");
+  const abs = resolve(cwd, filePath);
+  try {
+    const content = await readFile(abs, "utf8");
+    return { path: rel, content };
+  } catch {
+    return { path: rel, content: null };
+  }
+}
+
+export async function recordCheckpoint(
+  sessionId: string,
+  turn: number,
+  filePaths: string[],
+  description: string = "",
+  cwd: string = process.cwd()
+): Promise<Checkpoint> {
+  const snapshots: FileSnapshot[] = [];
+  for (const fp of filePaths) {
+    snapshots.push(await captureFileSnapshot(fp, cwd));
+  }
+  const cp = await recordCheckpointFromSnapshots(sessionId, turn, snapshots, description, cwd);
+  if (!cp) throw new Error("no files to checkpoint");
+  return cp;
+}
+
+// Rekam checkpoint dari snapshot yang SUDAH ditangkap. `snapshots` = pre-edit
+// (untuk /undo); `redoSnapshots` opsional = post-edit (untuk /redo).
+export async function recordCheckpointFromSnapshots(
+  sessionId: string,
+  turn: number,
+  snapshots: FileSnapshot[],
+  description: string = "",
+  cwd: string = process.cwd(),
+  redoSnapshots?: FileSnapshot[]
+): Promise<Checkpoint | null> {
+  if (snapshots.length === 0) return null;
+  const manifest = await loadCheckpointManifest(sessionId, cwd);
+  const cp: Checkpoint = {
+    id: `cp_${Date.now()}_${manifest.checkpoints.length + 1}`,
+    turn,
+    timestamp: new Date().toISOString(),
+    description,
+    snapshots,
+    ...(redoSnapshots?.length ? { redoSnapshots } : {}),
+  };
+
+  // Truncate any redo branches if new action is taken
+  if (manifest.currentIndex < manifest.checkpoints.length - 1) {
+    manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1);
+  }
+
+  manifest.checkpoints.push(cp);
+  // Cap manifest agar tidak membengkak tanpa batas (keep N terakhir)
+  if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
+    manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS);
+  }
+  manifest.currentIndex = manifest.checkpoints.length - 1;
+
+  await saveCheckpointManifest(manifest, cwd);
+  return cp;
+}
+
+// Terapkan snapshot dengan jail path: path di luar workspace dilewati.
+async function applySnapshots(snapshots: FileSnapshot[], cwd: string): Promise<string[]> {
+  const root = resolve(cwd);
+  const applied: string[] = [];
+  for (const snap of snapshots) {
+    const absPath = resolve(root, snap.path);
+    if (isPathOutsideRoot(absPath, root)) {
+      applied.push(`${snap.path} (skipped: outside workspace)`);
+      continue;
+    }
+    if (snap.content === null) {
+      if (existsSync(absPath)) {
+        await rm(absPath, { force: true }).catch(() => {});
+        applied.push(`${snap.path} (removed)`);
+      }
+    } else {
+      await mkdir(dirname(absPath), { recursive: true }).catch(() => {});
+      await writeFile(absPath, snap.content, "utf8");
+      applied.push(`${snap.path} (restored)`);
+    }
+  }
+  return applied;
+}
+
+export async function undoLastCheckpoint(
+  sessionId: string,
+  cwd: string = process.cwd()
+): Promise<{ success: boolean; restoredFiles: string[]; message: string }> {
+  const manifest = await loadCheckpointManifest(sessionId, cwd);
+  if (manifest.currentIndex < 0 || manifest.checkpoints.length === 0) {
+    return { success: false, restoredFiles: [], message: "no checkpoints to undo" };
+  }
+
+  const targetCp = manifest.checkpoints[manifest.currentIndex]!;
+  const restoredFiles = await applySnapshots(targetCp.snapshots, cwd);
+
+  manifest.currentIndex -= 1;
+  await saveCheckpointManifest(manifest, cwd);
+
+  return {
+    success: true,
+    restoredFiles,
+    message: `undid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
+  };
+}
+
+export async function redoLastCheckpoint(
+  sessionId: string,
+  cwd: string = process.cwd()
+): Promise<{ success: boolean; reappliedFiles: string[]; message: string }> {
+  const manifest = await loadCheckpointManifest(sessionId, cwd);
+  if (manifest.currentIndex >= manifest.checkpoints.length - 1) {
+    return { success: false, reappliedFiles: [], message: "no undone checkpoints to redo" };
+  }
+
+  manifest.currentIndex += 1;
+  const targetCp = manifest.checkpoints[manifest.currentIndex]!;
+  // redo memakai state post-edit bila tersedia; fallback ke pre-edit (backward compat)
+  const reappliedFiles = await applySnapshots(targetCp.redoSnapshots ?? targetCp.snapshots, cwd);
+
+  await saveCheckpointManifest(manifest, cwd);
+
+  return {
+    success: true,
+    reappliedFiles,
+    message: `redid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
+  };
+}

@@ -2,7 +2,7 @@
 // Deterministic, hermetic, fast. Uses tmp dirs + fakes only (no network).
 
 import { expect, test, afterAll } from "bun:test";
-import { mkdir, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdir, rm, writeFile, readFile, readdir, symlink } from "node:fs/promises";
 import { createSession } from "../../minicore/src/core/index.ts";
 import { createEventBus } from "../../minicore/src/core/index.ts";
 import { createToolRegistry } from "../../minicore/src/core/index.ts";
@@ -34,9 +34,14 @@ import { allowAll, text, finish, toolCall, echoTool, FakeProvider } from "../../
 const tmp = ".tmp-extreme";
 const ctx: any = { signal: new AbortController().signal };
 
-// bersihkan artifact test yang bocor ke repo root (dipakai banyak test di atas)
+// bersihkan semua artifact test yang bocor ke repo root (dipakai banyak test di atas)
 afterAll(async () => {
-  await rm(".tmp-extreme", { recursive: true, force: true }).catch(() => {});
+  const entries = await readdir(".").catch(() => [] as string[]);
+  for (const e of entries) {
+    if (e.startsWith(".tmp-extreme")) {
+      await rm(e, { recursive: true, force: true }).catch(() => {});
+    }
+  }
 });
 
 // ── 02 Session Core ──────────────────────────────────────────────────────────
@@ -223,6 +228,31 @@ test("08 executor caps write concurrency", async () => {
   expect(maxActive).toBe(2);
 });
 
+test("08 executor abort after acquireWrite releases semaphore (no leak)", async () => {
+  const tools = [
+    { name: "bash", description: "b", parameters: { type: "object" as const, properties: {}, additionalProperties: true }, 
+      async execute() { await new Promise((r) => setTimeout(r, 10)); return "ok"; } },
+  ] as any;
+  const registry = createToolRegistry(tools);
+  const bus = createEventBus();
+  const ac = new AbortController();
+  const exec = parallelExecutor({ concurrency: 8, writeConcurrency: 1 });
+  const deps = { registry, permissions: allowAll, events: bus, signal: ac.signal, state: { history: [], turnCount: 0, stepCount: 0 }, maxResultTokens: 4096 };
+  // Call 1 acquires write, Call 2 waits. Abort before Call 1 finishes.
+  setTimeout(() => ac.abort(), 2);
+  const calls = [
+    { id: "1", name: "bash", args: {} },
+    { id: "2", name: "bash", args: {} },
+  ];
+  // Run with 2 calls: first acquires, second waits. Abort fires → waiter resolves → second checks signal → releases + throws
+  await expect(exec.execute(calls, deps)).rejects.toThrow();
+  // Semaphore must be released — try another write call
+  const ac2 = new AbortController();
+  const deps2 = { ...deps, signal: ac2.signal };
+  await exec.execute([{ id: "3", name: "bash", args: {} }], deps2);
+  // If we reach here without hanging, semaphore is balanced
+});
+
 // ── 09 Filesystem ────────────────────────────────────────────────────────────
 test("09 write_file atomic + symlink escape blocked", async () => {
   await mkdir(`${tmp}/.minicode`, { recursive: true });
@@ -241,6 +271,16 @@ test("09 write_file atomic + symlink escape blocked", async () => {
   // edit multiple match
   await writeFile(`${tmp}/multi.txt`, "a a a");
   await expect(editTool.execute({ path: `${tmp}/multi.txt`, oldString: "a", newString: "b" }, ctx)).rejects.toThrow(/multiple times/);
+});
+
+test("09 edit tolerates CRLF vs LF line endings", async () => {
+  await writeFile(`${tmp}/crlf.txt`, "line1\r\nline2\r\nline3\r\n");
+  // needle pakai LF, file pakai CRLF → tetap harus ketemu
+  const out = await editTool.execute({ path: `${tmp}/crlf.txt`, oldString: "line1\nline2", newString: "A\nB" }, ctx);
+  expect(String(out)).toContain("edited");
+  const after = await readFile(`${tmp}/crlf.txt`, "utf8");
+  // hanya region yang diedit berubah; baris lain (CRLF) tetap utuh
+  expect(after).toBe("A\nB\r\nline3\r\n");
 });
 
 // ── 10 Search ────────────────────────────────────────────────────────────────
@@ -425,6 +465,26 @@ test("24 security denylist bypass variants", async () => {
   for (const cmd of allowed) {
     expect(await h.check({ id: "1", name: "bash", args: { cmd } } as any, {} as any), `should allow: ${cmd}`).toBe("allow");
   }
+});
+
+test("24 sensitive path deny extended (ssh/aws/npmrc/keys)", async () => {
+  const h = createPermissionHandler({ mode: "auto" });
+  const denied = [
+    `${tmp}/.ssh/id_rsa`,
+    `${tmp}/.aws/credentials`,
+    `${tmp}/.npmrc`,
+    `${tmp}/.netrc`,
+    `${tmp}/.git/credentials`,
+    `${tmp}/cert.pem`,
+    `${tmp}/secret.key`,
+    `${tmp}/secret.p12`,
+    `${tmp}/id_rsa`,
+    `${tmp}/.kube/config`,
+  ];
+  for (const p of denied) {
+    expect(await h.check({ id: "1", name: "read_file", args: { path: p } } as any, {} as any), `should deny: ${p}`).toBe("deny");
+  }
+  expect(await h.check({ id: "1", name: "read_file", args: { path: `${tmp}/src/normal.ts` } } as any, {} as any)).toBe("allow");
 });
 
 // ── 25 Failure / Recovery ────────────────────────────────────────────────────

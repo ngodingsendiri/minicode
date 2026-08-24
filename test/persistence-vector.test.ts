@@ -1,12 +1,19 @@
-import { expect, test } from "bun:test";
+import { expect, test, afterAll } from "bun:test";
 import { saveSession, loadSession, deleteSession } from "../src/session/persistence.ts";
-import { addMemory, searchHybrid } from "../src/memory/vector.ts";
+import { addMemory, searchHybrid, deleteMemoryByQuery } from "../src/memory/vector.ts";
 import { randomUUID } from "node:crypto";
-import { mkdir, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, rm, mkdtemp } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 
-const tmp = ".tmp-persist";
+// pakai OS temp dir — hermetic & tidak mengotori repo root (sqlite WAL bisa
+// meninggalkan file lock di Windows)
+const tmp = await mkdtemp(join(tmpdir(), "minicode-persist-"));
 const tmpDir = resolve(tmp, ".minicode");
+
+afterAll(async () => {
+  await rm(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
+});
 
 test("persistence roundtrip + delete", async () => {
   await mkdir(tmpDir, { recursive: true });
@@ -109,4 +116,47 @@ test("vector hybrid keyword fallback (no embedding key)", async () => {
   const db = new Database(join(homedir(), ".minicode", "vector.db"));
   db.prepare("DELETE FROM memory WHERE text LIKE ?").run(`%${marker}%`);
   db.close();
+});
+
+test("deleteMemoryByQuery SQL removes matching memories", async () => {
+  await mkdir(tmpDir, { recursive: true });
+  const marker = "del-vec-" + randomUUID().slice(0, 6);
+  await addMemory(`${marker} alpha`, { cwd: tmp });
+  await addMemory(`${marker} beta`, { cwd: tmp });
+  await addMemory("keep-this-note", { cwd: tmp });
+  const deleted = deleteMemoryByQuery(marker, tmp);
+  expect(deleted).toBe(2);
+  const after = await searchHybrid(marker, { cwd: tmp });
+  expect(after.some((h) => h.text.includes(marker))).toBe(false);
+  // yang tidak match tetap ada
+  const kept = await searchHybrid("keep-this-note", { cwd: tmp });
+  expect(kept.length).toBeGreaterThanOrEqual(1);
+  await rm(tmp, { recursive: true, force: true }).catch(() => {});
+});
+
+test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", async () => {
+  await mkdir(tmpDir, { recursive: true });
+  const id = "resume-" + randomUUID().slice(0, 6);
+  const msgs = [
+    { role: "user", content: "u1" },
+    { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "read_file", args: { path: "a" } }] },
+    { role: "tool", toolCallId: "c1", name: "read_file", content: "a-content" },
+    { role: "assistant", content: "done" },
+  ] as never;
+  saveSession(id, tmp, "sys", msgs, {});
+  const loaded = loadSession(id, tmp);
+  const toolMsg = loaded?.messages[2] as { role: string; toolCallId?: string; name?: string; content: string };
+  expect(toolMsg.role).toBe("tool");
+  expect(toolMsg.toolCallId).toBe("c1");
+  expect(toolMsg.name).toBe("read_file");
+  expect(toolMsg.content).toBe("a-content");
+  // seed ke kernel (minicore createSession) — history penuh tersedia
+  const { createSession } = await import("../../minicore/src/core/index.ts");
+  const { FakeProvider, allowAll, text, finish } = await import("../../minicore/test/fakes.ts");
+  const p = new FakeProvider([{ events: [text("ok"), finish("stop")] }]);
+  const s = createSession({ provider: p, permissions: allowAll, initialMessages: loaded!.messages as never });
+  await s.run("lanjut");
+  expect(s.state.history).toHaveLength(6); // 4 initial + 1 user + 1 assistant
+  expect(s.state.history[2]).toMatchObject({ role: "tool", toolCallId: "c1", name: "read_file" });
+  await rm(tmp, { recursive: true, force: true }).catch(() => {});
 });

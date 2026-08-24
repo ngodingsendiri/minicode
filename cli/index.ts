@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 import { createRouterProvider } from "../src/providers/router.ts";
 import { buildProviderList } from "../src/providers/build.ts";
 import { getArg as rawGetArg, readPrompt, promptFromArgs } from "./args.ts";
@@ -16,12 +16,22 @@ import { createLlmCompaction } from "../src/policy/compaction.ts";
 import { connectAll as mcpConnectAll, closeAll as mcpCloseAll } from "../src/mcp/client.ts";
 import { configureServers as lspConfigure, closeAllLsp as lspCloseAll } from "../src/lsp/client.ts";
 import { loadSkills, findSkill, renderSkill, skillsToSystemPrompt } from "../src/skills/loader.ts";
-import type { Tool } from "minicore";
+import { c, glyphs, box } from "../src/tui/theme.ts";
+import { renderTable } from "../src/tui/table.ts";
+import { runSetupWizard } from "./wizard.ts";
+import { createInteractivePrompt, appendHistory } from "./input.ts";
+import { handleBuiltinCommand, BUILTIN_COMMANDS } from "./commands.ts";
+import { recordCheckpointFromSnapshots } from "../src/session/checkpoint.ts";
+import { runWithSelfHeal, runVerify, detectVerifyCommand } from "../src/policy/verifier.ts";
+import { createRateLimiter } from "../src/policy/ratelimit.ts";
+import { writeTrace } from "../src/telemetry/trace.ts";
+import type { Tool, Message } from "minicore";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
+import { readFileSync } from "node:fs";
 
-const HELP = `minicode — coding agent on frozen MiniCore
-usage:
+const HELP = `${c.bold(c.cyan(glyphs.sparkle + " Minicode"))} — coding agent on frozen MiniCore
+${c.bold("Usage:")}
   minicode                        # mode chat interaktif (setup wizard saat pertama)
   minicode "prompt" [options]     # sekali jalan
   echo "prompt" | minicode        # via pipe
@@ -32,7 +42,7 @@ usage:
   minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
   minicode sessions <list|export> [id]
 
-Options:
+${c.bold("Options:")}
   -h, --help          show help
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
@@ -45,47 +55,44 @@ Options:
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
   --interactive       REPL loop (readline)
-  --tui               Ink TUI (efficient, selectable, token bar)
+  --tui               Ink TUI dashboard (split-view, activity stream)
+  --verify            auto-verify after run + self-heal (bila ada typecheck/test/tsconfig)
+  --sandbox <mode>    sandbox eksekusi bash: docker (container ephemeral, --network none)
+  --ratelimit <rpm>   batas request LLM per menit (token bucket) untuk cegah 429
 
-Config:
-  minicode config add --baseUrl <url> --apiKey <key> [--id <id>] [--global]
-  minicode config list
-  minicode config remove <id>
-  minicode config detect --baseUrl <url> --apiKey <key>
-
-MCP:
-  minicode config mcp add <id> --command <cmd> --args "<arg1,arg2>" [--env K=V] [--global|--local]
-  minicode config mcp list
-  minicode config mcp remove <id>
-
-LSP:
-  minicode config lsp add <ext> --command <cmd> [--args "<arg1,arg2>"] [--env K=V] [--global|--local]
-  minicode config lsp list
-  minicode config lsp remove <ext>
-
-MCP Server (expose minicode tools ke app AI lain):
-  minicode mcp serve                    # curated tools, permission auto
-  minicode mcp serve --all-tools        # termasuk delegate_task dll
-  minicode mcp serve --allow-all        # tanpa permission check (hati-hati)
-
-Sessions:
-  minicode sessions list
-  minicode sessions export <id> [--jsonl]
-
-Env fallback:
-  AGENT_BASE_URL, OPENAI_API_KEY/AGENT_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, AGENT_MODEL
+${c.bold("Commands in REPL:")}
+  /help, /clear, /model, /cost, /compact, /sessions, /status, /exit
 `;
 
 const args = process.argv.slice(2);
 
+function getArg(name: string): string | undefined {
+  return rawGetArg(args, name);
+}
+
 // --- sessions subcommand ---
 if (args[0] === "sessions") {
   const sub = args[1];
-  if (sub === "list") {
+  if (sub === "list" || !sub) {
     const cwdArg = getArg("--cwd");
     const rows = listSessions(cwdArg);
-    if (rows.length === 0) console.log("(no sessions)");
-    else for (const r of rows) console.log(`${r.id}  ${new Date(r.created_at).toISOString().slice(0, 19)}  ${r.cwd}`);
+    if (rows.length === 0) {
+      console.log(c.dim("(no sessions recorded)"));
+    } else {
+      const tableData = rows.map((r) => ({
+        id: c.cyan(r.id),
+        date: new Date(r.created_at).toLocaleString(),
+        cwd: c.dim(r.cwd),
+      }));
+      console.log(`\n${c.bold("Recent Sessions")}\n` + renderTable(
+        [
+          { header: "Session ID", key: "id", width: 14 },
+          { header: "Created At", key: "date", width: 22 },
+          { header: "Workspace Directory", key: "cwd", width: 36 },
+        ],
+        tableData
+      ) + "\n");
+    }
     process.exit(0);
   } else if (sub === "export") {
     const id = args[2];
@@ -135,12 +142,29 @@ if (args[0] === "config") {
       process.exit(1);
     }
     const entry = await detectAndSave(baseUrl, apiKey, id, { global: isGlobal });
-    console.log(`saved ${entry.id} (${entry.providerHint}) models: ${entry.models.slice(0, 5).join(", ")}${entry.models.length > 5 ? " ..." : ""} (${entry.models.length})`);
+    console.log(`${c.green(glyphs.check)} Saved provider "${c.bold(entry.id)}" (${entry.providerHint}) models: ${entry.models.slice(0, 5).join(", ")}${entry.models.length > 5 ? " ..." : ""} (${entry.models.length} total)`);
     process.exit(0);
   } else if (sub === "list") {
     const cfg = await loadConfig();
-    if (cfg.providers.length === 0) console.log("(no providers — add via minicode config add)");
-    else for (const p of cfg.providers) console.log(`${p.id}  ${p.baseUrl}  models:${p.models.length} hint:${p.providerHint ?? "?"}`);
+    if (cfg.providers.length === 0) {
+      console.log(c.dim("(no providers configured — add via minicode config add or setup wizard)"));
+    } else {
+      const tableData = cfg.providers.map((p) => ({
+        id: c.cyan(p.id),
+        url: p.baseUrl,
+        models: String(p.models.length),
+        hint: c.dim(p.providerHint ?? "?"),
+      }));
+      console.log(`\n${c.bold("Configured LLM Providers")}\n` + renderTable(
+        [
+          { header: "Provider ID", key: "id", width: 14 },
+          { header: "Base URL", key: "url", width: 34 },
+          { header: "Models", key: "models", width: 8, align: "right" },
+          { header: "Type", key: "hint", width: 14 },
+        ],
+        tableData
+      ) + "\n");
+    }
     process.exit(0);
   } else if (sub === "remove") {
     const id = args[2];
@@ -151,7 +175,7 @@ if (args[0] === "config") {
       process.exit(1);
     }
     await removeProvider(id, { global: isGlobal, cwd: cwdArg });
-    console.log(`removed ${id} (${isGlobal ? "global" : "local"})`);
+    console.log(`${c.green(glyphs.check)} Removed provider ${id} (${isGlobal ? "global" : "local"})`);
     process.exit(0);
   } else if (sub === "detect") {
     const baseUrl = getArg("--baseUrl");
@@ -162,7 +186,7 @@ if (args[0] === "config") {
     }
     const { detectModels } = await import("../src/providers/detect.ts");
     const res = await detectModels(baseUrl, apiKey);
-    console.log(`detected ${res.models.length} models (${res.providerHint}):\n${res.models.join("\n")}`);
+    console.log(`${c.green(glyphs.check)} Detected ${res.models.length} models (${res.providerHint}):\n${res.models.map((m) => `  ${glyphs.dot} ${m}`).join("\n")}`);
     process.exit(0);
   } else if (sub === "mcp") {
     const mcpSub = args[2];
@@ -182,12 +206,27 @@ if (args[0] === "config") {
         if (k && rest.length) env[k.trim()] = rest.join("=").trim();
       }
       await saveMcpServer({ id, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) }, { global: isGlobal });
-      console.log(`saved mcp server ${id}: ${command} ${cmdArgs.join(" ")}`);
+      console.log(`${c.green(glyphs.check)} Saved MCP server "${c.bold(id)}": ${command} ${cmdArgs.join(" ")}`);
       process.exit(0);
     } else if (mcpSub === "list") {
       const cfg = await loadConfig();
-      if (!cfg.mcpServers?.length) console.log("(no mcp servers — add via minicode config mcp add)");
-      else for (const m of cfg.mcpServers) console.log(`${m.id}  ${m.command} ${m.args.join(" ")}`);
+      if (!cfg.mcpServers?.length) {
+        console.log(c.dim("(no MCP servers configured — add via minicode config mcp add)"));
+      } else {
+        const tableData = cfg.mcpServers.map((m) => ({
+          id: c.cyan(m.id),
+          command: m.command,
+          args: c.dim(m.args.join(" ")),
+        }));
+        console.log(`\n${c.bold("Configured MCP Servers")}\n` + renderTable(
+          [
+            { header: "Server ID", key: "id", width: 14 },
+            { header: "Command", key: "command", width: 20 },
+            { header: "Arguments", key: "args", width: 36 },
+          ],
+          tableData
+        ) + "\n");
+      }
       process.exit(0);
     } else if (mcpSub === "remove") {
       const id = args[3];
@@ -198,7 +237,7 @@ if (args[0] === "config") {
         process.exit(1);
       }
       await removeMcpServer(id, { global: isGlobal, cwd: cwdArg });
-      console.log(`removed mcp server ${id} (${isGlobal ? "global" : "local"})`);
+      console.log(`${c.green(glyphs.check)} Removed MCP server ${id} (${isGlobal ? "global" : "local"})`);
       process.exit(0);
     } else {
       console.log(HELP);
@@ -222,12 +261,27 @@ if (args[0] === "config") {
         if (k && rest.length) env[k.trim()] = rest.join("=").trim();
       }
       await saveLspServer({ ext, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) }, { global: isGlobal });
-      console.log(`saved lsp server ${ext}: ${command} ${cmdArgs.join(" ")}`);
+      console.log(`${c.green(glyphs.check)} Saved LSP server for ${c.bold(ext)}: ${command} ${cmdArgs.join(" ")}`);
       process.exit(0);
     } else if (lspSub === "list") {
       const cfg = await loadConfig();
-      if (!cfg.lspServers?.length) console.log("(no lsp servers — add via minicode config lsp add)");
-      else for (const l of cfg.lspServers) console.log(`${l.ext}  ${l.command} ${l.args.join(" ")}`);
+      if (!cfg.lspServers?.length) {
+        console.log(c.dim("(no LSP servers configured — add via minicode config lsp add)"));
+      } else {
+        const tableData = cfg.lspServers.map((l) => ({
+          ext: c.cyan(l.ext),
+          command: l.command,
+          args: c.dim(l.args.join(" ")),
+        }));
+        console.log(`\n${c.bold("Configured LSP Language Servers")}\n` + renderTable(
+          [
+            { header: "Extension", key: "ext", width: 12 },
+            { header: "Command", key: "command", width: 22 },
+            { header: "Arguments", key: "args", width: 36 },
+          ],
+          tableData
+        ) + "\n");
+      }
       process.exit(0);
     } else if (lspSub === "remove") {
       const ext = args[3];
@@ -238,7 +292,7 @@ if (args[0] === "config") {
         process.exit(1);
       }
       await removeLspServer(ext, { global: isGlobal, cwd: cwdArg });
-      console.log(`removed lsp server ${ext} (${isGlobal ? "global" : "local"})`);
+      console.log(`${c.green(glyphs.check)} Removed LSP server for ${ext} (${isGlobal ? "global" : "local"})`);
       process.exit(0);
     } else {
       console.log(HELP);
@@ -250,21 +304,30 @@ if (args[0] === "config") {
   }
 }
 
-function getArg(name: string): string | undefined {
-  return rawGetArg(args, name);
-}
-
 // --- skills subcommand ---
 if (args[0] === "skills") {
   const cwdArg = getArg("--cwd");
   const all = await loadSkills(cwdArg);
   if (args[1] === "list" || !args[1]) {
-    if (all.length === 0) console.log("(no skills — add .minicode/skills/*.md with frontmatter name/description)");
-    else for (const s of all) console.log(`/${s.name}  ${s.description}`);
+    if (all.length === 0) {
+      console.log(c.dim("(no skills found — add markdown files in .minicode/skills/*.md)"));
+    } else {
+      const tableData = all.map((s) => ({
+        skill: c.yellow(`/${s.name}`),
+        desc: s.description || "(no description)",
+      }));
+      console.log(`\n${c.bold("Installed Agent Skills")}\n` + renderTable(
+        [
+          { header: "Skill Command", key: "skill", width: 18 },
+          { header: "Description", key: "desc", width: 50 },
+        ],
+        tableData
+      ) + "\n");
+    }
   } else if (args[1] === "show") {
     const s = await findSkill(args[2] ?? "", cwdArg);
     if (!s) { console.error(`skill ${args[2]} not found`); process.exit(1); }
-    console.log(`${s.description}\n\n${s.body}`);
+    console.log(`${c.bold(c.cyan("/" + s.name))} ${c.dim("— " + s.description)}\n\n${s.body}`);
   }
   process.exit(0);
 }
@@ -273,6 +336,7 @@ if (args.includes("-h") || args.includes("--help")) {
   console.log(HELP);
   process.exit(0);
 }
+
 const verbose = args.includes("--verbose");
 const allowAll = args.includes("--allow-all");
 const ask = args.includes("--ask");
@@ -289,7 +353,7 @@ if (cwd) {
 const resumeIdx = args.indexOf("--resume");
 const resumeId = resumeIdx !== -1 ? args[resumeIdx + 1] : undefined;
 const modelIdx = args.indexOf("--model");
-const modelOverride = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
+let modelOverride = modelIdx !== -1 ? args[modelIdx + 1] : undefined;
 const sessionIdx = args.indexOf("--session");
 const sessionId = sessionIdx !== -1 ? args[sessionIdx + 1] : randomUUID().slice(0, 8);
 const maxStepsIdx = args.indexOf("--max-steps");
@@ -300,15 +364,10 @@ const timeoutIdx = args.indexOf("--timeout");
 const timeoutMs = timeoutIdx !== -1 ? Number(args[timeoutIdx + 1]) : undefined;
 
 const prompt = promptFromArgs(args) || (await readPrompt());
-// no prompt + TTY → masuk mode chat interaktif otomatis (bukan error)
 const enterRepl = interactive || (!prompt && process.stdin.isTTY);
 if (!prompt && !enterRepl) {
   process.stderr.write("usage: minicode \"prompt\"  |  minicode (mode interaktif)\n");
   process.exit(1);
-}
-if (useTui && !prompt) {
-  // TUI butuh satu run untuk render; tanpa prompt fallback ke REPL
-  process.stderr.write("[tui] butuh prompt — fallback ke mode interaktif\n");
 }
 
 // --- skills: expand /name args into rendered prompt ---
@@ -321,40 +380,15 @@ try {
     const skill = await findSkill(skillName, cwd);
     if (skill) {
       effectivePrompt = await renderSkill(skill, skillArgs);
-      console.error(`[skill /${skill.name}]`);
+      console.error(c.dim(`[loaded skill /${skill.name}]`));
     }
   }
 } catch {}
 
-// --- provider: load config + env fallback (hybrid x-api-key) ---
+// --- provider: load config + env fallback ---
 const cfg = await loadConfig(cwd);
 type Provider = ReturnType<typeof createOpenAICompatProvider>;
 let providers = buildProviderList(cfg);
-
-// first-run wizard — guided setup saat belum ada provider sama sekali
-async function setupWizard(): Promise<boolean> {
-  if (!process.stdin.isTTY) return false;
-  const { createInterface } = await import("node:readline");
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  console.log("\n╭─ minicode v0.2.0 — setup pertama kali");
-  console.log("│ Butuh satu LLM provider. Enter = OpenRouter default.");
-  const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
-  const baseUrl = await ask("│ Base URL [https://openrouter.ai/api/v1]: ");
-  const apiKey = await ask("│ API Key (sk-...): ");
-  rl.close();
-  if (!apiKey) { console.log("│ Dibatalkan — set OPENAI_API_KEY nanti kalau mau.\n╰─"); return false; }
-  try {
-    const url = baseUrl || "https://openrouter.ai/api/v1";
-    const entry = await detectAndSave(url, apiKey);
-    console.log(`│ ✓ tersimpan "${entry.id}" — ${entry.models.length} model ditemukan (${entry.providerHint})`);
-    console.log("╰─ siap! ketik prompt langsung.\n");
-    return true;
-  } catch (e) {
-    console.log(`│ ✗ detect gagal: ${formatError(e)}`);
-    console.log("╰─ cek apiKey/baseUrl lalu ulangi: minicode config add --baseUrl <url> --apiKey <key>\n");
-    return false;
-  }
-}
 
 // env fallback if no config
 if (providers.length === 0) {
@@ -364,21 +398,35 @@ if (providers.length === 0) {
   const anthKey = process.env.ANTHROPIC_API_KEY;
   if (anthKey) providers.push(createAnthropicProvider({ apiKey: anthKey, models: [process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4"] }) as unknown as Provider);
 }
-// wizard fallback kalau masih kosong
+
+// wizard fallback if still empty
 if (providers.length === 0 && (enterRepl || prompt)) {
-  const ok = await setupWizard();
+  const ok = await runSetupWizard();
   if (ok) {
     const cfg2 = await loadConfig(cwd);
     providers = buildProviderList(cfg2);
   }
 }
+
 if (providers.length === 0) {
   console.error("no provider configured — jalankan `minicode` untuk setup wizard,\natau: minicode config add --baseUrl <url> --apiKey <key>, atau set OPENAI_API_KEY");
   process.exit(1);
 }
-const router = createRouterProvider({ providers });
 
-// --- vector hybrid RAG (try all providers until embedding succeeds) ---
+// ── sandbox & rate limiter ──
+const sandboxMode = getArg("--sandbox");
+if (sandboxMode === "docker") process.env.MINICODE_SANDBOX = "docker";
+else if (sandboxMode) process.stderr.write(`[warn] sandbox mode "${sandboxMode}" tidak dikenal — hanya "docker"\n`);
+
+const ratelimitRaw = getArg("--ratelimit");
+const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined;
+if (rateLimiter && !Number.isFinite(Number(ratelimitRaw))) {
+  process.stderr.write(`[warn] --ratelimit butuh angka (rpm), abaikan "${ratelimitRaw}"\n`);
+}
+
+const router = createRouterProvider({ providers, ...(rateLimiter ? { limiter: rateLimiter } : {}) });
+
+// --- vector hybrid RAG ---
 let systemExtra: string | undefined;
 try {
   const candidates: { baseUrl: string; apiKey: string }[] = [];
@@ -404,7 +452,6 @@ try {
     } catch {}
   }
   if (hits.length) systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`;
-  // fallback keyword-only if no embedding key worked but hits still possible via keyword
   if (!hits.length && candidates.length === 0) {
     try {
       hits = await searchHybrid(prompt, { cwd, topK: 5 });
@@ -414,25 +461,21 @@ try {
 } catch {}
 
 // --- skills list into system prompt ---
+const allLoadedSkills = await loadSkills(cwd);
 try {
-  const allSkills = await loadSkills(cwd);
-  const skillPrompt = skillsToSystemPrompt(allSkills);
+  const skillPrompt = skillsToSystemPrompt(allLoadedSkills);
   if (skillPrompt) systemExtra = (systemExtra ?? "") + skillPrompt;
 } catch {}
 
-// --- resume: load previous messages as systemExtra (cap 2000 to keep total <8000) ---
+// --- resume: muat history penuh dari DB → seed ke ContextStore kernel ---
+let initialMessages: readonly Message[] | undefined;
 if (resumeId) {
   const prev = loadSession(resumeId, cwd);
-  if (prev) {
-    const transcript = prev.messages.map((m: unknown) => {
-      const msg = m as { role: string; content: unknown };
-      const txt = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content).slice(0, 150);
-      return `${msg.role}: ${txt}`;
-    }).join("\n").slice(0, 2000);
-    systemExtra = (systemExtra ?? "") + `\n# Previous session ${resumeId}\n${transcript}`;
-    console.error(`[resume ${resumeId} ${prev.messages.length} msgs]`);
+  if (prev && prev.messages.length) {
+    initialMessages = prev.messages as readonly Message[];
+    console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`));
   } else {
-    console.error(`[resume] session ${resumeId} not found — starting new ${sessionId}`);
+    console.error(c.yellow(`[resume] session ${resumeId} not found — starting new ${sessionId}\n`));
   }
 }
 
@@ -440,7 +483,7 @@ const compaction = process.env.DEEPSEEK_API_KEY
   ? createLlmCompaction({ apiKey: process.env.DEEPSEEK_API_KEY, baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1", model: "deepseek-chat" })
   : undefined;
 
-// --- MCP: connect servers from config, merge tools ---
+// --- MCP ---
 let sessionTools: Tool[] = allTools;
 try {
   if (cfg.mcpServers?.length) {
@@ -451,41 +494,115 @@ try {
   process.stderr.write(`[mcp] init failed: ${formatError(e)}\n`);
 }
 
-// --- LSP: register servers from config (lazy spawn on first tool call) ---
+// --- LSP ---
 try {
   if (cfg.lspServers?.length) lspConfigure(cfg.lspServers);
 } catch (e) {
   process.stderr.write(`[lsp] init failed: ${formatError(e)}\n`);
 }
-// explicit cleanup is awaited at normal exit paths below; 'exit' is sync-only so no async here.
-// keep sync best-effort for unexpected exit
-process.on("exit", () => {
-  // sync: abort signals already via killSignal in transports
-});
+
+const permissionMode = allowAll ? "allow-all" : ask ? "ask" : "auto";
 
 const session = await createMinicodeSession({
   provider: router,
   tools: sessionTools,
   cwd,
-  permissionMode: allowAll ? "allow-all" : ask ? "ask" : "auto",
+  permissionMode,
   systemExtra,
   model: modelOverride,
+  ...(initialMessages ? { initialMessages } : {}),
   ...(maxSteps ? { maxSteps } : {}),
   ...(contextWindowTokens ? { contextWindowTokens } : {}),
   ...(timeoutMs !== undefined ? { timeoutMs: timeoutMs === 0 ? Infinity : timeoutMs } : {}),
   ...(compaction ? { compaction } : {}),
 } as never);
 
+const effectiveInitialModel = modelOverride ?? cfg.providers[0]?.models[0] ?? "default";
+
+// ── Shadow checkpoint: capture state file SEBELUM edit → /undo bisa memulihkan ──
+// Capture pre-edit (execution:started) dan post-edit (execution:completed) untuk
+// tool edit/write_file, sekali per path per turn, lalu rekam saat turn selesai.
+const preEditSnapshots = new Map<string, { path: string; content: string | null }>();
+const postEditSnapshots = new Map<string, { path: string; content: string | null }>();
+const cpCaptureOff = session.events.on("execution:started", (e) => {
+  const name = e.execution.call.name;
+  if (name !== "edit" && name !== "write_file") return;
+  const p = (e.execution.call.args as { path?: string })?.path;
+  if (!p || preEditSnapshots.has(p)) return;
+  const abs = resolvePath(cwd ?? ".", p);
+  let content: string | null;
+  try {
+    content = readFileSync(abs, "utf8");
+  } catch {
+    content = null; // file belum ada (write_file baru)
+  }
+  preEditSnapshots.set(p, { path: p.replace(/\\/g, "/"), content });
+});
+const cpPostOff = session.events.on("execution:completed", (e) => {
+  const name = e.execution.call.name;
+  if (name !== "edit" && name !== "write_file") return;
+  const p = (e.execution.call.args as { path?: string })?.path;
+  if (!p) return;
+  // ambil state final (post-edit) — overwrite tiap kali, /redo memakai ini
+  const abs = resolvePath(cwd ?? ".", p);
+  try {
+    postEditSnapshots.set(p, { path: p.replace(/\\/g, "/"), content: readFileSync(abs, "utf8") });
+  } catch {
+    postEditSnapshots.set(p, { path: p.replace(/\\/g, "/"), content: null });
+  }
+});
+const cpTurnOff = session.events.on("turn:completed", (e) => {
+  const snapshots = [...preEditSnapshots.values()];
+  const redoSnapshots = [...postEditSnapshots.values()];
+  preEditSnapshots.clear();
+  postEditSnapshots.clear();
+  if (snapshots.length === 0) return;
+  recordCheckpointFromSnapshots(sessionId, e.result.usage.turns, snapshots, `turn ${e.result.usage.turns}`, cwd, redoSnapshots).catch(() => {});
+});
+
+// ── Auto-verify & self-heal ──
+const verifyEnabled = args.includes("--verify");
+const verifyCommand = verifyEnabled
+  ? (process.env.MINICODE_VERIFY_CMD ?? detectVerifyCommand(cwd) ?? "")
+  : "";
+const verifyActive = verifyCommand.length > 0;
+
+async function runPromptWithVerify(p: string): Promise<void> {
+  if (!verifyActive) {
+    await session.run(p, { model: modelOverride });
+    return;
+  }
+  await runWithSelfHeal(p, {
+    run: (prompt) => session.run(prompt, { model: modelOverride }),
+    verify: () => runVerify(verifyCommand, cwd ?? process.cwd()),
+    onCycle: (cycle, max, v) => {
+      if (cycle === max) {
+        process.stderr.write(c.red(`\n[verify] still failing after ${max} attempts — leaving for user\n`));
+        process.stderr.write(v.output.slice(0, 1200) + "\n");
+      } else {
+        process.stderr.write(c.yellow(`\n[verify] attempt ${cycle}/${max} failed — self-healing…\n`));
+      }
+    },
+    onOk: (cycles) => process.stderr.write(c.green(`\n[verify] ok after ${cycles} fix cycles\n`)),
+  });
+}
+
+// Ink TUI hanya untuk one-shot run (punya prompt, bukan REPL) — hindari tabrakan
+// dengan readline REPL di terminal yang sama.
 const useInk = useTui && !enterRepl && !!prompt;
 let detachInk: (() => void) | undefined;
+
 if (useInk) {
   try {
-    detachInk = attachInkRenderer(session.events, { verbose });
+    detachInk = attachInkRenderer(session.events, { verbose, model: effectiveInitialModel });
   } catch {
     attachRenderer(session.events, { verbose });
   }
-} else attachRenderer(session.events, { verbose });
-const usage = createUsageCollector(session.events, modelOverride ?? cfg.providers[0]?.models[0]);
+} else {
+  attachRenderer(session.events, { verbose });
+}
+
+const usage = createUsageCollector(session.events, effectiveInitialModel);
 
 async function persistCurrent(usageData: unknown) {
   try {
@@ -495,51 +612,120 @@ async function persistCurrent(usageData: unknown) {
 }
 
 if (enterRepl) {
-  const { createInterface } = await import("node:readline");
-  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: "minicode> " });
-  process.stderr.write(`minicode v0.2.0 — ketik prompt, /skill, atau exit\n`);
-  rl.prompt();
-  for await (const line of rl) {
+  const getCompletions = (line: string): string[] => {
+    if (!line.startsWith("/")) return [];
+    const candidates = [
+      ...BUILTIN_COMMANDS.map((b) => `/${b.name}`),
+      ...allLoadedSkills.map((s) => `/${s.name}`),
+    ];
+    return candidates.filter((c) => c.startsWith(line));
+  };
+
+  const interactivePrompt = createInteractivePrompt({
+    modelName: modelOverride ?? cfg.providers[0]?.models[0],
+    getCompletions,
+  });
+
+  const banner = `${c.cyan(c.bold(glyphs.sparkle + " Minicode v0.2.0"))} ${c.dim(`[${modelOverride ?? cfg.providers[0]?.models[0] ?? "default"} · ${permissionMode}]`)} — ${c.dim("type prompt or /help")}\n`;
+  process.stdout.write(banner);
+
+  const commandCtx = {
+    cwd,
+    sessionId,
+    currentModel: modelOverride ?? cfg.providers[0]?.models[0],
+    usage,
+    skills: allLoadedSkills,
+    toolsCount: sessionTools.length,
+    providerHint: cfg.providers[0]?.providerHint,
+    setModelOverride: (m: string) => {
+      modelOverride = m;
+      commandCtx.currentModel = m;
+    },
+  };
+
+  while (true) {
+    const line = await interactivePrompt.ask();
+    if (line == null) break;
     const q = line.trim();
-    if (!q) { rl.prompt(); continue; }
-    if (q === "exit" || q === "quit") break;
+    if (!q) continue;
+
+    await appendHistory(q);
+
+    // Check built-in commands
+    const builtinResult = await handleBuiltinCommand(q, commandCtx);
+    if (builtinResult.handled) {
+      if (builtinResult.shouldExit) break;
+      continue;
+    }
+
     try {
-      const res = await session.run(q.startsWith("/") ? (await (async () => {
+      let finalPrompt = q;
+      if (q.startsWith("/")) {
         const spaceIdx = q.indexOf(" ");
         const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx);
         const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
         const skill = await findSkill(skillName, cwd).catch(() => undefined);
-        return skill ? await renderSkill(skill, skillArgs) : q;
-      })()) : q, { model: modelOverride });
-      const u = usage.get();
-      process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens}\n`);
-      await persistCurrent(u);
-      usage.reset();
-    } catch (e) {
-      process.stderr.write(`\n[error] ${formatError(e)}\n`);
-    }
-    rl.prompt();
+        if (skill) {
+          finalPrompt = await renderSkill(skill, skillArgs);
+        }
+      }
+
+      const t0 = Date.now();
+      try {
+        await runPromptWithVerify(finalPrompt);
+        const u = usage.get(modelOverride);
+        const costBadge = u.cost != null ? ` · $${u.cost.toFixed(4)}` : "";
+        process.stderr.write(c.dim(`\n[session ${sessionId} saved · ${u.totalTokens.toLocaleString()} tokens${costBadge}]\n\n`));
+        writeTrace(cwd, {
+          sessionId, timestamp: new Date().toISOString(), prompt: q, durationMs: Date.now() - t0,
+          steps: session.state.stepCount, turns: session.state.turnCount,
+          inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelOverride, ok: true,
+        });
+        await persistCurrent(u);
+        usage.reset();
+      } catch (e) {
+        process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n\n`);
+        writeTrace(cwd, {
+          sessionId, timestamp: new Date().toISOString(), prompt: q, durationMs: Date.now() - t0,
+          steps: session.state.stepCount, turns: session.state.turnCount,
+          inputTokens: usage.get(modelOverride).inputTokens, outputTokens: usage.get(modelOverride).outputTokens,
+          model: modelOverride, ok: false, error: formatError(e),
+        });
+      }
   }
-  rl.close();
+
+  interactivePrompt.close();
   if (detachInk) detachInk();
   await mcpCloseAll();
   await lspCloseAll();
   process.exit(0);
 } else {
+  const t0 = Date.now();
   try {
-    const result = await session.run(effectivePrompt, { model: modelOverride });
-    const u = usage.get();
+    await runPromptWithVerify(effectivePrompt);
+    const u = usage.get(modelOverride);
     await persistCurrent(u);
-    process.stderr.write(`\n[session ${sessionId} saved] tokens in=${u.inputTokens} out=${u.outputTokens} cost=${u.cost?.toFixed(4) ?? "?"}\n`);
+    const costBadge = u.cost != null ? ` cost=$${u.cost.toFixed(4)}` : "";
+    process.stderr.write(c.dim(`\n[session ${sessionId} saved · in=${u.inputTokens} out=${u.outputTokens}${costBadge}]\n`));
+    writeTrace(cwd, {
+      sessionId, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0,
+      steps: session.state.stepCount, turns: session.state.turnCount,
+      inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelOverride, ok: true,
+    });
   } catch (e) {
-    process.stderr.write(`\n[error] ${formatError(e)}\n`);
+    process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`);
+    writeTrace(cwd, {
+      sessionId, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0,
+      steps: session.state.stepCount, turns: session.state.turnCount,
+      inputTokens: usage.get(modelOverride).inputTokens, outputTokens: usage.get(modelOverride).outputTokens,
+      model: modelOverride, ok: false, error: formatError(e),
+    });
     if (detachInk) detachInk();
     await mcpCloseAll();
     await lspCloseAll();
     process.exit(1);
   }
   if (detachInk) {
-    // give Ink a moment to render final frame
     await new Promise((r) => setTimeout(r, 200));
     detachInk();
   }

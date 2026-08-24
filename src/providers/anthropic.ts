@@ -10,22 +10,36 @@ export interface AnthropicConfig {
   models: readonly string[];
   defaultModel?: string;
   maxTokens?: number;
+  enablePromptCaching?: boolean;
 }
 
 export function createAnthropicProvider(config: AnthropicConfig): ModelProvider {
-  const baseUrl = (config.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "");
+  // Normalisasi baseUrl: bila sudah berakhir /v1, jangan dobel (/v1/v1/messages).
+  const baseUrl = (config.baseUrl ?? "https://api.anthropic.com").replace(/\/+$/, "").replace(/\/v1$/, "");
   const endpoint = `${baseUrl}/v1/messages`;
+  const enableCache = config.enablePromptCaching !== false;
 
   return {
     id: config.id ?? "anthropic",
     models: config.models,
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
+      // System prompt with optional ephemeral cache control for 90% cost savings on long runs
+      const systemPayload = request.system
+        ? enableCache
+          ? [{ type: "text", text: request.system, cache_control: { type: "ephemeral" } }]
+          : request.system
+        : undefined;
+
+      const toolsPayload = request.tools?.length
+        ? toAnthropicTools(request.tools, enableCache)
+        : undefined;
+
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
         max_tokens: config.maxTokens ?? 4096,
-        system: request.system,
+        system: systemPayload,
         messages: toAnthropicMessages(request.messages),
-        tools: request.tools?.length ? toAnthropicTools(request.tools) : undefined,
+        tools: toolsPayload,
         stream: true,
       });
 
@@ -33,6 +47,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         "content-type": "application/json",
         "x-api-key": config.apiKey,
         "anthropic-version": "2023-06-01",
+        "anthropic-beta": "prompt-caching-2024-07-31",
         accept: "text/event-stream",
       };
 
@@ -75,12 +90,30 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
           // Anthropic also sends usage in message_delta
           const usage = (data as any).usage ?? d?.usage;
           if (usage && (usage.input_tokens != null || usage.output_tokens != null)) {
-            yield { type: "extension", kind: "usage", data: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } };
+            yield {
+              type: "extension",
+              kind: "usage",
+              data: {
+                inputTokens: usage.input_tokens,
+                outputTokens: usage.output_tokens,
+                cacheReadTokens: usage.cache_read_input_tokens,
+                cacheWriteTokens: usage.cache_creation_input_tokens,
+              },
+            };
           }
         } else if ((data as any).type === "message_start") {
           const usage = (data as any).message?.usage;
           if (usage) {
-            yield { type: "extension", kind: "usage", data: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } };
+            yield {
+              type: "extension",
+              kind: "usage",
+              data: {
+                inputTokens: usage.input_tokens,
+                outputTokens: usage.output_tokens,
+                cacheReadTokens: usage.cache_read_input_tokens,
+                cacheWriteTokens: usage.cache_creation_input_tokens,
+              },
+            };
           }
         }
         // content_block_start for tool_use
@@ -114,28 +147,42 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
           }
         }
       }
-      // anthropic may not send explicit finish if we already did; ensure we sent one
     },
   };
 }
 
 function toAnthropicMessages(messages: readonly Message[]): unknown[] {
-  return messages.map((m) => {
-    if (m.role === "user") return { role: "user", content: toContent(m.content) };
-    if (m.role === "assistant") {
+  const out: unknown[] = [];
+  let toolGroup: { type: "tool_result"; tool_use_id: string; content: string }[] | null = null;
+  const flushToolGroup = () => {
+    if (toolGroup) {
+      out.push({ role: "user", content: toolGroup });
+      toolGroup = null;
+    }
+  };
+
+  for (const m of messages) {
+    if (m.role === "user") {
+      flushToolGroup();
+      out.push({ role: "user", content: toContent(m.content) });
+    } else if (m.role === "assistant") {
+      flushToolGroup();
       const content: unknown[] = [];
       if (typeof m.content === "string" && m.content) content.push({ type: "text", text: m.content });
       else if (Array.isArray(m.content)) for (const p of m.content) if (p.type === "text") content.push({ type: "text", text: p.text });
       for (const tc of m.toolCalls ?? []) {
         content.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args });
       }
-      return { role: "assistant", content: content.length ? content : [{ type: "text", text: "" }] };
+      out.push({ role: "assistant", content: content.length ? content : [{ type: "text", text: "" }] });
+    } else {
+      const c = m as unknown as { toolCallId: string; content: unknown };
+      const text = typeof c.content === "string" ? c.content : c.content instanceof Uint8Array ? Buffer.from(c.content).toString("base64") : JSON.stringify(c.content);
+      toolGroup ??= [];
+      toolGroup.push({ type: "tool_result", tool_use_id: c.toolCallId, content: text });
     }
-    // tool result -> user with tool_result
-    const c = m as unknown as { toolCallId: string; content: unknown };
-    const text = typeof c.content === "string" ? c.content : c.content instanceof Uint8Array ? Buffer.from(c.content).toString("base64") : JSON.stringify(c.content);
-    return { role: "user", content: [{ type: "tool_result", tool_use_id: c.toolCallId, content: text }] };
-  });
+  }
+  flushToolGroup();
+  return out;
 }
 
 function toContent(content: Content): unknown {
@@ -145,8 +192,16 @@ function toContent(content: Content): unknown {
   );
 }
 
-function toAnthropicTools(tools: readonly ToolSchema[]): unknown[] {
-  return tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+function toAnthropicTools(tools: readonly ToolSchema[], enableCache: boolean = true): unknown[] {
+  return tools.map((t, idx) => {
+    const isLast = idx === tools.length - 1;
+    return {
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters,
+      ...(enableCache && isLast ? { cache_control: { type: "ephemeral" } } : {}),
+    };
+  });
 }
 
 function toAnthropicError(status: number, body: string, headers: Headers): ProviderError {

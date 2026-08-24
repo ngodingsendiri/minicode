@@ -2,6 +2,7 @@
 import { readFile, stat, realpath } from "node:fs/promises";
 import { resolve, isAbsolute } from "node:path";
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts";
+import { scrubSecrets } from "../policy/scrub.ts";
 
 // defense-in-depth: also jail inside tool (permission layer is primary)
 
@@ -27,6 +28,7 @@ export const readFileTool: Tool = {
     const st = await stat(abs).catch(() => null);
     if (!st) throw new Error(`file not found: ${p}`);
     if (st.size > 2_000_000) throw new Error(`file too large: ${p} (${st.size})`);
-    return await readFile(abs, "utf8");
+    const raw = await readFile(abs, "utf8");
+    return scrubSecrets(raw);
   },
 };

@@ -1,100 +1,183 @@
 import { useState, useEffect, useRef } from "react";
 import { Box, Text, render } from "ink";
 import type { EventBus } from "../../../minicore/src/core/index.ts";
+import { decorateMarkdown } from "./markdown.ts";
 
 type Status = "idle" | "running" | "done" | "error";
 
-function InkApp({ bus, verbose }: { bus: EventBus; verbose?: boolean }) {
-  const [text, setText] = useState("");
-  const [logs, setLogs] = useState<string[]>([]);
-  const [usage, setUsage] = useState<string>("");
+interface LogItem {
+  id: number;
+  text: string;
+  type: "tool" | "reasoning" | "error" | "compact" | "info";
+}
+
+function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; model?: string }) {
+  const [rawText, setRawText] = useState("");
+  const [logs, setLogs] = useState<LogItem[]>([]);
+  const [usage, setUsage] = useState<{ inTokens: number; outTokens: number; cost?: number }>({ inTokens: 0, outTokens: 0 });
   const [status, setStatus] = useState<Status>("idle");
   const [steps, setSteps] = useState(0);
   const [turn, setTurn] = useState(0);
   const [compact, setCompact] = useState(false);
   const doneRef = useRef(false);
+  const logIdRef = useRef(0);
+
+  const addLog = (logText: string, type: LogItem["type"] = "info") => {
+    logIdRef.current += 1;
+    const item: LogItem = { id: logIdRef.current, text: logText, type };
+    setLogs((prev) => [...prev.slice(-30), item]);
+  };
 
   useEffect(() => {
     const offs: (() => void)[] = [];
-    offs.push(bus.on("provider:text", (e) => {
-      setText((t) => (t + e.text).slice(-20000));
-      if (!doneRef.current) setStatus("running");
-    }));
+
+    offs.push(
+      bus.on("turn:started", (e) => {
+        setTurn(e.turn);
+        setStatus("running");
+      })
+    );
+
+    offs.push(
+      bus.on("provider:text", (e) => {
+        setRawText((t) => (t + e.text).slice(-30000));
+        if (!doneRef.current) setStatus("running");
+      })
+    );
+
     offs.push(
       bus.on("provider:extension", (e) => {
         if (e.kind === "usage") {
           const u = e.data as { inputTokens?: number; outputTokens?: number };
-          setUsage(`in:${u.inputTokens ?? "?"} out:${u.outputTokens ?? "?"}`);
+          setUsage((prev) => ({
+            inTokens: u.inputTokens ?? prev.inTokens,
+            outTokens: u.outputTokens ?? prev.outTokens,
+          }));
         } else if (e.kind === "reasoning" && verbose) {
           const d = e.data as { text?: string };
-          setLogs((l) => [...l.slice(-20), `[reasoning] ${d.text?.slice(0, 80)}`]);
+          if (d.text) addLog(`💭 ${d.text.slice(0, 100)}`, "reasoning");
         } else if (e.kind === "error") {
           const d = e.data as { message?: string };
-          setLogs((l) => [...l.slice(-20), `[error] ${d.message}`]);
+          addLog(`✗ Error: ${d.message}`, "error");
           setStatus("error");
         }
-      }),
+      })
     );
-    offs.push(bus.on("turn:started", (e) => {
-      setTurn(e.turn);
-      setStatus("running");
-    }));
-    offs.push(bus.on("step:started", (e) => {
-      setSteps(e.step.index);
-      const calls = e.step.toolCalls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(0, 40)})`).join(", ");
-      setLogs((l) => [...l.slice(-20), `[step ${e.step.index}] ${calls}`]);
-    }));
-    offs.push(bus.on("execution:started", (e) => setLogs((l) => [...l.slice(-20), `→ ${e.execution.call.name}`])));
-    offs.push(bus.on("execution:completed", (e) => setLogs((l) => [...l.slice(-20), e.execution.result.isError ? `✗ ${e.execution.call.name}` : `✓ ${e.execution.call.name}`])));
-    offs.push(bus.on("context:compacted", (e) => {
-      setLogs((l) => [...l.slice(-20), `[compacted] ${e.reason}`]);
-      setCompact(true);
-    }));
-    offs.push(bus.on("turn:completed", (e) => {
-      doneRef.current = true;
-      setLogs((l) => [...l.slice(-20), `[done] steps=${e.result.usage.steps}`]);
-      setStatus("done");
-    }));
+
+    offs.push(
+      bus.on("step:started", (e) => {
+        setSteps(e.step.index);
+        const calls = e.step.toolCalls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(0, 35)})`).join(", ");
+        addLog(`Step ${e.step.index} › ${calls}`, "tool");
+      })
+    );
+
+    offs.push(
+      bus.on("execution:started", (e) => {
+        addLog(`→ running ${e.execution.call.name}...`, "tool");
+      })
+    );
+
+    offs.push(
+      bus.on("execution:completed", (e) => {
+        const isErr = e.execution.result.isError;
+        const name = e.execution.call.name;
+        addLog(isErr ? `✗ ${name} failed` : `✓ ${name} completed`, isErr ? "error" : "tool");
+      })
+    );
+
+    offs.push(
+      bus.on("context:compacted", (e) => {
+        addLog(`✦ compacted: ${e.reason}`, "compact");
+        setCompact(true);
+      })
+    );
+
+    offs.push(
+      bus.on("turn:completed", (e) => {
+        doneRef.current = true;
+        addLog(`✓ Done (${e.result.usage.steps} steps)`, "info");
+        setStatus("done");
+      })
+    );
+
     return () => offs.forEach((fn) => fn());
   }, [bus, verbose]);
 
   const statusColor = status === "running" ? "cyan" : status === "done" ? "green" : status === "error" ? "red" : "yellow";
 
   return (
-    <Box flexDirection="column">
-      <Box borderStyle="round" borderColor={statusColor} padding={1}>
-        <Box flexDirection="column" flexGrow={1}>
-          <Text>{text || "(waiting for response...)"}</Text>
-        </Box>
-      </Box>
-      <Box marginTop={1}>
-        <Text color={statusColor} bold>
+    <Box flexDirection="column" paddingX={1}>
+      {/* Header bar */}
+      <Box justifyContent="space-between" borderStyle="single" borderColor="gray" paddingX={1} marginBottom={1}>
+        <Text bold color="cyan">
+          ✦ MINICODE TUI
+        </Text>
+        <Text dimColor>
+          Model: <Text color="yellow">{model ?? "default"}</Text>
+        </Text>
+        <Text bold color={statusColor}>
           {status === "idle" && "○ idle"}
           {status === "running" && "● running"}
-          {status === "done" && "✔ done"}
+          {status === "done" && "✔ completed"}
           {status === "error" && "✘ error"}
         </Text>
-        <Text> </Text>
-        <Text dimColor>turn:{turn} step:{steps}</Text>
-        {usage && <Text> </Text>}
-        {usage && <Text color="yellow">{usage}</Text>}
-        {compact && <Text> </Text>}
-        {compact && <Text color="magenta">compacted</Text>}
       </Box>
-      <Box flexDirection="column" marginTop={1}>
-        {logs.map((l, i) => (
-          <Text key={i} dimColor>
-            {l}
-          </Text>
-        ))}
+
+      {/* Main content body */}
+      <Box flexDirection="row" flexGrow={1}>
+        {/* Response viewport */}
+        <Box flexDirection="column" width="65%" borderStyle="round" borderColor={statusColor} padding={1} marginRight={1}>
+          <Box marginBottom={1}>
+            <Text bold color="cyan">
+              Response
+            </Text>
+          </Box>
+          <Text wrap="wrap">{decorateMarkdown(rawText) || "(waiting for agent output...)"}</Text>
+        </Box>
+
+        {/* Activity & Tool logs */}
+        <Box flexDirection="column" width="35%" borderStyle="round" borderColor="gray" padding={1}>
+          <Box marginBottom={1}>
+            <Text bold color="yellow">
+              Activity Stream
+            </Text>
+          </Box>
+          {logs.length === 0 ? (
+            <Text dimColor>(listening for events...)</Text>
+          ) : (
+            logs.slice(-12).map((l) => (
+              <Text key={l.id} color={l.type === "error" ? "red" : l.type === "compact" ? "magenta" : l.type === "tool" ? "cyan" : "gray"}>
+                {l.text}
+              </Text>
+            ))
+          )}
+        </Box>
+      </Box>
+
+      {/* Status & Token Gauge bar */}
+      <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1} justifyContent="space-between">
+        <Box>
+          <Text dimColor>Turn: </Text>
+          <Text bold color="white">{turn} </Text>
+          <Text dimColor>Step: </Text>
+          <Text bold color="white">{steps} </Text>
+          {compact && <Text color="magenta">✦ Compacted </Text>}
+        </Box>
+        <Box>
+          <Text dimColor>Tokens: in=</Text>
+          <Text color="yellow">{usage.inTokens.toLocaleString()}</Text>
+          <Text dimColor> out=</Text>
+          <Text color="yellow">{usage.outTokens.toLocaleString()}</Text>
+        </Box>
       </Box>
     </Box>
   );
 }
 
-export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean } = {}) {
+export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean; model?: string } = {}) {
   try {
-    const instance = render(<InkApp bus={bus} verbose={opts.verbose} />, {
+    const instance = render(<InkApp bus={bus} verbose={opts.verbose} model={opts.model} />, {
       exitOnCtrlC: false,
       patchConsole: true,
     });
@@ -109,4 +192,3 @@ export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean } = {
     return () => {};
   }
 }
-

@@ -90,21 +90,14 @@ async function embedTexts(baseUrl: string, apiKey: string, texts: string[]): Pro
 }
 
 export function deleteMemoryByQuery(query: string, cwd?: string): number {
-  const q = query.toLowerCase();
   const db = open(cwd);
-  const rows = db.prepare("SELECT id, text FROM memory").all() as { id: string; text: string }[];
-  const ids = rows.filter((r) => r.text.toLowerCase().includes(q)).map((r) => r.id);
-  if (ids.length === 0) {
+  try {
+    // full scan dulu (SELECT semua lalu filter di JS) → pakai SQL instr() langsung
+    const info = db.prepare("DELETE FROM memory WHERE instr(lower(text), lower(?)) > 0").run(query.toLowerCase());
+    return info.changes;
+  } finally {
     db.close();
-    return 0;
   }
-  const txn = db.transaction(() => {
-    const del = db.prepare("DELETE FROM memory WHERE id = ?");
-    for (const id of ids) del.run(id);
-  });
-  txn();
-  db.close();
-  return ids.length;
 }
 
 export function clearAllMemory(cwd?: string): void {

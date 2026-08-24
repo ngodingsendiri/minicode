@@ -116,8 +116,20 @@ export async function saveProvider(entry: ProviderEntry, opts: { global?: boolea
   await writeConfigAtomic(path, cfg);
 }
 
-export async function detectAndSave(baseUrl: string, apiKey: string, id?: string, opts: { global?: boolean; cwd?: string } = {}): Promise<ProviderEntry> {
-  const detected = await detectModels(baseUrl, apiKey);
+export async function detectAndSave(baseUrl: string, apiKey: string, id?: string, opts: { global?: boolean; cwd?: string; fallbackModels?: string[] } = {}): Promise<ProviderEntry> {
+  // Fallback model dipakai bila provider tidak punya endpoint GET /models
+  // (mis. Anthropic) atau deteksi gagal — agar wizard tetap berhasil.
+  let detected: { models: string[]; providerHint: "openai" | "anthropic" | "unknown" };
+  try {
+    detected = await detectModels(baseUrl, apiKey);
+    if (detected.models.length === 0 && opts.fallbackModels?.length) {
+      detected = { models: opts.fallbackModels, providerHint: detected.providerHint };
+    }
+  } catch (e) {
+    if (!opts.fallbackModels) throw e;
+    const hint = baseUrl.includes("anthropic") ? "anthropic" : baseUrl.includes("deepseek") ? "unknown" : "unknown";
+    detected = { models: opts.fallbackModels, providerHint: hint as "openai" | "anthropic" | "unknown" };
+  }
   // dedup id: base + 4-char hash to avoid collision on slice(0,30)
   const baseId = (id ?? baseUrl.replace(/https?:\/\//, "").replace(/[^a-z0-9]/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 24)) || "gateway";
   const suffix = id ? "" : `-${Math.random().toString(36).slice(2, 6)}`;
