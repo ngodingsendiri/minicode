@@ -132,6 +132,25 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       return;
     }
 
+    // Highlighted preview for file reads
+    if (toolName === "read_file" && typeof args.path === "string") {
+      const raw = String(r.content);
+      const lang = (() => {
+        const ext = String(args.path).slice(String(args.path).lastIndexOf(".")).toLowerCase();
+        if ([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"].includes(ext)) return "typescript";
+        if (ext === ".py") return "python";
+        if (ext === ".json") return "json";
+        if ([".sh", ".bash", ".zsh"].includes(ext)) return "bash";
+        return "typescript";
+      })();
+      const previewRaw = raw.slice(0, 600);
+      const highlighted = highlightCode(previewRaw, lang);
+      const previewLines = highlighted.split("\n").slice(0, 8);
+      const more = raw.length > 600 || raw.split("\n").length > 8 ? c.dim(`\n    ... (${raw.length} chars)`) : "";
+      process.stderr.write(`  ${c.green(glyphs.check)} ${c.bold(toolName)} ${c.cyan(String(args.path))}\n    ${previewLines.join("\n    ")}${more}\n`);
+      return;
+    }
+
     // Default compact preview
     const rawContent = String(r.content).trim();
     const firstLine = rawContent.split("\n")[0] ?? "";
