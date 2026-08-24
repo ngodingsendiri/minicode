@@ -159,3 +159,49 @@ test("router caps retryAfter 3600 -> 30s", async () => {
     expect((e as ProviderError).retryAfterMs).toBe(30_000);
   }
 });
+
+test("anthropic thinking: adds thinking block + beta header, emits reasoning", async () => {
+  let body: any = null;
+  let beta = "";
+  const origFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: unknown }).fetch = async (_url: unknown, init: any) => {
+    body = JSON.parse(init.body);
+    beta = init.headers["anthropic-beta"];
+    const sse = 'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me think..."}}\n\nevent: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n';
+    return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } }) as unknown as Response;
+  };
+  const p = createAnthropicProvider({ apiKey: "k", models: ["claude-sonnet-4"], thinking: 1000 });
+  const events: string[] = [];
+  try {
+    for await (const ev of p.stream({ messages: [{ role: "user", content: "hi" }] }, new AbortController().signal)) {
+      if (ev.type === "extension" && ev.kind === "reasoning") events.push((ev.data as { text: string }).text);
+    }
+  } catch {}
+  globalThis.fetch = origFetch;
+  expect(body.thinking).toMatchObject({ type: "enabled", budget_tokens: 1000 });
+  expect(beta).toContain("thinking-2024-12-16");
+  expect(events.join("")).toContain("Let me think");
+});
+
+test("anthropic vision: user image content dikirim base64", async () => {
+  let body: any = null;
+  const origFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: unknown }).fetch = async (_url: unknown, init: any) => {
+    body = JSON.parse(init.body);
+    const sse = 'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n';
+    return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } }) as unknown as Response;
+  };
+  const p = createAnthropicProvider({ apiKey: "k", models: ["claude-sonnet-4"] });
+  const img = new Uint8Array([137, 80, 78, 71]);
+  try {
+    for await (const _ of p.stream({
+      messages: [{ role: "user", content: [{ type: "text", text: "what is this" }, { type: "image", data: img, mime: "image/png" }] }],
+    }, new AbortController().signal)) {}
+  } catch {}
+  globalThis.fetch = origFetch;
+  const userMsg = body.messages.find((m: any) => m.role === "user");
+  const imagePart = userMsg.content.find((c: any) => c.type === "image");
+  expect(imagePart).toBeTruthy();
+  expect(imagePart.source.media_type).toBe("image/png");
+  expect(imagePart.source.data).toBe(Buffer.from(img).toString("base64"));
+});

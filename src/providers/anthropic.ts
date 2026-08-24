@@ -11,6 +11,8 @@ export interface AnthropicConfig {
   defaultModel?: string;
   maxTokens?: number;
   enablePromptCaching?: boolean;
+  /** Budget tokens utk extended thinking (bila diset) — output reasoning via extension event. */
+  thinking?: number;
 }
 
 export function createAnthropicProvider(config: AnthropicConfig): ModelProvider {
@@ -40,6 +42,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         system: systemPayload,
         messages: toAnthropicMessages(request.messages),
         tools: toolsPayload,
+        ...(config.thinking ? { thinking: { type: "enabled", budget_tokens: config.thinking } } : {}),
         stream: true,
       });
 
@@ -47,7 +50,7 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         "content-type": "application/json",
         "x-api-key": config.apiKey,
         "anthropic-version": "2023-06-01",
-        "anthropic-beta": "prompt-caching-2024-07-31",
+        "anthropic-beta": `prompt-caching-2024-07-31${config.thinking ? ", thinking-2024-12-16" : ""}`,
         accept: "text/event-stream",
       };
 
@@ -132,6 +135,9 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
             const idx = (data as any).index ?? 0;
             const p = pendingTools.get(idx);
             if (p) p.args += d.partial_json ?? "";
+          }
+          if (d?.type === "thinking_delta" && typeof d.thinking === "string") {
+            yield { type: "extension", kind: "reasoning", data: { text: d.thinking } };
           }
         }
         if ((data as any).type === "content_block_stop") {

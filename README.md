@@ -2,7 +2,7 @@
 
 Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam additif `compactAsync` + `initialMessages`).
 
-**v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, secret scrubber, jail terpusat, **allowlist mode**, **Docker sandbox**), TUI responsif + markdown fence highlight, prompt caching Anthropic, fuzzy edit + apply_patch, checkpoint `/undo`/`/redo`, repo-map (regex 9 bahasa + LSP + ranking), auto-verify `--verify` (self-heal + guard), **plan mode `--plan`**, resume sejati, rate limiter, **budget cap**, telemetry JSON, **132 test + bench harness**.
+**v0.3.0** — hardening keamanan (allowlist mode, Docker sandbox hardening, plan mode, budget enforce, secret scrubber, jail), repo-map (9 bahasa + LSP + ranking), self-heal `--verify` + guard, resume sejati, apply_patch, checkpoint pre-turn, `minicode stats`, bench external (SWE-bench), telemetry, **133 test**.
 
 📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark).
 
