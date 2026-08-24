@@ -93,6 +93,13 @@ export function saveSession(id: string, cwd: string | undefined, system: string 
       const nextIdx = (maxRow?.m ?? -1) + 1;
       db.prepare("INSERT INTO turns (session_id, turn_idx, usage, ts) VALUES (?, ?, ?, ?)").run(id, nextIdx, JSON.stringify(usage), now);
     }
+    // TTL: hapus sesi lama >30 hari (best-effort) + orphan rows
+    try {
+      const ttlMs = 30 * 24 * 60 * 60 * 1000;
+      db.prepare("DELETE FROM sessions WHERE COALESCE(updated_at, created_at) < ?").run(now - ttlMs);
+      db.prepare("DELETE FROM messages WHERE session_id NOT IN (SELECT id FROM sessions)").run();
+      db.prepare("DELETE FROM turns WHERE session_id NOT IN (SELECT id FROM sessions)").run();
+    } catch {}
   });
   try {
     txn();

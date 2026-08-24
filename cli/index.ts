@@ -59,6 +59,7 @@ ${c.bold("Options:")}
   --verify            auto-verify after run + self-heal (bila ada typecheck/test/tsconfig)
   --sandbox <mode>    sandbox eksekusi bash: docker (container ephemeral, --network none)
   --ratelimit <rpm>   batas request LLM per menit (token bucket) untuk cegah 429
+  --budget <usd>      batas biaya sesi (USD); warn bila 80%, stop bila lewat
 
 ${c.bold("Commands in REPL:")}
   /help, /clear, /model, /cost, /compact, /sessions, /status, /exit
@@ -413,10 +414,13 @@ if (providers.length === 0) {
   process.exit(1);
 }
 
-// ── sandbox & rate limiter ──
+// ── sandbox & rate limiter & budget ──
 const sandboxMode = getArg("--sandbox");
 if (sandboxMode === "docker") process.env.MINICODE_SANDBOX = "docker";
 else if (sandboxMode) process.stderr.write(`[warn] sandbox mode "${sandboxMode}" tidak dikenal — hanya "docker"\n`);
+const budgetRaw = getArg("--budget");
+const budget = budgetRaw ? Number(budgetRaw) : undefined;
+if (budgetRaw && !Number.isFinite(budget)) process.stderr.write(`[warn] --budget butuh angka USD, abaikan "${budgetRaw}"\n`);
 
 const ratelimitRaw = getArg("--ratelimit");
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined;
@@ -594,7 +598,7 @@ let detachInk: (() => void) | undefined;
 
 if (useInk) {
   try {
-    detachInk = attachInkRenderer(session.events, { verbose, model: effectiveInitialModel });
+    detachInk = attachInkRenderer(session.events, { verbose, model: effectiveInitialModel, budget });
   } catch {
     attachRenderer(session.events, { verbose });
   }
@@ -675,6 +679,10 @@ if (enterRepl) {
         await runPromptWithVerify(finalPrompt);
         const u = usage.get(modelOverride);
         const costBadge = u.cost != null ? ` · $${u.cost.toFixed(4)}` : "";
+        if (budget != null && u.cost != null) {
+          if (u.cost > budget) process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget!\n`));
+          else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
+        }
         process.stderr.write(c.dim(`\n[session ${sessionId} saved · ${u.totalTokens.toLocaleString()} tokens${costBadge}]\n\n`));
         writeTrace(cwd, {
           sessionId, timestamp: new Date().toISOString(), prompt: q, durationMs: Date.now() - t0,
@@ -704,6 +712,10 @@ if (enterRepl) {
   try {
     await runPromptWithVerify(effectivePrompt);
     const u = usage.get(modelOverride);
+    if (budget != null && u.cost != null) {
+      if (u.cost > budget) process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget!\n`));
+      else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
+    }
     await persistCurrent(u);
     const costBadge = u.cost != null ? ` cost=$${u.cost.toFixed(4)}` : "";
     process.stderr.write(c.dim(`\n[session ${sessionId} saved · in=${u.inputTokens} out=${u.outputTokens}${costBadge}]\n`));

@@ -1,6 +1,6 @@
 // Benchmark runner: jalankan tugas sample terhadap minicode, ukur resolve rate,
 // steps, token, durasi. `--fake` untuk smoke tanpa API key (dipakai CI).
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { BENCH_TASKS } from "./tasks.ts";
 import { loadConfig } from "../src/config.ts";
 import { buildProviderList } from "../src/providers/build.ts";
@@ -65,8 +65,20 @@ async function main(): Promise<void> {
     resolved,
     resolveRate: results.length ? Number((resolved / results.length).toFixed(3)) : 0,
   };
+  // Delta vs run sebelumnya
+  let deltaLine = "";
+  try {
+    if (existsSync("bench/results.json")) {
+      const prev = JSON.parse(readFileSync("bench/results.json", "utf8")) as { resolveRate?: number; timestamp?: string };
+      if (typeof prev.resolveRate === "number") {
+        const delta = summary.resolveRate - prev.resolveRate;
+        const sign = delta > 0 ? "+" : "";
+        deltaLine = `  delta: ${sign}${(delta * 100).toFixed(1)}% (prev ${prev.resolveRate} @ ${String(prev.timestamp).slice(0, 10)})\n`;
+      }
+    }
+  } catch {}
   writeFileSync("bench/results.json", JSON.stringify({ ...summary, results }, null, 2));
-  process.stdout.write(`\nresolve rate: ${resolved}/${results.length} (${summary.resolveRate})\n`);
+  process.stdout.write(`\nresolve rate: ${resolved}/${results.length} (${summary.resolveRate})\n${deltaLine}`);
 }
 
 main().catch((e) => {

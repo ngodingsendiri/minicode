@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Box, Text, render } from "ink";
 import type { EventBus } from "../../../minicore/src/core/index.ts";
 import { decorateMarkdown } from "./markdown.ts";
+import { getTerminalWidth } from "./theme.ts";
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -11,7 +12,7 @@ interface LogItem {
   type: "tool" | "reasoning" | "error" | "compact" | "info";
 }
 
-function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; model?: string }) {
+function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: boolean; model?: string; budget?: number }) {
   const [rawText, setRawText] = useState("");
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [usage, setUsage] = useState<{ inTokens: number; outTokens: number; cost?: number }>({ inTokens: 0, outTokens: 0 });
@@ -48,10 +49,11 @@ function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; mod
     offs.push(
       bus.on("provider:extension", (e) => {
         if (e.kind === "usage") {
-          const u = e.data as { inputTokens?: number; outputTokens?: number };
+          const u = e.data as { inputTokens?: number; outputTokens?: number; cost?: number };
           setUsage((prev) => ({
             inTokens: u.inputTokens ?? prev.inTokens,
             outTokens: u.outputTokens ?? prev.outTokens,
+            cost: (u as { cost?: number }).cost ?? prev.cost,
           }));
         } else if (e.kind === "reasoning" && verbose) {
           const d = e.data as { text?: string };
@@ -105,6 +107,7 @@ function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; mod
   }, [bus, verbose]);
 
   const statusColor = status === "running" ? "cyan" : status === "done" ? "green" : status === "error" ? "red" : "yellow";
+  const isNarrow = getTerminalWidth() < 80;
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -124,10 +127,10 @@ function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; mod
         </Text>
       </Box>
 
-      {/* Main content body */}
-      <Box flexDirection="row" flexGrow={1}>
+      {/* Main content body — stack vertikal bila terminal sempit */}
+      <Box flexDirection={isNarrow ? "column" : "row"} flexGrow={1}>
         {/* Response viewport */}
-        <Box flexDirection="column" width="65%" borderStyle="round" borderColor={statusColor} padding={1} marginRight={1}>
+        <Box flexDirection="column" width={isNarrow ? "100%" : "65%"} borderStyle="round" borderColor={statusColor} padding={1} marginRight={isNarrow ? 0 : 1} marginBottom={isNarrow ? 1 : 0}>
           <Box marginBottom={1}>
             <Text bold color="cyan">
               Response
@@ -137,7 +140,7 @@ function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; mod
         </Box>
 
         {/* Activity & Tool logs */}
-        <Box flexDirection="column" width="35%" borderStyle="round" borderColor="gray" padding={1}>
+        <Box flexDirection="column" width={isNarrow ? "100%" : "35%"} borderStyle="round" borderColor="gray" padding={1}>
           <Box marginBottom={1}>
             <Text bold color="yellow">
               Activity Stream
@@ -169,15 +172,20 @@ function InkApp({ bus, verbose, model }: { bus: EventBus; verbose?: boolean; mod
           <Text color="yellow">{usage.inTokens.toLocaleString()}</Text>
           <Text dimColor> out=</Text>
           <Text color="yellow">{usage.outTokens.toLocaleString()}</Text>
+          {usage.cost != null && <Text dimColor> cost=</Text>}
+          {usage.cost != null && <Text color="green">${usage.cost.toFixed(4)}</Text>}
+          {budget != null && usage.cost != null && usage.cost > budget * 0.8 && (
+            <Text color={usage.cost > budget ? "red" : "yellow"}> {usage.cost > budget ? "⚠ over budget!" : " 80% budget"}</Text>
+          )}
         </Box>
       </Box>
     </Box>
   );
 }
 
-export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean; model?: string } = {}) {
+export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean; model?: string; budget?: number } = {}) {
   try {
-    const instance = render(<InkApp bus={bus} verbose={opts.verbose} model={opts.model} />, {
+    const instance = render(<InkApp bus={bus} verbose={opts.verbose} model={opts.model} budget={opts.budget} />, {
       exitOnCtrlC: false,
       patchConsole: true,
     });
