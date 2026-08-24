@@ -1,7 +1,7 @@
 // Pure arg-parsing helpers — dipisah dari cli/index.ts agar mudah diuji.
-const BOOLEAN_FLAGS = new Set(["--verbose", "--allow-all", "--ask", "--interactive", "--tui"]);
+const BOOLEAN_FLAGS = new Set(["--verbose", "--allow-all", "--ask", "--interactive", "--tui", "--allowlist"]);
 const VALUE_FLAGS = new Set(["--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout", "--sandbox", "--ratelimit", "--budget"]);
-const KNOWN_FLAGS = new Set(["-h", "--help", "--verbose", "--allow-all", "--ask", "--interactive", "--tui", "--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout", "--verify", "--sandbox", "--ratelimit", "--budget"]);
+const KNOWN_FLAGS = new Set(["-h", "--help", "--verbose", "--allow-all", "--ask", "--allowlist", "--interactive", "--tui", "--cwd", "--resume", "--model", "--session", "--max-steps", "--context-window", "--timeout", "--verify", "--sandbox", "--ratelimit", "--budget"]);
 
 export function getArg(argv: string[], name: string): string | undefined {
   const idx = argv.indexOf(name);

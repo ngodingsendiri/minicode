@@ -19,5 +19,9 @@ jobs:
         run: bun x tsc --noEmit
       - name: Test
         run: bun test
+      - name: Test with sandbox (docker)
+        run: |
+          docker pull node:22-alpine
+          MINICODE_SANDBOX=docker bun test
       - name: Benchmark smoke (fake provider)
         run: bun run bench:smoke

@@ -42,7 +42,26 @@ const BASH_DENY_RE = [
   /\b(?:cat|less|more|head|tail|type|grep|sed|awk|cut|sort|xargs)\b[^\n]*\s+\.env(?:[^.\w]|$)/i,
 ];
 
-export type PermissionMode = "auto" | "readonly" | "allow-all" | "ask";
+export type PermissionMode = "auto" | "readonly" | "allow-all" | "ask" | "allowlist";
+
+const DEFAULT_BASH_ALLOWLIST = [
+  "git status*",
+  "git diff*",
+  "git log*",
+  "git branch*",
+  "bun test*",
+  "bun x tsc*",
+  "npm run *",
+  "bun run *",
+  "echo *",
+  "ls*",
+  "cat *",
+];
+
+function matchBashAllowlist(cmd: string, pattern: string): boolean {
+  const re = new RegExp("^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i");
+  return re.test(cmd.trim());
+}
 
 export function createPermissionHandler(opts: { mode?: PermissionMode; root?: string } = {}): PermissionHandler {
   const mode = opts.mode ?? "auto";
@@ -93,11 +112,29 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         if (isPathOutsideRoot(cwdArg, root)) return "deny";
       }
 
-      if (mode === "readonly" && !READONLY_TOOLS.has(call.name)) return "deny";
-      if (READONLY_TOOLS.has(call.name)) return "allow";
-
       // mcp_call/delegate_task belum tentu readonly; MCP dinamis hanya jika terdaftar
       const isGated = GATED_TOOLS.has(call.name) || (call.name.includes(".") && !isRegisteredMcp(call.name));
+
+      if (mode === "allowlist") {
+        if (call.name === "bash") {
+          const cmd = (earlyArgs?.cmd as string) ?? "";
+          if (!cmd.trim()) return "deny";
+          for (const re of BASH_DENY_RE) if (re.test(cmd)) return "deny";
+          const raw = process.env.MINICODE_BASH_ALLOWLIST;
+          const allowlist = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_BASH_ALLOWLIST;
+          if (!allowlist.some((pat) => matchBashAllowlist(cmd, pat))) return "deny";
+          return "allow";
+        }
+        // non-bash: allow file ops + readonly, deny gated/external
+        if (isGated) return "deny";
+        if (call.name === "write_file" || call.name === "edit") return "allow";
+        if (call.name === "write_memory" || call.name === "forget_memory") return "allow";
+        if (READONLY_TOOLS.has(call.name)) return "allow";
+        return "deny";
+      }
+
+      if (mode === "readonly" && !READONLY_TOOLS.has(call.name)) return "deny";
+      if (READONLY_TOOLS.has(call.name)) return "allow";
 
       if (mode === "ask") {
         const list = await getAllowlist();

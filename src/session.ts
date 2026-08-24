@@ -27,7 +27,7 @@ export async function createMinicodeSession(
   opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor"> & {
     systemExtra?: string;
     cwd?: string;
-    permissionMode?: "auto" | "readonly" | "allow-all" | "ask";
+    permissionMode?: "auto" | "readonly" | "allow-all" | "ask" | "allowlist";
     concurrency?: number;
     writeConcurrency?: number;
   },

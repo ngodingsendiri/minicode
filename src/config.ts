@@ -30,6 +30,7 @@ export interface MinicodeConfig {
   mcpServers?: McpServerEntry[];
   lspServers?: LspServerEntry[];
   verifyCommand?: string;
+  bashAllowlist?: string[];
 }
 
 const GLOBAL = join(homedir(), ".minicode", "config.json");
@@ -41,7 +42,8 @@ function normalizeConfig(raw: unknown): MinicodeConfig {
   const mcpServers = Array.isArray(cfg?.mcpServers) ? (cfg.mcpServers as McpServerEntry[]).filter((m) => m && typeof m.id === "string" && typeof m.command === "string") : undefined;
   const lspServers = Array.isArray(cfg?.lspServers) ? (cfg.lspServers as LspServerEntry[]).filter((l) => l && typeof l.ext === "string" && typeof l.command === "string") : undefined;
   const verifyCommand = typeof cfg?.verifyCommand === "string" ? (cfg.verifyCommand as string) : undefined;
-  return { providers, ...(mcpServers ? { mcpServers } : {}), ...(lspServers ? { lspServers } : {}), ...(verifyCommand ? { verifyCommand } : {}) };
+  const bashAllowlist = Array.isArray(cfg?.bashAllowlist) ? (cfg.bashAllowlist as string[]).filter((s) => typeof s === "string") : undefined;
+  return { providers, ...(mcpServers ? { mcpServers } : {}), ...(lspServers ? { lspServers } : {}), ...(verifyCommand ? { verifyCommand } : {}), ...(bashAllowlist ? { bashAllowlist } : {}) };
 }
 
 async function writeConfigAtomic(path: string, cfg: MinicodeConfig): Promise<void> {
@@ -102,6 +104,7 @@ export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
     mcpServers: [...mcpMap.values()],
     lspServers: [...lspMap.values()],
     ...(localCfg.verifyCommand ?? globalCfg.verifyCommand ? { verifyCommand: localCfg.verifyCommand ?? globalCfg.verifyCommand } : {}),
+    ...(localCfg.bashAllowlist ?? globalCfg.bashAllowlist ? { bashAllowlist: localCfg.bashAllowlist ?? globalCfg.bashAllowlist } : {}),
   };
 }
 
