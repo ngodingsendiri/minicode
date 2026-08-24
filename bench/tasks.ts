@@ -60,4 +60,76 @@ export const BENCH_TASKS: BenchTask[] = [
     },
     cleanup: clean,
   },
+  {
+    id: "rename-symbol",
+    description: "Rename a function across a file",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "util.ts"), "export function calcOld(a: number): number { return a * 2; }\nconst res = calcOld(5);\nexport { res };\n", "utf8");
+      return dir;
+    },
+    prompt: "Rename function `calcOld` to `calc` everywhere in util.ts, and update the call site. Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "util.ts"), "utf8").catch(() => "");
+      return { passed: /calc\b/.test(txt) && !/calcOld/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
+  {
+    id: "add-error-handling",
+    description: "Add error handling to a fetch wrapper",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "client.ts"), "export async function getJson(url: string): Promise<unknown> {\n  const res = await fetch(url);\n  return res.json();\n}\n", "utf8");
+      return dir;
+    },
+    prompt: "Add error handling to getJson() in client.ts: throw on !res.ok, wrap in try/catch. Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "client.ts"), "utf8").catch(() => "");
+      return { passed: /res\.ok|try\s*\{|catch/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
 ];
+
+// Dukungan task eksternal (SWE-bench-format): array { id, description, prompt, files: {path, content}[], verify: string[] }.
+export interface ExternalTask {
+  id: string;
+  description?: string;
+  prompt: string;
+  files: { path: string; content: string }[];
+  verify: string[]; // substring yang harus ada di file (atau `!` untuk negatif)
+}
+
+export async function loadExternalTasks(path: string): Promise<BenchTask[]> {
+  const raw = await readFile(path, "utf8");
+  const list = JSON.parse(raw) as ExternalTask[];
+  return list.map((t) => ({
+    id: t.id,
+    description: t.description ?? t.prompt.slice(0, 80),
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      for (const f of t.files) {
+        await writeFile(join(dir, f.path), f.content, "utf8");
+      }
+      return dir;
+    },
+    prompt: t.prompt,
+    async verify(dir) {
+      const results: string[] = [];
+      for (const v of t.verify) {
+        const neg = v.startsWith("!");
+        const needle = neg ? v.slice(1) : v;
+        let found = false;
+        for (const f of t.files) {
+          const txt = await readFile(join(dir, f.path), "utf8").catch(() => "");
+          if (txt.includes(needle)) { found = true; break; }
+        }
+        results.push(neg ? `!${needle}=${!found}` : `${needle}=${found}`);
+        if ((!neg && !found) || (neg && found)) return { passed: false, detail: results.join(", ") };
+      }
+      return { passed: true, detail: results.join(", ") };
+    },
+    cleanup: clean,
+  }));
+}

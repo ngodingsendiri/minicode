@@ -1,10 +1,14 @@
 # Minicode
 
-Coding agent built on **MiniCore** (`../minicore` v0.1.0, 152 tests — seam additif `compactAsync` terbuka).
+Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam additif `compactAsync` + `initialMessages`).
+
+**v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, secret scrubber, jail terpusat, **allowlist mode**, **Docker sandbox**), TUI responsif + markdown fence highlight, prompt caching Anthropic, fuzzy edit + apply_patch, checkpoint `/undo`/`/redo`, repo-map (regex 9 bahasa + LSP + ranking), auto-verify `--verify` (self-heal + guard), **plan mode `--plan`**, resume sejati, rate limiter, **budget cap**, telemetry JSON, **132 test + bench harness**.
+
+📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark).
 
 **v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, secret scrubber, jail terpusat), TUI & Terminal UX (visual diff cards, tab completion, persistent history, masked wizard, spinner, markdown code fence), **prompt caching Anthropic**, **fuzzy edit** + **apply_patch** (search/replace), **shadow checkpoint `/undo` `/redo`**, **repo-map** (simbol per file), **auto-verify `--verify`** (self-heal), **resume sejati** (full history ke kernel), **rate limiter** + **Docker sandbox**, telemetry JSON, compaction LLM async, persistence incremental, 128 test + bench harness.
 
-MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 21 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite, repo-map, verifier.
+MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 22 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
 ## Hubungan
 ```
@@ -45,11 +49,11 @@ minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah r
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral
 minicode --ratelimit 30 "task"          # batasi request LLM (rpm)
 minicode "/review src/a.ts"             # skill slash-command
-bun test                                # 128 tests
+bun test                                # 132 tests
 bun run bench:smoke                     # benchmark smoke (tanpa API key)
 ```
 
-## Tools (21)
+## Tools (22)
 FS `read_file`(2MB+realpath jail, **secret-scrubbed**) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, **env kredensial di-strip**, **Docker sandbox optional**) · git `git_status/diff/log`(timeout 8s paralel) · memory `read/write/forget_memory` (hybrid RAG WAL) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols`(\b word-boundary)
 
 ## Providers (hybrid x-api-key + Bearer)

@@ -1,7 +1,7 @@
 // Benchmark runner: jalankan tugas sample terhadap minicode, ukur resolve rate,
 // steps, token, durasi. `--fake` untuk smoke tanpa API key (dipakai CI).
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
-import { BENCH_TASKS } from "./tasks.ts";
+import { BENCH_TASKS, loadExternalTasks } from "./tasks.ts";
 import { loadConfig } from "../src/config.ts";
 import { buildProviderList } from "../src/providers/build.ts";
 import { createRouterProvider } from "../src/providers/router.ts";
@@ -32,8 +32,15 @@ async function main(): Promise<void> {
     provider = createRouterProvider({ providers });
   }
 
+  // --tasks <path.json>: muat task eksternal (SWE-bench-format) — ganti BENCH_TASKS
+  let tasks = BENCH_TASKS;
+  const tasksPathIdx = process.argv.indexOf("--tasks");
+  if (tasksPathIdx !== -1 && process.argv[tasksPathIdx + 1]) {
+    tasks = await loadExternalTasks(process.argv[tasksPathIdx + 1]!);
+  }
+
   const results: Record<string, unknown>[] = [];
-  for (const task of BENCH_TASKS) {
+  for (const task of tasks) {
     const dir = await task.setup();
     const session = await createMinicodeSession({ provider, tools: allTools, cwd: dir, permissionMode: "auto" });
     const usage = createUsageCollector(session.events);
