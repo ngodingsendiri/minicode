@@ -3,6 +3,7 @@ import { c, glyphs, box } from "./theme.ts";
 import { renderDiffCard } from "./diff.ts";
 import { createSpinner, type Spinner } from "./spinner.ts";
 import { highlightCode } from "./highlight.ts";
+import { formatArgsPreview, formatUsage, formatProviderError } from "./format.ts";
 
 export interface RendererOptions {
   verbose?: boolean;
@@ -38,13 +39,9 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       }
     } else if (e.kind === "usage") {
       const u = e.data as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-      const parts = [
-        u.inputTokens != null ? `in:${u.inputTokens}` : null,
-        u.outputTokens != null ? `out:${u.outputTokens}` : null,
-        u.totalTokens != null ? `total:${u.totalTokens}` : null,
-      ].filter(Boolean) as string[];
-      if (parts.length && opts.verbose) {
-        process.stderr.write(c.dim(`  ${glyphs.dot} usage: ${parts.join(" ")}\n`));
+      const parts = formatUsage(u);
+      if (parts && opts.verbose) {
+        process.stderr.write(c.dim(`  ${glyphs.dot} usage: ${parts}\n`));
       }
     } else if (e.kind === "error") {
       if (activeSpinner) {
@@ -52,7 +49,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
         activeSpinner = null;
       }
       const d = e.data as { message?: string; category?: string };
-      process.stderr.write(c.red(`\n${glyphs.cross} Provider Error [${d.category ?? "unknown"}]: ${d.message ?? ""}\n`));
+      process.stderr.write(c.red(`\n${glyphs.cross} Provider Error ${formatProviderError(d)}\n`));
     } else if (e.kind === "content_filter") {
       if (activeSpinner) {
         activeSpinner.stop();
@@ -67,20 +64,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       activeSpinner.stop();
       activeSpinner = null;
     }
-    const calls = e.step.toolCalls.map((tc) => {
-      let argPreview = "";
-      try {
-        const args = tc.args as Record<string, unknown>;
-        if (args.path) argPreview = String(args.path);
-        else if (args.command) argPreview = String(args.command).slice(0, 60);
-        else if (args.query) argPreview = String(args.query);
-        else if (args.prompt) argPreview = String(args.prompt).slice(0, 40);
-        else argPreview = JSON.stringify(args).slice(0, 40);
-      } catch {
-        argPreview = "[args]";
-      }
-      return `${c.cyan(tc.name)}(${c.dim(argPreview)})`;
-    }).join(", ");
+    const calls = e.step.toolCalls.map((tc) => `${c.cyan(tc.name)}(${c.dim(formatArgsPreview(tc.args))})`).join(", ");
 
     process.stderr.write(`\n${c.dim(glyphs.arrow)} ${c.bold(`Step ${e.step.index}`)} ${glyphs.dot} ${calls}\n`);
   });

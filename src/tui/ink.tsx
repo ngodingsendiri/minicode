@@ -3,6 +3,7 @@ import { Box, Text, render } from "ink";
 import type { EventBus } from "../../../minicore/src/core/index.ts";
 import { decorateMarkdown } from "./markdown.ts";
 import { getTerminalWidth } from "./theme.ts";
+import { formatStepCalls } from "./format.ts";
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -69,8 +70,7 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
     offs.push(
       bus.on("step:started", (e) => {
         setSteps(e.step.index);
-        const calls = e.step.toolCalls.map((c) => `${c.name}(${JSON.stringify(c.args).slice(0, 35)})`).join(", ");
-        addLog(`Step ${e.step.index} › ${calls}`, "tool");
+        addLog(`Step ${e.step.index} › ${formatStepCalls(e.step.toolCalls)}`, "tool");
       })
     );
 
