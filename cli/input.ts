@@ -74,12 +74,23 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
             return;
           }
           lines.push(line);
-          rl.removeListener("line", onLine);
-          rl.setPrompt(defaultPrompt);
+          cleanup();
           resolve(lines.join("\n").trim() || null);
         };
 
+        const onClose = () => {
+          cleanup();
+          resolve(lines.length ? lines.join("\n").trim() || null : null);
+        };
+
+        function cleanup() {
+          rl.removeListener("line", onLine);
+          rl.removeListener("close", onClose);
+          rl.setPrompt(defaultPrompt);
+        }
+
         rl.on("line", onLine);
+        rl.once("close", onClose);
         rl.prompt();
       });
     },
