@@ -235,7 +235,8 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   // ── renderer ──
-  const useInk = useTui && !enterRepl && !!prompt;
+  // Ink butuh TTY (raw mode) — di non-TTY fallback ke renderer ANSI.
+  const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY;
   let detachInk: (() => void) | undefined;
   if (useInk) {
     try {
