@@ -666,6 +666,7 @@ if (enterRepl) {
       continue;
     }
 
+    let overBudget = false;
     try {
       let finalPrompt = q;
       if (q.startsWith("/")) {
@@ -684,8 +685,10 @@ if (enterRepl) {
         const u = usage.get(modelOverride);
         const costBadge = u.cost != null ? ` · $${u.cost.toFixed(4)}` : "";
         if (budget != null && u.cost != null) {
-          if (u.cost > budget) process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget!\n`));
-          else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
+          if (u.cost > budget) {
+            process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget, ending session.\n`));
+            overBudget = true;
+          } else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
         }
         process.stderr.write(c.dim(`\n[session ${sessionId} saved · ${u.totalTokens.toLocaleString()} tokens${costBadge}]\n\n`));
         writeTrace(cwd, {
@@ -704,6 +707,7 @@ if (enterRepl) {
           model: modelOverride, ok: false, error: formatError(e),
         });
       }
+      if (overBudget) break;
   }
 
   interactivePrompt.close();
@@ -716,11 +720,20 @@ if (enterRepl) {
   try {
     await runPromptWithVerify(effectivePrompt);
     const u = usage.get(modelOverride);
+    let overBudget = false;
     if (budget != null && u.cost != null) {
-      if (u.cost > budget) process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget!\n`));
-      else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
+      if (u.cost > budget) {
+        process.stderr.write(c.red(`[budget] $${u.cost.toFixed(4)} > $${budget.toFixed(2)} — over budget, exiting.\n`));
+        overBudget = true;
+      } else if (u.cost > budget * 0.8) process.stderr.write(c.yellow(`[budget] $${u.cost.toFixed(4)} / $${budget.toFixed(2)} (80% used)\n`));
     }
     await persistCurrent(u);
+    if (overBudget) {
+      if (detachInk) detachInk();
+      await mcpCloseAll();
+      await lspCloseAll();
+      process.exit(1);
+    }
     const costBadge = u.cost != null ? ` cost=$${u.cost.toFixed(4)}` : "";
     process.stderr.write(c.dim(`\n[session ${sessionId} saved · in=${u.inputTokens} out=${u.outputTokens}${costBadge}]\n`));
     writeTrace(cwd, {
