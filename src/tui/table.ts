@@ -1,4 +1,4 @@
-import { c, box, stripAnsi } from "./theme.ts";
+import { c, stripAnsi } from "./theme.ts";
 
 export interface ColumnDef {
   header: string;
@@ -7,17 +7,14 @@ export interface ColumnDef {
   align?: "left" | "right";
 }
 
+// Table minimal — kolom aligned + separator header, tanpa border.
 export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[]): string {
-  if (data.length === 0) {
-    return c.dim("(no entries)");
-  }
+  if (data.length === 0) return c.muted("(no entries)");
 
-  // Calculate column widths
-  const computedWidths = columns.map((col) => {
+  const widths = columns.map((col) => {
     let max = col.header.length;
     for (const row of data) {
-      const val = String(row[col.key] ?? "");
-      const clean = stripAnsi(val);
+      const clean = stripAnsi(String(row[col.key] ?? ""));
       if (clean.length > max) max = clean.length;
     }
     return col.width ?? Math.min(Math.max(max, col.header.length), 50);
@@ -27,37 +24,21 @@ export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[
     const clean = stripAnsi(text);
     const diff = width - clean.length;
     if (diff <= 0) return text;
-    const space = " ".repeat(diff);
-    return align === "right" ? `${space}${text}` : `${text}${space}`;
+    return align === "right" ? `${" ".repeat(diff)}${text}` : `${text}${" ".repeat(diff)}`;
   };
 
-  // Header
-  const topBorder = c.dim(
-    `${box.topLeft}${computedWidths.map((w) => box.horizontal.repeat(w + 2)).join(box.tDown)}${box.topRight}`
+  // Header row
+  const header = columns
+    .map((col, i) => ` ${c.bold(c.cyan(pad(col.header, widths[i]!, col.align)))} `)
+    .join(" ");
+
+  // Separator (─ antara header dan body)
+  const sep = c.dim(widths.map((w) => "─".repeat(w + 2)).join("  "));
+
+  // Body rows
+  const rows = data.map((row) =>
+    columns.map((col, i) => ` ${pad(String(row[col.key] ?? ""), widths[i]!, col.align)} `).join(" ")
   );
 
-  const headerRow = computedWidths
-    .map((w, i) => ` ${c.bold(c.cyan(pad(columns[i]!.header, w, columns[i]!.align)))} `)
-    .join(c.dim(box.vertical));
-  const headerLine = `${c.dim(box.vertical)}${headerRow}${c.dim(box.vertical)}`;
-
-  const midBorder = c.dim(
-    `${box.tRight}${computedWidths.map((w) => box.horizontal.repeat(w + 2)).join(box.cross)}${box.tLeft}`
-  );
-
-  // Rows
-  const bodyRows = data.map((row) => {
-    const cols = computedWidths.map((w, i) => {
-      const col = columns[i]!;
-      const val = String(row[col.key] ?? "");
-      return ` ${pad(val, w, col.align)} `;
-    });
-    return `${c.dim(box.vertical)}${cols.join(c.dim(box.vertical))}${c.dim(box.vertical)}`;
-  });
-
-  const bottomBorder = c.dim(
-    `${box.bottomLeft}${computedWidths.map((w) => box.horizontal.repeat(w + 2)).join(box.tUp)}${box.bottomRight}`
-  );
-
-  return [topBorder, headerLine, midBorder, ...bodyRows, bottomBorder].join("\n");
+  return [sep, header, ...rows].join("\n");
 }

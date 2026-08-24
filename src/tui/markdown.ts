@@ -1,10 +1,7 @@
-// Decorasi sederhana untuk code fence markdown di TUI (tanpa parse penuh).
-// ```lang ... ``` → baris pembuka berlabel + baris penutup, agar blok kode
-// terlihat jelas di viewport respons.
+// Markdown decoration — Ubuntu Server style.
+// Code fence → indentasi 2-space dengan syntax highlight (tanpa separator).
 
 import { highlightCode } from "./highlight.ts";
-
-const BAR = "─".repeat(3);
 
 export function decorateMarkdown(text: string): string {
   if (!text.includes("```") && !text.includes("~~~")) return text;
@@ -18,15 +15,13 @@ export function decorateMarkdown(text: string): string {
       if (!inFence) {
         inFence = true;
         fenceLang = fence[2] ?? "";
-        out.push(`${BAR} ${fenceLang || "code"} ${BAR}`);
-      } else {
-        inFence = false;
-        fenceLang = "";
-        out.push(`${BAR} end ${BAR}`);
+        continue;
       }
+      inFence = false;
+      fenceLang = "";
       continue;
     }
-    out.push(inFence && fenceLang ? highlightCode(line, fenceLang) : line);
+    out.push(inFence && fenceLang ? "  " + highlightCode(line, fenceLang) : line);
   }
   return out.join("\n");
 }

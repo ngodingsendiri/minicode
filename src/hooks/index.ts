@@ -2,7 +2,7 @@ import type { ToolCall } from "../../../minicore/src/core/types.ts";
 import { readFile, writeFile, mkdir, chmod, rename } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
-import { c, box } from "../tui/theme.ts";
+import { c } from "../tui/theme.ts";
 
 export interface Allowlist {
   allowed: string[]; // entries like "bash:echo hi" or "write_file:.tmp/*"
@@ -70,15 +70,14 @@ export async function promptAsk(call: ToolCall): Promise<"allow" | "deny" | "alw
   else if (args.query) actionSummary = `Query: ${String(args.query)}`;
   else actionSummary = `Args: ${JSON.stringify(args).slice(0, 100)}`;
 
-  process.stdout.write(`\n${c.yellow(box.topLeft + box.horizontal.repeat(4))} ${c.bold("Action Confirmation Required")} ${c.yellow(box.horizontal.repeat(28))}\n`);
-  process.stdout.write(`${c.yellow(box.vertical)} Tool:   ${c.bold(c.cyan(toolName))}\n`);
-  process.stdout.write(`${c.yellow(box.vertical)} ${actionSummary}\n`);
-  process.stdout.write(`${c.yellow(box.tRight + box.horizontal.repeat(58))}\n`);
+  process.stdout.write(`\n${c.warning(c.bold("Permission required"))}\n`);
+  process.stdout.write(`  ${c.bold("Tool:")} ${c.info(toolName)}\n`);
+  process.stdout.write(`  ${actionSummary}\n`);
 
-  const promptText = `${c.yellow(box.vertical)} ${c.bold("[y]")} Allow once  ${c.bold("[a]")} Always for session  ${c.bold("[n]")} Deny: `;
+  const promptText = `${c.bold("[y]")} Allow once  ${c.bold("[a]")} Always  ${c.bold("[n]")} Deny: `;
   const ans: string = await new Promise((resolve) => rl.question(promptText, resolve));
   rl.close();
-  process.stdout.write(`${c.yellow(box.bottomLeft + box.horizontal.repeat(58))}\n\n`);
+
 
   const a = ans.trim().toLowerCase();
   if (a === "a" || a === "always") return "always";

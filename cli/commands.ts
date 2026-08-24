@@ -1,7 +1,9 @@
-import { c, glyphs, box } from "../src/tui/theme.ts";
+import { c, glyphs } from "../src/tui/theme.ts";
 import { renderTable } from "../src/tui/table.ts";
 import { listSessions } from "../src/session/persistence.ts";
 import { loadHistory } from "./input.ts";
+import { loadConfig, detectAndSave } from "../src/config.ts";
+import { formatError } from "../src/tui/renderer.ts";
 import type { Usage } from "../src/policy/usage.ts";
 import type { Skill } from "../src/skills/loader.ts";
 
@@ -18,12 +20,14 @@ export interface CommandContext {
 
 export const BUILTIN_COMMANDS = [
   { name: "help", desc: "Show available slash commands and shortcuts" },
-  { name: "clear", desc: "Clear terminal screen" },
+  { name: "providers", desc: "List configured LLM providers" },
+  { name: "provider-add", desc: "Add a new LLM provider (interactive wizard)" },
+  { name: "provider-remove <id>", desc: "Remove a provider by id" },
+  { name: "models [id]", desc: "List models for a provider" },
+  { name: "model <name>", desc: "Switch current LLM model" },
   { name: "undo", desc: "Rollback file edits made in the last turn" },
   { name: "redo", desc: "Reapply previously undone file edits" },
-  { name: "model", desc: "View or switch current LLM model" },
   { name: "cost", desc: "Show token usage & estimated session cost" },
-  { name: "compact", desc: "Force context compaction" },
   { name: "sessions", desc: "List recent session transcripts" },
   { name: "status", desc: "Show agent runtime status & active tools" },
   { name: "history", desc: "Show recent prompt history" },
@@ -43,7 +47,7 @@ export async function handleBuiltinCommand(
 
   switch (cmd) {
     case "help": {
-      process.stdout.write(`\n${c.bold(c.cyan(glyphs.sparkle + " Minicode Commands"))}\n`);
+      process.stdout.write(`\n${c.bold("Minicode Commands")}\n`);
       const cmdTable = BUILTIN_COMMANDS.map((b) => ({
         command: c.cyan(`/${b.name}`),
         description: b.desc,
@@ -112,16 +116,16 @@ export async function handleBuiltinCommand(
 
     case "exit":
     case "quit": {
-      process.stdout.write(c.dim(`Goodbye! ${glyphs.sparkle}\n`));
+      process.stdout.write(c.dim(`Goodbye!\n`));
       return { handled: true, shouldExit: true };
     }
 
     case "model": {
       if (args) {
         ctx.setModelOverride(args);
-        process.stdout.write(`${c.green(glyphs.check)} Model switched to: ${c.bold(c.cyan(args))}\n`);
+        process.stdout.write(`${c.success(glyphs.check)} Model: ${c.bold(args)}\n`);
       } else {
-        process.stdout.write(`${c.cyan(glyphs.sparkle)} Active model: ${c.bold(ctx.currentModel ?? "default")}\n${c.dim("Usage: /model <model-name> to switch")}\n`);
+        process.stdout.write(`Active model: ${c.bold(ctx.currentModel ?? "default")}\n${c.muted("Use /model <name> or /models to browse.")}\n`);
       }
       return { handled: true };
     }
@@ -129,21 +133,20 @@ export async function handleBuiltinCommand(
     case "cost":
     case "usage": {
       const u = ctx.usage.get(ctx.currentModel);
-      process.stdout.write(`\n${c.bold(c.cyan("Session Token & Cost Usage"))}\n`);
+      process.stdout.write(`\n${c.bold("Session Usage")}\n`);
       process.stdout.write(
-        `  ${box.vertical} Input Tokens:  ${c.bold(String(u.inputTokens.toLocaleString()))}\n` +
-        `  ${box.vertical} Output Tokens: ${c.bold(String(u.outputTokens.toLocaleString()))}\n` +
-        `  ${box.vertical} Total Tokens:  ${c.bold(String(u.totalTokens.toLocaleString()))}\n` +
-        (u.cacheReadTokens ? `  ${box.vertical} Cache Read:   ${c.green(String(u.cacheReadTokens.toLocaleString()))}\n` : "") +
-        (u.cacheWriteTokens ? `  ${box.vertical} Cache Write:  ${c.green(String(u.cacheWriteTokens.toLocaleString()))}\n` : "") +
-        `  ${box.vertical} Estimated Cost: ${c.green(c.bold(u.cost != null ? `$${u.cost.toFixed(4)}` : "N/A"))}\n\n`
+        `  Input Tokens:  ${c.bold(String(u.inputTokens.toLocaleString()))}\n` +
+        `  Output Tokens: ${c.bold(String(u.outputTokens.toLocaleString()))}\n` +
+        `  Total Tokens:  ${c.bold(String(u.totalTokens.toLocaleString()))}\n` +
+        (u.cacheReadTokens ? `  Cache Read:   ${c.success(String(u.cacheReadTokens.toLocaleString()))}\n` : "") +
+        (u.cacheWriteTokens ? `  Cache Write:  ${c.success(String(u.cacheWriteTokens.toLocaleString()))}\n` : "") +
+        `  Estimated Cost: ${c.success(c.bold(u.cost != null ? `$${u.cost.toFixed(4)}` : "N/A"))}\n\n`
       );
       return { handled: true };
     }
 
     case "compact": {
-      // Compaction berjalan otomatis di kernel (budget pressure / recovery).
-      process.stdout.write(`${c.yellow(glyphs.sparkle)} Compaction is automatic (kernel budget policy). Manual trigger not supported yet.\n`);
+      process.stdout.write(c.muted("Compaction is automatic (kernel budget policy). Manual trigger not supported yet.\n"));
       return { handled: true };
     }
 
@@ -173,13 +176,13 @@ export async function handleBuiltinCommand(
     }
 
     case "status": {
-      process.stdout.write(`\n${c.bold(c.cyan("Minicode Status"))}\n`);
+      process.stdout.write(`\n${c.bold("Minicode Status")}\n`);
       process.stdout.write(
-        `  ${box.vertical} Session ID:   ${c.cyan(ctx.sessionId)}\n` +
-        `  ${box.vertical} Model:        ${c.bold(ctx.currentModel ?? "default")}\n` +
-        `  ${box.vertical} Provider:     ${c.dim(ctx.providerHint ?? "unknown")}\n` +
-        `  ${box.vertical} Active Tools: ${c.bold(String(ctx.toolsCount))}\n` +
-        `  ${box.vertical} Skills:       ${c.bold(String(ctx.skills.length))}\n\n`
+        `  Session ID:   ${c.info(ctx.sessionId)}\n` +
+        `  Model:        ${c.bold(ctx.currentModel ?? "default")}\n` +
+        `  Provider:     ${c.muted(ctx.providerHint ?? "unknown")}\n` +
+        `  Active Tools: ${c.bold(String(ctx.toolsCount))}\n` +
+        `  Skills:       ${c.bold(String(ctx.skills.length))}\n\n`
       );
       return { handled: true };
     }
@@ -192,6 +195,76 @@ export async function handleBuiltinCommand(
         process.stdout.write(`  ${c.dim(String(i + 1).padStart(2, " ") + ".")} ${h}\n`);
       });
       process.stdout.write("\n");
+      return { handled: true };
+    }
+
+    case "providers": {
+      const cfg = await loadConfig();
+      if (cfg.providers.length === 0) {
+        process.stdout.write(c.muted("\n(no providers — use /provider-add)\n\n"));
+      } else {
+        const tableData = cfg.providers.map((p) => ({
+          id: c.info(p.id),
+          url: p.baseUrl,
+          models: String(p.models.length),
+          hint: c.muted(p.providerHint ?? "?"),
+        }));
+        console.log(`\n${c.bold("Configured LLM Providers")}\n` + renderTable([
+          { header: "ID", key: "id", width: 14 },
+          { header: "Base URL", key: "url", width: 30 },
+          { header: "Models", key: "models", width: 8, align: "right" },
+          { header: "Type", key: "hint", width: 10 },
+        ], tableData) + "\n");
+      }
+      return { handled: true };
+    }
+
+    case "provider-add": {
+      const { createInterface } = await import("node:readline");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
+
+      process.stdout.write(`\n${c.bold("Add New Provider")}\n\n`);
+      const baseUrl = await ask(`${c.info("Base URL")}: `);
+      rl.close();
+      if (!baseUrl) { process.stdout.write(c.error("Base URL required.\n")); return { handled: true }; }
+
+      const { askSecret } = await import("./input.ts");
+      const apiKey = await askSecret(`${c.info("API Key")} (masked): `);
+      if (!apiKey) { process.stdout.write(c.error("API Key required.\n")); return { handled: true }; }
+
+      process.stdout.write(c.muted("Detecting models...\n"));
+      try {
+        const entry = await detectAndSave(baseUrl, apiKey, undefined, {
+          global: false,
+          cwd: ctx.cwd,
+          fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
+        });
+        process.stdout.write(`${c.success(glyphs.check)} Provider "${entry.id}" saved (${entry.models.length} models)\n`);
+        process.stdout.write(c.muted("Restart minicode to use the new provider.\n\n"));
+      } catch (e) {
+        process.stdout.write(`${c.error(glyphs.cross)} Detection failed: ${formatError(e)}\n`);
+        process.stdout.write(c.muted("Provider saved with fallback model. Restart to use.\n\n"));
+      }
+      return { handled: true };
+    }
+
+    case "provider-remove": {
+      if (!args) { process.stdout.write(c.error("Usage: /provider-remove <id>\n")); return { handled: true }; }
+      const { removeProvider } = await import("../src/config.ts");
+      await removeProvider(args, ctx.cwd ? { global: false, cwd: ctx.cwd } : {});
+      process.stdout.write(`${c.success(glyphs.check)} Removed provider "${args}"\n`);
+      return { handled: true };
+    }
+
+    case "models": {
+      const cfg = await loadConfig();
+      const targets = args ? cfg.providers.filter((p) => p.id === args) : cfg.providers;
+      for (const p of targets) {
+        process.stdout.write(`\n${c.bold(p.id)} ${c.muted(p.baseUrl)}\n`);
+        for (const m of p.models.slice(0, 20)) process.stdout.write(`  ${glyphs.dot} ${m}\n`);
+        if (p.models.length > 20) process.stdout.write(c.muted(`  ... +${p.models.length - 20} more\n`));
+      }
       return { handled: true };
     }
 

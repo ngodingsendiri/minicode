@@ -1,4 +1,4 @@
-import { c, box } from "./theme.ts";
+import { c } from "./theme.ts";
 
 const TS_KEYWORDS = new Set([
   "const", "let", "var", "function", "return", "if", "else", "for", "while", "do",
@@ -137,15 +137,15 @@ export function formatCodeBlock(code: string, lang: string = "", maxLines?: numb
   const highlighted = highlightCode(code, lang);
   const lines = highlighted.split("\n");
   const displayLines = maxLines && lines.length > maxLines
-    ? [...lines.slice(0, maxLines), c.dim(`  ${box.vertical} ... (${lines.length - maxLines} more lines)`)]
+    ? [...lines.slice(0, maxLines), c.dim(`    ... (${lines.length - maxLines} more lines)`)]
     : lines;
 
   const header = lang ? ` ${lang.toLowerCase()} ` : " code ";
-  const topBorder = c.dim(`${box.topLeft}${box.horizontal}`) + c.cyan(header) + c.dim(box.horizontal.repeat(Math.max(2, 60 - lang.length)));
-  const bottomBorder = c.dim(`${box.bottomLeft}${box.horizontal.repeat(64)}`);
+  const topBorder = c.muted(`── ${header.trim()}`);
+  const bottomBorder = c.muted("──");
 
   const formattedLines = displayLines.map((l, i) => {
-    const lineNum = c.dim(String(i + 1).padStart(3, " ") + " │ ");
+    const lineNum = c.muted(String(i + 1).padStart(3, " ") + "  ");
     return `${lineNum}${l}`;
   });
 

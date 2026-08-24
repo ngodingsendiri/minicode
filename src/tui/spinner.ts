@@ -25,10 +25,10 @@ export function createSpinner(initialMessage: string = ""): Spinner {
     process.stderr.write("\x1b[?25l");
 
     intervalId = setInterval(() => {
-      const frame = c.cyan(frames[frameIdx % frames.length]!);
+      const frame = c.info(frames[frameIdx % frames.length]!);
       frameIdx++;
       process.stderr.write(`\r${frame} ${message}\x1b[K`);
-    }, 80);
+    }, 120);
   }
 
   const stopTimer = () => {

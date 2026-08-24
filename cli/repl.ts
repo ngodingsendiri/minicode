@@ -18,8 +18,8 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const interactivePrompt = createInteractivePrompt({ modelName: modelRef.current ?? cfg.providers[0]?.models[0], getCompletions });
 
-  const banner = `${c.cyan(c.bold(glyphs.sparkle + " Minicode v0.3.0"))} ${c.dim(`[${modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"} · ${permissionMode}]`)} — ${c.dim("type prompt or /help")}\n`;
-  process.stdout.write(banner);
+  process.stdout.write(c.muted(`minicode v0.3.0 · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"} · ${permissionMode}\n`));
+  process.stdout.write(c.muted(`Type a request or /help\n\n`));
 
   const commandCtx: CommandContext = {
     cwd, sessionId, currentModel: modelRef.current ?? cfg.providers[0]?.models[0], usage, skills: allLoadedSkills, toolsCount: sessionTools.length, providerHint: cfg.providers[0]?.providerHint,

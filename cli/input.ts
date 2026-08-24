@@ -46,7 +46,7 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
     return [hits.length ? hits : [], line];
   };
 
-  const defaultPrompt = `${c.cyan(c.bold("minicode"))} ${c.dim(glyphs.arrow)} `;
+  const defaultPrompt = `${c.bold("minicode")}${c.info("❯")} `;
 
   const rl = createInterface({
     input: process.stdin,
