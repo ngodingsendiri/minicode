@@ -41,10 +41,10 @@ ${c.bold("Options:")}
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
   --interactive       REPL loop (readline)
   --tui               Ink TUI dashboard (split-view, activity stream)
-  --verify            auto-verify after run + self-heal (bila ada typecheck/test/tsconfig)
-  --sandbox <mode>    sandbox eksekusi bash: docker (container ephemeral, --network none)
-  --ratelimit <rpm>   batas request LLM per menit (token bucket) untuk cegah 429
-  --budget <usd>      batas biaya sesi (USD); warn bila 80%, stop bila lewat
+  --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
+  --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
+  --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
+  --budget <usd>      session cost limit (USD); warn at 80%, stop when exceeded
 
 ${c.bold("Commands in REPL:")}
   /help, /clear, /model, /cost, /compact, /sessions, /status, /exit
@@ -53,6 +53,26 @@ ${c.bold("Commands in REPL:")}
 const args = process.argv.slice(2);
 function getArg(name: string): string | undefined {
   return rawGetArg(args, name);
+}
+
+// ── subcommand: stats ──
+if (args[0] === "stats") {
+  const cwdArg = getArg("--cwd");
+  const { readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const file = resolve(cwdArg ?? ".", ".minicode", "traces.jsonl");
+  let traces: any[] = [];
+  try {
+    traces = readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  } catch {}
+  const total = traces.length;
+  const ok = traces.filter((t) => t.ok).length;
+  const input = traces.reduce((s, t) => s + (t.inputTokens ?? 0), 0);
+  const output = traces.reduce((s, t) => s + (t.outputTokens ?? 0), 0);
+  const cost = traces.reduce((s, t) => s + (t.cost ?? 0), 0);
+  const avgMs = total ? Math.round(traces.reduce((s, t) => s + (t.durationMs ?? 0), 0) / total) : 0;
+  console.log(`Runs: ${total} · Resolved: ${ok}/${total} · Tokens in=${input} out=${output} · Cost: $${cost.toFixed(4)} · Avg ${avgMs}ms`);
+  process.exit(0);
 }
 
 // ── subcommand: sessions ──
@@ -246,16 +266,16 @@ const timeoutRaw = getArg("--timeout");
 const timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined;
 const sandboxMode = getArg("--sandbox");
 if (sandboxMode === "docker") process.env.MINICODE_SANDBOX = "docker";
-else if (sandboxMode) process.stderr.write(`[warn] sandbox mode "${sandboxMode}" tidak dikenal — hanya "docker"\n`);
+else if (sandboxMode) process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" — only "docker"\n`);
 const budgetRaw = getArg("--budget");
 const budget = budgetRaw ? Number(budgetRaw) : undefined;
-if (budgetRaw && !Number.isFinite(budget)) process.stderr.write(`[warn] --budget butuh angka USD, abaikan "${budgetRaw}"\n`);
+if (budgetRaw && !Number.isFinite(budget)) process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`);
 const ratelimitRaw = getArg("--ratelimit");
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined;
 
 const prompt = promptFromArgs(args) || (await readPrompt());
 const enterRepl = interactive || (!prompt && process.stdin.isTTY);
-if (!prompt && !enterRepl) { process.stderr.write("usage: minicode \"prompt\"  |  minicode (mode interaktif)\n"); process.exit(1); }
+if (!prompt && !enterRepl) { process.stderr.write("usage: minicode \"prompt\"  |  minicode (interactive mode)\n"); process.exit(1); }
 
 // ── skills: expand /name args ──
 let effectivePrompt = prompt;
@@ -301,4 +321,22 @@ if (enterRepl) {
   }
   await new Promise((r) => setTimeout(r, 200));
   await close();
+
+  // ── plan workflow: tanya lanjut eksekusi (interaktif saja) ──
+  if (ctx.permissionMode === "plan" && process.stdin.isTTY) {
+    const { createInterface } = await import("node:readline");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const ans = await new Promise<string>((res) => rl.question(c.yellow("\nProceed to execute this plan? [y/N] "), res));
+    rl.close();
+    if (ans.trim().toLowerCase() === "y") {
+      const { spawn } = await import("node:child_process");
+      const filtered = args.filter((a) => a !== "--plan");
+      const child = spawn(process.execPath, [process.argv[1], ...filtered], { stdio: "inherit" });
+      child.on("exit", (code) => process.exit(code ?? 0));
+      process.stdin.resume();
+    } else {
+      process.exit(0);
+    }
+    process.exit(0);
+  }
 }

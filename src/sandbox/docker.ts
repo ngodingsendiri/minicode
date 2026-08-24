@@ -45,6 +45,10 @@ export function runInDocker(
   const mount = workspaceMount(cwd);
   const args = [
     "run", "--rm", "-i",
+    "--read-only", // root FS read-only — hanya mount workspace yang bisa ditulis
+    "--cap-drop", "ALL", // tanpa capabilities tambahan
+    "--pids-limit", "128", // batasi jumlah proses (anti fork bomb)
+    "--tmpfs", "/tmp", // /tmp writable meski root read-only
     "-v", `${mount}:${mount}`,
     "-w", mount,
     "--network", opts.network ?? "none",

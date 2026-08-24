@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Box, Text, render } from "ink";
+import { Box, Text, render, useInput } from "ink";
 import type { EventBus } from "../../../minicore/src/core/index.ts";
 import { decorateMarkdown } from "./markdown.ts";
 import { getTerminalWidth } from "./theme.ts";
@@ -109,6 +109,16 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
   const statusColor = status === "running" ? "cyan" : status === "done" ? "green" : status === "error" ? "red" : "yellow";
   const isNarrow = getTerminalWidth() < 80;
 
+  // Scroll respons (panah atas/bawah) bila teks panjang
+  const [scroll, setScroll] = useState(0);
+  useInput((_input, key) => {
+    if (key.upArrow) setScroll((s) => Math.max(0, s - 1));
+    if (key.downArrow) setScroll((s) => s + 1);
+  });
+  const responseLines = decorateMarkdown(rawText).split("\n");
+  const visible = responseLines.length > 12 ? responseLines.slice(Math.max(0, responseLines.length - 12 - scroll), responseLines.length - scroll) : responseLines;
+  const scrolled = scroll > 0 || responseLines.length > 12;
+
   return (
     <Box flexDirection="column" paddingX={1}>
       {/* Header bar */}
@@ -136,7 +146,8 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
               Response
             </Text>
           </Box>
-          <Text wrap="wrap">{decorateMarkdown(rawText) || "(waiting for agent output...)"}</Text>
+          <Text wrap="wrap">{visible.join("\n") || "(waiting for agent output...)"}</Text>
+          {scrolled && <Text dimColor>▴ up/down to scroll</Text>}
         </Box>
 
         {/* Activity & Tool logs */}

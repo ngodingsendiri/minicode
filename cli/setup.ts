@@ -87,7 +87,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
   }
   if (providers.length === 0) {
-    console.error("no provider configured — jalankan `minicode` untuk setup wizard,\natau: minicode config add --baseUrl <url> --apiKey <key>, atau set OPENAI_API_KEY");
+    console.error("no provider configured — run `minicode` for setup wizard,\nor: minicode config add --baseUrl <url> --apiKey <key>, or set OPENAI_API_KEY");
     process.exit(1);
   }
   const router = createRouterProvider({ providers, ...(rateLimiter ? { limiter: rateLimiter } : {}) });
