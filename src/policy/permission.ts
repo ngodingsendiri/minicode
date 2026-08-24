@@ -42,7 +42,7 @@ const BASH_DENY_RE = [
   /\b(?:cat|less|more|head|tail|type|grep|sed|awk|cut|sort|xargs)\b[^\n]*\s+\.env(?:[^.\w]|$)/i,
 ];
 
-export type PermissionMode = "auto" | "readonly" | "allow-all" | "ask" | "allowlist";
+export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist";
 
 const DEFAULT_BASH_ALLOWLIST = [
   "git status*",
@@ -133,7 +133,7 @@ export function createPermissionHandler(opts: { mode?: PermissionMode; root?: st
         return "deny";
       }
 
-      if (mode === "readonly" && !READONLY_TOOLS.has(call.name)) return "deny";
+      if ((mode === "readonly" || mode === "plan") && !READONLY_TOOLS.has(call.name)) return "deny";
       if (READONLY_TOOLS.has(call.name)) return "allow";
 
       if (mode === "ask") {

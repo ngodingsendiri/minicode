@@ -67,6 +67,16 @@ test("auto allows local trusted surface", async () => {
   expect(await h.check({ id: "1", name: "bash", args: { cmd: "ls && echo ok" } } as never, {} as never)).toBe("allow");
 });
 
+test("plan mode: read-only — writes/bash/delegate denied", async () => {
+  const h = createPermissionHandler({ mode: "plan" });
+  expect(await h.check({ id: "1", name: "read_file", args: { path: "a.ts" } } as never, {} as never)).toBe("allow");
+  expect(await h.check({ id: "1", name: "grep", args: { pattern: "x" } } as never, {} as never)).toBe("allow");
+  expect(await h.check({ id: "1", name: "write_file", args: { path: "a.txt", content: "x" } } as never, {} as never)).toBe("deny");
+  expect(await h.check({ id: "1", name: "edit", args: { path: "a.ts", oldString: "a", newString: "b" } } as never, {} as never)).toBe("deny");
+  expect(await h.check({ id: "1", name: "bash", args: { cmd: "echo hi" } } as never, {} as never)).toBe("deny");
+  expect(await h.check({ id: "1", name: "delegate_task", args: { prompt: "x" } } as never, {} as never)).toBe("deny");
+});
+
 test("allowlist mode: safe bash allowed, unsafe/unknown denied", async () => {
   const h = createPermissionHandler({ mode: "allowlist" });
   expect(await h.check({ id: "1", name: "bash", args: { cmd: "git status" } } as never, {} as never)).toBe("allow");

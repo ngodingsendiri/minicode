@@ -51,6 +51,7 @@ ${c.bold("Options:")}
   --session <id>      session id (default random)
   --allow-all         allow all tools (no sandbox)
   --ask               ask per tool (y/n/a) — human-in-loop
+  --plan              read-only plan mode (no file writes / bash / sub-agents)
   --allowlist         bash allowlist only (git/bun/npm safe cmds; via MINICODE_BASH_ALLOWLIST)
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
@@ -506,8 +507,9 @@ try {
   process.stderr.write(`[lsp] init failed: ${formatError(e)}\n`);
 }
 
+const plan = args.includes("--plan") || process.env.MINICODE_PLAN === "1";
 const allowlist = args.includes("--allowlist") || process.env.MINICODE_PERMISSION === "allowlist";
-const permissionMode = allowAll ? "allow-all" : ask ? "ask" : allowlist ? "allowlist" : "auto";
+const permissionMode = allowAll ? "allow-all" : ask ? "ask" : plan ? "plan" : allowlist ? "allowlist" : "auto";
 
 const session = await createMinicodeSession({
   provider: router,

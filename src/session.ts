@@ -27,12 +27,15 @@ export async function createMinicodeSession(
   opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor"> & {
     systemExtra?: string;
     cwd?: string;
-    permissionMode?: "auto" | "readonly" | "allow-all" | "ask" | "allowlist";
+    permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist";
     concurrency?: number;
     writeConcurrency?: number;
   },
 ): Promise<Session> {
-  const system = await buildSystemPrompt({ cwd: opts.cwd, extra: opts.systemExtra });
+  const planHint = opts.permissionMode === "plan"
+    ? "\n\nPLAN MODE: You are in read-only planning mode. Do NOT modify files, run bash, or use write/edit tools. Only read, search, and reason — then output a concrete implementation plan."
+    : "";
+  const system = await buildSystemPrompt({ cwd: opts.cwd, extra: (opts.systemExtra ?? "") + planHint });
   const { concurrency, writeConcurrency, cwd, permissionMode, systemExtra: _extra, ...rest } = opts as typeof opts & {
     concurrency?: number;
     writeConcurrency?: number;
