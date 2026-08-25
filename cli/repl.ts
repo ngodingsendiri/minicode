@@ -1,5 +1,4 @@
 // REPL loop — mode interaktif dengan prompt, history, slash commands, verify, budget.
-import { c, glyphs } from "../src/tui/theme.ts";
 import { formatError } from "../src/tui/renderer.ts";
 import { findSkill, renderSkill } from "../src/skills/loader.ts";
 import { createInteractivePrompt, appendHistory } from "./input.ts";
@@ -9,7 +8,7 @@ import type { CliSession } from "./setup.ts";
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
-    session, cfg, cwd, sessionId, modelRef, effectiveInitialModel,
+    session, cfg, cwd, sessionId, modelRef,
     permissionMode, sessionTools, allLoadedSkills, usage, budget,
     persistCurrent, runPromptWithVerify, close,
   } = ctx;
@@ -21,14 +20,11 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     return candidates.filter((c) => c.startsWith(line));
   };
 
-  const interactivePrompt = createInteractivePrompt({
-    modelName: modelRef.current ?? cfg.providers[0]?.models[0],
-    getCompletions,
-  });
+  const interactivePrompt = createInteractivePrompt({ getCompletions });
 
-  // Startup — satu baris status, langsung prompt
-  const model = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default";
-  process.stdout.write(c.muted(`minicode v0.3.0 · ${model} · ${permissionMode} · ${sessionTools.length} tools\n\n`));
+  // Startup — minimal, satu baris polos
+  process.stdout.write(`minicode v0.3.0 · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"} · ${permissionMode}\n`);
+  process.stdout.write(`Type a request or /help\n\n`);
 
   const commandCtx: CommandContext = {
     cwd, sessionId,
@@ -67,14 +63,12 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       try {
         await runPromptWithVerify(finalPrompt);
         const u = usage.get(modelRef.current);
-
-        // Status line — satu baris ringkas setelah selesai
         const costPart = u.cost != null ? ` · $${u.cost.toFixed(4)}` : "";
-        process.stdout.write(c.muted(`\n  ${u.totalTokens.toLocaleString()} tokens${costPart} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s\n\n`));
+        process.stdout.write(`\n  ${u.totalTokens.toLocaleString()} tokens${costPart} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s\n\n`);
 
         if (budget != null && u.cost != null) {
-          if (u.cost > budget) { overBudget = true; }
-          else if (u.cost > budget * 0.8) { /* warn already shown by renderer */ }
+          if (u.cost > budget) overBudget = true;
+          else if (u.cost > budget * 0.8) process.stderr.write(`  ⚠ 80% of $${budget.toFixed(2)} budget used\n`);
         }
 
         writeTrace(cwd, { sessionId, timestamp: new Date().toISOString(), prompt: q, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelRef.current, ok: true });
@@ -84,17 +78,19 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         hadError = formatError(e);
         writeTrace(cwd, { sessionId, timestamp: new Date().toISOString(), prompt: q, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: usage.get(modelRef.current).inputTokens, outputTokens: usage.get(modelRef.current).outputTokens, model: modelRef.current, ok: false, error: hadError });
       }
-      if (overBudget) break;
+      if (overBudget) {
+        process.stdout.write(`\n  Budget exceeded. Ending session.\n`);
+        break;
+      }
     } catch (e) {
       hadError = formatError(e);
     }
 
     if (hadError) {
-      process.stdout.write(c.error(`\n  ✗ ${hadError}\n\n`));
-      // Actionable fix suggestions
-      if (/429|rate.limit/i.test(hadError)) process.stdout.write(c.muted("  Fix: wait a moment or use --ratelimit to throttle.\n\n"));
-      else if (/401|403|auth|balance|quota/i.test(hadError)) process.stdout.write(c.muted("  Fix: check your API key balance or use /provider-add to add a provider.\n\n"));
-      else if (/timeout/i.test(hadError)) process.stdout.write(c.muted("  Fix: increase --timeout or use a faster model.\n\n"));
+      process.stdout.write(`\n  ✗ ${hadError}\n\n`);
+      if (/429|rate.limit/i.test(hadError)) process.stdout.write(`  Fix: wait a moment or use --ratelimit to throttle.\n\n`);
+      else if (/401|403|auth|balance|quota/i.test(hadError)) process.stdout.write(`  Fix: check your API key balance or use /provider-add to add a provider.\n\n`);
+      else if (/timeout/i.test(hadError)) process.stdout.write(`  Fix: increase --timeout or use a faster model.\n\n`);
     }
   }
 

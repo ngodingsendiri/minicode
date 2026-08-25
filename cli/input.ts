@@ -2,7 +2,6 @@ import { createInterface, type Interface } from "node:readline";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { c, glyphs } from "../src/tui/theme.ts";
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history");
 const MAX_HISTORY = 1000;
@@ -30,8 +29,6 @@ export async function appendHistory(entry: string): Promise<void> {
 }
 
 export interface PromptOptions {
-  promptSymbol?: string;
-  modelName?: string;
   getCompletions?: (line: string) => string[];
 }
 
@@ -46,7 +43,10 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
     return [hits.length ? hits : [], line];
   };
 
-  const defaultPrompt = `${c.bold("minicode")}${c.info("❯")} `;
+  // Plain text prompt — TANPA ANSI escape codes.
+  // Readline menghitung ANSI sebagai karakter terlihat → kursor kacau di Windows.
+  const defaultPrompt = "minicode❯ ";
+  const continuationPrompt = "  ... ";
 
   const rl = createInterface({
     input: process.stdin,
@@ -58,13 +58,10 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
 
   return {
     rl,
-    ask(customPrompt?: string): Promise<string | null> {
+    ask(_customPrompt?: string): Promise<string | null> {
       return new Promise((resolve) => {
-        // Multi-line input: akhiri baris dengan \ untuk lanjut ke baris berikutnya
         const lines: string[] = [];
-        const prompt = customPrompt ?? defaultPrompt;
-        const continuationPrompt = c.dim(c.gray("  ... "));
-        rl.setPrompt(prompt);
+        rl.setPrompt(defaultPrompt);
 
         const onLine = (line: string) => {
           if (line.endsWith("\\")) {
@@ -120,20 +117,20 @@ export async function askSecret(promptText: string): Promise<string> {
           process.stdout.write("\n");
           resolve(secret.trim());
           return;
-        } else if (char === "\u0003") { // Ctrl+C
+        } else if (char === "\u0003") {
           process.stdin.removeListener("data", onData);
           process.stdin.setRawMode(false);
           process.stdin.pause();
           process.stdout.write("\n");
           process.exit(130);
-        } else if (char === "\u007f" || char === "\b") { // Backspace
+        } else if (char === "\u007f" || char === "\b") {
           if (secret.length > 0) {
             secret = secret.slice(0, -1);
             process.stdout.write("\b \b");
           }
         } else if (char.charCodeAt(0) >= 32) {
           secret += char;
-          process.stdout.write(c.dim(glyphs.bullet));
+          process.stdout.write("*");
         }
       }
     };
