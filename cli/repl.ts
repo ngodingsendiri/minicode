@@ -20,16 +20,10 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     return candidates.filter((c) => c.startsWith(line));
   };
 
-  const interactivePrompt = createInteractivePrompt({ getCompletions });
+  // Clear screen — bersihkan semua, langsung prompt
+  process.stdout.write("\x1b[2J\x1b[H");
 
-  // Startup — tampilkan daftar command agar user tahu apa yang tersedia
-  const model = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default";
-  process.stdout.write(`minicode v0.3.0 · ${model} · ${permissionMode}\n`);
-  process.stdout.write(`Commands: ${BUILTIN_COMMANDS.map(b => "/" + b.name).join("  ")}\n`);
-  if (allLoadedSkills.length > 0) {
-    process.stdout.write(`Skills: ${allLoadedSkills.map(s => "/" + s.name).join("  ")}\n`);
-  }
-  process.stdout.write(`Type a request or /help for details.\n\n`);
+  const interactivePrompt = createInteractivePrompt({ getCompletions });
 
   const commandCtx: CommandContext = {
     cwd, sessionId,
