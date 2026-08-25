@@ -2,13 +2,28 @@
 import { formatError } from "../src/tui/renderer.ts";
 import { findSkill, renderSkill } from "../src/skills/loader.ts";
 import { createInteractivePrompt, appendHistory } from "./input.ts";
-import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts";
+import { handleBuiltinCommand, buildModelCatalog, BUILTIN_COMMANDS, type CommandContext, type ModelPick } from "./commands.ts";
 import { writeTrace } from "../src/telemetry/trace.ts";
+import { setPlainMode } from "../src/tui/theme.ts";
+import { saveActiveSelection } from "../src/config.ts";
 import type { CliSession } from "./setup.ts";
 
+// Kompak & friendly: singkirkan JSON body mentah + potong panjang.
+function compactError(raw: string): string {
+  const msg = raw.match(/"message"\s*:\s*"([^"]{1,160})"/);
+  if (msg?.[1]) return msg[1];
+  const withoutJson = raw.replace(/\{[\s\S]*\}/, "").trim();
+  if (withoutJson) return withoutJson.slice(0, 200);
+  return raw.slice(0, 200);
+}
+
 export async function runRepl(ctx: CliSession): Promise<void> {
+  // REPL = monochrome total. Windows conhost mangle ANSI saat readline aktif
+  // (\x1b[31m → "31"): matikan semua warna, semua output plain text.
+  setPlainMode(true);
+
   const {
-    session, cfg, cwd, sessionId, modelRef,
+    session, cfg, cwd, sessionId, modelRef, providerRef,
     permissionMode, sessionTools, allLoadedSkills, usage, budget,
     persistCurrent, runPromptWithVerify, close,
   } = ctx;
@@ -20,48 +35,30 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     return candidates.filter((c) => c.startsWith(line));
   };
 
+  // Katalog model dedupe (cross-provider, provider aktif diprioritas)
+  const allModels = (): ModelPick[] => buildModelCatalog(cfg.providers, providerRef.current);
+
+  const persistSelection = async (model: string, providerId: string): Promise<void> => {
+    try { await saveActiveSelection(model, providerId, { global: false, cwd }); } catch {}
+  };
+
   // Clear screen — bersihkan semua, langsung prompt
   process.stdout.write("\x1b[2J\x1b[H");
 
   const interactivePrompt = createInteractivePrompt({ getCompletions });
-  const rl = interactivePrompt.rl;
-
-  // ── Auto-show slash command suggestions saat mengetik "/" ──
-  let hintVisible = false;
-  let lastHintLine = "";
-  rl.on("keypress", () => {
-    setImmediate(() => {
-      const line = rl.line || "";
-      if (!line.startsWith("/")) {
-        if (hintVisible) {
-          // Sembunyikan hint (move down, clear, move back up)
-          process.stderr.write("\x1b[1B\x1b[0K\x1b[1A");
-          hintVisible = false;
-        }
-        return;
-      }
-      const all = [...BUILTIN_COMMANDS.map((b) => `/${b.name}`), ...allLoadedSkills.map((s) => `/${s.name}`)];
-      const matches = all.filter((c) => c.startsWith(line));
-      const hintText = matches.join("  ");
-      if (hintText !== lastHintLine) {
-        if (hintVisible) process.stderr.write("\x1b[1B\x1b[0K\x1b[1A");
-        if (matches.length > 0) {
-          process.stderr.write(`\n${hintText}\x1b[1A\r`);
-          hintVisible = true;
-        } else {
-          hintVisible = false;
-        }
-      }
-      lastHintLine = hintText;
-    });
-  });
 
   const commandCtx: CommandContext = {
     cwd, sessionId,
-    currentModel: modelRef.current ?? cfg.providers[0]?.models[0],
+    currentModel: modelRef.current,
+    currentProviderId: providerRef.current,
     usage, skills: allLoadedSkills, toolsCount: sessionTools.length,
-    providerHint: cfg.providers[0]?.providerHint,
-    setModelOverride: (m: string) => { modelRef.current = m; },
+    providerHint: cfg.providers.find((p) => p.id === providerRef.current)?.providerHint ?? cfg.providers[0]?.providerHint,
+    setModelOverride: (m: string, p?: string) => {
+      modelRef.current = m;
+      if (p) providerRef.current = p;
+    },
+    pick: (prompt?: string) => interactivePrompt.ask(prompt),
+    allModels,
   };
 
   while (true) {
@@ -88,6 +85,11 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
         const skill = await findSkill(skillName, cwd).catch(() => undefined);
         if (skill) finalPrompt = await renderSkill(skill, skillArgs);
+        else {
+          // Unknown slash command — jangan pernah kirim ke LLM
+          console.log(`\n[?] Unknown command: /${skillName} — type /help\n`);
+          continue;
+        }
       }
 
       try {
@@ -117,10 +119,19 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     }
 
     if (hadError) {
-      process.stdout.write(`\n  ✗ ${hadError}\n\n`);
-      if (/429|rate.limit/i.test(hadError)) process.stdout.write(`  Fix: wait a moment or use --ratelimit to throttle.\n\n`);
-      else if (/401|403|auth|balance|quota/i.test(hadError)) process.stdout.write(`  Fix: check your API key balance or use /provider-add to add a provider.\n\n`);
-      else if (/timeout/i.test(hadError)) process.stdout.write(`  Fix: increase --timeout or use a faster model.\n\n`);
+      const short = compactError(hadError);
+      process.stdout.write(`\n  ✗ ${short}\n`);
+      if (/\b429\b|rate.limit/i.test(hadError)) {
+        process.stdout.write(`  Fix: rate limited — wait a moment and retry (or add --ratelimit).\n\n`);
+      } else if (/\b40[13]\b|auth|api key|balance|quota|insufficient/i.test(hadError)) {
+        process.stdout.write(`  Fix: check API key / balance for active provider, or switch: /model <name> to another provider.\n\n`);
+      } else if (/\btimeout\b/i.test(hadError)) {
+        process.stdout.write(`  Fix: timed out — retry (or increase --timeout, or pick a faster model).\n\n`);
+      } else if (/\b5\d\d\b|server|network|econn/i.test(hadError)) {
+        process.stdout.write(`  Fix: provider/server error — retry, or switch provider: /model <name>.\n\n`);
+      } else {
+        process.stdout.write(`\n`);
+      }
     }
   }
 

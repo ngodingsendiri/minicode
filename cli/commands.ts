@@ -1,36 +1,46 @@
 import { listSessions } from "../src/session/persistence.ts";
 import { loadHistory } from "./input.ts";
-import { loadConfig, detectAndSave } from "../src/config.ts";
+import { loadConfig, saveActiveSelection } from "../src/config.ts";
 import type { Usage } from "../src/policy/usage.ts";
 import type { Skill } from "../src/skills/loader.ts";
 
 // SEMUA output = PLAIN TEXT tanpa ANSI.
-// Readline + ANSI di Windows = karakter escape bocor jadi teks literal.
+// Readline + ANSI di Windows conhost = karakter escape bocor jadi teks literal
+// ("31", "39", "136ID3922", dst). REPL harus monochrome total.
+
+export interface ModelPick {
+  model: string;
+  providers: string[];
+}
 
 export interface CommandContext {
   cwd?: string;
   sessionId: string;
   currentModel?: string;
+  currentProviderId?: string;
+  providerHint?: string;
   usage: { get: (model?: string) => Usage; reset: () => void };
   skills: Skill[];
   toolsCount: number;
-  providerHint?: string;
-  setModelOverride: (model: string) => void;
+  setModelOverride: (model: string, providerId?: string) => void;
+  pick?: (prompt?: string) => Promise<string | null>;
+  allModels?: () => ModelPick[];
 }
 
 export const BUILTIN_COMMANDS = [
   { name: "help", desc: "Show available slash commands" },
-  { name: "providers", desc: "List configured LLM providers" },
-  { name: "provider-add", desc: "Add a new LLM provider (interactive)" },
-  { name: "provider-remove <id>", desc: "Remove a provider by id" },
-  { name: "models [id]", desc: "List models for a provider" },
-  { name: "model <name>", desc: "Switch current LLM model" },
+  { name: "providers", desc: "List providers & which is active" },
+  { name: "models [query]", desc: "List & pick a model (all providers)" },
+  { name: "model [name|index]", desc: "Show or switch the model" },
+  { name: "cost", desc: "Show token usage & session cost" },
   { name: "undo", desc: "Rollback file edits from last turn" },
   { name: "redo", desc: "Reapply undone file edits" },
-  { name: "cost", desc: "Show token usage & session cost" },
   { name: "sessions", desc: "List recent sessions" },
   { name: "status", desc: "Show runtime status" },
   { name: "history", desc: "Show recent prompt history" },
+  { name: "clear", desc: "Clear the terminal" },
+  { name: "provider-add", desc: "Add an LLM provider (interactive)" },
+  { name: "provider-remove <id>", desc: "Remove a provider by id" },
   { name: "exit", desc: "Quit Minicode" },
 ];
 
@@ -38,6 +48,37 @@ function pad(text: string, width: number): string {
   const clean = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
   const diff = width - clean.length;
   return diff > 0 ? text + " ".repeat(diff) : text;
+}
+
+// Katalog model dedupe lintas provider. Model yang sama dari beberapa provider
+// di-CRUSH jadi satu entri + tag daftar provider-nya.
+export function buildModelCatalog(providers: { id: string; models: string[] }[], preferProviderId?: string): ModelPick[] {
+  const map = new Map<string, string[]>();
+  for (const p of providers) {
+    for (const m of p.models) {
+      const arr = map.get(m) ?? [];
+      if (!arr.includes(p.id)) arr.push(p.id);
+      map.set(m, arr);
+    }
+  }
+  const entries = [...map.entries()].map(([model, providers]) => ({ model, providers }));
+  if (preferProviderId) {
+    entries.sort((a, b) => {
+      const pa = a.providers.includes(preferProviderId) ? 0 : 1;
+      const pb = b.providers.includes(preferProviderId) ? 0 : 1;
+      return pa - pb;
+    });
+  }
+  return entries;
+}
+
+function printModelList(items: ModelPick[], activeModel?: string): void {
+  const nameW = Math.min(Math.max(...items.map((i) => i.model.length), 12) + 2, 48);
+  items.forEach((it, idx) => {
+    const marker = it.model === activeModel ? "*" : " ";
+    const tag = it.providers.join(",");
+    console.log(` ${marker} ${String(idx + 1).padEnd(3)}${pad(it.model, nameW)}[${tag}]${it.model === activeModel ? "  (active)" : ""}`);
+  });
 }
 
 export async function handleBuiltinCommand(
@@ -102,26 +143,96 @@ export async function handleBuiltinCommand(
       return { handled: true, shouldExit: true };
 
     case "model": {
-      if (args) {
-        ctx.setModelOverride(args);
-        console.log(`[OK] Model: ${args}`);
+      const items = ctx.allModels?.() ?? [];
+      if (items.length === 0) {
+        console.log("(no models discovered — use /provider-add)");
+        return { handled: true };
+      }
+      if (!args) {
+        printModelList(items, ctx.currentModel);
+        console.log(`\n  Active: ${ctx.currentModel ?? "none"}` + (ctx.currentProviderId ? ` via ${ctx.currentProviderId}` : ""));
+        console.log(`  Pick: /model <number>  or  /model <name[@provider]>`);
+        return { handled: true };
+      }
+      // numeric — pilih dari daftar
+      const num = Number(args);
+      if (!Number.isNaN(num) && num >= 1 && num <= items.length) {
+        const it = items[num - 1]!;
+        const providerId = it.providers.includes(ctx.currentProviderId ?? "") ? ctx.currentProviderId! : it.providers[0]!;
+        ctx.setModelOverride(it.model, providerId);
+        void persistSelection(ctx, it.model, providerId);
+        console.log(`[OK] model: ${it.model} (via ${providerId})`);
+        return { handled: true };
+      }
+      // name[@provider]
+      const [name, providerHintArg] = args.split("@").map((s) => s.trim());
+      const entry = items.find((i) => i.model === name);
+      if (!entry) {
+        console.log(`[?] Model "${name}" not found — try /models or /model <number>`);
+        return { handled: true };
+      }
+      let useId: string;
+      if (providerHintArg) {
+        if (!entry.providers.includes(providerHintArg)) {
+          console.log(`[?] Provider "${providerHintArg}" does not have "${name}" — available: ${entry.providers.join(", ")}`);
+          return { handled: true };
+        }
+        useId = providerHintArg;
       } else {
-        console.log(`Active model: ${ctx.currentModel ?? "default"}`);
-        console.log("Use /model <name> or /models to browse.");
+        useId = entry.providers.includes(ctx.currentProviderId ?? "") ? ctx.currentProviderId! : entry.providers[0]!;
+      }
+      ctx.setModelOverride(entry.model, useId);
+      void persistSelection(ctx, entry.model, useId);
+      console.log(`[OK] model: ${entry.model} (via ${useId})`);
+      return { handled: true };
+    }
+
+    case "models": {
+      const items = ctx.allModels?.() ?? [];
+      if (items.length === 0) {
+        console.log("(no models discovered — use /provider-add)");
+        return { handled: true };
+      }
+      const query = args.toLowerCase();
+      const filtered = query ? items.filter((i) => i.model.toLowerCase().includes(query)) : items;
+      if (filtered.length === 0) {
+        console.log(`[?] No model matches "${args}".`);
+        return { handled: true };
+      }
+      printModelList(filtered.slice(0, 40), ctx.currentModel);
+      if (filtered.length > 40) console.log(`  ... +${filtered.length - 40} more`);
+      console.log(`\n${items.length} models (deduped) · Pick: /model <number>`);
+      // Interactive pick: user tinggal ketik nomor
+      if (ctx.pick && filtered.length <= 40) {
+        const ans = await ctx.pick(`  Pick model [1-${filtered.length}] (Enter = cancel): `);
+        const n = Number(ans);
+        if (ans && !Number.isNaN(n) && n >= 1 && n <= filtered.length) {
+          const it = filtered[n - 1]!;
+          const providerId = it.providers.includes(ctx.currentProviderId ?? "") ? ctx.currentProviderId! : it.providers[0]!;
+          ctx.setModelOverride(it.model, providerId);
+          void persistSelection(ctx, it.model, providerId);
+          console.log(`[OK] model: ${it.model} (via ${providerId})`);
+        }
       }
       return { handled: true };
     }
 
     case "providers": {
-      const cfg = await loadConfig();
+      const cfg = await loadConfig(ctx.cwd);
       if (cfg.providers.length === 0) {
-        console.log("\n(no providers — use /provider-add)");
-      } else {
-        console.log("\nProviders:");
-        for (const p of cfg.providers) {
-          console.log(`  ${p.id.padEnd(16)} ${p.baseUrl.padEnd(35)} ${String(p.models.length).padStart(3)} models  ${p.providerHint ?? "?"}`);
-        }
+        console.log("\n(no providers — use /provider-add)\n");
+        return { handled: true };
       }
+      console.log("\nProviders:");
+      cfg.providers.forEach((p, idx) => {
+        const active = p.id === ctx.currentProviderId || (!ctx.currentProviderId && idx === 0);
+        const tag = active ? "*" : " ";
+        const models = p.models.length === 1 ? "1 model" : `${p.models.length} models`;
+        const preview = p.models[0] ?? "";
+        console.log(` ${tag} ${idx + 1}. ${pad(p.id, 16)} ${pad(p.providerHint ?? "openai", 8)} ${models.padEnd(8)} ${preview}`);
+      });
+      console.log("");
+      console.log(`  Active: ${ctx.currentProviderId ?? cfg.providers[0]?.id ?? "?"} · use /models to pick a model`);
       console.log("");
       return { handled: true };
     }
@@ -142,11 +253,7 @@ export async function handleBuiltinCommand(
 
       console.log("Detecting models...");
       try {
-        const entry = await detectAndSave(baseUrl, apiKey, undefined, {
-          global: false,
-          cwd: ctx.cwd,
-          fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
-        });
+        const entry = await detectAndSaveForCtx(baseUrl, apiKey, ctx.cwd);
         console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models). Restart minicode to use.`);
       } catch (e) {
         console.log(`[FAIL] Detection failed: ${(e as Error).message.slice(0, 80)}`);
@@ -162,18 +269,6 @@ export async function handleBuiltinCommand(
       return { handled: true };
     }
 
-    case "models": {
-      const cfg = await loadConfig();
-      const targets = args ? cfg.providers.filter((p) => p.id === args) : cfg.providers;
-      for (const p of targets) {
-        console.log(`\n${p.id} (${p.baseUrl})`);
-        for (const m of p.models.slice(0, 20)) console.log(`  ${m}`);
-        if (p.models.length > 20) console.log(`  ... +${p.models.length - 20} more`);
-      }
-      console.log("");
-      return { handled: true };
-    }
-
     case "cost":
     case "usage": {
       const u = ctx.usage.get(ctx.currentModel);
@@ -184,11 +279,6 @@ export async function handleBuiltinCommand(
       if (u.cacheReadTokens) console.log(`  Cache Read:    ${u.cacheReadTokens.toLocaleString()}`);
       if (u.cacheWriteTokens) console.log(`  Cache Write:   ${u.cacheWriteTokens.toLocaleString()}`);
       console.log(`  Estimated Cost: ${u.cost != null ? `$${u.cost.toFixed(4)}` : "N/A"}\n`);
-      return { handled: true };
-    }
-
-    case "compact": {
-      console.log("Compaction is automatic (kernel budget policy).");
       return { handled: true };
     }
 
@@ -210,7 +300,7 @@ export async function handleBuiltinCommand(
       console.log(`\nMinicode Status`);
       console.log(`  Session ID:   ${ctx.sessionId}`);
       console.log(`  Model:        ${ctx.currentModel ?? "default"}`);
-      console.log(`  Provider:     ${ctx.providerHint ?? "unknown"}`);
+      console.log(`  Provider:     ${ctx.currentProviderId ?? ctx.providerHint ?? "unknown"}`);
       console.log(`  Active Tools: ${ctx.toolsCount}`);
       console.log(`  Skills:       ${ctx.skills.length}\n`);
       return { handled: true };
@@ -225,7 +315,38 @@ export async function handleBuiltinCommand(
       return { handled: true };
     }
 
-    default:
-      return { handled: false };
+    default: {
+      // Skill command? — biar repl yang handle (render skill → prompt).
+      const skill = ctx.skills.find((s) => s.name === cmd);
+      if (skill) return { handled: false };
+
+      // Unknown slash → friendly suggestion, TIDAK pernah dikirim ke LLM.
+      const candidates = [
+        ...BUILTIN_COMMANDS.map((b) => `/${b.name}`),
+        ...ctx.skills.map((s) => `/${s.name}`),
+      ];
+      const near = candidates.filter((c) => c.slice(1).startsWith(cmd));
+      const similar = near.slice(0, 4).join("  ") || candidates.slice(0, 4).join("  ");
+      console.log(`\n[?] Unknown command: /${cmd}`);
+      if (near.length > 0) console.log(`    did you mean: ${similar}?`);
+      else console.log(`    available: ${similar}`);
+      console.log("    type /help for all commands\n");
+      return { handled: true };
+    }
   }
+}
+
+async function persistSelection(ctx: CommandContext, model: string, providerId: string): Promise<void> {
+  try {
+    await saveActiveSelection(model, providerId, { global: false, cwd: ctx.cwd });
+  } catch {}
+}
+
+async function detectAndSaveForCtx(baseUrl: string, apiKey: string, cwd?: string) {
+  const { detectAndSave } = await import("../src/config.ts");
+  return detectAndSave(baseUrl, apiKey, undefined, {
+    global: false,
+    cwd,
+    fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
+  });
 }

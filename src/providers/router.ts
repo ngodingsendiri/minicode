@@ -5,6 +5,10 @@ import type { RateLimiter } from "../policy/ratelimit.ts";
 export interface RouterConfig {
   providers: ModelProvider[];
   defaultProviderId?: string;
+  // Provider aktif (dinamis, mutable) — dipilih user via /model atau /providers.
+  // Router TIDAK lagi "last-match-wins" bila preferensi dinyatakan:
+  // model yang ada di >1 provider (mis. deepseek-v4-flash) bisa nyasar.
+  preferProviderId?: { current?: string };
   // P2 cap
   maxRetryAfterMs?: number; // default 30_000
   // Token bucket rate limiter (opsional) — cegah request beruntun kena 429
@@ -42,10 +46,17 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
     models: config.providers.flatMap((p) => [...p.models]),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const fixed = fixRequest(request);
-      // route by model name — last match wins (local overrides global)
+      // route by model name — prefer provider aktif bila ada, else last match wins
+      // (last match = local overrides global)
       let target: ModelProvider | undefined;
       if (fixed.model) {
-        for (const p of config.providers) if (p.models.includes(fixed.model)) target = p;
+        const preferredId = config.preferProviderId?.current;
+        if (preferredId && byId.get(preferredId)?.models.includes(fixed.model)) {
+          target = byId.get(preferredId);
+        }
+        if (!target) {
+          for (const p of config.providers) if (p.models.includes(fixed.model)) target = p;
+        }
       }
       target ??= byId.get(defaultId) ?? config.providers[0];
       if (!target) throw new ProviderError("unknown", "no provider configured");

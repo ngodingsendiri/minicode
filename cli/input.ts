@@ -32,6 +32,50 @@ export interface PromptOptions {
   getCompletions?: (line: string) => string[];
 }
 
+// Auto-show slash command hints: saat line starts dengan "/", prompt jadi
+// multiline yang menampilkan matching commands di baris atas prompt.
+// Fully readline-managed — ZERO ANSI tulis tangan (aman di conhost Windows).
+// Polling rl.line setiap 110ms: tidak bergantung pada keypress events runtime.
+const BASE_PROMPT = "minicode❯ ";
+const HINT_POLL_MS = 110;
+
+function hintRender(hits: string[]): string {
+  const width = process.stdout.columns || 80;
+  let out = "";
+  for (const h of hits) {
+    if (out.length + h.length + 2 > width) {
+      out += " …";
+      break;
+    }
+    out += (out ? "  " : "") + h;
+  }
+  return out;
+}
+
+export function attachSlashHints(
+  rl: Interface,
+  getCompletions: (line: string) => string[],
+): () => void {
+  let last = BASE_PROMPT;
+  const timer = setInterval(() => {
+    const line = (rl as { line?: string }).line ?? "";
+    let next = BASE_PROMPT;
+    if (line.startsWith("/")) {
+      const hits = getCompletions(line).filter((h) => h !== line);
+      if (hits.length > 0) next = hintRender(hits) + "\n" + BASE_PROMPT;
+    }
+    if (next !== last) {
+      last = next;
+      try {
+        rl.setPrompt(next);
+        // prompt(true) = redraw tanpa reset cursor — menjaga input yang sudah diketik
+        if (line.length > 0) rl.prompt(true);
+      } catch {}
+    }
+  }, HINT_POLL_MS);
+  return () => clearInterval(timer);
+}
+
 export function createInteractivePrompt(opts: PromptOptions = {}): {
   rl: Interface;
   ask: (customPrompt?: string) => Promise<string | null>;
@@ -45,7 +89,7 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
 
   // Plain text prompt — TANPA ANSI escape codes.
   // Readline menghitung ANSI sebagai karakter terlihat → kursor kacau di Windows.
-  const defaultPrompt = "minicode❯ ";
+  const defaultPrompt = BASE_PROMPT;
   const continuationPrompt = "  ... ";
 
   const rl = createInterface({
@@ -56,12 +100,15 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
     prompt: defaultPrompt,
   });
 
+  const detachHints = opts.getCompletions ? attachSlashHints(rl, opts.getCompletions) : null;
+
   return {
     rl,
-    ask(_customPrompt?: string): Promise<string | null> {
+    ask(customPrompt?: string): Promise<string | null> {
       return new Promise((resolve) => {
         const lines: string[] = [];
-        rl.setPrompt(defaultPrompt);
+        const initialPrompt = customPrompt && customPrompt.trim() ? customPrompt : defaultPrompt;
+        rl.setPrompt(initialPrompt);
 
         const onLine = (line: string) => {
           if (line.endsWith("\\")) {
@@ -92,6 +139,7 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
       });
     },
     close() {
+      if (detachHints) detachHints();
       rl.close();
     },
   };
