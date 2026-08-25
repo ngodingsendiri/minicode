@@ -6,7 +6,6 @@ import { createMinicodeSession } from "../src/session.ts";
 import { allTools, withMcpTools } from "../src/tools/index.ts";
 import { attachRenderer, formatError } from "../src/tui/renderer.ts";
 import { createUsageCollector } from "../src/policy/usage.ts";
-import { attachInkRenderer } from "../src/tui/ink.tsx";
 import { loadConfig, type MinicodeConfig } from "../src/config.ts";
 import { createOpenAICompatProvider } from "../../minicore/src/providers/openai-compat.ts";
 import { createAnthropicProvider } from "../src/providers/anthropic.ts";
@@ -240,6 +239,8 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   let detachInk: (() => void) | undefined;
   if (useInk) {
     try {
+      // Lazy: ink/react hanya di-bundle saat --tui benar-benar dipakai.
+      const { attachInkRenderer } = await import("../src/tui/ink.tsx");
       detachInk = attachInkRenderer(session.events, { verbose, model: effectiveInitialModel, budget });
     } catch {
       attachRenderer(session.events, { verbose });
