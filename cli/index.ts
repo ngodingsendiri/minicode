@@ -103,6 +103,25 @@ if (args[0] === "sessions") {
     if (asJsonl) for (const m of sess.messages) console.log(JSON.stringify(m));
     else console.log(JSON.stringify(sess, null, 2));
     process.exit(0);
+  } else if (sub === "purge") {
+    // Hapus sesi basi (TTL). TTL juga auto-jalan saat saveSession.
+    const { purgeExpired, getSessionTtlDays } = await import("../src/session/persistence.ts");
+    const { Database } = await import("bun:sqlite");
+    const { resolve, join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const { mkdirSync, existsSync } = await import("node:fs");
+    const cwdArg = getArg("--cwd");
+    const localPath = resolve(cwdArg ?? process.cwd(), ".minicode", "sessions.db");
+    const dbPath = existsSync(localPath) ? localPath : (() => { const g = join(homedir(), ".minicode"); mkdirSync(g, { recursive: true }); return join(g, "sessions.db"); })();
+    const db = new Database(dbPath);
+    try {
+      const removed = purgeExpired(db);
+      const ttl = getSessionTtlDays();
+      console.log(`[purge] removed ${removed} session(s) older than ${ttl} day(s)`);
+    } finally {
+      db.close();
+    }
+    process.exit(0);
   } else { console.log(HELP); process.exit(0); }
 }
 

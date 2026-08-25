@@ -63,9 +63,10 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 # Bagian C — Teknis Fase 6
 
 ## 6.1 Persistence robust (P1)
-- [ ] `saveSession` TTL 30 hari — butuh konfigurasi `ttlMs` di config (bisa 0 = forever).
-- [ ] Checkpoint pruning: 20 terbaru per session, hapus yang lebih lama (disk growth).
-- [ ] Test: TTL delete & prune tidak lari jauh dari requirement.
+- [x] TTL konfigurable: `MINICODE_SESSION_TTL_DAYS` (0 = forever, default 30) — `purgeExpired()` ter-ekstrak & reusable.
+- [x] `minicode sessions purge` — hapus manual sesi basi + orphan rows.
+- [x] Checkpoint pruning: 20 terbaru per session (dari 50) — manifest di-cap saat record.
+- [x] Test: TTL env parsing, purge delete (mock DB), checkpoint cap 25→20.
 
 ## 6.2 Cache & kecepatan (P2)
 - [ ] Startup tidak boleh >1s di mesin dingin — audit dynamic imports (`wizard.ts`, `formats`).

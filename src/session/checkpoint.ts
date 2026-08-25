@@ -3,7 +3,7 @@ import { join, resolve, relative, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import { isPathOutsideRoot } from "../policy/jail.ts";
 
-const MAX_CHECKPOINTS = 50;
+const MAX_CHECKPOINTS = 20;
 
 export interface FileSnapshot {
   path: string; // relative path
