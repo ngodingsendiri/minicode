@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
 import { handleBuiltinCommand } from "../cli/commands.ts";
+import { saveSession } from "../src/session/persistence.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function dummyCtx(extra: { setModelOverride?: (m: string) => void } = {}) {
   return {
@@ -38,4 +42,21 @@ test("commands: /help, /clear, /status, /model are handled", async () => {
   const resExit = await handleBuiltinCommand("/exit", ctx);
   expect(resExit.handled).toBe(true);
   expect(resExit.shouldExit).toBe(true);
+});
+
+test("commands: /sessions lists saved sessions with cwd", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "minicode-sess-"));
+  saveSession("sess-1", tmp, undefined, [{ role: "user", content: "hi" }], { inputTokens: 1 });
+  const ctx = { ...dummyCtx(), cwd: tmp };
+  const res = await handleBuiltinCommand("/sessions", ctx);
+  expect(res.handled).toBe(true);
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+test("commands: /resume fails gracefully on unknown id", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "minicode-resume-"));
+  const ctx = { ...dummyCtx(), cwd: tmp };
+  const res = await handleBuiltinCommand("/resume no-such-id", ctx);
+  expect(res.handled).toBe(true);
+  rmSync(tmp, { recursive: true, force: true });
 });

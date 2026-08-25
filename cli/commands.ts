@@ -1,4 +1,4 @@
-import { listSessions } from "../src/session/persistence.ts";
+import { listSessions, loadSession } from "../src/session/persistence.ts";
 import { loadHistory } from "./input.ts";
 import { loadConfig, detectAndSave } from "../src/config.ts";
 import type { Usage } from "../src/policy/usage.ts";
@@ -29,6 +29,7 @@ export const BUILTIN_COMMANDS = [
   { name: "redo", desc: "Reapply undone file edits" },
   { name: "cost", desc: "Show token usage & session cost" },
   { name: "sessions", desc: "List recent sessions" },
+  { name: "resume [id]", desc: "Resume a session (pick from list)" },
   { name: "status", desc: "Show runtime status" },
   { name: "history", desc: "Show recent prompt history" },
   { name: "exit", desc: "Quit Minicode" },
@@ -238,23 +239,65 @@ export async function handleBuiltinCommand(
     }
 
     case "sessions": {
-      const rows = listSessions(ctx.cwd).slice(0, 10);
+      const rows = listSessions(ctx.cwd).slice(0, 25);
       if (rows.length === 0) {
-        console.log("(no previous sessions)");
+        console.log("\n(no previous sessions)");
       } else {
         console.log("\nRecent Sessions:");
-        for (const r of rows) {
-          console.log(`  ${r.id.padEnd(14)} ${new Date(r.created_at).toLocaleString().padEnd(24)} ${r.cwd}`);
-        }
+        rows.forEach((r, i) => {
+          console.log(`  [${i}] ${r.id.padEnd(14)} ${new Date(r.created_at).toLocaleString().padEnd(24)} ${r.cwd || "(cwd)"}`);
+        });
+        console.log("  (type a number to resume, or /resume <id>)");
       }
       console.log("");
       return { handled: true };
     }
 
+    case "resume": {
+      const rows = listSessions(ctx.cwd);
+      if (rows.length === 0) {
+        console.log("(no previous sessions to resume)");
+        return { handled: true };
+      }
+      let target = args;
+      if (!target) {
+        rows.slice(0, 15).forEach((r, i) => {
+          console.log(`  [${i}] ${r.id.padEnd(14)} ${new Date(r.created_at).toLocaleString().padEnd(24)} ${r.cwd || "(cwd)"}`);
+        });
+        const { askLine } = await import("./input.ts");
+        const n = await askLine({ prompt: "resume # or id > " });
+        if (n == null) { console.log("canceled"); return { handled: true }; }
+        const pick = n.trim();
+        const idx = Number(pick);
+        if (Number.isInteger(idx) && Number.isFinite(idx) && idx >= 0 && idx < rows.length) target = rows[idx]!.id;
+        else target = pick;
+      }
+      if (!target) { console.log("canceled"); return { handled: true }; }
+      const sess = loadSession(target, ctx.cwd);
+      if (!sess || !sess.messages.length) {
+        console.log(`[FAIL] session "${target}" not found or empty`);
+        return { handled: true };
+      }
+      // Respawn dengan --resume: kernel mendukung initialMessages penuh
+      // (seed context store). Proses lama bersih-bersih dan diganti.
+      const { spawn } = await import("node:child_process");
+      const child = spawn(process.execPath, ["cli/index.ts", `--resume=${target}`, ...(ctx.cwd ? [`--cwd=${ctx.cwd}`] : [])], {
+        stdio: "inherit",
+        env: { ...process.env, MINICODE_RESUME_NEW: "1" },
+      });
+      child.on("exit", (code) => process.exit(code ?? 0));
+      process.stdin.pause();
+      return { handled: true };
+    }
+
     case "status": {
+      const mUsed = ctx.usage.modelUsed();
       console.log(`\nMinicode Status`);
       console.log(`  Session ID:   ${ctx.sessionId}`);
       console.log(`  Model:        ${ctx.currentModel ?? "default"}`);
+      if (mUsed.effective && mUsed.effective !== ctx.currentModel) {
+        console.log(`  Model Used:   ${mUsed.effective} (${mUsed.provider ?? "?"} via fallback)`);
+      }
       console.log(`  Provider:     ${ctx.providerHint ?? "unknown"}`);
       console.log(`  Active Tools: ${ctx.toolsCount}`);
       console.log(`  Skills:       ${ctx.skills.length}\n`);

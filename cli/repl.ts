@@ -42,7 +42,16 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   };
 
   while (true) {
-    const line = await askLine({ hints: getSuggestions });
+    // Prompt menampilkan cutoff budget (hanya saat --budget aktif)
+    let promptText = "minicode❯ ";
+    if (budget != null) {
+      const u = usage.get(modelRef.current);
+      if (u.cost != null && budget > 0) {
+        const pct = Math.min(100, Math.round((u.cost / budget) * 100));
+        promptText = `minicode❯[${pct}%] `;
+      }
+    }
+    const line = await askLine({ prompt: promptText, hints: getSuggestions });
     if (line == null) break;
     const q = line.trim();
     if (!q) continue;

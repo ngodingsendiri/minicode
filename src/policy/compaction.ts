@@ -88,7 +88,9 @@ export async function compactWithLlm(
     return mechanicalCompaction.compact(store, { keepRecentTurns: keep });
   }
 
-  // use safe head like mechanical: content truncated, tool results omitted
+  // use safe head like mechanical: content truncated, tool results included
+  // seperlunya — hasil tool SUKSES adalah sumber fakta (isi file, output
+  // grep/bash, verifikasi). Jangan buang: head 300 chars per hasil.
   const { contentToText } = await import("../../../minicore/src/core/tokens.ts");
   const head = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n)}…`);
   const lineFor = (m: import("../../../minicore/src/core/types.ts").Message): string => {
@@ -97,10 +99,11 @@ export async function compactWithLlm(
       const calls = (m.toolCalls ?? []).map((c) => `${c.name}(${head(JSON.stringify(c.args), 80)})`).join(", ");
       return `- assistant${calls ? ` [${calls}]` : ""}: ${head(contentToText(m.content), 400)}`;
     }
-    if (m.isError) return `- tool(${m.name}): ${head(String(m.content), 200)}`;
-    return `- tool(${m.name}): <result omitted>`;
+    if (m.isError) return `- tool(${m.name}) ERROR: ${head(String(m.content), 300)}`;
+    const raw = typeof m.content === "string" ? m.content : Array.isArray(m.content) ? contentToText(m.content) : "";
+    return `- tool(${m.name}): ${head(raw, 300)}`;
   };
-  const summaryPrompt = `Summarize this conversation prefix for compaction. Keep key decisions, file paths, tool results errors, and next steps. Be concise (max 800 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 8000)}`;
+  const summaryPrompt = `Summarize this conversation prefix for compaction. KEEP FACTS: exact file paths, function signatures, key code snippets, tool results (grep/bash/test output), error messages, and next steps. Be concise (max 800 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 8000)}`;
 
   let summary = "";
   try {
