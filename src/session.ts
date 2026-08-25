@@ -1,45 +1,56 @@
-import { createSession as createCoreSession } from "../../minicore/src/core/index.ts";
-import type { Session, SessionConfig } from "../../minicore/src/core/index.ts";
-import { createPermissionHandler } from "./policy/permission.ts";
-import { minicodeEstimator, buildSystemPrompt } from "./policy/context.ts";
-import { defaultRecoveryPolicy } from "../../minicore/src/core/recovery.ts";
-import { parallelExecutor } from "./policy/executor.ts";
-import { ProviderError } from "../../minicore/src/core/errors.ts";
-import type { RecoveryAction } from "../../minicore/src/core/errors.ts";
+import type { RecoveryAction } from "minicore/core/errors.ts"
+import { ProviderError } from "minicore/core/errors.ts"
+import type { Session, SessionConfig } from "minicore/core/index.ts"
+import { createSession as createCoreSession } from "minicore/core/index.ts"
+import { defaultRecoveryPolicy } from "minicore/core/recovery.ts"
+import { buildSystemPrompt, minicodeEstimator } from "./policy/context.ts"
+import { parallelExecutor } from "./policy/executor.ts"
+import { createPermissionHandler } from "./policy/permission.ts"
 
 // P2 cap wrapper: limit retryAfter to 30s without mutating original error
 const cappedRecovery = {
   onError(error: ProviderError, attempt: number): RecoveryAction {
     if (error.retryAfterMs != null && error.retryAfterMs > 30_000) {
-      const capped = new ProviderError(error.category, error.message, 30_000);
+      const capped = new ProviderError(error.category, error.message, 30_000)
       // preserve extra fields if any
-      Object.assign(capped, { cause: (error as unknown as { cause?: unknown }).cause });
-      return defaultRecoveryPolicy.onError(capped, attempt);
+      Object.assign(capped, { cause: (error as unknown as { cause?: unknown }).cause })
+      return defaultRecoveryPolicy.onError(capped, attempt)
     }
-    return defaultRecoveryPolicy.onError(error, attempt);
+    return defaultRecoveryPolicy.onError(error, attempt)
   },
   onLength(compacted: boolean): RecoveryAction {
-    return defaultRecoveryPolicy.onLength(compacted);
+    return defaultRecoveryPolicy.onLength(compacted)
   },
-};
+}
 
 export async function createMinicodeSession(
   opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor"> & {
-    systemExtra?: string;
-    cwd?: string;
-    permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist";
-    concurrency?: number;
-    writeConcurrency?: number;
+    systemExtra?: string
+    cwd?: string
+    permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
+    concurrency?: number
+    writeConcurrency?: number
   },
 ): Promise<Session> {
-  const planHint = opts.permissionMode === "plan"
-    ? "\n\nPLAN MODE: You are in read-only planning mode. Do NOT modify files, run bash, or use write/edit tools. Only read, search, and reason — then output a concrete implementation plan."
-    : "";
-  const system = await buildSystemPrompt({ cwd: opts.cwd, extra: (opts.systemExtra ?? "") + planHint });
-  const { concurrency, writeConcurrency, cwd, permissionMode, systemExtra: _extra, ...rest } = opts as typeof opts & {
-    concurrency?: number;
-    writeConcurrency?: number;
-  };
+  const planHint =
+    opts.permissionMode === "plan"
+      ? "\n\nPLAN MODE: You are in read-only planning mode. Do NOT modify files, run bash, or use write/edit tools. Only read, search, and reason — then output a concrete implementation plan."
+      : ""
+  const system = await buildSystemPrompt({
+    cwd: opts.cwd,
+    extra: (opts.systemExtra ?? "") + planHint,
+  })
+  const {
+    concurrency,
+    writeConcurrency,
+    cwd,
+    permissionMode,
+    systemExtra: _extra,
+    ...rest
+  } = opts as typeof opts & {
+    concurrency?: number
+    writeConcurrency?: number
+  }
   return createCoreSession({
     ...rest,
     system,
@@ -50,5 +61,5 @@ export async function createMinicodeSession(
       concurrency: concurrency ?? 8,
       writeConcurrency: writeConcurrency ?? 2,
     }),
-  });
+  })
 }

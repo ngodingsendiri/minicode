@@ -1,8 +1,8 @@
-import type { Tool } from "minicore";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
-import { isPathOutsideRoot } from "../policy/jail.ts";
-import { scrubSecrets } from "../policy/scrub.ts";
+import { readdir, readFile, realpath, stat } from "node:fs/promises"
+import { join, relative, resolve } from "node:path"
+import type { Tool } from "minicore"
+import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
 
 async function walkGrep(
   dir: string,
@@ -13,29 +13,33 @@ async function walkGrep(
   signal: AbortSignal,
   includeRe?: RegExp | null,
 ) {
-  if (signal.aborted) throw new Error("aborted");
-  if (out.length >= limit) return;
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  if (signal.aborted) throw new Error("aborted")
+  if (out.length >= limit) return
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
   for (const e of entries) {
-    if (out.length >= limit) break;
-    if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue;
-    const full = join(dir, e.name);
-    const rel = relative(root, full).replace(/\\/g, "/");
+    if (out.length >= limit) break
+    if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue
+    const full = join(dir, e.name)
+    const rel = relative(root, full).replace(/\\/g, "/")
     if (e.isDirectory()) {
-      await walkGrep(full, re, out, root, limit, signal, includeRe);
+      await walkGrep(full, re, out, root, limit, signal, includeRe)
     } else {
-      if (includeRe && !includeRe.test(rel) && !includeRe.test(e.name)) continue;
-      if (/\.(png|jpg|jpeg|gif|webp|pdf|zip|exe|dll|bin)$/i.test(e.name)) continue;
-      const st = await stat(full).catch(() => null);
-      if (!st || st.size > 1_000_000) continue;
-      const text = await readFile(full, "utf8").catch(() => "");
-      if (text.includes("\0")) continue;
-      const lines = text.split("\n");
+      if (includeRe && !includeRe.test(rel) && !includeRe.test(e.name)) continue
+      if (/\.(png|jpg|jpeg|gif|webp|pdf|zip|exe|dll|bin)$/i.test(e.name)) continue
+      // symlink file escape check — resolve realpath and jail
+      const real = await realpath(full).catch(() => full)
+      if (isPathOutsideRoot(real, resolve(root)) || isSensitive(real) || isSensitive(rel)) continue
+      // also skip if symlink points outside (already covered) or sensitive
+      const st = await stat(real).catch(() => null)
+      if (!st || st.size > 1_000_000) continue
+      const text = await readFile(real, "utf8").catch(() => "")
+      if (text.includes("\0")) continue
+      const lines = text.split("\n")
       for (let i = 0; i < lines.length; i++) {
-        re.lastIndex = 0;
+        re.lastIndex = 0
         if (re.test(lines[i]!)) {
-          out.push(`${rel}:${i + 1}: ${scrubSecrets(lines[i]!.slice(0, 300))}`);
-          if (out.length >= limit) break;
+          out.push(`${rel}:${i + 1}: ${scrubSecrets(lines[i]!.slice(0, 300))}`)
+          if (out.length >= limit) break
         }
       }
     }
@@ -43,18 +47,18 @@ async function walkGrep(
 }
 
 function includeToRegExp(include: string): RegExp | null {
-  if (!include) return null;
-  let esc = include.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  esc = esc.replace(/\*\*/g, "§§");
-  esc = esc.replace(/\*/g, "[^/]*");
-  esc = esc.replace(/§§/g, ".*");
-  esc = esc.replace(/\?/g, ".");
-  return new RegExp("^" + esc + "$");
+  if (!include) return null
+  let esc = include.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+  esc = esc.replace(/\*\*/g, "§§")
+  esc = esc.replace(/\*/g, "[^/]*")
+  esc = esc.replace(/§§/g, ".*")
+  esc = esc.replace(/\?/g, ".")
+  return new RegExp("^" + esc + "$")
 }
 
 export const grepTool: Tool = {
   name: "grep",
-  description: "Cari regex di file (ripgrep-like). Mengembalikan file:line: content.",
+  description: "Search regex di file (ripgrep-like). Mengembalikan file:line: content.",
   parameters: {
     type: "object",
     properties: {
@@ -67,19 +71,20 @@ export const grepTool: Tool = {
     additionalProperties: false,
   },
   async execute({ pattern, cwd, include, limit }, ctx) {
-    const root = (cwd as string) ?? ".";
-    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`);
-    const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500);
-    let re: RegExp;
+    const root = (cwd as string) ?? "."
+    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`)
+    const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500)
+    let re: RegExp
     try {
-      re = new RegExp(pattern as string);
+      re = new RegExp(pattern as string)
     } catch (e) {
-      throw new Error(`invalid regex: ${(e as Error).message}`);
+      throw new Error(`invalid regex: ${(e as Error).message}`)
     }
-    const incRe = include ? includeToRegExp(include as string) : null;
-    const out: string[] = [];
-    await walkGrep(root, re, out, root, lim, ctx.signal, incRe);
-    if (out.length === 0) return `no matches for /${pattern}/ in ${root}${include ? ` (include ${include})` : ""}`;
-    return out.join("\n");
+    const incRe = include ? includeToRegExp(include as string) : null
+    const out: string[] = []
+    await walkGrep(root, re, out, root, lim, ctx.signal, incRe)
+    if (out.length === 0)
+      return `no matches for /${pattern}/ in ${root}${include ? ` (include ${include})` : ""}`
+    return out.join("\n")
   },
-};
+}

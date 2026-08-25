@@ -1,129 +1,168 @@
-import { useState, useEffect, useRef } from "react";
-import { Box, Text, render, useInput } from "ink";
-import type { EventBus } from "../../../minicore/src/core/index.ts";
-import { decorateMarkdown } from "./markdown.ts";
-import { getTerminalWidth } from "./theme.ts";
-import { formatStepCalls } from "./format.ts";
+import { Box, render, Text, useInput } from "ink"
+import { useEffect, useRef, useState } from "react"
+import type { EventBus } from "../../../minicore/src/core/index.ts"
+import { formatStepCalls } from "./format.ts"
+import { decorateMarkdown } from "./markdown.ts"
+import { getTerminalWidth } from "./theme.ts"
 
-type Status = "idle" | "running" | "done" | "error";
+type Status = "idle" | "running" | "done" | "error"
 
 interface LogItem {
-  id: number;
-  text: string;
-  type: "tool" | "reasoning" | "error" | "compact" | "info";
+  id: number
+  text: string
+  type: "tool" | "reasoning" | "error" | "compact" | "info"
 }
 
-function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: boolean; model?: string; budget?: number }) {
-  const [rawText, setRawText] = useState("");
-  const [logs, setLogs] = useState<LogItem[]>([]);
-  const [usage, setUsage] = useState<{ inTokens: number; outTokens: number; cost?: number }>({ inTokens: 0, outTokens: 0 });
-  const [status, setStatus] = useState<Status>("idle");
-  const [steps, setSteps] = useState(0);
-  const [turn, setTurn] = useState(0);
-  const [compact, setCompact] = useState(false);
-  const doneRef = useRef(false);
-  const logIdRef = useRef(0);
+function InkApp({
+  bus,
+  verbose,
+  model,
+  budget,
+}: {
+  bus: EventBus
+  verbose?: boolean
+  model?: string
+  budget?: number
+}) {
+  const [rawText, setRawText] = useState("")
+  const [logs, setLogs] = useState<LogItem[]>([])
+  const [usage, setUsage] = useState<{ inTokens: number; outTokens: number; cost?: number }>({
+    inTokens: 0,
+    outTokens: 0,
+  })
+  const [status, setStatus] = useState<Status>("idle")
+  const [steps, setSteps] = useState(0)
+  const [turn, setTurn] = useState(0)
+  const [compact, setCompact] = useState(false)
+  const doneRef = useRef(false)
+  const logIdRef = useRef(0)
 
   const addLog = (logText: string, type: LogItem["type"] = "info") => {
-    logIdRef.current += 1;
-    const item: LogItem = { id: logIdRef.current, text: logText, type };
-    setLogs((prev) => [...prev.slice(-30), item]);
-  };
+    logIdRef.current += 1
+    const item: LogItem = { id: logIdRef.current, text: logText, type }
+    setLogs((prev) => [...prev.slice(-30), item])
+  }
 
   useEffect(() => {
-    const offs: (() => void)[] = [];
+    const offs: (() => void)[] = []
 
     offs.push(
       bus.on("turn:started", (e) => {
-        setTurn(e.turn);
-        setStatus("running");
-      })
-    );
+        setTurn(e.turn)
+        setStatus("running")
+      }),
+    )
 
     offs.push(
       bus.on("provider:text", (e) => {
-        setRawText((t) => (t + e.text).slice(-30000));
-        if (!doneRef.current) setStatus("running");
-      })
-    );
+        setRawText((t) => (t + e.text).slice(-30000))
+        if (!doneRef.current) setStatus("running")
+      }),
+    )
 
     offs.push(
       bus.on("provider:extension", (e) => {
         if (e.kind === "usage") {
-          const u = e.data as { inputTokens?: number; outputTokens?: number; cost?: number };
+          const u = e.data as { inputTokens?: number; outputTokens?: number; cost?: number }
           setUsage((prev) => ({
             inTokens: u.inputTokens ?? prev.inTokens,
             outTokens: u.outputTokens ?? prev.outTokens,
             cost: (u as { cost?: number }).cost ?? prev.cost,
-          }));
+          }))
         } else if (e.kind === "reasoning" && verbose) {
-          const d = e.data as { text?: string };
-          if (d.text) addLog(`💭 ${d.text.slice(0, 100)}`, "reasoning");
+          const d = e.data as { text?: string }
+          if (d.text) addLog(`💭 ${d.text.slice(0, 100)}`, "reasoning")
         } else if (e.kind === "error") {
-          const d = e.data as { message?: string };
-          addLog(`✗ Error: ${d.message}`, "error");
-          setStatus("error");
+          const d = e.data as { message?: string }
+          addLog(`✗ Error: ${d.message}`, "error")
+          setStatus("error")
         }
-      })
-    );
+      }),
+    )
 
     offs.push(
       bus.on("step:started", (e) => {
-        setSteps(e.step.index);
-        addLog(`Step ${e.step.index} › ${formatStepCalls(e.step.toolCalls)}`, "tool");
-      })
-    );
+        setSteps(e.step.index)
+        addLog(`Step ${e.step.index} › ${formatStepCalls(e.step.toolCalls)}`, "tool")
+      }),
+    )
 
     offs.push(
       bus.on("execution:started", (e) => {
-        addLog(`→ running ${e.execution.call.name}...`, "tool");
-      })
-    );
+        addLog(`→ running ${e.execution.call.name}...`, "tool")
+      }),
+    )
 
     offs.push(
       bus.on("execution:completed", (e) => {
-        const isErr = e.execution.result.isError;
-        const name = e.execution.call.name;
-        addLog(isErr ? `✗ ${name} failed` : `✓ ${name} completed`, isErr ? "error" : "tool");
-      })
-    );
+        const isErr = e.execution.result.isError
+        const name = e.execution.call.name
+        addLog(isErr ? `✗ ${name} failed` : `✓ ${name} completed`, isErr ? "error" : "tool")
+      }),
+    )
 
     offs.push(
       bus.on("context:compacted", (e) => {
-        addLog(`✦ compacted: ${e.reason}`, "compact");
-        setCompact(true);
-      })
-    );
+        addLog(`✦ compacted: ${e.reason}`, "compact")
+        setCompact(true)
+      }),
+    )
 
     offs.push(
       bus.on("turn:completed", (e) => {
-        doneRef.current = true;
-        addLog(`✓ Done (${e.result.usage.steps} steps)`, "info");
-        setStatus("done");
-      })
-    );
+        doneRef.current = true
+        addLog(`✓ Done (${e.result.usage.steps} steps)`, "info")
+        setStatus("done")
+      }),
+    )
 
-    return () => offs.forEach((fn) => fn());
-  }, [bus, verbose]);
+    return () => offs.forEach((fn) => fn())
+  }, [bus, verbose])
 
-  const statusColor = status === "running" ? "cyan" : status === "done" ? "green" : status === "error" ? "red" : "yellow";
-  const isNarrow = getTerminalWidth() < 80;
+  const statusColor =
+    status === "running"
+      ? "cyan"
+      : status === "done"
+        ? "green"
+        : status === "error"
+          ? "red"
+          : "yellow"
+  const isNarrow = getTerminalWidth() < 80
 
-  // Scroll respons (panah atas/bawah) bila teks panjang
-  const [scroll, setScroll] = useState(0);
-  useInput((_input, key) => {
-    if (key.upArrow) setScroll((s) => Math.max(0, s - 1));
-    if (key.downArrow) setScroll((s) => s + 1);
-  });
-  const responseLines = decorateMarkdown(rawText).split("\n");
-  const visible = responseLines.length > 12 ? responseLines.slice(Math.max(0, responseLines.length - 12 - scroll), responseLines.length - scroll) : responseLines;
-  const scrolled = scroll > 0 || responseLines.length > 12;
+  // Scroll response (arrow up/down) — dynamic viewport height
+  const viewportH = Math.max(12, (process.stdout.rows || 24) - 10)
+  const [scroll, setScroll] = useState(0)
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") {
+      process.exit(130)
+    }
+    if (key.upArrow) setScroll((s) => Math.max(0, s - 1))
+    if (key.downArrow)
+      setScroll((s) =>
+        Math.min(s + 1, Math.max(0, decorateMarkdown(rawText).split("\n").length - viewportH)),
+      )
+  })
+  const responseLines = decorateMarkdown(rawText).split("\n")
+  const visible =
+    responseLines.length > viewportH
+      ? responseLines.slice(
+          Math.max(0, responseLines.length - viewportH - scroll),
+          responseLines.length - scroll,
+        )
+      : responseLines
+  const scrolled = scroll > 0 || responseLines.length > viewportH
 
   return (
     <Box flexDirection="column" paddingX={1}>
       {/* Header bar */}
-      <Box justifyContent="space-between" borderStyle="single" borderColor="gray" paddingX={1} marginBottom={1}>
-        <Text bold color="cyan">
+      <Box
+        justifyContent="space-between"
+        borderStyle="single"
+        borderColor="gray"
+        paddingX={1}
+        marginBottom={1}
+      >
+        <Text bold color="blue">
           ✦ MINICODE TUI
         </Text>
         <Text dimColor>
@@ -140,9 +179,17 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
       {/* Main content body — stack vertikal bila terminal sempit */}
       <Box flexDirection={isNarrow ? "column" : "row"} flexGrow={1}>
         {/* Response viewport */}
-        <Box flexDirection="column" width={isNarrow ? "100%" : "65%"} borderStyle="round" borderColor={statusColor} padding={1} marginRight={isNarrow ? 0 : 1} marginBottom={isNarrow ? 1 : 0}>
+        <Box
+          flexDirection="column"
+          width={isNarrow ? "100%" : "65%"}
+          borderStyle="round"
+          borderColor={statusColor}
+          padding={1}
+          marginRight={isNarrow ? 0 : 1}
+          marginBottom={isNarrow ? 1 : 0}
+        >
           <Box marginBottom={1}>
-            <Text bold color="cyan">
+            <Text bold color="blue">
               Response
             </Text>
           </Box>
@@ -151,7 +198,13 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
         </Box>
 
         {/* Activity & Tool logs */}
-        <Box flexDirection="column" width={isNarrow ? "100%" : "35%"} borderStyle="round" borderColor="gray" padding={1}>
+        <Box
+          flexDirection="column"
+          width={isNarrow ? "100%" : "35%"}
+          borderStyle="round"
+          borderColor="gray"
+          padding={1}
+        >
           <Box marginBottom={1}>
             <Text bold color="yellow">
               Activity Stream
@@ -161,7 +214,18 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
             <Text dimColor>(listening for events...)</Text>
           ) : (
             logs.slice(-12).map((l) => (
-              <Text key={l.id} color={l.type === "error" ? "red" : l.type === "compact" ? "magenta" : l.type === "tool" ? "cyan" : "gray"}>
+              <Text
+                key={l.id}
+                color={
+                  l.type === "error"
+                    ? "red"
+                    : l.type === "compact"
+                      ? "magenta"
+                      : l.type === "tool"
+                        ? "cyan"
+                        : "gray"
+                }
+              >
                 {l.text}
               </Text>
             ))
@@ -170,12 +234,22 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
       </Box>
 
       {/* Status & Token Gauge bar */}
-      <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1} justifyContent="space-between">
+      <Box
+        marginTop={1}
+        borderStyle="single"
+        borderColor="gray"
+        paddingX={1}
+        justifyContent="space-between"
+      >
         <Box>
           <Text dimColor>Turn: </Text>
-          <Text bold color="white">{turn} </Text>
+          <Text bold color="white">
+            {turn}{" "}
+          </Text>
           <Text dimColor>Step: </Text>
-          <Text bold color="white">{steps} </Text>
+          <Text bold color="white">
+            {steps}{" "}
+          </Text>
           {compact && <Text color="magenta">✦ Compacted </Text>}
         </Box>
         <Box>
@@ -186,28 +260,37 @@ function InkApp({ bus, verbose, model, budget }: { bus: EventBus; verbose?: bool
           {usage.cost != null && <Text dimColor> cost=</Text>}
           {usage.cost != null && <Text color="green">${usage.cost.toFixed(4)}</Text>}
           {budget != null && usage.cost != null && usage.cost > budget * 0.8 && (
-            <Text color={usage.cost > budget ? "red" : "yellow"}> {usage.cost > budget ? "⚠ over budget!" : " 80% budget"}</Text>
+            <Text color={usage.cost > budget ? "red" : "yellow"}>
+              {" "}
+              {usage.cost > budget ? "⚠ over budget!" : " 80% budget"}
+            </Text>
           )}
         </Box>
       </Box>
     </Box>
-  );
+  )
 }
 
-export function attachInkRenderer(bus: EventBus, opts: { verbose?: boolean; model?: string; budget?: number } = {}) {
+export function attachInkRenderer(
+  bus: EventBus,
+  opts: { verbose?: boolean; model?: string; budget?: number } = {},
+) {
   try {
-    const instance = render(<InkApp bus={bus} verbose={opts.verbose} model={opts.model} budget={opts.budget} />, {
-      exitOnCtrlC: false,
-      patchConsole: true,
-    });
-    let unmounted = false;
+    const instance = render(
+      <InkApp bus={bus} verbose={opts.verbose} model={opts.model} budget={opts.budget} />,
+      {
+        exitOnCtrlC: false,
+        patchConsole: true,
+      },
+    )
+    let unmounted = false
     const detach = () => {
-      if (unmounted) return;
-      unmounted = true;
-      instance.unmount();
-    };
-    return detach;
+      if (unmounted) return
+      unmounted = true
+      instance.unmount()
+    }
+    return detach
   } catch {
-    return () => {};
+    return () => {}
   }
 }

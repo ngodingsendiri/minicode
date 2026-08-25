@@ -1,79 +1,82 @@
 export interface DetectedModel {
-  id: string;
+  id: string
 }
 
 export interface DetectResult {
-  models: string[];
-  providerHint: "openai" | "anthropic" | "unknown";
+  models: string[]
+  providerHint: "openai" | "anthropic" | "unknown"
 }
 
 // Cache in-memory per baseUrl (30 menit) — /sync yang sering dipanggil tidak
 // perlu re-deteksi network tiap kali. Key = url tanpa apiKey (secrets tidak
 // pernah disimpan atau di-log).
-const cache = new Map<string, { at: number; result: DetectResult }>();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const cache = new Map<string, { at: number; result: DetectResult }>()
+const CACHE_TTL_MS = 30 * 60 * 1000
 
 export function clearDetectCache(): void {
-  cache.clear();
+  cache.clear()
 }
 
 export function cacheKey(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "").toLowerCase();
+  return baseUrl.replace(/\/+$/, "").toLowerCase()
 }
 
 function hybridHeaders(apiKey: string): Record<string, string>[] {
-  if (!apiKey) return [{}];
+  if (!apiKey) return [{}]
   // hybrid: coba Bearer dan x-api-key
   return [
     { Authorization: `Bearer ${apiKey}`, "x-api-key": apiKey },
     { Authorization: `Bearer ${apiKey}` },
     { "x-api-key": apiKey },
-  ];
+  ]
 }
 
-async function tryFetchModels(baseUrl: string, headers: Record<string, string>, signal: AbortSignal): Promise<string[] | null> {
-  const urls = [
-    `${baseUrl.replace(/\/+$/, "")}/models`,
-    `${baseUrl.replace(/\/+$/, "")}/v1/models`,
-  ];
+async function tryFetchModels(
+  baseUrl: string,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<string[] | null> {
+  const urls = [`${baseUrl.replace(/\/+$/, "")}/models`, `${baseUrl.replace(/\/+$/, "")}/v1/models`]
   for (const url of urls) {
     try {
-      const res = await fetch(url, { headers, signal });
-      if (!res.ok) continue;
-      const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] };
-      const data = json.data ?? json.models ?? [];
-      if (Array.isArray(data) && data.length) return data.map((m) => m.id).filter(Boolean);
+      const res = await fetch(url, { headers, signal })
+      if (!res.ok) continue
+      const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] }
+      const data = json.data ?? json.models ?? []
+      if (Array.isArray(data) && data.length) return data.map((m) => m.id).filter(Boolean)
       // anthropic format: {data: [{id, display_name}]}
       if (Array.isArray((json as unknown as { models: unknown }).models)) {
-        return (json as unknown as { models: { id: string }[] }).models.map((m) => m.id);
+        return (json as unknown as { models: { id: string }[] }).models.map((m) => m.id)
       }
-    } catch {
-      continue;
-    }
+    } catch {}
   }
-  return null;
+  return null
 }
 
-export async function detectModels(baseUrl: string, apiKey: string, signal?: AbortSignal): Promise<DetectResult> {
+export async function detectModels(
+  baseUrl: string,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<DetectResult> {
   // serve dari cache bila masih segar (anti request redundant dalam 30 menit)
-  const key = cacheKey(baseUrl);
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result;
+  const key = cacheKey(baseUrl)
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result
 
   // CAP global 6s — jangan pernah biarkan user menunggu >6s pada gateway
   // yang offline (2 url × 3 header = sampai 30s sebelumnya).
-  const sig = signal ?? AbortSignal.timeout(6000);
+  const sig = signal ?? AbortSignal.timeout(6000)
   for (const h of hybridHeaders(apiKey)) {
-    if (sig.aborted) break;
-    const models = await tryFetchModels(baseUrl, h, sig);
+    if (sig.aborted) break
+    const models = await tryFetchModels(baseUrl, h, sig)
     if (models && models.length) {
       // Prioritas: baseUrl (anthropic.com → anthropic) → nama model (claude/gpt)
       // Gateway seperti b.ai, OpenRouter: baseUrl TIDAK anthropic → openai-compat
-      const hint = baseUrl.includes("anthropic") ? "anthropic" : "openai";
-      const result = { models, providerHint: hint as DetectResult["providerHint"] };
-      cache.set(key, { at: Date.now(), result });
-      return result;
+      const hint = baseUrl.includes("anthropic") ? "anthropic" : "openai"
+      const result = { models, providerHint: hint as DetectResult["providerHint"] }
+      cache.set(key, { at: Date.now(), result })
+      return result
     }
   }
-  return { models: [], providerHint: "unknown" };
+  return { models: [], providerHint: "unknown" }
 }

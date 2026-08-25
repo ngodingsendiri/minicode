@@ -1,153 +1,263 @@
-import { c } from "./theme.ts";
+import { c } from "./theme.ts"
 
 const TS_KEYWORDS = new Set([
-  "const", "let", "var", "function", "return", "if", "else", "for", "while", "do",
-  "switch", "case", "break", "continue", "default", "try", "catch", "finally", "throw",
-  "async", "await", "import", "export", "from", "as", "class", "extends", "implements",
-  "interface", "type", "enum", "namespace", "new", "this", "super", "typeof", "instanceof",
-  "in", "of", "yield", "void", "null", "undefined", "true", "false"
-]);
+  "const",
+  "let",
+  "var",
+  "function",
+  "return",
+  "if",
+  "else",
+  "for",
+  "while",
+  "do",
+  "switch",
+  "case",
+  "break",
+  "continue",
+  "default",
+  "try",
+  "catch",
+  "finally",
+  "throw",
+  "async",
+  "await",
+  "import",
+  "export",
+  "from",
+  "as",
+  "class",
+  "extends",
+  "implements",
+  "interface",
+  "type",
+  "enum",
+  "namespace",
+  "new",
+  "this",
+  "super",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "yield",
+  "void",
+  "null",
+  "undefined",
+  "true",
+  "false",
+])
 
 const PY_KEYWORDS = new Set([
-  "def", "return", "if", "elif", "else", "for", "while", "break", "continue",
-  "try", "except", "finally", "raise", "import", "from", "as", "class", "pass",
-  "with", "async", "await", "yield", "lambda", "global", "nonlocal", "assert",
-  "True", "False", "None", "and", "or", "not", "is", "in"
-]);
+  "def",
+  "return",
+  "if",
+  "elif",
+  "else",
+  "for",
+  "while",
+  "break",
+  "continue",
+  "try",
+  "except",
+  "finally",
+  "raise",
+  "import",
+  "from",
+  "as",
+  "class",
+  "pass",
+  "with",
+  "async",
+  "await",
+  "yield",
+  "lambda",
+  "global",
+  "nonlocal",
+  "assert",
+  "True",
+  "False",
+  "None",
+  "and",
+  "or",
+  "not",
+  "is",
+  "in",
+])
 
 const SH_KEYWORDS = new Set([
-  "if", "then", "else", "elif", "fi", "for", "in", "do", "done", "while", "until",
-  "case", "esac", "function", "return", "exit", "export", "set", "unset", "echo",
-  "cd", "mkdir", "rm", "cp", "mv", "touch", "cat", "grep", "find", "curl", "git"
-]);
+  "if",
+  "then",
+  "else",
+  "elif",
+  "fi",
+  "for",
+  "in",
+  "do",
+  "done",
+  "while",
+  "until",
+  "case",
+  "esac",
+  "function",
+  "return",
+  "exit",
+  "export",
+  "set",
+  "unset",
+  "echo",
+  "cd",
+  "mkdir",
+  "rm",
+  "cp",
+  "mv",
+  "touch",
+  "cat",
+  "grep",
+  "find",
+  "curl",
+  "git",
+])
 
 export function highlightCode(code: string, lang: string = ""): string {
-  const language = lang.trim().toLowerCase();
-  const lines = code.split("\n");
+  const language = lang.trim().toLowerCase()
+  const lines = code.split("\n")
 
-  return lines.map((line) => {
-    if (language === "json") return highlightJsonLine(line);
-    if (language === "python" || language === "py") return highlightPythonLine(line);
-    if (language === "bash" || language === "sh" || language === "zsh" || language === "shell") return highlightShellLine(line);
-    if (language === "diff") return highlightDiffLine(line);
-    // default: ts / js / tsx / jsx / generic
-    return highlightTsLine(line);
-  }).join("\n");
+  return lines
+    .map((line) => {
+      if (language === "json") return highlightJsonLine(line)
+      if (language === "python" || language === "py") return highlightPythonLine(line)
+      if (language === "bash" || language === "sh" || language === "zsh" || language === "shell")
+        return highlightShellLine(line)
+      if (language === "diff") return highlightDiffLine(line)
+      // default: ts / js / tsx / jsx / generic
+      return highlightTsLine(line)
+    })
+    .join("\n")
 }
 
 function highlightTsLine(line: string): string {
   // Comments
-  const commentIdx = line.indexOf("//");
+  const commentIdx = line.indexOf("//")
   if (commentIdx !== -1) {
-    const codePart = line.slice(0, commentIdx);
-    const commentPart = line.slice(commentIdx);
-    return highlightTsTokens(codePart) + c.gray(c.italic(commentPart));
+    const codePart = line.slice(0, commentIdx)
+    const commentPart = line.slice(commentIdx)
+    return highlightTsTokens(codePart) + c.gray(c.italic(commentPart))
   }
-  return highlightTsTokens(line);
+  return highlightTsTokens(line)
 }
 
 function highlightTsTokens(text: string): string {
   // Regex to match string literals, numbers, identifiers, operators
-  const tokenRe = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][A-Za-z0-9_$]*\b|[{}()[\];:,.<>=+\-*/%!&|^~?]+|\s+)/g;
+  const tokenRe =
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][A-Za-z0-9_$]*\b|[{}()[\];:,.<>=+\-*/%!&|^~?]+|\s+)/g
   return text.replace(tokenRe, (token) => {
     if (token.startsWith('"') || token.startsWith("'") || token.startsWith("`")) {
-      return c.green(token);
+      return c.green(token)
     }
     if (/^\d+(?:\.\d+)?$/.test(token)) {
-      return c.brightYellow(token);
+      return c.brightYellow(token)
     }
     if (TS_KEYWORDS.has(token)) {
-      return c.brightMagenta(c.bold(token));
+      return c.brightMagenta(c.bold(token))
     }
     if (/^[A-Z][A-Za-z0-9_$]*$/.test(token)) {
       // Type / Class name
-      return c.brightCyan(token);
+      return c.brightCyan(token)
     }
     if (token === "true" || token === "false" || token === "null" || token === "undefined") {
-      return c.yellow(token);
+      return c.yellow(token)
     }
-    return token;
-  });
+    return token
+  })
 }
 
 function highlightPythonLine(line: string): string {
-  const commentIdx = line.indexOf("#");
+  const commentIdx = line.indexOf("#")
   if (commentIdx !== -1) {
-    const codePart = line.slice(0, commentIdx);
-    const commentPart = line.slice(commentIdx);
-    return highlightPythonTokens(codePart) + c.gray(c.italic(commentPart));
+    const codePart = line.slice(0, commentIdx)
+    const commentPart = line.slice(commentIdx)
+    return highlightPythonTokens(codePart) + c.gray(c.italic(commentPart))
   }
-  return highlightPythonTokens(line);
+  return highlightPythonTokens(line)
 }
 
 function highlightPythonTokens(text: string): string {
-  const tokenRe = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b|[{}()[\];:,.<>=+\-*/%!&|^~?]+|\s+)/g;
+  const tokenRe =
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b|[{}()[\];:,.<>=+\-*/%!&|^~?]+|\s+)/g
   return text.replace(tokenRe, (token) => {
     if (token.startsWith('"') || token.startsWith("'")) {
-      return c.green(token);
+      return c.green(token)
     }
-    if (/^\d+/.test(token)) return c.brightYellow(token);
-    if (PY_KEYWORDS.has(token)) return c.brightMagenta(c.bold(token));
-    if (/^[A-Z][A-Za-z0-9_]*$/.test(token)) return c.brightCyan(token);
-    return token;
-  });
+    if (/^\d+/.test(token)) return c.brightYellow(token)
+    if (PY_KEYWORDS.has(token)) return c.brightMagenta(c.bold(token))
+    if (/^[A-Z][A-Za-z0-9_]*$/.test(token)) return c.brightCyan(token)
+    return token
+  })
 }
 
 function highlightJsonLine(line: string): string {
   // Key vs string value vs number/bool
-  return line.replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|\b(-?\d+(?:\.\d+)?)\b/g, (match, str, colon, bool, num) => {
-    if (str) {
-      if (colon) return c.brightCyan(str) + colon;
-      return c.green(str);
-    }
-    if (bool) return c.yellow(bool);
-    if (num) return c.brightYellow(num);
-    return match;
-  });
+  return line.replace(
+    /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|\b(-?\d+(?:\.\d+)?)\b/g,
+    (match, str, colon, bool, num) => {
+      if (str) {
+        if (colon) return c.brightCyan(str) + colon
+        return c.green(str)
+      }
+      if (bool) return c.yellow(bool)
+      if (num) return c.brightYellow(num)
+      return match
+    },
+  )
 }
 
 function highlightShellLine(line: string): string {
-  const commentIdx = line.indexOf("#");
+  const commentIdx = line.indexOf("#")
   if (commentIdx !== -1) {
-    const codePart = line.slice(0, commentIdx);
-    const commentPart = line.slice(commentIdx);
-    return highlightShellTokens(codePart) + c.gray(c.italic(commentPart));
+    const codePart = line.slice(0, commentIdx)
+    const commentPart = line.slice(commentIdx)
+    return highlightShellTokens(codePart) + c.gray(c.italic(commentPart))
   }
-  return highlightShellTokens(line);
+  return highlightShellTokens(line)
 }
 
 function highlightShellTokens(text: string): string {
-  return text.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\$[A-Za-z0-9_]+|\b[A-Za-z_][A-Za-z0-9_-]*\b|\s+)/g, (token) => {
-    if (token.startsWith('"') || token.startsWith("'")) return c.green(token);
-    if (token.startsWith("$")) return c.brightCyan(token);
-    if (SH_KEYWORDS.has(token)) return c.brightMagenta(c.bold(token));
-    if (token.startsWith("-")) return c.yellow(token);
-    return token;
-  });
+  return text.replace(
+    /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\$[A-Za-z0-9_]+|\b[A-Za-z_][A-Za-z0-9_-]*\b|\s+)/g,
+    (token) => {
+      if (token.startsWith('"') || token.startsWith("'")) return c.green(token)
+      if (token.startsWith("$")) return c.brightCyan(token)
+      if (SH_KEYWORDS.has(token)) return c.brightMagenta(c.bold(token))
+      if (token.startsWith("-")) return c.yellow(token)
+      return token
+    },
+  )
 }
 
 function highlightDiffLine(line: string): string {
-  if (line.startsWith("+") && !line.startsWith("+++")) return c.green(line);
-  if (line.startsWith("-") && !line.startsWith("---")) return c.red(line);
-  if (line.startsWith("@@")) return c.cyan(line);
-  return line;
+  if (line.startsWith("+") && !line.startsWith("+++")) return c.green(line)
+  if (line.startsWith("-") && !line.startsWith("---")) return c.red(line)
+  if (line.startsWith("@@")) return c.cyan(line)
+  return line
 }
 
 export function formatCodeBlock(code: string, lang: string = "", maxLines?: number): string {
-  const highlighted = highlightCode(code, lang);
-  const lines = highlighted.split("\n");
-  const displayLines = maxLines && lines.length > maxLines
-    ? [...lines.slice(0, maxLines), c.dim(`    ... (${lines.length - maxLines} more lines)`)]
-    : lines;
+  const highlighted = highlightCode(code, lang)
+  const lines = highlighted.split("\n")
+  const displayLines =
+    maxLines && lines.length > maxLines
+      ? [...lines.slice(0, maxLines), c.dim(`    ... (${lines.length - maxLines} more lines)`)]
+      : lines
 
-  const header = lang ? ` ${lang.toLowerCase()} ` : " code ";
-  const topBorder = c.muted(`── ${header.trim()}`);
-  const bottomBorder = c.muted("──");
+  const header = lang ? ` ${lang.toLowerCase()} ` : " code "
+  const topBorder = c.muted(`── ${header.trim()}`)
+  const bottomBorder = c.muted("──")
 
   const formattedLines = displayLines.map((l, i) => {
-    const lineNum = c.muted(String(i + 1).padStart(3, " ") + "  ");
-    return `${lineNum}${l}`;
-  });
+    const lineNum = c.muted(String(i + 1).padStart(3, " ") + "  ")
+    return `${lineNum}${l}`
+  })
 
-  return `${topBorder}\n${formattedLines.join("\n")}\n${bottomBorder}`;
+  return `${topBorder}\n${formattedLines.join("\n")}\n${bottomBorder}`
 }

@@ -1,20 +1,24 @@
-import type { Tool } from "minicore";
-import { spawn } from "node:child_process";
+import { spawn } from "node:child_process"
+import type { Tool } from "minicore"
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn("git", args, { cwd, signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]) });
-    let out = "", err = "";
-    p.stdout.on("data", (d) => (out += d));
-    p.stderr.on("data", (d) => (err += d));
-    p.on("error", reject);
+    const p = spawn("git", args, {
+      cwd,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+    })
+    let out = "",
+      err = ""
+    p.stdout.on("data", (d) => (out += d))
+    p.stderr.on("data", (d) => (err += d))
+    p.on("error", reject)
     p.on("close", (code) => {
-      const text = (out + (err ? "\n" + err : "")).trim();
-      if (code !== 0 && !text) reject(new Error(`git ${args.join(" ")} exit ${code}`));
-      else resolve(text || `(exit ${code})`);
-    });
-    signal.addEventListener("abort", () => p.kill("SIGTERM"), { once: true });
-  });
+      const text = (out + (err ? "\n" + err : "")).trim()
+      if (code !== 0 && !text) reject(new Error(`git ${args.join(" ")} exit ${code}`))
+      else resolve(text || `(exit ${code})`)
+    })
+    signal.addEventListener("abort", () => p.kill("SIGTERM"), { once: true })
+  })
 }
 
 export const gitStatusTool: Tool = {
@@ -27,15 +31,15 @@ export const gitStatusTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd }, ctx) {
-    const c = cwd as string | undefined;
+    const c = cwd as string | undefined
     const [a, b, d] = await Promise.all([
       runGit(["status", "--porcelain"], c, ctx.signal),
       runGit(["diff", "--stat"], c, ctx.signal),
       runGit(["log", "--oneline", "-10"], c, ctx.signal),
-    ]);
-    return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${d || "(no log)"}`;
+    ])
+    return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${d || "(no log)"}`
   },
-};
+}
 
 export const gitDiffTool: Tool = {
   name: "git_diff",
@@ -50,10 +54,10 @@ export const gitDiffTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd, staged }, ctx) {
-    const args = staged ? ["diff", "--staged"] : ["diff"];
-    return await runGit(args, cwd as string | undefined, ctx.signal);
+    const args = staged ? ["diff", "--staged"] : ["diff"]
+    return await runGit(args, cwd as string | undefined, ctx.signal)
   },
-};
+}
 
 export const gitLogTool: Tool = {
   name: "git_log",
@@ -68,7 +72,7 @@ export const gitLogTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd, limit }, ctx) {
-    const n = String(Math.min(Math.max((limit as number) ?? 20, 1), 100));
-    return await runGit(["log", "--oneline", `-${n}`], cwd as string | undefined, ctx.signal);
+    const n = String(Math.min(Math.max((limit as number) ?? 20, 1), 100))
+    return await runGit(["log", "--oneline", `-${n}`], cwd as string | undefined, ctx.signal)
   },
-};
+}

@@ -2,11 +2,11 @@
 // Dipakai /provider-add (REPL) & wizard setup (cli/wizard.ts).
 
 export interface GatewayPreset {
-  id: string;
-  label: string;
-  baseUrl: string;
-  fallbackModels: string[];
-  hint?: string;
+  id: string
+  label: string
+  baseUrl: string
+  fallbackModels: string[]
+  hint?: string
   // beberapa gateway butuh header tambahan (x-api-key vs Bearer) —
   // deteksi hybrid sudah coba keduanya, preset cukup id+baseUrl.
 }
@@ -48,11 +48,11 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     fallbackModels: ["gemini-2.0-flash"],
   },
-];
+]
 
 // id preset → opsi "custom" di ujung daftar
-export const CUSTOM_PRESET_ID = "custom";
+export const CUSTOM_PRESET_ID = "custom"
 
 export function findPreset(id: string): GatewayPreset | undefined {
-  return GATEWAY_PRESETS.find((p) => p.id === id);
+  return GATEWAY_PRESETS.find((p) => p.id === id)
 }

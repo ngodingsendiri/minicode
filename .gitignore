@@ -32,4 +32,6 @@ tmp/
 *.tmp
 .tmp-*/
 bench/results.json
-src/greeting.ts
+
+# Local tool artifacts
+.freebuff/

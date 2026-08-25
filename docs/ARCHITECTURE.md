@@ -2,8 +2,8 @@
 
 > Coding agent minimal di atas kernel beku MiniCore. Ramping, clean, profesional — tidak menambah primitive, hanya layer agencode.
 
-**Versi:** 0.2.0 — agencode produksi: verifier/self-heal, repo-map, secret scrubber, rate limiter, Docker sandbox, apply_patch, resume sejati, telemetry (128 test + bench).
-**Prinsip:** `minicore` inti di-freeze — satu-satunya patch yang diizinkan adalah seam **additif backward-compatible** (mis. field opsional `compactAsync` & `initialMessages` di kernel). Semua perbaikan lain sebagai Tool / Policy / Provider di sini.
+**Version:** 0.5.0 — production hardening: 42 tasks across 9 phases, biome + LF + per-file lock, MCP scrub, Docker hardened, RAG hybrid, checkpoint dirty-git, router warn (202 tests, 194 pass + 8 skip).
+**Principle:** `minicore` core is frozen — only **additive backward-compatible** seams are allowed (optional `compactAsync` & `initialMessages`). Everything else as Tool / Policy / Provider here.
 
 ## Peta Pohon Komponen
 
@@ -91,8 +91,10 @@ minicode/
 │   ├── ink.tsx        Ink React (--tui) split-view + token gauge + markdown fence
 │   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI
 │
-├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI)
-├── test/ bun:test — 128 test
+├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI, external tasks jail)
+├── src/constants.ts — centralized LIMITS (file size, timeout, search limit)
+├── src/app/ — provider-layer / rag-layer / tool-layer (setup orchestration)
+├── test/ bun:test — 202 tests
 │
 ├── .minicode/ (gitignored) — sessions.db / vector.db / allowlist.json / skills / checkpoints / repomap.json / traces.jsonl
 │

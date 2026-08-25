@@ -38,7 +38,7 @@ bun install && bun link
 | `--allow-all` | Nonaktifkan semua sandbox |
 | `--model <name>` | Override model LLM |
 | `--resume <id>` | Lanjutkan sesi sebelumnya (full history, bukan teks dump) |
-| `--timeout <ms>` | Hard deadline per run (default 600000, 0 = Infinity) |
+| `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
 | `--interactive` | Paksa mode REPL |
 
 ## Environment Variables
@@ -50,6 +50,7 @@ bun install && bun link
 | `MINICODE_SANDBOX` | Sandbox mode: `docker` |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
+| `MINICODE_TIMEOUT_MS` | Default timeout (ms) bila `--timeout` tidak diset; `0` = Infinity |
 | `MINICODE_REPOMAP` | `regex` → paksa repo-map regex (skip LSP) |
 | `MINICODE_PLAN` | `1` → mode plan (tanpa `--plan`) |
 | `MINICODE_PERMISSION` | `allowlist` → mode allowlist |

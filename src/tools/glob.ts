@@ -1,39 +1,56 @@
-import type { Tool } from "minicore";
-import { readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
-import { isPathOutsideRoot } from "../policy/jail.ts";
+import { readdir, realpath, stat } from "node:fs/promises"
+import { join, relative, resolve } from "node:path"
+import type { Tool } from "minicore"
+import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
-async function walk(dir: string, pattern: RegExp, out: string[], root: string, limit: number, signal: AbortSignal) {
-  if (signal.aborted) throw new Error("aborted");
-  if (out.length >= limit) return;
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+async function walk(
+  dir: string,
+  pattern: RegExp,
+  out: string[],
+  root: string,
+  limit: number,
+  signal: AbortSignal,
+) {
+  if (signal.aborted) throw new Error("aborted")
+  if (out.length >= limit) return
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
   for (const e of entries) {
-    if (out.length >= limit) break;
-    if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue;
-    const full = join(dir, e.name);
-    const rel = relative(root, full).replace(/\\/g, "/");
+    if (out.length >= limit) break
+    if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue
+    const full = join(dir, e.name)
+    const rel = relative(root, full).replace(/\\/g, "/")
     if (e.isDirectory()) {
-      await walk(full, pattern, out, root, limit, signal);
+      await walk(full, pattern, out, root, limit, signal)
     } else if (pattern.test(rel) || pattern.test(e.name)) {
-      out.push(rel);
+      const real = await realpath(full).catch(() => full)
+      if (isPathOutsideRoot(real, resolve(root)) || isSensitive(real) || isSensitive(rel)) continue
+      out.push(rel)
     }
   }
 }
 
 function globToRegExp(glob: string): RegExp {
-  let esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  let esc = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&")
   // handle {a,b} → (a|b)
-  esc = esc.replace(/\\\{([^}]+)\\\}/g, (_m, inner: string) => `(${inner.split(",").map((s) => s.trim().replace(/[.+^${}()|[\]\\]/g, "\\$&")).join("|")})`);
-  esc = esc.replace(/\*\*/g, "§§");
-  esc = esc.replace(/\*/g, "[^/]*");
-  esc = esc.replace(/§§/g, ".*");
-  esc = esc.replace(/\?/g, ".");
-  return new RegExp("^" + esc + "$");
+  esc = esc.replace(
+    /\\\{([^}]+)\\\}/g,
+    (_m, inner: string) =>
+      `(${inner
+        .split(",")
+        .map((s) => s.trim().replace(/[.+^${}()|[\]\\]/g, "\\$&"))
+        .join("|")})`,
+  )
+  esc = esc.replace(/\*\*/g, "§§")
+  esc = esc.replace(/\*/g, "[^/]*")
+  esc = esc.replace(/§§/g, ".*")
+  esc = esc.replace(/\?/g, ".")
+  return new RegExp("^" + esc + "$")
 }
 
 export const globTool: Tool = {
   name: "glob",
-  description: "Cari file dengan glob pattern (mis **/*.ts, src/**/*.js). Mengembalikan daftar path relatif.",
+  description:
+    "Search file with glob pattern (mis **/*.ts, src/**/*.js). Mengembalikan daftar path relatif.",
   parameters: {
     type: "object",
     properties: {
@@ -45,15 +62,15 @@ export const globTool: Tool = {
     additionalProperties: false,
   },
   async execute({ pattern, cwd, limit }, ctx) {
-    const root = (cwd as string) ?? ".";
-    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`);
-    const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500);
-    const re = globToRegExp(pattern as string);
-    const out: string[] = [];
-    await walk(root, re, out, root, lim, ctx.signal);
-    const st = await stat(root).catch(() => null);
-    if (!st) return `cwd not found: ${root}`;
-    if (out.length === 0) return `no files match ${pattern} in ${root}`;
-    return out.slice(0, lim).join("\n");
+    const root = (cwd as string) ?? "."
+    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`)
+    const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500)
+    const re = globToRegExp(pattern as string)
+    const out: string[] = []
+    await walk(root, re, out, root, lim, ctx.signal)
+    const st = await stat(root).catch(() => null)
+    if (!st) return `cwd not found: ${root}`
+    if (out.length === 0) return `no files match ${pattern} in ${root}`
+    return out.slice(0, lim).join("\n")
   },
-};
+}
