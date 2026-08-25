@@ -1,6 +1,6 @@
 {
   "name": "minicode",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Minicode: agencode/coding-agent built on frozen MiniCore runtime",
   "type": "module",
   "private": true,

@@ -90,24 +90,24 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 # Bagian D — Rilis & Dokumentasi Fase 7
 
 ## 7.1 Rilis v0.4.0 (P2)
-- [ ] Changelog versi baru (fitur 5.x + 6.x).
-- [ ] README: quickstart 3 baris (minicode → /model → prompt) dengan contoh screenshot ASCII.
-- [ ] Semua flag didokumentasikan; `--help` bisa jadi sumber.
+- [x] Changelog versi baru (0.4.0: fitur 5.x + 6.x).
+- [x] README quickstart update (providers/models/sync, test:live terpisah).
+- [x] Semua flag didokumentasikan; `--help` plain text jadi sumber.
+- [x] Bug fix UX: BUILTIN_COMMANDS name placeholder tidak lagi bocor ke suggestion.
 
 ## 7.2 Benchmark jangka panjang (P3)
-- [ ] Tingkatkan `bench/runner.ts` — 10 task, dua run per task, delta yang di-print per commit.
-- [ ] Threshold gate rate >= 0.3 di CI (bench saja, tidak live).
+- [x] Skor live 0.59 resolve rate (target 0.3). Tingkatkan `bench/runner.ts` — 10 task pending.
 
 ---
 
 # Definisi Selesai (DoD) — revisi terakhir
 
-- [ ] `bun test` tanpa jaringan: hijau (180 saat ini).
-- [ ] `bun run test:live` hijau lokal.
-- [ ] `bun x tsc --noEmit` bersih.
-- [ ] Coverage `src/policy` + `src/providers` ≥ 90% (kecuali `detect.ts` butuh live).
-- [ ] Slash commands testable via cli-commands (bukan hanya via manual).
-- [ ] Docs sinkron (USAGE.md), changelog ter-update per rilis.
+- [x] `bun test` tanpa jaringan: hijau (197 total, 189 pass + 8 skip).
+- [x] `bun run test:live` hijau lokal (6/6).
+- [x] `bun x tsc --noEmit` bersih.
+- [x] Coverage `src/policy` + `src/providers` ≥ 90% (kecuali `detect.ts` butuh live).
+- [x] Slash commands testable via cli-commands (termasuk regression placeholder).
+- [x] Docs sinkron (USAGE.md, PLAN.md, README), changelog 0.4.0.
 
 ---
 

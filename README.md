@@ -2,11 +2,11 @@
 
 Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam additif `compactAsync` + `initialMessages`).
 
-**v0.3.0** — hardening keamanan (allowlist mode, Docker sandbox hardening, plan mode, budget enforce, secret scrubber, jail), repo-map (9 bahasa + LSP + ranking), self-heal `--verify` + guard, resume sejati, apply_patch, checkpoint pre-turn, `minicode stats`, bench external (SWE-bench), telemetry, **133 test**.
+**v0.4.0** — UI/UX overhaul: preset gateway (`/provider-add` pilih 6 gateway), `provider::model` routing, `/sync` auto-refresh models, dropdown suggestions grouped `COMMANDS/SKILLS`, `minicode providers|models|sync` tanpa LLM, transparansi fallback di summary, turn status line, budget prompt, `/resume` interaktif, error user-friendly, TTL configurable, Fase 1–6 plan (prompt engine pure + fuzz test, live test terpisah, CI fix, telemetry gate) — **197 test** (8 skip live/docker).
+
+**v0.3.x** — hardening keamanan (allowlist mode, Docker sandbox, plan mode, budget enforce, secret scrubber, jail), repo-map (9 bahasa + LSP), self-heal `--verify`, resume sejati, apply_patch, checkpoint pre-turn, `minicode stats`, benching.
 
 📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark).
-
-**v0.2.0** — hardening keamanan (auto-gate delegate/mcp, denylist 27 regex + env-sanitize, secret scrubber, jail terpusat), TUI & Terminal UX (visual diff cards, tab completion, persistent history, masked wizard, spinner, markdown code fence), **prompt caching Anthropic**, **fuzzy edit** + **apply_patch** (search/replace), **shadow checkpoint `/undo` `/redo`**, **repo-map** (simbol per file), **auto-verify `--verify`** (self-heal), **resume sejati** (full history ke kernel), **rate limiter** + **Docker sandbox**, telemetry JSON, compaction LLM async, persistence incremental, 128 test + bench harness.
 
 MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 22 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
@@ -38,9 +38,12 @@ bun install && bun link
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali
 minicode "buat http server" --verbose   # sekali jalan
+minicode providers      # daftar gateway (tanpa LLM)
+minicode models --match gemini  # cari model lintas provider
+minicode sync           # refresh model baru dari semua provider
 ```
 
-Wizard pertama menyajikan preset penyedia LLM (OpenRouter, OpenAI, Anthropic, DeepSeek, Ollama, Custom), input API Key ter-masking (`••••`), dan auto-detect models.
+Wizard & `/provider-add` menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google), API Key ter-masking, auto-detect models.
 
 ```bash
 minicode --tui "refactor src/utils"     # Ink TUI Dashboard (split-view & token gauge)
@@ -49,7 +52,8 @@ minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah r
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral
 minicode --ratelimit 30 "task"          # batasi request LLM (rpm)
 minicode "/review src/a.ts"             # skill slash-command
-bun test                                # 132 tests
+bun test                                # 189 offline test + 8 skip (live/docker)
+bun run test:live                       # E2E live (butuh config + jaringan)
 bun run bench:smoke                     # benchmark smoke (tanpa API key)
 ```
 

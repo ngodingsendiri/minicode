@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.0] — 2026-08-25
+
+### UI/UX (rencana Fase 5–6)
+- **Preset gateway** — `/provider-add` & wizard: 6 preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google) — baseUrl+fallback otomatis.
+- **`provider::model` routing** — pilih provider spesifik; router first-match-wins untuk model kembar.
+- **`minicode providers | models [id] --match <kw> | sync`** — kelola gateway tanpa LLM; `/sync` auto-sync model baru.
+- **Dropdown suggestions** — floating grouped `COMMANDS`/`SKILLS` (header dimmed), max 10 + `… N more`; **bug fix name placeholder** (suggestion tidak lagi `/models [id]`).
+- **Transparansi fallback** — summary turn & `/cost` menampilkan model/provider efektif saat router substitusi.
+- **Turn status line** — spinner `· model · working…` (TTY), label berganti saat fallback.
+- **Budget di prompt** — `minicode❯[62%]` saat `--budget`.
+- **Error user-friendly** — kategori formal (`auth`/`rate_limit`/...) → pesan + fix, bukan dump JSON.
+- **`/resume [id]` + `/sessions` bernomor** — resume sesi lewat picker.
+- **Compaction faktual** — hasil tool sukses (isi file, output test) ikut di-LLM-summarized (bukan `<result omitted>`).
+
+### Engineering
+- **Prompt engine pure** (`cli/prompt-engine.ts`) + **fuzz test** (~93k asserts, 195 test total).
+- **`test:live` terpisah** — `bun run test:live`; `bun test` default offline (8 skip).
+- **CI fix** — checkout minicore sibling (dependency `file:../minicore`) + cache bun.
+- **Telemetry gate** — resolve-rate ≥ 0.3 (live: 0.59); `scripts/telemetry-gate.ts`.
+- **TTL configurable** — `MINICODE_SESSION_TTL_DAYS` (0=forever); `minicode sessions purge`.
+- **Checkpoint prune** — 20 terbaru per session.
+- **Detect cache** — 30 menit per baseUrl; lazy import ink/react (startup <400ms).
+- **Cost attribution** — `deepseek-v4-flash` pricing; cost dihitung pakai model efektif.
+
 ## [0.3.2] — 2026-08-25
 
 ### UX Provider & Gateway
