@@ -1,4 +1,4 @@
-import { createInterface, type Interface } from "node:readline";
+import { createInterface } from "node:readline";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -28,73 +28,32 @@ export async function appendHistory(entry: string): Promise<void> {
   } catch {}
 }
 
-export interface PromptOptions {
-  getCompletions?: (line: string) => string[];
-}
+// ── ANSI support detection (sekali per process) ──
+// Windows legacy conhost tidak memproses VT sequences → dropdown tidak bisa
+// digambar. Detect aktif via DSR probe (\x1b[6n) + env hints.
+let ansiCache: Promise<boolean> | undefined;
 
-export function createInteractivePrompt(opts: PromptOptions = {}): {
-  rl: Interface;
-  ask: (customPrompt?: string) => Promise<string | null>;
-  close: () => void;
-} {
-  const completer = (line: string): [string[], string] => {
-    if (!opts.getCompletions) return [[], line];
-    const hits = opts.getCompletions(line);
-    return [hits.length ? hits : [], line];
-  };
-
-  // Plain text prompt — TANPA ANSI escape codes.
-  // Readline menghitung ANSI sebagai karakter terlihat → kursor kacau di Windows.
-  const defaultPrompt = "minicode❯ ";
-  const continuationPrompt = "  ... ";
-
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    completer,
-    historySize: MAX_HISTORY,
-    prompt: defaultPrompt,
+export async function detectAnsi(): Promise<boolean> {
+  if (process.platform !== "win32") return true;
+  const envHint = process.env.WT_SESSION || process.env.TERM_PROGRAM || process.env.ANSICON || process.env.ConEmuANSI;
+  if (envHint) return true;
+  ansiCache ??= new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      process.stdin.removeListener("data", onProbe);
+      resolve(false);
+    }, 60);
+    const onProbe = (chunk: Buffer) => {
+      if (/\/|\x1b\[[0-9;]*R/.test(chunk.toString())) {
+        clearTimeout(timer);
+        process.stdin.removeListener("data", onProbe);
+        resolve(true);
+      }
+    };
+    process.stdin.resume();
+    process.stdin.on("data", onProbe);
+    process.stdout.write("\x1b[6n");
   });
-
-  return {
-    rl,
-    ask(_customPrompt?: string): Promise<string | null> {
-      return new Promise((resolve) => {
-        const lines: string[] = [];
-        rl.setPrompt(defaultPrompt);
-
-        const onLine = (line: string) => {
-          if (line.endsWith("\\")) {
-            lines.push(line.slice(0, -1));
-            rl.setPrompt(continuationPrompt);
-            rl.prompt();
-            return;
-          }
-          lines.push(line);
-          cleanup();
-          resolve(lines.join("\n").trim() || null);
-        };
-
-        const onClose = () => {
-          cleanup();
-          resolve(lines.length ? lines.join("\n").trim() || null : null);
-        };
-
-        function cleanup() {
-          rl.removeListener("line", onLine);
-          rl.removeListener("close", onClose);
-          rl.setPrompt(defaultPrompt);
-        }
-
-        rl.on("line", onLine);
-        rl.once("close", onClose);
-        rl.prompt();
-      });
-    },
-    close() {
-      rl.close();
-    },
-  };
+  return ansiCache;
 }
 
 export interface AskLineOptions {
@@ -102,9 +61,11 @@ export interface AskLineOptions {
   hints?: (line: string) => string[];
 }
 
-// Input interaktif satu baris — TANPA SATU PUN ANSI escape code.
-// Render: \r → pad spasi (hapus isi baris lama) → \r → tulis ulang.
-// Aman di conhost lama Windows (yang tidak mendukung VT sequences).
+// Input interaktif satu baris + floating dropdown suggestions (dimmed).
+// - ANSI (Windows Terminal/VS Code/macOS/Linux): dropdown baris di bawah prompt,
+//   seleksi › hijau, navigasi ↑/↓, Tab = complete tetap editing, Enter = complete + submit.
+// - Legacy console (tanpa VT): fallback inline hints di baris yang sama.
+// Esc: tutup dropdown. Ctrl+C/D: keluar.
 export async function askLine(opts: AskLineOptions = {}): Promise<string | null> {
   const prompt = opts.prompt ?? "minicode❯ ";
 
@@ -115,41 +76,98 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     });
   }
 
+  const ansi = await detectAnsi();
+  const DIM = "\x1b[2m", RESTORE = "\x1b[22m", CLEAR = "\x1b[2K", SEL = "\x1b[36m";
+
   return new Promise((resolve) => {
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
     let line = "";
-    let printedW = 0;
-    const hist: string[] = [];
+    let sel = -1; // -1 = tidak ada seleksi dropdown
+    let menuOpen = false;
+    let prevRows = 0; // jumlah baris dropdown yang tergambar (untuk clear)
+    let printedW = 0; // lebar teks yang ditulis (fallback inline)
 
-    const content = () => {
-      const hints = opts.hints?.(line) ?? [];
-      if (!hints.length) return `${prompt}${line}`;
-      // cap agar tidak pernah wrap: potong hint sesuai sisa lebar terminal
-      const cols = process.stdout.columns || 80;
-      const base = `${prompt}${line}`;
-      const avail = Math.min(cols - base.length - 5, 60);
-      if (avail <= 8) return base;
-      let out = " (";
-      for (const h of hints) {
-        if (out.length + h.length + 2 > avail) break;
-        out += h + " ";
+    const matches = (): string[] => opts.hints?.(line) ?? [];
+
+    // ── render ANSI: dropdown floating di bawah prompt ──
+    const MAX_VISIBLE = 10;
+    const renderAnsi = () => {
+      const content = `${prompt}${line}`;
+      const all = menuOpen ? matches() : [];
+      const hidden = Math.max(0, all.length - MAX_VISIBLE);
+      const rows = all.slice(0, MAX_VISIBLE);
+      const maxRows = Math.max(prevRows, rows.length + (hidden > 0 ? 1 : 0));
+
+      process.stdout.write("\r" + CLEAR + content);
+
+      if (maxRows > 0) {
+        process.stdout.write("\r\n");
+        for (let k = 0; k < maxRows; k++) {
+          process.stdout.write(CLEAR);
+          if (k < maxRows - 1) process.stdout.write("\r\n");
+        }
+        process.stdout.write(`\x1b[${maxRows}A`);
+        process.stdout.write("\r" + content);
       }
-      out = out.trim();
-      const shown = out.length - 2;
-      if (hints.length * 2 > avail || shown >= avail - 8) {
-        const rest = hints.filter((h) => !out.includes(h));
-        if (rest.length) out += ` +${rest.length}`;
+
+      if (rows.length > 0) {
+        if (sel >= rows.length) sel = rows.length - 1;
+        process.stdout.write("\r\n");
+        for (let i = 0; i < rows.length; i++) {
+          const picked = i === sel;
+          const prefix = picked ? "  › " : "    ";
+          process.stdout.write(CLEAR + (picked ? SEL + prefix + rows[i] + RESTORE : DIM + prefix + rows[i] + RESTORE));
+          if (i < rows.length - 1) process.stdout.write("\r\n");
+        }
+        if (hidden > 0) {
+          if (rows.length > 0) process.stdout.write("\r\n");
+          process.stdout.write(CLEAR + DIM + `    … ${hidden} more` + RESTORE);
+        }
+        const total = rows.length + (hidden > 0 ? 1 : 0);
+        process.stdout.write(`\x1b[${total}A`);
+        process.stdout.write("\r" + content);
       }
-      return `${base}${out})`;
+
+      prevRows = maxRows;
     };
 
-    const render = () => {
-      const c = content();
-      const pad = printedW - c.length;
-      process.stdout.write("\r" + " ".repeat(printedW) + "\r" + c + (pad > 0 ? " ".repeat(pad) : ""));
-      printedW = c.length;
+    // ── render inline (legacy console, tanpa ANSI) ──
+    const renderInline = () => {
+      const hints = matches();
+      const content = hints.length ? `${prompt}${line}    ${hints.slice(0, 5).join("  ")}` : `${prompt}${line}`;
+      const pad = printedW - content.length;
+      process.stdout.write("\r" + " ".repeat(printedW) + "\r" + content + (pad > 0 ? " ".repeat(pad) : ""));
+      printedW = content.length;
+    };
+
+    const render = ansi ? renderAnsi : renderInline;
+
+    // Tab / Enter completion (menyelesaikan item, tetap di mode editing)
+    const complete = (): boolean => {
+      const rows = matches();
+      if (!rows.length) return false;
+      const pick = sel >= 0 ? rows[sel]! : rows[0]!;
+      line = pick;
+      sel = -1;
+      menuOpen = false;
+      render();
+      return true;
+    };
+
+    // Enter final: tulis ulang baris bersih + newline, lalu submit
+    const submit = () => {
+      if (ansi && prevRows > 0) {
+        process.stdout.write("\r" + CLEAR + `${prompt}${line}`);
+        for (let k = 0; k < prevRows; k++) process.stdout.write("\r\n" + CLEAR);
+        process.stdout.write("\r\n");
+      } else {
+        process.stdout.write("\r" + CLEAR + `${prompt}${line}` + "\r\n");
+      }
+      const v = line.trim() || null;
+      line = "";
+      finish(v);
     };
 
     const onData = (chunk: Buffer) => {
@@ -157,31 +175,55 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       let i = 0;
       while (i < str.length) {
         const ch = str[i]!;
+
         if (ch === "\r" || ch === "\n") {
-          process.stdout.write("\n");
-          const v = line.trim() || null;
-          line = "";
-          printedW = 0;
-          if (v) hist.push(v);
-          finish(v);
+          if (menuOpen) {
+            const rows = matches();
+            if (rows.length > 0) {
+              const pick = sel >= 0 && sel < rows.length ? rows[sel]! : rows[0]!;
+              if (pick !== line) line = pick;
+            }
+            menuOpen = false;
+            sel = -1;
+          }
+          submit();
           return;
         }
         if (ch === "\u0003" || ch === "\u0004") { finish(null); return; }
-        if (ch === "\u007f" || ch === "\b") { if (line.length) line = line.slice(0, -1); i++; continue; }
-        if (ch === "\t") {
-          const hs = opts.hints?.(line) ?? [];
-          if (hs.length) line = hs[0]!;
-          i++;
-          continue;
-        }
-        if (ch === "\x1b") {
-          // arrow/escape sequences: consume & ignore (sementara)
+        if (ch === "\u001b") {
           const next = str[i + 1];
-          if (next === "[" || next === "O") { i += 3; continue; }
+          if (next === "[" || next === "O") {
+            const name = str[i + 2];
+            if (name === "A" && menuOpen) {
+              sel = sel <= 0 ? matches().length - 1 : sel - 1;
+              i += 3; render(); continue;
+            }
+            if (name === "B" && menuOpen) {
+              sel = (sel + 1) % matches().length;
+              i += 3; render(); continue;
+            }
+            i += 3;
+            continue;
+          }
+          if (menuOpen) { menuOpen = false; sel = -1; i += 2; render(); continue; }
           i += 2;
           continue;
         }
-        if (ch.charCodeAt(0) >= 32) line += ch;
+        if (ch === "\u007f" || ch === "\b") {
+          if (line.length) line = line.slice(0, -1);
+          if (!line.startsWith("/")) { menuOpen = false; sel = -1; }
+          i++;
+          continue;
+        }
+        if (ch === "\t") {
+          if (menuOpen) complete();
+          i++;
+          continue;
+        }
+        if (ch.charCodeAt(0) >= 32) {
+          line += ch;
+          if (line.startsWith("/")) menuOpen = true;
+        }
         i++;
       }
       render();
