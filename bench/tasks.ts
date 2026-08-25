@@ -90,6 +90,83 @@ export const BENCH_TASKS: BenchTask[] = [
     },
     cleanup: clean,
   },
+  {
+    id: "multi-file-refactor",
+    description: "Move a helper across two files",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "a.ts"), "export function helper(n: number): number {\n  return n + 1;\n}\n", "utf8");
+      await writeFile(join(dir, "b.ts"), "import { helper } from './a.ts';\nexport const result = helper(1);\n", "utf8");
+      return dir;
+    },
+    prompt: "Move helper() from a.ts into b.ts, and update the import in b.ts so it stays exported from b.ts (remove from a.ts). Use edit/write_file.",
+    async verify(dir) {
+      const a = await readFile(join(dir, "a.ts"), "utf8").catch(() => "");
+      const b = await readFile(join(dir, "b.ts"), "utf8").catch(() => "");
+      return { passed: !/function\s+helper/.test(a) && /export function helper|export\s+\{|helper/.test(b), detail: `a=${a.slice(0, 60)} b=${b.slice(0, 60)}` };
+    },
+    cleanup: clean,
+  },
+  {
+    id: "config-type",
+    description: "Add a config type with zod-free validation",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "config.ts"), "export interface Config { port: number; host: string }\n", "utf8");
+      return dir;
+    },
+    prompt: "Write a function validateConfig(cfg: unknown): Config in config.ts (types only, no zod) that throws if type mismatches. Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "config.ts"), "utf8").catch(() => "");
+      return { passed: /function\s+validateConfig|export\s+function\s+validateConfig/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
+  {
+    id: "comment-docs",
+    description: "Add doc comments to a public API",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "math.ts"), "export function mul(a: number, b: number): number {\n  return a * b;\n}\n\nexport function div(a: number, b: number): number {\n  if (b === 0) throw new Error('div by zero');\n  return a / b;\n}\n", "utf8");
+      return dir;
+    },
+    prompt: "Add JSDoc doc comments (param + return) to mul() and div() in math.ts. Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "math.ts"), "utf8").catch(() => "");
+      return { passed: /\/\*\*\s*@param/.test(txt) && /@returns/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
+  {
+    id: "binary-search",
+    description: "Implement a binary search with tests",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "search.ts"), "export function binarySearch(arr: number[], target: number): number {\n  // TODO\n  return -1;\n}\n", "utf8");
+      return dir;
+    },
+    prompt: "Implement binarySearch(arr, target): index or -1 in search.ts. Write it so binarySearch([1,2,3,4,5], 4) === 3. Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "search.ts"), "utf8").catch(() => "");
+      return { passed: /while|if\s*\(/.test(txt) && !/TODO/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
+  {
+    id: "debug-inspect",
+    description: "Find and remove a stray console.log",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"));
+      await writeFile(join(dir, "shop.ts"), "console.log('DEBUG:', 'x');\nexport function total(prices: number[]): number {\n  console.log('debug total');\n  return prices.reduce((a, b) => a + b, 0);\n}\n", "utf8");
+      return dir;
+    },
+    prompt: "Remove all console.log lines in shop.ts (there are 2, including inside total()). Use edit.",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "shop.ts"), "utf8").catch(() => "");
+      return { passed: !/console\.log/.test(txt), detail: txt.slice(0, 160) };
+    },
+    cleanup: clean,
+  },
 ];
 
 // Dukungan task eksternal (SWE-bench-format): array { id, description, prompt, files: {path, content}[], verify: string[] }.

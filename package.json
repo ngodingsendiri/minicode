@@ -18,7 +18,8 @@
     "gate:telemetry": "bun scripts/telemetry-gate.ts",
     "dev": "bun cli/index.ts",
     "bench": "bun bench/runner.ts",
-    "bench:smoke": "bun bench/runner.ts --fake"
+    "bench:smoke": "bun bench/runner.ts --fake",
+    "bench:runs": "bun bench/runner.ts --runs 2"
   },
   "dependencies": {
     "ink": "^7.1.1",
