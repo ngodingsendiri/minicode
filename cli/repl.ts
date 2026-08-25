@@ -24,6 +24,37 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   process.stdout.write("\x1b[2J\x1b[H");
 
   const interactivePrompt = createInteractivePrompt({ getCompletions });
+  const rl = interactivePrompt.rl;
+
+  // ── Auto-show slash command suggestions saat mengetik "/" ──
+  let hintVisible = false;
+  let lastHintLine = "";
+  rl.on("keypress", () => {
+    setImmediate(() => {
+      const line = rl.line || "";
+      if (!line.startsWith("/")) {
+        if (hintVisible) {
+          // Sembunyikan hint (move down, clear, move back up)
+          process.stderr.write("\x1b[1B\x1b[0K\x1b[1A");
+          hintVisible = false;
+        }
+        return;
+      }
+      const all = [...BUILTIN_COMMANDS.map((b) => `/${b.name}`), ...allLoadedSkills.map((s) => `/${s.name}`)];
+      const matches = all.filter((c) => c.startsWith(line));
+      const hintText = matches.join("  ");
+      if (hintText !== lastHintLine) {
+        if (hintVisible) process.stderr.write("\x1b[1B\x1b[0K\x1b[1A");
+        if (matches.length > 0) {
+          process.stderr.write(`\n${hintText}\x1b[1A\r`);
+          hintVisible = true;
+        } else {
+          hintVisible = false;
+        }
+      }
+      lastHintLine = hintText;
+    });
+  });
 
   const commandCtx: CommandContext = {
     cwd, sessionId,

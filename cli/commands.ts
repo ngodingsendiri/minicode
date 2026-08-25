@@ -1,11 +1,10 @@
-import { renderTable } from "../src/tui/table.ts";
 import { listSessions } from "../src/session/persistence.ts";
 import { loadHistory } from "./input.ts";
 import { loadConfig, detectAndSave } from "../src/config.ts";
 import type { Usage } from "../src/policy/usage.ts";
 import type { Skill } from "../src/skills/loader.ts";
 
-// SEMUA output di sini = PLAIN TEXT tanpa ANSI.
+// SEMUA output = PLAIN TEXT tanpa ANSI.
 // Readline + ANSI di Windows = karakter escape bocor jadi teks literal.
 
 export interface CommandContext {
@@ -35,12 +34,10 @@ export const BUILTIN_COMMANDS = [
   { name: "exit", desc: "Quit Minicode" },
 ];
 
-function ok(msg: string): void {
-  process.stdout.write(`[OK] ${msg}\n`);
-}
-
-function fail(msg: string): void {
-  process.stdout.write(`[FAIL] ${msg}\n`);
+function pad(text: string, width: number): string {
+  const clean = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+  const diff = width - clean.length;
+  return diff > 0 ? text + " ".repeat(diff) : text;
 }
 
 export async function handleBuiltinCommand(
@@ -56,26 +53,15 @@ export async function handleBuiltinCommand(
 
   switch (cmd) {
     case "help": {
-      console.log("\nMinicode Commands");
-      const cmdTable = BUILTIN_COMMANDS.map((b) => ({
-        command: `/${b.name}`,
-        description: b.desc,
-      }));
-      console.log(renderTable([
-        { header: "Command", key: "command", width: 24 },
-        { header: "Description", key: "description", width: 46 },
-      ], cmdTable));
-
+      console.log("\nCommands:");
+      for (const b of BUILTIN_COMMANDS) {
+        console.log(`  /${pad(b.name, 22)}${b.desc}`);
+      }
       if (ctx.skills.length > 0) {
-        console.log("\nLoaded Skills");
-        const skillTable = ctx.skills.map((s) => ({
-          skill: `/${s.name}`,
-          description: s.description || "(no description)",
-        }));
-        console.log(renderTable([
-          { header: "Skill", key: "skill", width: 18 },
-          { header: "Description", key: "description", width: 46 },
-        ], skillTable));
+        console.log("\nSkills:");
+        for (const s of ctx.skills) {
+          console.log(`  /${pad(s.name, 20)}${s.description || ""}`);
+        }
       }
       console.log("");
       return { handled: true };
@@ -90,10 +76,10 @@ export async function handleBuiltinCommand(
       const { undoLastCheckpoint } = await import("../src/session/checkpoint.ts");
       const res = await undoLastCheckpoint(ctx.sessionId, ctx.cwd);
       if (res.success) {
-        ok("Undid file changes:");
+        console.log("[OK] Undid file changes:");
         for (const f of res.restoredFiles) console.log(`  -> ${f}`);
       } else {
-        fail(`Undo failed: ${res.message}`);
+        console.log(`[FAIL] Undo failed: ${res.message}`);
       }
       return { handled: true };
     }
@@ -102,27 +88,26 @@ export async function handleBuiltinCommand(
       const { redoLastCheckpoint } = await import("../src/session/checkpoint.ts");
       const res = await redoLastCheckpoint(ctx.sessionId, ctx.cwd);
       if (res.success) {
-        ok("Reapplied file changes:");
+        console.log("[OK] Reapplied file changes:");
         for (const f of res.reappliedFiles) console.log(`  -> ${f}`);
       } else {
-        fail(`Redo failed: ${res.message}`);
+        console.log(`[FAIL] Redo failed: ${res.message}`);
       }
       return { handled: true };
     }
 
     case "exit":
-    case "quit": {
+    case "quit":
       console.log("Goodbye!");
       return { handled: true, shouldExit: true };
-    }
 
     case "model": {
       if (args) {
         ctx.setModelOverride(args);
-        ok(`Model switched to: ${args}`);
+        console.log(`[OK] Model: ${args}`);
       } else {
         console.log(`Active model: ${ctx.currentModel ?? "default"}`);
-        console.log("Usage: /model <model-name> or /models to browse");
+        console.log("Use /model <name> or /models to browse.");
       }
       return { handled: true };
     }
@@ -132,19 +117,10 @@ export async function handleBuiltinCommand(
       if (cfg.providers.length === 0) {
         console.log("\n(no providers — use /provider-add)");
       } else {
-        const tableData = cfg.providers.map((p) => ({
-          id: p.id,
-          url: p.baseUrl,
-          models: String(p.models.length),
-          hint: p.providerHint ?? "?",
-        }));
-        console.log(`\nConfigured LLM Providers`);
-        console.log(renderTable([
-          { header: "ID", key: "id", width: 14 },
-          { header: "Base URL", key: "url", width: 30 },
-          { header: "Models", key: "models", width: 8, align: "right" as const },
-          { header: "Type", key: "hint", width: 10 },
-        ], tableData));
+        console.log("\nProviders:");
+        for (const p of cfg.providers) {
+          console.log(`  ${p.id.padEnd(16)} ${p.baseUrl.padEnd(35)} ${String(p.models.length).padStart(3)} models  ${p.providerHint ?? "?"}`);
+        }
       }
       console.log("");
       return { handled: true };
@@ -167,12 +143,13 @@ export async function handleBuiltinCommand(
       console.log("Detecting models...");
       try {
         const entry = await detectAndSave(baseUrl, apiKey, undefined, {
-          global: false, cwd: ctx.cwd,
+          global: false,
+          cwd: ctx.cwd,
           fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
         });
-        ok(`Provider "${entry.id}" saved (${entry.models.length} models). Restart minicode to use.`);
+        console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models). Restart minicode to use.`);
       } catch (e) {
-        fail(`Detection failed: ${(e as Error).message.slice(0, 80)}`);
+        console.log(`[FAIL] Detection failed: ${(e as Error).message.slice(0, 80)}`);
       }
       return { handled: true };
     }
@@ -181,7 +158,7 @@ export async function handleBuiltinCommand(
       if (!args) { console.log("Usage: /provider-remove <id>"); return { handled: true }; }
       const { removeProvider } = await import("../src/config.ts");
       await removeProvider(args, ctx.cwd ? { global: false, cwd: ctx.cwd } : {});
-      ok(`Removed provider "${args}"`);
+      console.log(`[OK] Removed provider "${args}"`);
       return { handled: true };
     }
 
@@ -220,13 +197,10 @@ export async function handleBuiltinCommand(
       if (rows.length === 0) {
         console.log("(no previous sessions)");
       } else {
-        console.log(`\nRecent Sessions`);
-        const tableData = rows.map((r) => ({ id: r.id, date: new Date(r.created_at).toLocaleString(), cwd: r.cwd }));
-        console.log(renderTable([
-          { header: "ID", key: "id", width: 12 },
-          { header: "Date", key: "date", width: 22 },
-          { header: "Workspace", key: "cwd", width: 32 },
-        ], tableData));
+        console.log("\nRecent Sessions:");
+        for (const r of rows) {
+          console.log(`  ${r.id.padEnd(14)} ${new Date(r.created_at).toLocaleString().padEnd(24)} ${r.cwd}`);
+        }
       }
       console.log("");
       return { handled: true };
@@ -246,7 +220,7 @@ export async function handleBuiltinCommand(
       const hist = await loadHistory();
       const last10 = hist.slice(-10);
       console.log(`\nRecent History`);
-      last10.forEach((h, i) => { console.log(`  ${String(i + 1).padStart(2, " ")}. ${h}`); });
+      last10.forEach((h, i) => { console.log(`  ${(i + 1).toString().padStart(2)}. ${h}`); });
       console.log("");
       return { handled: true };
     }
