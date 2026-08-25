@@ -11,7 +11,7 @@ export interface CommandContext {
   cwd?: string;
   sessionId: string;
   currentModel?: string;
-  usage: { get: (model?: string) => Usage; reset: () => void };
+  usage: { get: (model?: string) => Usage; reset: () => void; modelUsed: () => { effective?: string; provider?: string } };
   skills: Skill[];
   toolsCount: number;
   providerHint?: string;
@@ -217,13 +217,18 @@ export async function handleBuiltinCommand(
     case "cost":
     case "usage": {
       const u = ctx.usage.get(ctx.currentModel);
+      const mUsed = ctx.usage.modelUsed();
       console.log(`\nSession Usage`);
       console.log(`  Input Tokens:  ${u.inputTokens.toLocaleString()}`);
       console.log(`  Output Tokens: ${u.outputTokens.toLocaleString()}`);
       console.log(`  Total Tokens:  ${u.totalTokens.toLocaleString()}`);
       if (u.cacheReadTokens) console.log(`  Cache Read:    ${u.cacheReadTokens.toLocaleString()}`);
       if (u.cacheWriteTokens) console.log(`  Cache Write:   ${u.cacheWriteTokens.toLocaleString()}`);
-      console.log(`  Estimated Cost: ${u.cost != null ? `$${u.cost.toFixed(4)}` : "N/A"}\n`);
+      console.log(`  Estimated Cost: ${u.cost != null ? `$${u.cost.toFixed(4)}` : "N/A"}`);
+      if (mUsed.effective && mUsed.effective !== ctx.currentModel) {
+        console.log(`  Model Used:    ${mUsed.effective} (${mUsed.provider ?? "?"} via fallback)`);
+      }
+      console.log("");
       return { handled: true };
     }
 

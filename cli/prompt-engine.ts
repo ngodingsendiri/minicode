@@ -62,7 +62,10 @@ export function applyKey(
     }
     case "backspace": {
       if (!state.line.length) return { state, action: "none" };
-      const line = state.line.slice(0, -1);
+      // code-point aware: jangan potong surrogate pair (emoji dsb.)
+      const lastCode = state.line.charCodeAt(state.line.length - 1);
+      const sliceW = lastCode >= 0xdc00 && lastCode <= 0xdfff && state.line.length > 1 ? 2 : 1;
+      const line = state.line.slice(0, state.line.length - sliceW);
       const menuOpen = line.startsWith("/");
       return {
         state: { line, sel: menuOpen ? Math.min(state.sel, matches().length - 1) : -1, menuOpen },
@@ -163,8 +166,9 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (c === "\t") return { key: { type: "tab" }, width: 1 };
   if (code === 0x03) return { key: { type: "ctrl-c" }, width: 1 };
   if (code === 0x04) return { key: { type: "ctrl-d" }, width: 1 };
-  // multi-byte UTF-8 konsumsi sesuai lead byte
-  const width = utf8Width(code);
+  // Multi-byte: s sudah decoded UTF-16 — ukur unit per code point.
+  // 0xE6..0xE0 = leading surrogates (4-byte UTF-8 → 2 unit), else 1.
+  const width = code >= 0xd800 && code <= 0xdbff ? 2 : 1;
   const ch = s.slice(i, i + width);
   return { key: { type: "char", ch }, width };
 }
@@ -174,12 +178,4 @@ function scanCsi(s: string, i: number): number {
   let j = i + 2;
   while (j < s.length && !/[a-zA-Z]/.test(s[j]!)) j++;
   return j - i + 1;
-}
-
-function utf8Width(lead: number): number {
-  if (lead < 0x80) return 1;
-  if ((lead & 0xe0) === 0xc0) return 2;
-  if ((lead & 0xf0) === 0xe0) return 3;
-  if ((lead & 0xf8) === 0xf0) return 4;
-  return 1;
 }

@@ -169,3 +169,35 @@ test("decodeKeys: 4-byte emoji char", () => {
   expect(keys.length).toBe(1);
   expect(keys[0]!.key).toEqual({ type: "char", ch: "✅" });
 });
+
+test("decodeKeys: 2-unit surrogate pair emoji (4-byte UTF-8)", () => {
+  const keys = decodeKeys(new TextEncoder().encode("😀"));
+  expect(keys.length).toBe(1);
+  expect(keys[0]!.key).toEqual({ type: "char", ch: "😀" });
+});
+
+test("decodeKeys: mixed emoji + text stays intact", () => {
+  const keys = decodeKeys(new TextEncoder().encode("halo😀ok\n"));
+  const chars = keys.map((k) => (k.key.type === "char" ? k.key.ch : null)).filter(Boolean);
+  expect(chars.join("")).toBe("halo😀ok");
+  expect(keys[keys.length - 1]!.key.type).toBe("enter");
+});
+
+test("applyKey: backspace removes full surrogate pair", () => {
+  let s = createState();
+  s = applyKey(s, { type: "char", ch: "a" }, hints).state;
+  s = applyKey(s, { type: "char", ch: "😀" }, hints).state;
+  expect(s.line).toBe("a😀");
+  s = applyKey(s, { type: "backspace" }, hints).state;
+  expect(s.line).toBe("a");
+  // backspace below the emoji: line stays valid UTF-16 (no lone surrogate)
+  s = applyKey(s, { type: "char", ch: "😀" }, hints).state;
+  const bytes = new TextEncoder().encode(s.line);
+  const back = decodeKeys(bytes);
+  expect(back.length).toBe(2); // a + 😀
+});
+
+test("applyKey: emoji in non-slash line does not open menu", () => {
+  const s = applyKey(createState(), { type: "char", ch: "😀" }, hints);
+  expect(s.state.menuOpen).toBe(false);
+});

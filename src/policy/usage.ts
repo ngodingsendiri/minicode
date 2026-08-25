@@ -50,8 +50,18 @@ export function createUsageCollector(bus: EventBus, model?: string) {
     cacheWriteTokens: 0,
   };
   let cacheIncluded = true;
+  // Cost attribution: kalau router fallback menyubstitusi model, harga harus
+  // dihitung pakai model EFEKTIF yang benar-benar dipakai.
+  let effectiveModel: string | undefined;
+  let effectiveProvider: string | undefined;
 
   bus.on("provider:extension", (e) => {
+    if (e.kind === "effective-model") {
+      const d = e.data as { requested?: string; effective?: string; provider?: string };
+      effectiveModel = d.effective ?? effectiveModel;
+      effectiveProvider = d.provider ?? effectiveProvider;
+      return;
+    }
     if (e.kind === "usage") {
       const d = e.data as {
         inputTokens?: number;
@@ -77,12 +87,16 @@ export function createUsageCollector(bus: EventBus, model?: string) {
 
   return {
     get: (m?: string) => {
-      const eff = m ?? model;
+      // prioritas: model efektif (dari fallback) > argumen > model default
+      const eff = effectiveModel ?? m ?? model;
       const base: Usage = { ...total };
       return eff ? { ...base, cost: costFor(eff, base.inputTokens, base.outputTokens, base.cacheReadTokens ?? 0, base.cacheWriteTokens ?? 0, cacheIncluded) } : base;
     },
+    modelUsed: () => ({ effective: effectiveModel, provider: effectiveProvider }),
     reset: () => {
       total = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+      effectiveModel = undefined;
+      effectiveProvider = undefined;
     },
   };
 }

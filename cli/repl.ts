@@ -3,42 +3,9 @@ import { formatError } from "../src/tui/renderer.ts";
 import { findSkill, renderSkill } from "../src/skills/loader.ts";
 import { askLine, appendHistory } from "./input.ts";
 import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts";
+import { friendlyError, friendlyFromCategory } from "./errors.ts";
 import { writeTrace } from "../src/telemetry/trace.ts";
 import type { CliSession } from "./setup.ts";
-
-// Peta error API → pesan user-friendly (tanpa bongkar JSON teknis)
-function friendlyError(raw: string): { message: string; fix?: string } {
-  const lower = raw.toLowerCase();
-  if (lower.includes("insufficient balance") || lower.includes("creditserror") || lower.includes("credits") && /balance|credit/i.test(raw)) {
-    return { message: "The API key on this provider has no balance", fix: "Use /model to switch to a working provider, or top up your credits." };
-  }
-  if (lower.includes("auth failed") || /401|403/ .test(raw)) {
-    return { message: "Authentication rejected by the provider", fix: "Check your API key or use /model to switch providers." };
-  }
-  if (lower.includes("rate limited") || /429/.test(raw)) {
-    return { message: "Rate limited by the provider", fix: "Wait a moment and try again, or use --ratelimit." };
-  }
-  if (lower.includes("timeout") || lower.includes("timed out")) {
-    return { message: "Model request timed out", fix: "Increase --timeout or use a faster model." };
-  }
-  if (lower.includes("context_length") || lower.includes("context length")) {
-    return { message: "Context window exceeded", fix: "Start a new session or use a model with a bigger context." };
-  }
-  if (/\(400\)|invalid_request|not found|404/.test(lower)) {
-    return { message: "The model name may not exist on this provider", fix: "Use /models to see the exact model names." };
-  }
-  const jsonMsg = raw.match(/"message"\s*:\s*"([^"]+)"/);
-  if (jsonMsg) {
-    return { message: jsonMsg[1]!.slice(0, 120) };
-  }
-  const firstLine = raw.split("\n")[0]?.trim();
-  if (firstLine) {
-    // Potong pesan agar tidak menjemukan: ambil max 160 karakter
-    const cut = firstLine.length > 160 ? firstLine.slice(0, 157) + "…" : firstLine;
-    return { message: cut };
-  }
-  return { message: raw };
-}
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
@@ -46,6 +13,15 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     permissionMode, sessionTools, allLoadedSkills, usage, budget,
     persistCurrent, runPromptWithVerify, close,
   } = ctx;
+
+  // Track kategori error terakhir dari event provider (formal, bukan regex)
+  let lastCategory: string | undefined;
+  session.events.on("provider:extension", (e) => {
+    if (e.kind === "error") {
+      const d = e.data as { category?: string } | undefined;
+      if (d?.category) lastCategory = d.category;
+    }
+  });
 
   // Auto-suggest: slash commands + skills (dipakai askLine → render inline)
   const getSuggestions = (line: string): string[] => {
@@ -124,7 +100,9 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     }
 
     if (hadError) {
-      const f = friendlyError(hadError);
+      // Prioritas: kategori formal dari event provider. Fallback ke string.
+      const f = lastCategory ? friendlyFromCategory(lastCategory, hadError) : friendlyError(hadError);
+      lastCategory = undefined;
       process.stdout.write(`\n  ${f.message}\n`);
       if (f.fix) process.stdout.write(`  → ${f.fix}\n\n`);
     }

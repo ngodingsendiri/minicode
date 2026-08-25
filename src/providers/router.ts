@@ -25,11 +25,12 @@ function fixRequest(req: StreamRequest): StreamRequest {
 
 // Fallback provider mungkin tidak mendukung nama model request asli (mis. gpt-4o
 // dipakai ke Anthropic). Substitusi ke model default provider agar tidak 400.
-function requestFor(current: ModelProvider, fixed: StreamRequest): StreamRequest {
+// Return model efektif untuk cost attribution.
+function requestFor(current: ModelProvider, fixed: StreamRequest): { req: StreamRequest; effectiveModel?: string; substituted: boolean } {
   if (fixed.model && !current.models.includes(fixed.model) && current.models[0]) {
-    return { ...fixed, model: current.models[0] };
+    return { req: { ...fixed, model: current.models[0] }, effectiveModel: current.models[0], substituted: true };
   }
-  return fixed;
+  return { req: fixed, substituted: false };
 }
 
 export function createRouterProvider(config: RouterConfig): ModelProvider {
@@ -67,7 +68,12 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
         try {
           // rate limit: tunggu token bucket sebelum tiap request
           if (config.limiter) await config.limiter.acquire();
-          for await (const ev of current.stream(requestFor(current, { ...fixed, model }), signal)) {
+          const { req, effectiveModel, substituted } = requestFor(current, { ...fixed, model });
+          if (substituted && effectiveModel) {
+            // Beri tahu observer bahwa cost harus dihitung pakai model efektif.
+            yield { type: "extension", kind: "effective-model", data: { requested: fixed.model, effective: effectiveModel, provider: current.id } };
+          }
+          for await (const ev of current.stream(req, signal)) {
             yield ev;
           }
           return;
