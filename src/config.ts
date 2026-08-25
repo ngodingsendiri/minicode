@@ -161,6 +161,32 @@ export async function removeProvider(id: string, opts: { global?: boolean; cwd?:
   await writeConfigAtomic(path, cfg);
 }
 
+// Re-detect models untuk provider yang ada (model baru otomatis tersinkron).
+// Tidak menyentuh apiKey/baseUrl — hanya memperbarui daftar models.
+export async function refreshProviderModels(opts: { global?: boolean; cwd?: string } = {}): Promise<{ id: string; from: number; to: number }[]> {
+  const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL);
+  let cfg: MinicodeConfig = { providers: [] };
+  try {
+    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")));
+  } catch {}
+  const results: { id: string; from: number; to: number }[] = [];
+  for (let i = 0; i < cfg.providers.length; i++) {
+    const p = cfg.providers[i]!;
+    if (!p.apiKey || !p.baseUrl) continue;
+    try {
+      const detected = await detectModels(p.baseUrl, p.apiKey);
+      if (detected.models.length) {
+        results.push({ id: p.id, from: p.models.length, to: detected.models.length });
+        cfg.providers[i] = { ...p, models: detected.models, providerHint: detected.providerHint };
+      }
+    } catch {
+      // provider offline / auth gagal — biarkan daftar lama
+    }
+  }
+  if (results.length || cfg.providers.length) await writeConfigAtomic(path, cfg);
+  return results;
+}
+
 export async function saveMcpServer(entry: McpServerEntry, opts: { global?: boolean; cwd?: string } = {}) {
   if (!entry.id || !entry.command) throw new Error("mcp id/command required");
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL);

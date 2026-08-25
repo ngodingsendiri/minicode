@@ -84,6 +84,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`�
 | `/undo` | Batalkan perubahan file terakhir (pre-edit state) |
 | `/redo` | Terapkan ulang perubahan yang di-undo (post-edit state) |
 | `/cost` | Lihat token & biaya sesi (termasuk cache read/write) |
+| `/sync` | Auto-refresh daftar model dari semua provider (model baru tersinkron) |
 | `/sessions` | Daftar sesi terbaru (nomor = resume) |
 | `/resume [id]` | Lanjutkan sesi (picker interaktif tanpa arg; respawn via `--resume`) |
 | `/status` | Info runtime (model, provider, tools, skills) |

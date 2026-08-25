@@ -1,6 +1,6 @@
 import { listSessions, loadSession } from "../src/session/persistence.ts";
 import { loadHistory } from "./input.ts";
-import { loadConfig, detectAndSave } from "../src/config.ts";
+import { loadConfig, detectAndSave, refreshProviderModels } from "../src/config.ts";
 import type { Usage } from "../src/policy/usage.ts";
 import type { Skill } from "../src/skills/loader.ts";
 
@@ -25,6 +25,7 @@ export const BUILTIN_COMMANDS = [
   { name: "provider-remove <id>", desc: "Remove a provider by id" },
   { name: "models [id]", desc: "List models for a provider" },
   { name: "model <name>", desc: "Switch current LLM model" },
+  { name: "sync", desc: "Auto-refresh model list from all providers" },
   { name: "undo", desc: "Rollback file edits from last turn" },
   { name: "redo", desc: "Reapply undone file edits" },
   { name: "cost", desc: "Show token usage & session cost" },
@@ -144,15 +145,16 @@ export async function handleBuiltinCommand(
     case "providers": {
       const cfg = await loadConfig();
       if (cfg.providers.length === 0) {
-        console.log("\n(no providers — use /provider-add)");
+        console.log("\n(no providers — /provider-add to add, or minicode sync via CLI)");
       } else {
+        const active = (ctx.currentModel ?? "").split("::")[0];
         console.log("");
         for (const p of cfg.providers) {
-          const dims = p.models.length;
-          console.log(`  ${p.id.padEnd(16)} ${String(dims).padStart(3)} models (${p.providerHint ?? "openai"} compat)`);
+          const activeMark = p.id === active ? " ▶ active" : "";
+          console.log(`  ${p.id.padEnd(16)} ${String(p.models.length).padStart(3)} models${activeMark}`);
           console.log(`  ${" ".repeat(16)} ${p.baseUrl}`);
         }
-        console.log(`\n  Active: ${ctx.currentModel ?? "default"} — switch with /model\n`);
+        console.log(`\n  Active model: ${ctx.currentModel ?? "default"} — /model to switch, /sync to refresh models\n`);
       }
       return { handled: true };
     }
@@ -235,6 +237,21 @@ export async function handleBuiltinCommand(
 
     case "compact": {
       console.log("Compaction is automatic (kernel budget policy).");
+      return { handled: true };
+    }
+
+    case "sync": {
+      // Re-detect model dari semua provider → config diperbarui otomatis
+      console.log("\nSyncing models from providers...");
+      const results = await refreshProviderModels({ global: !ctx.cwd ? true : false, cwd: ctx.cwd });
+      if (results.length === 0) {
+        console.log("  (no provider updated — offline/auth failed)");
+      } else {
+        for (const r of results) {
+          console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`);
+        }
+      }
+      console.log("  Restart minicode for the router to pick up new models.\n");
       return { handled: true };
     }
 

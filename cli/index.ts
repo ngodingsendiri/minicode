@@ -13,11 +13,14 @@ import { renderTable } from "../src/tui/table.ts";
 import { randomUUID } from "node:crypto";
 import { resolve as resolvePath } from "node:path";
 
-const HELP = `${c.bold(c.cyan(glyphs.sparkle + " Minicode"))} — coding agent on frozen MiniCore
-${c.bold("Usage:")}
+const HELP = `Minicode — coding agent on frozen MiniCore
+Usage:
   minicode                        # mode chat interaktif (setup wizard saat pertama)
   minicode "prompt" [options]     # sekali jalan
   echo "prompt" | minicode        # via pipe
+  minicode providers              # daftar provider gateway (tanpa LLM)
+  minicode models [id]            # daftar model per provider (tanpa LLM)
+  minicode sync                   # refresh daftar model dari semua provider
   minicode config <add|list|remove|detect> [options]
   minicode config mcp <add|list|remove> [options]
   minicode config lsp <add|list|remove> [options]
@@ -25,7 +28,7 @@ ${c.bold("Usage:")}
   minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
   minicode sessions <list|export> [id]
 
-${c.bold("Options:")}
+Options:
   -h, --help          show help
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
@@ -39,15 +42,15 @@ ${c.bold("Options:")}
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
-  --interactive       REPL loop (readline)
+  --interactive       REPL loop
   --tui               Ink TUI dashboard (split-view, activity stream)
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
   --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
   --budget <usd>      session cost limit (USD); warn at 80%, stop when exceeded
 
-${c.bold("Commands in REPL:")}
-  /help, /clear, /model, /cost, /compact, /sessions, /status, /exit
+Commands in REPL:
+  /help /clear /model /models /providers /provider-add /sync /cost /sessions /resume /status /history /exit
 `;
 
 const args = process.argv.slice(2);
@@ -242,6 +245,50 @@ if (args[0] === "skills") {
 }
 
 if (args.includes("-h") || args.includes("--help")) { console.log(HELP); process.exit(0); }
+
+// ── subcommand: providers / models (tanpa LLM — lihat & kelola gateway cepat) ──
+const firstArg = args[0];
+if (firstArg === "providers" || firstArg === "models" || firstArg === "sync") {
+  const { loadConfig, refreshProviderModels } = await import("../src/config.ts");
+  const cwdArg = getArg("--cwd");
+  const cfg = await loadConfig(cwdArg);
+  if (firstArg === "providers") {
+    if (cfg.providers.length === 0) {
+      console.log("(no providers configured — run `minicode --interactive` then /provider-add, or `minicode config add --baseUrl <url> --apiKey <key>`)");
+    } else {
+      console.log("");
+      for (const p of cfg.providers) {
+        console.log(`  ${p.id.padEnd(16)} ${String(p.models.length).padStart(3)} models`);
+        console.log(`  ${" ".repeat(16)} ${p.baseUrl}`);
+      }
+      console.log("\n  options: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>");
+    }
+    process.exit(0);
+  }
+  if (firstArg === "models") {
+    const pid = args[1];
+    if (pid) {
+      const p = cfg.providers.find((x) => x.id === pid);
+      if (!p) { console.error(`provider "${pid}" not found — minicode providers`); process.exit(1); }
+      p.models.forEach((m, i) => console.log(`  [${i}] ${m}`));
+    } else {
+      if (cfg.providers.length === 0) console.log("(no providers)");
+      for (const p of cfg.providers) {
+        console.log(`${p.id} (${p.baseUrl})`);
+        p.models.slice(0, 10).forEach((m) => console.log(`  ${m}`));
+        if (p.models.length > 10) console.log(`  … +${p.models.length - 10} more`);
+      }
+    }
+    process.exit(0);
+  }
+  if (firstArg === "sync") {
+    console.log("Syncing models from providers...");
+    const results = await refreshProviderModels({ cwd: cwdArg, global: !cwdArg });
+    for (const r of results) console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`);
+    if (!results.length) console.log("  (nothing updated)");
+    process.exit(0);
+  }
+}
 
 // ── flag parsing ──
 const verbose = args.includes("--verbose");
