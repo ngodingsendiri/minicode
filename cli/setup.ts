@@ -52,7 +52,6 @@ export interface CliSession {
   cwd?: string;
   sessionId: string;
   modelRef: { current?: string };
-  providerRef: { current?: string };
   effectiveInitialModel: string;
   permissionMode: string;
   sessionTools: Tool[];
@@ -67,12 +66,10 @@ export interface CliSession {
 
 export async function createCliSession(opts: CliSessionOptions): Promise<CliSession> {
   const { cwd, sessionId, resumeId, modelOverride, prompt, enterRepl, verbose, allowAll, ask, plan, allowlist, useTui, verify, budget, maxSteps, contextWindowTokens, timeoutMs, rateLimiter } = opts;
+  const modelRef = { current: modelOverride };
 
-  // ????: load config + env fallback ????
+  // ── provider: load config + env fallback ──
   const cfg = await loadConfig(cwd);
-  // Seleksi aktif: CLI override > config (active.model / active.providerId) — persists antar restart
-  const modelRef = { current: modelOverride ?? cfg.active?.model };
-  const providerRef = { current: cfg.active?.providerId };
   type Provider = ReturnType<typeof createOpenAICompatProvider>;
   let providers = buildProviderList(cfg);
   if (providers.length === 0) {
@@ -93,7 +90,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     console.error("no provider configured — run `minicode` for setup wizard,\nor: minicode config add --baseUrl <url> --apiKey <key>, or set OPENAI_API_KEY");
     process.exit(1);
   }
-  const router = createRouterProvider({ providers, preferProviderId: providerRef, ...(rateLimiter ? { limiter: rateLimiter } : {}) });
+  const router = createRouterProvider({ providers, ...(rateLimiter ? { limiter: rateLimiter } : {}) });
 
   // ── vector hybrid RAG ──
   let systemExtra: string | undefined;
@@ -266,5 +263,5 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     await lspCloseAll();
   }
 
-  return { session, cfg, cwd, sessionId, modelRef, providerRef, effectiveInitialModel, permissionMode, sessionTools, allLoadedSkills, usage, budget, detachInk, persistCurrent, runPromptWithVerify, close };
+  return { session, cfg, cwd, sessionId, modelRef, effectiveInitialModel, permissionMode, sessionTools, allLoadedSkills, usage, budget, detachInk, persistCurrent, runPromptWithVerify, close };
 }

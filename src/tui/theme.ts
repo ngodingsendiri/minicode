@@ -11,14 +11,8 @@ const has256 = process.env.TERM?.includes("256color") ?? false;
 // Level: 0=mono, 1=16-color, 2=256-color, 3=truecolor
 const colorLevel: number = noColor ? 0 : hasTruecolor ? 3 : has256 ? 2 : process.stdout.isTTY ? 1 : 0;
 
-// Plain mode — dipakai REPL interaktif: ZERO ANSI escape codes.
-// Windows conhost mem-mangle setiap SGR yang ditulis saat readline aktif
-// (\x1b[31m bocor jadi teks "31", dst) → REPL harus monochrome total.
-let plainMode = false;
-export function setPlainMode(v: boolean): void { plainMode = v; }
-
 function wrap(open: number | string, close: number | string): (s: string) => string {
-  if (noColor || plainMode || colorLevel === 0) return (s: string) => s;
+  if (noColor || colorLevel === 0) return (s: string) => s;
   return (s: string) => `${open}${s}${close}`;
 }
 

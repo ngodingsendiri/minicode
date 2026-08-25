@@ -1,6 +1,6 @@
 import type { EventBus } from "../../../minicore/src/core/index.ts";
 import { c } from "./theme.ts";
-import { formatArgsPreview, formatUsage } from "./format.ts";
+import { formatArgsPreview, formatUsage, formatProviderError } from "./format.ts";
 
 export interface RendererOptions {
   verbose?: boolean;
@@ -29,11 +29,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       if (usage && opts.verbose) process.stderr.write(c.muted(`  ${usage}\n`));
     } else if (e.kind === "error") {
       const d = e.data as { message?: string; category?: string };
-      // Kompak: jangan tampilkan JSON body mentah (405/401 error bodies).
-      const text = d.message ?? "";
-      const m = text.match(/"message"\s*:\s*"([^"]{1,140})"/);
-      const short = m?.[1] ?? text.replace(/\{[\s\S]*\}/, "").trim().slice(0, 160);
-      process.stderr.write(c.error(`\n✗ [${d.category ?? "error"}] ${short}\n`));
+      process.stderr.write(c.error(`\n✗ ${formatProviderError(d)}\n`));
     } else if (e.kind === "content_filter") {
       process.stderr.write(c.warning(`\n⚠ Content filter blocked the response\n`));
     }

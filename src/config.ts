@@ -31,8 +31,6 @@ export interface MinicodeConfig {
   lspServers?: LspServerEntry[];
   verifyCommand?: string;
   bashAllowlist?: string[];
-  // Seleksi aktif (provider + model) — dipilih user via /model, persisted
-  active?: { providerId?: string; model?: string };
 }
 
 const GLOBAL = join(homedir(), ".minicode", "config.json");
@@ -45,18 +43,7 @@ function normalizeConfig(raw: unknown): MinicodeConfig {
   const lspServers = Array.isArray(cfg?.lspServers) ? (cfg.lspServers as LspServerEntry[]).filter((l) => l && typeof l.ext === "string" && typeof l.command === "string") : undefined;
   const verifyCommand = typeof cfg?.verifyCommand === "string" ? (cfg.verifyCommand as string) : undefined;
   const bashAllowlist = Array.isArray(cfg?.bashAllowlist) ? (cfg.bashAllowlist as string[]).filter((s) => typeof s === "string") : undefined;
-  const a = cfg?.active as Record<string, unknown> | undefined;
-  const active = a && typeof a === "object"
-    ? { providerId: typeof a.providerId === "string" ? a.providerId : undefined, model: typeof a.model === "string" ? a.model : undefined }
-    : undefined;
-  return {
-    providers,
-    ...(mcpServers ? { mcpServers } : {}),
-    ...(lspServers ? { lspServers } : {}),
-    ...(verifyCommand ? { verifyCommand } : {}),
-    ...(bashAllowlist ? { bashAllowlist } : {}),
-    ...(active?.providerId || active?.model ? { active } : {}),
-  };
+  return { providers, ...(mcpServers ? { mcpServers } : {}), ...(lspServers ? { lspServers } : {}), ...(verifyCommand ? { verifyCommand } : {}), ...(bashAllowlist ? { bashAllowlist } : {}) };
 }
 
 async function writeConfigAtomic(path: string, cfg: MinicodeConfig): Promise<void> {
@@ -118,24 +105,7 @@ export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
     lspServers: [...lspMap.values()],
     ...(localCfg.verifyCommand ?? globalCfg.verifyCommand ? { verifyCommand: localCfg.verifyCommand ?? globalCfg.verifyCommand } : {}),
     ...(localCfg.bashAllowlist ?? globalCfg.bashAllowlist ? { bashAllowlist: localCfg.bashAllowlist ?? globalCfg.bashAllowlist } : {}),
-    ...((localCfg.active ?? globalCfg.active)?.providerId || (localCfg.active ?? globalCfg.active)?.model ? { active: localCfg.active ?? globalCfg.active } : {}),
   };
-}
-
-// Persist seleksi aktif (provider + model) ke config lokal repo, agar pilihan
-// `/model` bertahan saat minicode dimulai ulang.
-export async function saveActiveSelection(model?: string, providerId?: string, opts: { global?: boolean; cwd?: string } = {}): Promise<void> {
-  const path = (opts.global ?? false) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL);
-  let cfg: MinicodeConfig = { providers: [] };
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")));
-  } catch {}
-  const prev = cfg.active ?? {};
-  cfg.active = {
-    ...(providerId ? { providerId } : prev.providerId ? { providerId: prev.providerId } : {}),
-    ...(model ? { model } : prev.model ? { model: prev.model } : {}),
-  };
-  await writeConfigAtomic(path, cfg);
 }
 
 export async function saveProvider(entry: ProviderEntry, opts: { global?: boolean; cwd?: string } = {}) {

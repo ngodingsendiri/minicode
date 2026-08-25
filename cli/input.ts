@@ -32,50 +32,6 @@ export interface PromptOptions {
   getCompletions?: (line: string) => string[];
 }
 
-// Auto-show slash command hints: saat line starts dengan "/", prompt jadi
-// multiline yang menampilkan matching commands di baris atas prompt.
-// Fully readline-managed — ZERO ANSI tulis tangan (aman di conhost Windows).
-// Polling rl.line setiap 110ms: tidak bergantung pada keypress events runtime.
-const BASE_PROMPT = "minicode❯ ";
-const HINT_POLL_MS = 110;
-
-function hintRender(hits: string[]): string {
-  const width = process.stdout.columns || 80;
-  let out = "";
-  for (const h of hits) {
-    if (out.length + h.length + 2 > width) {
-      out += " …";
-      break;
-    }
-    out += (out ? "  " : "") + h;
-  }
-  return out;
-}
-
-export function attachSlashHints(
-  rl: Interface,
-  getCompletions: (line: string) => string[],
-): () => void {
-  let last = BASE_PROMPT;
-  const timer = setInterval(() => {
-    const line = (rl as { line?: string }).line ?? "";
-    let next = BASE_PROMPT;
-    if (line.startsWith("/")) {
-      const hits = getCompletions(line).filter((h) => h !== line);
-      if (hits.length > 0) next = hintRender(hits) + "\n" + BASE_PROMPT;
-    }
-    if (next !== last) {
-      last = next;
-      try {
-        rl.setPrompt(next);
-        // prompt(true) = redraw tanpa reset cursor — menjaga input yang sudah diketik
-        if (line.length > 0) rl.prompt(true);
-      } catch {}
-    }
-  }, HINT_POLL_MS);
-  return () => clearInterval(timer);
-}
-
 export function createInteractivePrompt(opts: PromptOptions = {}): {
   rl: Interface;
   ask: (customPrompt?: string) => Promise<string | null>;
@@ -89,7 +45,7 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
 
   // Plain text prompt — TANPA ANSI escape codes.
   // Readline menghitung ANSI sebagai karakter terlihat → kursor kacau di Windows.
-  const defaultPrompt = BASE_PROMPT;
+  const defaultPrompt = "minicode❯ ";
   const continuationPrompt = "  ... ";
 
   const rl = createInterface({
@@ -100,15 +56,12 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
     prompt: defaultPrompt,
   });
 
-  const detachHints = opts.getCompletions ? attachSlashHints(rl, opts.getCompletions) : null;
-
   return {
     rl,
-    ask(customPrompt?: string): Promise<string | null> {
+    ask(_customPrompt?: string): Promise<string | null> {
       return new Promise((resolve) => {
         const lines: string[] = [];
-        const initialPrompt = customPrompt && customPrompt.trim() ? customPrompt : defaultPrompt;
-        rl.setPrompt(initialPrompt);
+        rl.setPrompt(defaultPrompt);
 
         const onLine = (line: string) => {
           if (line.endsWith("\\")) {
@@ -139,10 +92,94 @@ export function createInteractivePrompt(opts: PromptOptions = {}): {
       });
     },
     close() {
-      if (detachHints) detachHints();
       rl.close();
     },
   };
+}
+
+export interface AskLineOptions {
+  prompt?: string;
+  hints?: (line: string) => string[];
+}
+
+// Input interaktif satu baris — TANPA SATU PUN ANSI escape code.
+// Render: \r → pad spasi (hapus isi baris lama) → \r → tulis ulang.
+// Aman di conhost lama Windows (yang tidak mendukung VT sequences).
+export async function askLine(opts: AskLineOptions = {}): Promise<string | null> {
+  const prompt = opts.prompt ?? "minicode❯ ";
+
+  if (!process.stdin.isTTY) {
+    return new Promise((resolve) => {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      rl.question(prompt, (a) => { rl.close(); resolve(a.trim() || null); });
+    });
+  }
+
+  return new Promise((resolve) => {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    let line = "";
+    let printedW = 0;
+    const hist: string[] = [];
+
+    const content = () => {
+      const hints = opts.hints?.(line) ?? [];
+      return hints.length ? `${prompt}${line}   (${hints.slice(0, 6).join(", ")})` : `${prompt}${line}`;
+    };
+
+    const render = () => {
+      const c = content();
+      const pad = printedW - c.length;
+      process.stdout.write("\r" + " ".repeat(printedW) + "\r" + c + (pad > 0 ? " ".repeat(pad) : ""));
+      printedW = c.length;
+    };
+
+    const onData = (chunk: Buffer) => {
+      const str = chunk.toString();
+      let i = 0;
+      while (i < str.length) {
+        const ch = str[i]!;
+        if (ch === "\r" || ch === "\n") {
+          process.stdout.write("\n");
+          const v = line.trim() || null;
+          line = "";
+          printedW = 0;
+          if (v) hist.push(v);
+          finish(v);
+          return;
+        }
+        if (ch === "\u0003" || ch === "\u0004") { finish(null); return; }
+        if (ch === "\u007f" || ch === "\b") { if (line.length) line = line.slice(0, -1); i++; continue; }
+        if (ch === "\t") {
+          const hs = opts.hints?.(line) ?? [];
+          if (hs.length) line = hs[0]!;
+          i++;
+          continue;
+        }
+        if (ch === "\x1b") {
+          // arrow/escape sequences: consume & ignore (sementara)
+          const next = str[i + 1];
+          if (next === "[" || next === "O") { i += 3; continue; }
+          i += 2;
+          continue;
+        }
+        if (ch.charCodeAt(0) >= 32) line += ch;
+        i++;
+      }
+      render();
+    };
+
+    const finish = (v: string | null) => {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("data", onData);
+      resolve(v);
+    };
+
+    process.stdin.on("data", onData);
+    render();
+  });
 }
 
 export async function askSecret(promptText: string): Promise<string> {

@@ -1,68 +1,72 @@
 // REPL loop — mode interaktif dengan prompt, history, slash commands, verify, budget.
 import { formatError } from "../src/tui/renderer.ts";
 import { findSkill, renderSkill } from "../src/skills/loader.ts";
-import { createInteractivePrompt, appendHistory } from "./input.ts";
-import { handleBuiltinCommand, buildModelCatalog, BUILTIN_COMMANDS, type CommandContext, type ModelPick } from "./commands.ts";
+import { askLine, appendHistory } from "./input.ts";
+import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts";
 import { writeTrace } from "../src/telemetry/trace.ts";
-import { setPlainMode } from "../src/tui/theme.ts";
-import { saveActiveSelection } from "../src/config.ts";
 import type { CliSession } from "./setup.ts";
 
-// Kompak & friendly: singkirkan JSON body mentah + potong panjang.
-function compactError(raw: string): string {
-  const msg = raw.match(/"message"\s*:\s*"([^"]{1,160})"/);
-  if (msg?.[1]) return msg[1];
-  const withoutJson = raw.replace(/\{[\s\S]*\}/, "").trim();
-  if (withoutJson) return withoutJson.slice(0, 200);
-  return raw.slice(0, 200);
+// Peta error API → pesan user-friendly (tanpa bongkar JSON teknis)
+function friendlyError(raw: string): { message: string; fix?: string } {
+  const lower = raw.toLowerCase();
+  if (lower.includes("insufficient balance") || lower.includes("creditserror") || lower.includes("credits") && /balance|credit/i.test(raw)) {
+    return { message: "The API key on this provider has no balance", fix: "Use /model to switch to a working provider, or top up your credits." };
+  }
+  if (lower.includes("auth failed") || /401|403/ .test(raw)) {
+    return { message: "Authentication rejected by the provider", fix: "Check your API key or use /model to switch providers." };
+  }
+  if (lower.includes("rate limited") || /429/.test(raw)) {
+    return { message: "Rate limited by the provider", fix: "Wait a moment and try again, or use --ratelimit." };
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return { message: "Model request timed out", fix: "Increase --timeout or use a faster model." };
+  }
+  if (lower.includes("context_length") || lower.includes("context length")) {
+    return { message: "Context window exceeded", fix: "Start a new session or use a model with a bigger context." };
+  }
+  if (/\(400\)|invalid_request|not found|404/.test(lower)) {
+    return { message: "The model name may not exist on this provider", fix: "Use /models to see the exact model names." };
+  }
+  const jsonMsg = raw.match(/"message"\s*:\s*"([^"]+)"/);
+  if (jsonMsg) {
+    return { message: jsonMsg[1]!.slice(0, 120) };
+  }
+  const firstLine = raw.split("\n")[0]?.trim();
+  if (firstLine) {
+    // Potong pesan agar tidak menjemukan: ambil max 160 karakter
+    const cut = firstLine.length > 160 ? firstLine.slice(0, 157) + "…" : firstLine;
+    return { message: cut };
+  }
+  return { message: raw };
 }
 
 export async function runRepl(ctx: CliSession): Promise<void> {
-  // REPL = monochrome total. Windows conhost mangle ANSI saat readline aktif
-  // (\x1b[31m → "31"): matikan semua warna, semua output plain text.
-  setPlainMode(true);
-
   const {
-    session, cfg, cwd, sessionId, modelRef, providerRef,
+    session, cfg, cwd, sessionId, modelRef,
     permissionMode, sessionTools, allLoadedSkills, usage, budget,
     persistCurrent, runPromptWithVerify, close,
   } = ctx;
 
-  // Tab completion: slash commands + skills
-  const getCompletions = (line: string): string[] => {
+  // Auto-suggest: slash commands + skills (dipakai askLine → render inline)
+  const getSuggestions = (line: string): string[] => {
     if (!line.startsWith("/")) return [];
     const candidates = [...BUILTIN_COMMANDS.map((b) => `/${b.name}`), ...allLoadedSkills.map((s) => `/${s.name}`)];
     return candidates.filter((c) => c.startsWith(line));
   };
 
-  // Katalog model dedupe (cross-provider, provider aktif diprioritas)
-  const allModels = (): ModelPick[] => buildModelCatalog(cfg.providers, providerRef.current);
-
-  const persistSelection = async (model: string, providerId: string): Promise<void> => {
-    try { await saveActiveSelection(model, providerId, { global: false, cwd }); } catch {}
-  };
-
   // Clear screen — bersihkan semua, langsung prompt
   process.stdout.write("\x1b[2J\x1b[H");
 
-  const interactivePrompt = createInteractivePrompt({ getCompletions });
-
   const commandCtx: CommandContext = {
     cwd, sessionId,
-    currentModel: modelRef.current,
-    currentProviderId: providerRef.current,
+    currentModel: modelRef.current ?? cfg.providers[0]?.models[0],
     usage, skills: allLoadedSkills, toolsCount: sessionTools.length,
-    providerHint: cfg.providers.find((p) => p.id === providerRef.current)?.providerHint ?? cfg.providers[0]?.providerHint,
-    setModelOverride: (m: string, p?: string) => {
-      modelRef.current = m;
-      if (p) providerRef.current = p;
-    },
-    pick: (prompt?: string) => interactivePrompt.ask(prompt),
-    allModels,
+    providerHint: cfg.providers[0]?.providerHint,
+    setModelOverride: (m: string) => { modelRef.current = m; },
   };
 
   while (true) {
-    const line = await interactivePrompt.ask();
+    const line = await askLine({ hints: getSuggestions });
     if (line == null) break;
     const q = line.trim();
     if (!q) continue;
@@ -74,24 +78,25 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       continue;
     }
 
+    // Slash yang bukan command & bukan skill → jangan dipanggil ke LLM
+    let finalPrompt = q;
+    if (q.startsWith("/")) {
+      const spaceIdx = q.indexOf(" ");
+      const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx);
+      const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
+      const skill = await findSkill(skillName, cwd).catch(() => undefined);
+      if (skill) {
+        finalPrompt = await renderSkill(skill, skillArgs);
+      } else {
+        process.stdout.write(`\n  Unknown command: ${q.split(" ")[0]} — type /help\n\n`);
+        continue;
+      }
+    }
+
     let overBudget = false;
     let hadError: string | undefined;
     const t0 = Date.now();
     try {
-      let finalPrompt = q;
-      if (q.startsWith("/")) {
-        const spaceIdx = q.indexOf(" ");
-        const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx);
-        const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
-        const skill = await findSkill(skillName, cwd).catch(() => undefined);
-        if (skill) finalPrompt = await renderSkill(skill, skillArgs);
-        else {
-          // Unknown slash command — jangan pernah kirim ke LLM
-          console.log(`\n[?] Unknown command: /${skillName} — type /help\n`);
-          continue;
-        }
-      }
-
       try {
         await runPromptWithVerify(finalPrompt);
         const u = usage.get(modelRef.current);
@@ -119,23 +124,12 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     }
 
     if (hadError) {
-      const short = compactError(hadError);
-      process.stdout.write(`\n  ✗ ${short}\n`);
-      if (/\b429\b|rate.limit/i.test(hadError)) {
-        process.stdout.write(`  Fix: rate limited — wait a moment and retry (or add --ratelimit).\n\n`);
-      } else if (/\b40[13]\b|auth|api key|balance|quota|insufficient/i.test(hadError)) {
-        process.stdout.write(`  Fix: check API key / balance for active provider, or switch: /model <name> to another provider.\n\n`);
-      } else if (/\btimeout\b/i.test(hadError)) {
-        process.stdout.write(`  Fix: timed out — retry (or increase --timeout, or pick a faster model).\n\n`);
-      } else if (/\b5\d\d\b|server|network|econn/i.test(hadError)) {
-        process.stdout.write(`  Fix: provider/server error — retry, or switch provider: /model <name>.\n\n`);
-      } else {
-        process.stdout.write(`\n`);
-      }
+      const f = friendlyError(hadError);
+      process.stdout.write(`\n  ${f.message}\n`);
+      if (f.fix) process.stdout.write(`  → ${f.fix}\n\n`);
     }
   }
 
-  interactivePrompt.close();
   await close();
   process.exit(0);
 }
