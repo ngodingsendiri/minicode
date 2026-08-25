@@ -358,7 +358,13 @@ if (enterRepl) {
     await persistCurrent(u);
     if (overBudget) { await close(); process.exit(1); }
     const statusLine = c.muted(`\n  ${u.totalTokens.toLocaleString()} tokens${u.cost != null ? ` · $${u.cost.toFixed(4)}` : ""} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s`);
-    process.stderr.write(`${statusLine}\n`);
+    process.stderr.write(`${statusLine}`);
+    // Transparansi fallback: satu baris bila router menyubstitusi model.
+    const mUsed = usage.modelUsed();
+    if (mUsed.effective && mUsed.effective !== modelRef.current) {
+      process.stderr.write(c.dim(`  (via ${mUsed.provider ?? "?"}/${mUsed.effective} — requested ${modelRef.current})`));
+    }
+    process.stderr.write("\n");
     writeTrace(wcwd, { sessionId: sid, timestamp: new Date().toISOString(), prompt: effectivePrompt, durationMs: Date.now() - t0, steps: session.state.stepCount, turns: session.state.turnCount, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cost: u.cost, model: modelRef.current, ok: true });
   } catch (e) {
     process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`);

@@ -86,7 +86,13 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         await runPromptWithVerify(finalPrompt);
         const u = usage.get(modelRef.current);
         const costPart = u.cost != null ? ` · $${u.cost.toFixed(4)}` : "";
-        process.stdout.write(`\n  ${u.totalTokens.toLocaleString()} tokens${costPart} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s\n\n`);
+        process.stdout.write(`\n  ${u.totalTokens.toLocaleString()} tokens${costPart} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s`);
+        // Transparansi fallback: beri tahu jika router menyubstitusi model.
+        const mUsed = usage.modelUsed();
+        if (mUsed.effective && mUsed.effective !== modelRef.current) {
+          process.stdout.write(`  (via ${mUsed.provider ?? "?"}/${mUsed.effective} — requested ${modelRef.current})`);
+        }
+        process.stdout.write("\n\n");
 
         if (budget != null && u.cost != null) {
           if (u.cost > budget) overBudget = true;

@@ -193,6 +193,30 @@ test("router fallback substitutes model not supported by target provider", async
   expect(received[0]!.model).toBe("claude-sonnet-4");
 });
 
+test("router emits effective-model extension saat substitusi model fallback", async () => {
+  const bad: any = {
+    id: "bad",
+    models: ["m1"],
+    async *stream() {
+      throw new ProviderError("rate_limit", "rl", 100);
+    },
+  };
+  const good: any = {
+    id: "good",
+    models: ["substituted-model"],
+    async *stream() {
+      yield { type: "text", text: "ok" };
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const router = createRouterProvider({ providers: [bad, good] });
+  let eff: Record<string, unknown> | null = null;
+  for await (const ev of router.stream({ messages: [{ role: "user", content: "hi" }], model: "gpt-4o" }, new AbortController().signal)) {
+    if (ev.type === "extension" && ev.kind === "effective-model") eff = ev.data as Record<string, unknown>;
+  }
+  expect(eff).toEqual({ requested: "gpt-4o", effective: "substituted-model", provider: "good" });
+});
+
 test("router caps retryAfter 3600 -> 30s", async () => {
   const bad: any = {
     id: "bad",

@@ -83,7 +83,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`�
 | `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
 | `/undo` | Batalkan perubahan file terakhir (pre-edit state) |
 | `/redo` | Terapkan ulang perubahan yang di-undo (post-edit state) |
-| `/cost` | Lihat token & biaya sesi (termasuk cache read/write) |
+| `/cost` | Lihat token & biaya sesi; tampilkan model efektif bila router substitusi (fallback) |
 | `/sync` | Auto-refresh daftar model dari semua provider (model baru tersinkron) |
 | `/sessions` | Daftar sesi terbaru (nomor = resume) |
 | `/resume [id]` | Lanjutkan sesi (picker interaktif tanpa arg; respawn via `--resume`) |
