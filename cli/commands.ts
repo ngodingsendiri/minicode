@@ -105,22 +105,25 @@ export async function handleBuiltinCommand(
       return { handled: true, shouldExit: true };
 
     case "model": {
-      // Tanpa argumen: picker interaktif pilih model dari semua provider
+      // Tanpa argumen: JENDELA MODAL pemilihan model (semua provider)
       if (!args) {
         const cfg = await loadConfig();
-        const flat = cfg.providers.flatMap((p) => p.models.map((m) => `${p.id}::${m}`));
-        if (flat.length === 0) { console.log("(no models — use /provider-add)"); return { handled: true }; }
-        console.log("Active model: " + (ctx.currentModel ?? "default"));
-        console.log("\nAvailable:");
-        flat.forEach((m, i) => { console.log(`  [${i}] ${(m.split("::")[1] ?? m).padEnd(40)}  ${m.split("::")[0]}`); });
-        const { askLine } = await import("./input.ts");
-        const n = await askLine({ prompt: "select # or model name > " });
-        if (n == null) return { handled: true };
-        const pick = n.trim();
-        const idx = Number(pick);
-        const spec = Number.isInteger(idx) && Number.isFinite(idx) && idx >= 0 && idx < flat.length ? flat[idx]! : pick;
-        ctx.setModelOverride(spec);
-        console.log(`[OK] Model: ${spec}`);
+        const items = cfg.providers.flatMap((p) =>
+          p.models.map((m) => ({ name: m, provider: p.id, value: `${p.id}::${m}` })),
+        );
+        if (items.length === 0) { console.log("(no models — use /provider-add)"); return { handled: true }; }
+        console.log(`Active model: ${ctx.currentModel ?? "default"}`);
+        console.log("Select a model (↑/↓, Enter ok, Esc cancel):");
+        const { runPicker } = await import("./picker.ts");
+        await runPicker({
+          title: "Select Model",
+          items,
+          onPick: (value) => {
+            ctx.setModelOverride(value);
+            console.log(`[OK] Model: ${value}`);
+          },
+          onCancel: () => console.log("canceled"),
+        });
         return { handled: true };
       }
       if (args.includes("::")) {

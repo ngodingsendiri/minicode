@@ -30,42 +30,17 @@ export async function appendHistory(entry: string): Promise<void> {
 }
 
 // ── ANSI support detection (sekali per process, cached) ──
-// Windows legacy conhost tidak memproses VT sequences → dropdown tidak bisa
-// digambar. Detect aktif via DSR probe (\x1b[6n) + env hints.
+// Semua console modern (Windows Terminal, VS Code, conhost Windows 10+,
+// macOS/Linux TTY) memproses VT sequences. JANGAN menggantungkan dropdown
+// pada probe DSR — conhost PS5.1 tidak selalu membalas \x1b[6n padahal VT
+// bekerja (itulah kenapa dropdown 'hilang' kembali ke inline).
+// Opt-out eksplisit: MINICODE_DROPDOWN=0 (console benar-benar legacy).
 let ansiCache: Promise<boolean> | undefined;
 
-function probeAnsi(): Promise<boolean> {
-  return new Promise((resolve) => {
-    let done = false;
-    const timer = setTimeout(() => finish(false), 100);
-    const onProbe = (chunk: Buffer) => {
-      // Strict DSR reply: ESC [ <digits>;... R . Jangan match "/" —
-      // user bisa mengetik slash saat probe berjalan (false positive).
-      if (/\x1b\[[0-9;]*R/.test(chunk.toString())) finish(true);
-    };
-    const finish = (v: boolean) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      process.stdin.removeListener("data", onProbe);
-      resolve(v);
-    };
-    try {
-      process.stdin.resume();
-      process.stdin.on("data", onProbe);
-      process.stdout.write("\x1b[6n");
-    } catch {
-      finish(false);
-    }
-  });
-}
-
 export async function detectAnsi(): Promise<boolean> {
-  if (process.platform !== "win32") return true;
-  const envHint = process.env.WT_SESSION || process.env.TERM_PROGRAM || process.env.ANSICON || process.env.ConEmuANSI;
-  if (envHint) return true;
+  if (process.env.MINICODE_DROPDOWN === "0") return false;
   if (!process.stdin.isTTY) return false;
-  ansiCache ??= probeAnsi();
+  ansiCache ??= Promise.resolve(true);
   return ansiCache;
 }
 
