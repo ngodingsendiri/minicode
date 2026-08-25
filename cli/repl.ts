@@ -22,9 +22,14 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const interactivePrompt = createInteractivePrompt({ getCompletions });
 
-  // Startup — minimal, satu baris polos
-  process.stdout.write(`minicode v0.3.0 · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"} · ${permissionMode}\n`);
-  process.stdout.write(`Type a request or /help\n\n`);
+  // Startup — tampilkan daftar command agar user tahu apa yang tersedia
+  const model = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default";
+  process.stdout.write(`minicode v0.3.0 · ${model} · ${permissionMode}\n`);
+  process.stdout.write(`Commands: ${BUILTIN_COMMANDS.map(b => "/" + b.name).join("  ")}\n`);
+  if (allLoadedSkills.length > 0) {
+    process.stdout.write(`Skills: ${allLoadedSkills.map(s => "/" + s.name).join("  ")}\n`);
+  }
+  process.stdout.write(`Type a request or /help for details.\n\n`);
 
   const commandCtx: CommandContext = {
     cwd, sessionId,
