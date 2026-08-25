@@ -44,11 +44,11 @@ export function applyKey(
   key: PromptKey,
   hints: (line: string) => string[],
 ): { state: PromptState; action: PromptAction } {
-  const matches = (): string[] => hints(state.line);
-  const pickOf = (s: PromiseStateLike) => {
-    const rows = hints(s.line);
+  const countOf = (line: string): number => hints(line).length;
+  const pickOf = (line: string) => {
+    const rows = hints(line);
     if (!rows.length) return null;
-    return s.sel >= 0 && s.sel < rows.length ? rows[s.sel]! : rows[0]!;
+    return state.sel >= 0 && state.sel < rows.length ? rows[state.sel]! : rows[0]!;
   };
 
   switch (key.type) {
@@ -56,7 +56,7 @@ export function applyKey(
       const line = state.line + key.ch;
       const menuOpen = line.startsWith("/");
       return {
-        state: { line, sel: menuOpen ? Math.min(state.sel, matches().length - 1) : -1, menuOpen },
+        state: { line, sel: menuOpen ? Math.min(Math.max(state.sel, -1), countOf(line) - 1) : -1, menuOpen },
         action: "render",
       };
     }
@@ -68,29 +68,29 @@ export function applyKey(
       const line = state.line.slice(0, state.line.length - sliceW);
       const menuOpen = line.startsWith("/");
       return {
-        state: { line, sel: menuOpen ? Math.min(state.sel, matches().length - 1) : -1, menuOpen },
+        state: { line, sel: menuOpen ? Math.min(Math.max(state.sel, -1), countOf(line) - 1) : -1, menuOpen },
         action: "render",
       };
     }
     case "up": {
       if (!state.menuOpen) return { state, action: "none" };
-      const n = matches().length;
+      const n = countOf(state.line);
       if (!n) return { state, action: "none" };
       return { state: { ...state, sel: state.sel <= 0 ? n - 1 : ((state.sel - 1) % n + n) % n }, action: "render" };
     }
     case "down": {
       if (!state.menuOpen) return { state, action: "none" };
-      const n = matches().length;
+      const n = countOf(state.line);
       if (!n) return { state, action: "none" };
       return { state: { ...state, sel: (state.sel + 1) % n }, action: "render" };
     }
     case "tab": {
-      const pick = pickOf(state);
+      const pick = pickOf(state.line);
       if (!pick) return { state, action: "none" };
       return { state: { line: pick, sel: -1, menuOpen: false }, action: "render" };
     }
     case "enter": {
-      const pick = pickOf(state);
+      const pick = pickOf(state.line);
       const finalLine = pick ?? state.line;
       return { state: { line: finalLine, sel: -1, menuOpen: false }, action: "submit" };
     }
@@ -135,8 +135,6 @@ export function buildRenderSpec(
     totalRows: rows.length + (moreCount > 0 ? 1 : 0),
   };
 }
-
-type PromiseStateLike = PromptState;
 
 // ── Binari dari chunk stdin → keystroke stream ──
 // Rust-style manual parsing: ESC [ A/B/C/D = arrows, ESC = esc, dsb.
