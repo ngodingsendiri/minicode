@@ -82,6 +82,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     const ok = await runSetupWizard();
     if (ok) {
       const cfg2 = await loadConfig(cwd);
+      cfg.providers = cfg2.providers; // RAG di bawah memakai config terbaru (setelah wizard)
       providers = buildProviderList(cfg2);
     }
   }

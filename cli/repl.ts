@@ -1,6 +1,6 @@
 // REPL loop — mode interaktif dengan prompt, history, slash commands, verify, budget.
 import { formatError } from "../src/tui/renderer.ts";
-import { findSkill, renderSkill } from "../src/skills/loader.ts";
+import { renderSkill } from "../src/skills/loader.ts";
 import { askLine, appendHistory } from "./input.ts";
 import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts";
 import { friendlyError, friendlyFromCategory } from "./errors.ts";
@@ -75,7 +75,8 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       const spaceIdx = q.indexOf(" ");
       const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx);
       const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1);
-      const skill = await findSkill(skillName, cwd).catch(() => undefined);
+      // cache: allLoadedSkills dari setup — tidak perlu readdir ulang tiap prompt
+      const skill = allLoadedSkills.find((s) => s.name === skillName);
       if (skill) {
         finalPrompt = await renderSkill(skill, skillArgs);
       } else {

@@ -2,7 +2,7 @@ import { createInterface } from "node:readline";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { createState, applyKey, buildRenderSpec, decodeKeys, type PromptAction } from "./prompt-engine.ts";
+import { createState, applyKey, buildRenderSpec, decodeKeys } from "./prompt-engine.ts";
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history");
 const MAX_HISTORY = 1000;
@@ -101,7 +101,6 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     let state = createState();
     let prevRows = 0; // jumlah baris dropdown yang tergambar (untuk clear)
     let printedW = 0; // lebar teks yang ditulis (fallback inline)
-    let pending: PromptAction = "none";
 
     const matches = (): string[] => hints(state.line);
 
@@ -160,8 +159,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       for (const d of decodeKeys(chunk)) {
         const r = applyKey(state, d.key, hints);
         state = r.state;
-        pending = r.action;
-        if (pending === "submit") {
+        if (r.action === "submit") {
           const v = state.line.trim() || null;
           if (ansi && prevRows > 0) {
             process.stdout.write("\r" + CLEAR + `${prompt}${state.line}`);
@@ -173,12 +171,13 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           finish(v);
           return;
         }
-        if (pending === "cancel") {
+        if (r.action === "cancel") {
           finish(null);
           return;
         }
-        if (pending === "render") render();
       }
+      // Satu render per chunk — paste 50+ char tidak meng-redraw 50 kali.
+      render();
     };
 
     const finish = (v: string | null) => {

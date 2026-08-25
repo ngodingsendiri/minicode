@@ -65,14 +65,28 @@ async function loadDir(dir: string, out: Skill[]) {
   }
 }
 
+let skillsCache: { cwd: string; at: number; skills: Skill[] } | undefined;
+const SKILLS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export async function loadSkills(cwd = process.cwd()): Promise<Skill[]> {
+  // cache in-memory 5 menit — loadSkills dipanggil berulang (setup, REPL, one-shot)
+  const now = Date.now();
+  const key = resolve(cwd);
+  if (skillsCache && skillsCache.cwd === key && now - skillsCache.at < SKILLS_CACHE_TTL_MS) {
+    return skillsCache.skills;
+  }
   const skills: Skill[] = [];
   await loadDir(GLOBAL_SKILLS, skills);
   await loadDir(resolve(cwd, LOCAL_SKILLS), skills);
   // local overrides global by name
   const map = new Map<string, Skill>();
   for (const s of skills) map.set(s.name, s);
-  return [...map.values()];
+  skillsCache = { cwd: key, at: now, skills: [...map.values()] };
+  return skillsCache.skills;
+}
+
+export function invalidateSkillCache(): void {
+  skillsCache = undefined;
 }
 
 export async function renderSkill(skill: Skill, args: string): Promise<string> {
