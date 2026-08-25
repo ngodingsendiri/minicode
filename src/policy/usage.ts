@@ -19,6 +19,8 @@ const PRICING: Record<string, { input: number; output: number; cacheRead?: numbe
   "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   "deepseek-chat": { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0.14 },
   "deepseek-reasoner": { input: 0.55, output: 2.19, cacheRead: 0.14, cacheWrite: 0.55 },
+  // b.ai deepseek-v4-flash (berbeda keluarga deepseek-chat)
+  "deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0.14 },
   "gemini-2.0": { input: 1.25, output: 10, cacheRead: 0.31, cacheWrite: 1.25 },
   "text-embedding-3-small": { input: 0.02, output: 0 },
 };

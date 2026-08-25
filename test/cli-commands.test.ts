@@ -25,6 +25,18 @@ test("commands: non-slash input returns handled: false", async () => {
   expect(res.handled).toBe(false);
 });
 
+test("commands: BUILTIN_COMMANDS name tidak boleh berisi placeholder args", () => {
+  const { BUILTIN_COMMANDS } = require("../cli/commands.ts") as { BUILTIN_COMMANDS: { name: string; args?: string }[] };
+  for (const b of BUILTIN_COMMANDS) {
+    expect(b.name).not.toMatch(/[<\[\s]/);
+  }
+});
+
+test("commands: /models tanpa arg handled tanpa crash (args kosong)", async () => {
+  const res = await handleBuiltinCommand("/models", dummyCtx());
+  expect(res.handled).toBe(true);
+});
+
 test("commands: /help, /clear, /status, /model are handled", async () => {
   let switchedModel = "";
   const ctx = dummyCtx({ setModelOverride: (m: string) => { switchedModel = m; } });

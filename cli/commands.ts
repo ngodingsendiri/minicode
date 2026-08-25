@@ -22,15 +22,15 @@ export const BUILTIN_COMMANDS = [
   { name: "help", desc: "Show available slash commands" },
   { name: "providers", desc: "List configured LLM providers" },
   { name: "provider-add", desc: "Add a new LLM provider (interactive)" },
-  { name: "provider-remove <id>", desc: "Remove a provider by id" },
-  { name: "models [id]", desc: "List models for a provider" },
-  { name: "model <name>", desc: "Switch current LLM model" },
+  { name: "provider-remove", args: "<id>", desc: "Remove a provider by id" },
+  { name: "models", args: "[id]", desc: "List models for a provider" },
+  { name: "model", args: "<name>", desc: "Switch current LLM model" },
   { name: "sync", desc: "Auto-refresh model list from all providers" },
   { name: "undo", desc: "Rollback file edits from last turn" },
   { name: "redo", desc: "Reapply undone file edits" },
   { name: "cost", desc: "Show token usage & session cost" },
   { name: "sessions", desc: "List recent sessions" },
-  { name: "resume [id]", desc: "Resume a session (pick from list)" },
+  { name: "resume", args: "[id]", desc: "Resume a session (pick from list)" },
   { name: "status", desc: "Show runtime status" },
   { name: "history", desc: "Show recent prompt history" },
   { name: "exit", desc: "Quit Minicode" },
@@ -57,7 +57,8 @@ export async function handleBuiltinCommand(
     case "help": {
       console.log("\nCommands:");
       for (const b of BUILTIN_COMMANDS) {
-        console.log(`  /${pad(b.name, 22)}${b.desc}`);
+        const withArgs = b.args ? `${b.name} ${b.args}` : b.name;
+        console.log(`  /${pad(withArgs, 22)}${b.desc}`);
       }
       if (ctx.skills.length > 0) {
         console.log("\nSkills:");
