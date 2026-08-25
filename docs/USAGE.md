@@ -71,12 +71,18 @@ Config global (`~/.minicode/config.json`) + local (`.minicode/config.json`) — 
 
 ## Slash Commands (REPL)
 
+Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`↓` navigasi, `Tab` melengkapi, `Enter` melengkapi + submit, `Esc` tutup. Terminal lama tanpa ANSI: fallback inline hint.
+
 | Command | Fungsi |
 |---|---|
 | `/help` | Daftar command + skill |
+| `/providers` | Daftar provider + active model |
+| `/provider-add` | Tambah provider (interaktif, auto-detect models) |
+| `/provider-remove <id>` | Hapus provider |
+| `/models` | List model per provider (index = cepat pick) |
+| `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
 | `/undo` | Batalkan perubahan file terakhir (pre-edit state) |
 | `/redo` | Terapkan ulang perubahan yang di-undo (post-edit state) |
-| `/model <name>` | Ganti model LLM |
 | `/cost` | Lihat token & biaya sesi (termasuk cache read/write) |
 | `/sessions` | Daftar sesi terbaru |
 | `/status` | Info runtime (model, provider, tools, skills) |

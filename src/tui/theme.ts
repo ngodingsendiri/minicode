@@ -59,6 +59,7 @@ export const glyphs = {
   dot: supportsUtf8 ? "·" : ".",
   bullet: supportsUtf8 ? "●" : "*",
   ellipsis: supportsUtf8 ? "…" : "...",
+  sparkle: supportsUtf8 ? "✦" : "*",
   spinnerFrames: ["·", "..", "..."],  // simple dots, bukan braille
 };
 
