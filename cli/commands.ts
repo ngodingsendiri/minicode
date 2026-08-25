@@ -160,45 +160,61 @@ export async function handleBuiltinCommand(
     }
 
     case "provider-add": {
-      const { createInterface } = await import("node:readline");
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
+      const { askLine, askSecret } = await import("./input.ts");
+      const { GATEWAY_PRESETS } = await import("../src/providers/presets.ts");
 
       console.log("\nAdd New Provider");
-      console.log("  Comfy baseUrl: https://api.openai.com/v1 | https://api.anthropic.com | https://openrouter.ai/api/v1\n");
-      const baseUrl = await ask("Base URL: ");
-      rl.close();
-      if (!baseUrl) { console.log("Base URL required."); return { handled: true }; }
+      console.log("");
+      GATEWAY_PRESETS.forEach((p, i) => {
+        console.log(`  [${i}] ${p.label}`);
+        console.log(`      ${p.baseUrl}`);
+      });
+      const customIdx = GATEWAY_PRESETS.length;
+      console.log(`  [${customIdx}] Custom baseUrl\n`);
 
-      const { askSecret } = await import("./input.ts");
+      const sel = await askLine({ prompt: "select gateway # > " });
+      if (sel == null) { console.log("canceled"); return { handled: true }; }
+      const pick = sel.trim();
+      const idx = Number(pick);
+
+      let baseUrl: string;
+      let fallbackModels: string[] = ["gpt-4o-mini"];
+      let hintId: string | undefined;
+      if (Number.isInteger(idx) && Number.isFinite(idx) && idx >= 0 && idx < customIdx) {
+        const preset = GATEWAY_PRESETS[idx]!;
+        baseUrl = preset.baseUrl;
+        fallbackModels = preset.fallbackModels;
+        hintId = preset.id;
+        console.log(`  Using: ${preset.label}`);
+      } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
+        const url = await askLine({ prompt: "Base URL > " });
+        if (url == null || !url.trim()) { console.log("Base URL required."); return { handled: true }; }
+        baseUrl = url.trim();
+      } else {
+        console.log(`[FAIL] Unknown selection — /provider-add to retry`);
+        return { handled: true };
+      }
+
       const apiKey = await askSecret("API Key (masked): ");
       if (!apiKey) { console.log("API Key required."); return { handled: true }; }
 
-      // Scope: global (default, ~/.minicode) atau local (proyek) —
-      // konsisten dengan `minicode config add` yang global-first.
+      // Scope: global (default, ~/.minicode) atau local (proyek)
       let scope: "global" | "local" = "global";
       if (ctx.cwd) {
-        const { createInterface: ci2 } = await import("node:readline");
-        const rl2 = ci2({ input: process.stdin, output: process.stdout });
-        const ans = await new Promise<string>((res) => rl2.question("Save globally to ~/.minicode? [Y/n] ", (a) => res(a.trim())));
-        rl2.close();
-        scope = ans.toLowerCase() === "n" ? "local" : "global";
+        const ans = await askLine({ prompt: "Save globally to ~/.minicode? [Y/n] " });
+        scope = ans?.trim().toLowerCase() === "n" ? "local" : "global";
       }
-
-      if (scope === "local" && !ctx.cwd) {
-        console.log("(no cwd — saving globally)");
-        scope = "global";
-      }
+      if (scope === "local" && !ctx.cwd) scope = "global";
 
       console.log("Detecting models...");
       try {
-        const entry = await detectAndSave(baseUrl, apiKey, undefined, {
+        const entry = await detectAndSave(baseUrl, apiKey, hintId, {
           global: scope === "global",
           cwd: ctx.cwd,
-          fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
+          fallbackModels,
         });
         console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models, ${scope}).`);
-        process.stdout.write(scope === "global" ? "  Restart minicode to use.\n\n" : "  Active this run — restart router? (new session) ✔\n\n");
+        console.log("  Next: restart minicode, then /model to pick a model.\n");
       } catch (e) {
         console.log(`[FAIL] Detection failed: ${(e as Error).message.slice(0, 80)}`);
       }

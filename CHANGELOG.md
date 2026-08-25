@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.2] — 2026-08-25
+
+### UX Provider & Gateway
+- **Preset gateway** — `/provider-add` & setup wizard: pilih OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google → baseUrl, fallback models & id ramah otomatis. Custom URL tetap bisa.
+- **Pengelolaan tanpa LLM** — `minicode providers | models [id] | sync` subcommands langsung.
+- **`/sync` & refresh models** — model baru dari gateway tersinkron otomatis; apiKey intak.
+- **Scope global/local** — `/provider-add` tanya penyimpanan (global default ~/.minicode); `/provider-remove` hapus dari kedua scope.
+- **Transparansi fallback** — `/cost` & `/status` menampilkan model efektif bila router substitusi.
+- **Auto-refresh cap 6s** — deteksi gateway offline tidak membuat user menunggu 30s.
+- **Plain text** — `--help` & wizard tanpa ANSI (aman console legacy).
+- `/sessions` bernomor + `/resume [id]` picker interaktif (respawn dengan seeding penuh).
+
 ## [0.3.1] — 2026-08-25
 
 ### QoL / TUI

@@ -77,7 +77,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`�
 |---|---|
 | `/help` | Daftar command + skill |
 | `/providers` | Daftar provider + active model |
-| `/provider-add` | Tambah provider (interaktif, auto-detect models) |
+| `/provider-add` | Tambah provider — pilih preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google) atau custom URL, auto-detect models |
 | `/provider-remove <id>` | Hapus provider |
 | `/models` | List model per provider (index = cepat pick) |
 | `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
