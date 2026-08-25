@@ -31,6 +31,56 @@ test("anthropic maps context_length", async () => {
   globalThis.fetch = origFetch;
 });
 
+test("router first match wins for shared model names", async () => {
+  const primary: any = {
+    id: "primary",
+    models: ["shared-model"],
+    async *stream() {
+      yield { type: "text", text: "from-primary" };
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const secondary: any = {
+    id: "secondary",
+    models: ["shared-model"],
+    async *stream() {
+      yield { type: "text", text: "from-secondary" };
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const router = createRouterProvider({ providers: [primary, secondary] });
+  const out: string[] = [];
+  for await (const ev of router.stream({ messages: [{ role: "user", content: "hi" }], model: "shared-model" }, new AbortController().signal)) {
+    if (ev.type === "text") out.push(ev.text);
+  }
+  expect(out.join("")).toBe("from-primary");
+});
+
+test("router providerId::model forces specific provider", async () => {
+  const primary: any = {
+    id: "primary",
+    models: ["shared-model"],
+    async *stream() {
+      yield { type: "text", text: "from-primary" };
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const secondary: any = {
+    id: "secondary",
+    models: ["shared-model"],
+    async *stream() {
+      yield { type: "text", text: "from-secondary" };
+      yield { type: "finish", reason: "stop" };
+    },
+  };
+  const router = createRouterProvider({ providers: [primary, secondary] });
+  const out: string[] = [];
+  for await (const ev of router.stream({ messages: [{ role: "user", content: "hi" }], model: "secondary::shared-model" }, new AbortController().signal)) {
+    if (ev.type === "text") out.push(ev.text);
+  }
+  expect(out.join("")).toBe("from-secondary");
+});
+
 test("router fallback on rate_limit", async () => {
   const bad: any = {
     id: "bad",

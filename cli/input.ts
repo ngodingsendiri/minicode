@@ -125,7 +125,24 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     const content = () => {
       const hints = opts.hints?.(line) ?? [];
-      return hints.length ? `${prompt}${line}   (${hints.slice(0, 6).join(", ")})` : `${prompt}${line}`;
+      if (!hints.length) return `${prompt}${line}`;
+      // cap agar tidak pernah wrap: potong hint sesuai sisa lebar terminal
+      const cols = process.stdout.columns || 80;
+      const base = `${prompt}${line}`;
+      const avail = Math.min(cols - base.length - 5, 60);
+      if (avail <= 8) return base;
+      let out = " (";
+      for (const h of hints) {
+        if (out.length + h.length + 2 > avail) break;
+        out += h + " ";
+      }
+      out = out.trim();
+      const shown = out.length - 2;
+      if (hints.length * 2 > avail || shown >= avail - 8) {
+        const rest = hints.filter((h) => !out.includes(h));
+        if (rest.length) out += ` +${rest.length}`;
+      }
+      return `${base}${out})`;
     };
 
     const render = () => {

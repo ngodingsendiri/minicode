@@ -42,7 +42,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
     models: config.providers.flatMap((p) => [...p.models]),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const fixed = fixRequest(request);
-      // route by model name — last match wins (local overrides global)
+      // route by model name — first match wins (default/daftar urutan provider)
       // Format "providerId::modelName" → paksa provider spesifik
       let target: ModelProvider | undefined;
       let model: string | undefined = fixed.model;
@@ -54,7 +54,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
         model = m || undefined;
       }
       if (!target && model) {
-        for (const p of config.providers) if (p.models.includes(model)) target = p;
+        for (const p of config.providers) if (p.models.includes(model)) { target = p; break; }
       }
       target ??= byId.get(defaultId) ?? config.providers[0];
       if (!target) throw new ProviderError("unknown", "no provider configured");
