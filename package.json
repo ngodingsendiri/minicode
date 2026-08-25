@@ -13,6 +13,7 @@
   "scripts": {
     "test": "bun test",
     "test:live": "bun scripts/test-live.ts",
+    "test:qa": "bun scripts/live-qa.ts",
     "test:coverage": "bun test --coverage",
     "typecheck": "bun x tsc --noEmit",
     "gate:telemetry": "bun scripts/telemetry-gate.ts",
