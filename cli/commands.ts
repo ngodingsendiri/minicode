@@ -236,24 +236,33 @@ export async function handleBuiltinCommand(
     }
 
     case "models": {
+      // /models [id] [keyword] — filter substring (case-insensitive)
       const cfg = await loadConfig();
-      let printed = 0;
-      if (args) {
-        const p = cfg.providers.find((x) => x.id === args);
-        if (!p) { console.log(`Provider "${args}" not found — /providers to list.`); return { handled: true }; }
-        console.log(`\n${p.id} (${p.baseUrl})`);
-        p.models.forEach((m, i) => { console.log(`  [${i}] ${m}`); printed++; });
+      const spaceIdx = args.indexOf(" ");
+      const pid = spaceIdx === -1 ? args : args.slice(0, spaceIdx);
+      const filter = (spaceIdx === -1 ? "" : args.slice(spaceIdx + 1).trim()).toLowerCase();
+
+      const filterModels = (ms: string[]) => filter ? ms.filter((m) => m.toLowerCase().includes(filter)) : ms;
+
+      if (pid) {
+        const p = cfg.providers.find((x) => x.id === pid);
+        if (!p) { console.log(`Provider "${pid}" not found — /providers to list.`); return { handled: true }; }
+        const list = filterModels(p.models);
+        console.log(`\n${p.id} (${p.baseUrl})${filter ? ` — filter "${filter}"` : ""}`);
+        if (list.length === 0) console.log("  (no match)");
+        list.forEach((m, i) => { console.log(`  [${i}] ${m}`); });
       } else {
         console.log("");
         for (const p of cfg.providers) {
-          console.log(`${p.id} (${p.baseUrl})`);
-          p.models.slice(0, 12).forEach((m, i) => { console.log(`  [${i}] ${m}`); });
-          printed += Math.min(p.models.length, 12);
-          if (p.models.length > 12) console.log(`  … +${p.models.length - 12} more`);
+          const list = filterModels(p.models.slice(0, 12));
+          console.log(`${p.id} (${p.baseUrl})${filter ? ` — filter "${filter}"` : ""}`);
+          if (list.length === 0) console.log("  (no match)");
+          list.forEach((m, i) => { console.log(`  [${i}] ${m}`); });
+          if (!filter && p.models.length > 12) console.log(`  … +${p.models.length - 12} more`);
           console.log("");
         }
       }
-      console.log(`(use /model to switch — interactive picker, or /model <provider>::<model>` + (args ? ")" : ")\n"));
+      console.log(`(use /model to switch — interactive picker, or /model <provider>::<model>` + (pid ? ")" : ")\n"));
       return { handled: true };
     }
     case "cost":

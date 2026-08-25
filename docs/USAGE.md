@@ -79,7 +79,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`�
 | `/providers` | Daftar provider + active model |
 | `/provider-add` | Tambah provider — pilih preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google) atau custom URL, auto-detect models |
 | `/provider-remove <id>` | Hapus provider |
-| `/models` | List model per provider (index = cepat pick) |
+| `/models [id] [keyword]` | List model per provider; keyword = filter substring (case-insensitive) |
 | `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
 | `/undo` | Batalkan perubahan file terakhir (pre-edit state) |
 | `/redo` | Terapkan ulang perubahan yang di-undo (post-edit state) |

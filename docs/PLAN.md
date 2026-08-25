@@ -37,10 +37,11 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 
 **Kenapa penting:** user harus tahu jika request-nya tidak benar-benar memakai model yang diminta.
 
-## 5.3 Filter `/models <keyword>`  (P2)
-- [ ] `/models` tetap daftar; tambah argumen keyword: `/models openrouter "nemotron"` → only matching.
-- [ ] `minicode models <id> --match <substr>` untuk CLI.
-- [ ] Untuk provider 61+ model: group + pencarian lebih baik daripada paginasi statis.
+## 5.3 Filter `/models <keyword>`  (P2)
+- [x] `/models [id] [keyword]` — filter substring case-insensitive (REPL).
+- [x] `minicode models [id] --match <substr>` (CLI), juga global match.
+- [x] Output (no match) saat kosong + hint tetap `/model` untuk switch.
+- [x] Test dasar substring case-insensitive.
 
 **Kenapa penting:** opencode-go 61 model — daftar tak terfilter tidak berguna untuk mencari satu nama.
 

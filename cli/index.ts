@@ -285,17 +285,25 @@ if (firstArg === "providers" || firstArg === "models" || firstArg === "sync") {
     process.exit(0);
   }
   if (firstArg === "models") {
-    const pid = args[1];
+    const pid = args[1] && !args[1]!.startsWith("--") ? args[1] : undefined;
+    const matchIdx = args.indexOf("--match");
+    const filter = (matchIdx >= 0 && args[matchIdx + 1] ? args[matchIdx + 1]! : "").toLowerCase();
+    const match = (s: string) => (filter ? s.toLowerCase().includes(filter) : true);
     if (pid) {
       const p = cfg.providers.find((x) => x.id === pid);
       if (!p) { console.error(`provider "${pid}" not found — minicode providers`); process.exit(1); }
-      p.models.forEach((m, i) => console.log(`  [${i}] ${m}`));
+      const list = p.models.filter(match);
+      if (!list.length) console.log(`  (no match for "${filter}")`);
+      list.forEach((m, i) => console.log(`  [${i}] ${m}`));
     } else {
       if (cfg.providers.length === 0) console.log("(no providers)");
       for (const p of cfg.providers) {
-        console.log(`${p.id} (${p.baseUrl})`);
-        p.models.slice(0, 10).forEach((m) => console.log(`  ${m}`));
-        if (p.models.length > 10) console.log(`  … +${p.models.length - 10} more`);
+        const list = p.models.filter(match);
+        console.log(`${p.id} (${p.baseUrl})${filter ? ` — match "${filter}"` : ""}`);
+        if (!list.length) console.log("  (no match)");
+        list.slice(0, 10).forEach((m) => console.log(`  ${m}`));
+        if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`);
+        if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} more`);
       }
     }
     process.exit(0);
