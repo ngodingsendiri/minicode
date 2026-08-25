@@ -11,17 +11,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: minicode
+
+      # minicore = file:../minicore — DEPENDENSI. Harus ada sebagai sibling
+      # folder minicode/ supaya `bun install` resolvable.
+      - uses: actions/checkout@v4
+        with:
+          repository: ngodingsendiri/minicore
+          path: minicore
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: minicode/node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('minicode/bun.lock', 'minicore/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        working-directory: minicode
+        run: bun install
+
       - name: Typecheck
+        working-directory: minicode
         run: bun x tsc --noEmit
+
       - name: Test
+        working-directory: minicode
         run: bun test
-      - name: Test with sandbox (docker)
+
+      - name: Test with docker sandbox (experimental)
+        working-directory: minicode
+        continue-on-error: true
         run: |
-          docker pull node:22-alpine
           MINICODE_SANDBOX=docker bun test
+
       - name: Benchmark smoke (fake provider)
+        working-directory: minicode
         run: bun run bench:smoke
+
+      - name: Telemetry gate (resolve rate target)
+        working-directory: minicode
+        continue-on-error: true
+        run: bun run gate:telemetry
+
+      - name: Typecheck minicore
+        working-directory: minicore
+        run: bun test

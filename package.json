@@ -13,7 +13,9 @@
   "scripts": {
     "test": "bun test",
     "test:live": "bun scripts/test-live.ts",
+    "test:coverage": "bun test --coverage",
     "typecheck": "bun x tsc --noEmit",
+    "gate:telemetry": "bun scripts/telemetry-gate.ts",
     "dev": "bun cli/index.ts",
     "bench": "bun bench/runner.ts",
     "bench:smoke": "bun bench/runner.ts --fake"
