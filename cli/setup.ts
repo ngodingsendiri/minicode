@@ -247,6 +247,10 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   } else {
     attachRenderer(session.events, { verbose });
   }
+  // Turn status line (spinner + model) — hanya membuat repot saat interaktif
+  // non-verbose; di one-shot output tetap di stderr.
+  const { attachTurnStatus } = await import("../src/tui/turn-status.ts");
+  const detachStatus = attachTurnStatus(session.events, { initialModel: effectiveInitialModel });
 
   const usage = createUsageCollector(session.events, effectiveInitialModel);
 
@@ -258,6 +262,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   async function close(): Promise<void> {
+    detachStatus();
     if (detachInk) detachInk();
     await mcpCloseAll();
     await lspCloseAll();

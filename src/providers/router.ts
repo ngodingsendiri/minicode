@@ -72,6 +72,10 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
           if (substituted && effectiveModel) {
             // Beri tahu observer bahwa cost harus dihitung pakai model efektif.
             yield { type: "extension", kind: "effective-model", data: { requested: fixed.model, effective: effectiveModel, provider: current.id } };
+          } else if (current !== target) {
+            // Fallback provider (non-substitusi) — model sama tapi provider beda.
+            // Label spinner/status harus tahu provider mana yang dipakai.
+            yield { type: "extension", kind: "effective-model", data: { requested: model, effective: model, provider: current.id } };
           }
           for await (const ev of current.stream(req, signal)) {
             yield ev;
