@@ -164,7 +164,8 @@ export async function handleBuiltinCommand(
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())));
 
-      console.log("\nAdd New Provider\n");
+      console.log("\nAdd New Provider");
+      console.log("  Comfy baseUrl: https://api.openai.com/v1 | https://api.anthropic.com | https://openrouter.ai/api/v1\n");
       const baseUrl = await ask("Base URL: ");
       rl.close();
       if (!baseUrl) { console.log("Base URL required."); return { handled: true }; }
@@ -173,14 +174,31 @@ export async function handleBuiltinCommand(
       const apiKey = await askSecret("API Key (masked): ");
       if (!apiKey) { console.log("API Key required."); return { handled: true }; }
 
+      // Scope: global (default, ~/.minicode) atau local (proyek) —
+      // konsisten dengan `minicode config add` yang global-first.
+      let scope: "global" | "local" = "global";
+      if (ctx.cwd) {
+        const { createInterface: ci2 } = await import("node:readline");
+        const rl2 = ci2({ input: process.stdin, output: process.stdout });
+        const ans = await new Promise<string>((res) => rl2.question("Save globally to ~/.minicode? [Y/n] ", (a) => res(a.trim())));
+        rl2.close();
+        scope = ans.toLowerCase() === "n" ? "local" : "global";
+      }
+
+      if (scope === "local" && !ctx.cwd) {
+        console.log("(no cwd — saving globally)");
+        scope = "global";
+      }
+
       console.log("Detecting models...");
       try {
         const entry = await detectAndSave(baseUrl, apiKey, undefined, {
-          global: false,
+          global: scope === "global",
           cwd: ctx.cwd,
           fallbackModels: baseUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"],
         });
-        console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models). Restart minicode to use.`);
+        console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models, ${scope}).`);
+        process.stdout.write(scope === "global" ? "  Restart minicode to use.\n\n" : "  Active this run — restart router? (new session) ✔\n\n");
       } catch (e) {
         console.log(`[FAIL] Detection failed: ${(e as Error).message.slice(0, 80)}`);
       }
@@ -190,8 +208,14 @@ export async function handleBuiltinCommand(
     case "provider-remove": {
       if (!args) { console.log("Usage: /provider-remove <id>"); return { handled: true }; }
       const { removeProvider } = await import("../src/config.ts");
-      await removeProvider(args, ctx.cwd ? { global: false, cwd: ctx.cwd } : {});
-      console.log(`[OK] Removed provider "${args}"`);
+      const entry = await (async () => {
+        const cfg = await loadConfig();
+        return cfg.providers.find((p) => p.id === args);
+      })();
+      // Hapus dari kedua scope — user tidak perlu tahu di mana ia disimpan.
+      await removeProvider(args, { global: true });
+      if (ctx.cwd) await removeProvider(args, { global: false, cwd: ctx.cwd });
+      console.log(`[OK] Removed provider "${args}"${entry ? "" : " (was not in merged config)"}`);
       return { handled: true };
     }
 
@@ -213,10 +237,9 @@ export async function handleBuiltinCommand(
           console.log("");
         }
       }
-      console.log(`(use /model to switch — e.g. /model ${args || "<provider>::<model>"})\n`);
+      console.log(`(use /model to switch — interactive picker, or /model <provider>::<model>` + (args ? ")" : ")\n"));
       return { handled: true };
     }
-
     case "cost":
     case "usage": {
       const u = ctx.usage.get(ctx.currentModel);

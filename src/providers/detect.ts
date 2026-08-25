@@ -24,7 +24,7 @@ async function tryFetchModels(baseUrl: string, headers: Record<string, string>, 
   ];
   for (const url of urls) {
     try {
-      const res = await fetch(url, { headers, signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]) });
+      const res = await fetch(url, { headers, signal });
       if (!res.ok) continue;
       const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] };
       const data = json.data ?? json.models ?? [];
@@ -41,7 +41,9 @@ async function tryFetchModels(baseUrl: string, headers: Record<string, string>, 
 }
 
 export async function detectModels(baseUrl: string, apiKey: string, signal?: AbortSignal): Promise<DetectResult> {
-  const sig = signal ?? AbortSignal.timeout(5000);
+  // CAP global 6s — jangan pernah biarkan user menunggu >6s pada gateway
+  // yang offline (2 url × 3 header = sampai 30s sebelumnya).
+  const sig = signal ?? AbortSignal.timeout(6000);
   for (const h of hybridHeaders(apiKey)) {
     if (sig.aborted) break;
     const models = await tryFetchModels(baseUrl, h, sig);
