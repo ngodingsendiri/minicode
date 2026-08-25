@@ -163,28 +163,71 @@ export async function removeProvider(id: string, opts: { global?: boolean; cwd?:
 
 // Re-detect models untuk provider yang ada (model baru otomatis tersinkron).
 // Tidak menyentuh apiKey/baseUrl — hanya memperbarui daftar models.
+// Membaca MERGED config (local prioritas atas global) dan menulis kembali ke
+// KEDUA file tempat provider ternyata disimpan — mirip perilaku loadConfig,
+// sehingga `/sync` bekerja walau provider disimpan di local (bukan global).
 export async function refreshProviderModels(opts: { global?: boolean; cwd?: string } = {}): Promise<{ id: string; from: number; to: number }[]> {
-  const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL);
-  let cfg: MinicodeConfig = { providers: [] };
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")));
-  } catch {}
-  const results: { id: string; from: number; to: number }[] = [];
-  for (let i = 0; i < cfg.providers.length; i++) {
-    const p = cfg.providers[i]!;
+  const merged = await loadConfig(opts.cwd);
+  const providers: ProviderEntry[] = merged.providers;
+  if (providers.length === 0 && (opts.global ?? true)) {
+    // tidak ada provider di merge — coba file global secara eksplisit
+    const g = await readFile(GLOBAL, "utf8").then((raw) => normalizeConfig(JSON.parse(raw)).providers).catch(() => []);
+    providers.push(...g);
+  }
+  if (providers.length === 0) return [];
+
+  const updated = new Map<string, ProviderEntry>();
+  for (let i = 0; i < providers.length; i++) {
+    const p = providers[i]!;
     if (!p.apiKey || !p.baseUrl) continue;
     try {
       const detected = await detectModels(p.baseUrl, p.apiKey);
       if (detected.models.length) {
-        results.push({ id: p.id, from: p.models.length, to: detected.models.length });
-        cfg.providers[i] = { ...p, models: detected.models, providerHint: detected.providerHint };
+        updated.set(p.id, { ...p, models: detected.models, providerHint: detected.providerHint });
       }
     } catch {
       // provider offline / auth gagal — biarkan daftar lama
     }
   }
-  if (results.length || cfg.providers.length) await writeConfigAtomic(path, cfg);
+
+  // Tulis kembali ke setiap file yang memuat provider yang diupdate — dalam
+  // format yang sudah ada di file tersebut (global dan/atau local).
+  const results: { id: string; from: number; to: number }[] = [];
+  const paths = new Set<string>();
+  if (await pathExists(GLOBAL)) paths.add(GLOBAL);
+  const localPath = resolve(opts.cwd ?? process.cwd(), LOCAL);
+  if (await pathExists(localPath)) paths.add(localPath);
+  for (const path of paths) {
+    try {
+      let cfg: MinicodeConfig = normalizeConfig(JSON.parse(await readFile(path, "utf8")));
+      let changed = false;
+      for (const p of cfg.providers) {
+        const nu = updated.get(p.id);
+        if (nu) {
+          p.models = nu.models;
+          p.providerHint = nu.providerHint;
+          changed = true;
+        }
+      }
+      if (changed) await writeConfigAtomic(path, cfg);
+    } catch {
+      // file corrupt/unreadable — lewati
+    }
+  }
+  for (const [id, nu] of updated) {
+    const orig = providers.find((p) => p.id === id)!;
+    results.push({ id, from: orig.models.length, to: nu.models.length });
+  }
   return results;
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await readFile(p, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function saveMcpServer(entry: McpServerEntry, opts: { global?: boolean; cwd?: string } = {}) {

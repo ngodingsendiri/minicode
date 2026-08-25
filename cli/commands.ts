@@ -292,9 +292,9 @@ export async function handleBuiltinCommand(
     case "sync": {
       // Re-detect model dari semua provider → config diperbarui otomatis
       console.log("\nSyncing models from providers...");
-      const results = await refreshProviderModels({ global: !ctx.cwd ? true : false, cwd: ctx.cwd });
+      const results = await refreshProviderModels({ cwd: ctx.cwd });
       if (results.length === 0) {
-        console.log("  (no provider updated — offline/auth failed)");
+        console.log("  (no provider found — use /provider-add first)");
       } else {
         for (const r of results) {
           console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`);

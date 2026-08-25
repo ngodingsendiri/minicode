@@ -310,9 +310,9 @@ if (firstArg === "providers" || firstArg === "models" || firstArg === "sync") {
   }
   if (firstArg === "sync") {
     console.log("Syncing models from providers...");
-    const results = await refreshProviderModels({ cwd: cwdArg, global: !cwdArg });
+    const results = await refreshProviderModels({ cwd: cwdArg });
     for (const r of results) console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`);
-    if (!results.length) console.log("  (nothing updated)");
+    if (!results.length) console.log("  (no provider found — use `minicode config add` first)");
     process.exit(0);
   }
 }
