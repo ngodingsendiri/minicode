@@ -1,7 +1,12 @@
 // Extreme E2E test — tests ALL minicode features with live free providers.
-// Usage: bun test/test-extreme-live.test.ts
+// Live test: butuh config lokal + jaringan. Jalan via `bun run test:live`
+// (default `bun test` skip seluruh file ini).
 import { expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
+
+// skip seluruh file bila MINICODE_LIVE != 1 (CI-safe tanpa secrets)
+const live = process.env.MINICODE_LIVE === "1";
+const it = live ? test : test.skip;
 
 const dir = ".tmp-extreme-live";
 let session: any;
@@ -52,7 +57,7 @@ afterAll(async () => {
   await rm(dir, { recursive: true, force: true }).catch(() => {});
 });
 
-test("E2E-1: Tool calling — write_file creates file on disk", async () => {
+it("E2E-1: Tool calling — write_file creates file on disk", async () => {
     if (!session) return;
     const result = await session.run(
       `Create a file called src/greeting.ts with this exact content:\nexport function greet(name: string): string {\n  return \`Hello, \${name}!\`;\n}\n\nUse write_file tool.`,
@@ -64,7 +69,7 @@ test("E2E-1: Tool calling — write_file creates file on disk", async () => {
     console.log(`[e2e] steps=${steps} fileExists=${content.length > 0} finalText=${(result.finalText ?? "").slice(0, 60)}`);
   }, 60_000);
 
-test("E2E-2: Memory RAG — write_memory then read_memory", async () => {
+it("E2E-2: Memory RAG — write_memory then read_memory", async () => {
   if (!session) return;
   const { addMemory, searchHybrid } = await import("../src/memory/vector.ts");
   const marker = `e2e-mem-${Date.now()}`;
@@ -76,7 +81,7 @@ test("E2E-2: Memory RAG — write_memory then read_memory", async () => {
   deleteMemoryByQuery(marker);
 }, 30_000);
 
-test("E2E-3: Checkpoint — undo restores pre-edit state", async () => {
+it("E2E-3: Checkpoint — undo restores pre-edit state", async () => {
   if (!session) return;
   const { recordCheckpointFromSnapshots, undoLastCheckpoint } = await import("../src/session/checkpoint.ts");
   const testFile = `${dir}/src/utils.ts`;
@@ -97,7 +102,7 @@ test("E2E-3: Checkpoint — undo restores pre-edit state", async () => {
   expect(content).toContain("original = true");
 }, 15_000);
 
-test("E2E-4: Repo-map generates symbol overview", async () => {
+it("E2E-4: Repo-map generates symbol overview", async () => {
   if (!session) return;
   const { loadRepoMap } = await import("../src/repo/repomap.ts");
   const map = await loadRepoMap(dir);
@@ -105,7 +110,7 @@ test("E2E-4: Repo-map generates symbol overview", async () => {
   expect(typeof map).toBe("string");
 }, 15_000);
 
-test("E2E-5: Session persistence — save/load roundtrip", async () => {
+it("E2E-5: Session persistence — save/load roundtrip", async () => {
     const { saveSession, loadSession, deleteSession } = await import("../src/session/persistence.ts");
     const id = "e2e-sess-" + Date.now();
     saveSession(id, undefined, "sys", [
@@ -120,7 +125,7 @@ test("E2E-5: Session persistence — save/load roundtrip", async () => {
     expect(loadSession(id)).toBeNull();
   });
 
-test("E2E-6: Telemetry — traces.jsonl exists after run", async () => {
+it("E2E-6: Telemetry — traces.jsonl exists after run", async () => {
   const { writeTrace } = await import("../src/telemetry/trace.ts");
   const tracePath = `${dir}/.minicode/traces.jsonl`;
   writeTrace(dir, {

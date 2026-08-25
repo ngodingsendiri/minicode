@@ -12,6 +12,7 @@
   },
   "scripts": {
     "test": "bun test",
+    "test:live": "bun scripts/test-live.ts",
     "typecheck": "bun x tsc --noEmit",
     "dev": "bun cli/index.ts",
     "bench": "bun bench/runner.ts",

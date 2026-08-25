@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.1] — 2026-08-25
+
+### QoL / TUI
+- **Floating dropdown** saat ketik `/` di REPL — dimmed, seleksi `›`, ↑/↓ navigasi, Tab/Enter complete, Esc tutup, max 10 + `… N more`. Fallback inline di console legacy (auto-detect ANSI via DSR probe).
+- **Prompt engine** `cli/prompt-engine.ts` — state machine input jadi pure function (testable), input.ts cuma IO+render.
+- Error user-friendly (balance/auth/rate/timeout/context) — tidak lagi raw JSON 401.
+- Unknown `/command` tidak di-forward ke LLM.
+- `/model` & `/models` jadi picker interaktif; format `providerId::model` untuk pilih provider spesifik.
+- Router: first-match-wins untuk nama model kembar (fix 401 jatuh ke provider salah).
+
+### Engineering
+- `bun run test:live` — live E2E terpisah dari `bun test` default (CI-safe tanpa secrets).
+- 20 test baru untuk prompt engine.
+- Fix `glyphs.sparkle` missing (`--help` "undefined Minicode").
+- `detectAnsi` — probe DSR idempotent, tidak ada listerner bocor.
+
 ## [0.3.0] — 2026-08-24
 
 ### Security
