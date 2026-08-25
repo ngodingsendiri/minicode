@@ -29,6 +29,12 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     const candidates = [...BUILTIN_COMMANDS.map((b) => `/${b.name}`), ...allLoadedSkills.map((s) => `/${s.name}`)];
     return candidates.filter((c) => c.startsWith(line));
   };
+  // Group label — commands vs skills di dropdown (header dinamis)
+  const groupOf = (text: string): string => {
+    const name = text.slice(1).split(" ")[0]!;
+    const isCmd = BUILTIN_COMMANDS.some((b) => b.name === name);
+    return isCmd ? "commands" : "skills";
+  };
 
   // Clear screen — bersihkan semua, langsung prompt
   process.stdout.write("\x1b[2J\x1b[H");
@@ -51,7 +57,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         promptText = `minicode❯[${pct}%] `;
       }
     }
-    const line = await askLine({ prompt: promptText, hints: getSuggestions });
+    const line = await askLine({ prompt: promptText, hints: getSuggestions, groupOf });
     if (line == null) break;
     const q = line.trim();
     if (!q) continue;

@@ -12,10 +12,10 @@ export const MAX_VISIBLE = 10;
 
 // Hasil render satu frame — pure spec, renderer (input.ts) yang menulis ke stdout.
 export interface RenderSpec {
-  inputLine: string;                // prompt + line (baris 1)
-  rows: { text: string; picked: boolean }[]; // baris dropdown
-  moreCount: number;                // jumlah item tersembunyi (0 = tidak ada)
-  totalRows: number;                // jumlah baris dropdown termasuk baris "more"
+  inputLine: string;                          // prompt + line (baris 1)
+  rows: { kind: "header" | "item"; text: string; picked: boolean }[]; // baris dropdown
+  moreCount: number;                          // jumlah item tersembunyi (0 = tidak ada)
+  totalRows: number;                          // jumlah baris dropdown termasuk baris "more"
 }
 
 export function createState(): PromptState {
@@ -108,15 +108,26 @@ export function applyKey(
 }
 
 // Pure render — spec yang digambar renderer.
+// `groupOf` opsional: menandai item sebagai command/skill → header grup dinamis.
 export function buildRenderSpec(
   state: PromptState,
   prompt: string,
   hints: string[],
+  groupOf?: (text: string) => string,
 ): RenderSpec {
   const inputLine = `${prompt}${state.line}`;
   const visible = hints.slice(0, MAX_VISIBLE);
   const moreCount = Math.max(0, hints.length - MAX_VISIBLE);
-  const rows = visible.map((text) => ({ text, picked: text === visible[state.sel] }));
+  const rows: RenderSpec["rows"] = [];
+  let lastGroup: string | undefined;
+  for (const text of visible) {
+    const group = groupOf?.(text);
+    if (group !== undefined && group !== lastGroup) {
+      lastGroup = group;
+      rows.push({ kind: "header", text: group.toUpperCase(), picked: false });
+    }
+    rows.push({ kind: "item", text, picked: text === visible[state.sel] });
+  }
   return {
     inputLine,
     rows,

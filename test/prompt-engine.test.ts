@@ -141,6 +141,17 @@ test("buildRenderSpec: selection row marked picked", () => {
   expect(picked[0]!.text).toBe(cmds[3]!);
 });
 
+test("buildRenderSpec: grouped hints → header rows dinamis", () => {
+  const s = { line: "/", sel: 0, menuOpen: true };
+  const spec = buildRenderSpec(s, "p", ["/help", "/my-skill"], (t) => (t.startsWith("/help") ? "commands" : "skills"));
+  expect(spec.rows[0]).toEqual({ kind: "header", text: "COMMANDS", picked: false });
+  expect(spec.rows[1]).toMatchObject({ kind: "item", text: "/help" });
+  expect(spec.rows[2]).toEqual({ kind: "header", text: "SKILLS", picked: false });
+  expect(spec.rows[3]).toMatchObject({ kind: "item", text: "/my-skill" });
+  // totalRows menghitung header juga
+  expect(spec.totalRows).toBe(4);
+});
+
 test("decodeKeys: plain text + enter", () => {
   const keys = decodeKeys(new TextEncoder().encode("ok\n"));
   expect(keys.map((k) => k.key.type)).toEqual(["char", "char", "enter"]);

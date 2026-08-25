@@ -52,10 +52,10 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 
 **Kenapa penting:** turn panjang → user butuh tahu sedang menunggu/provider apa.
 
-## 5.5 Pemisahan visual command vs skill di dropdown  (P3)
-- [ ] Dropdown menampilkan grup `Commands` vs `Skills` (baris separator tipis).
-- [ ] Skill hasil `loadSkills` dipisah dari `BUILTIN_COMMANDS`.
-- [ ] Kerja: reuse `buildRenderSpec` + test.
+## 5.5 Pemisahan visual command vs skill di dropdown  (P3)
+- [x] Dropdown grouped: header dinamis `COMMANDS` / `SKILLS` saat kedua grup match.
+- [x] `groupOf` opsional di askLine; RenderSpec row `header|item`; totalRows menghitung header.
+- [x] Test grouped spec (header order, item picking).
 
 **Kenapa penting:** `/` menghubungkan dua ruang nama yang beda semantik; pengguna berpikir cepat mana yang sistem.
 

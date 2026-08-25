@@ -72,6 +72,7 @@ export async function detectAnsi(): Promise<boolean> {
 export interface AskLineOptions {
   prompt?: string;
   hints?: (line: string) => string[];
+  groupOf?: (text: string) => string; // opsional: label grup (commands/skills)
 }
 
 // Input interaktif satu baris + floating dropdown suggestions (dimmed).
@@ -106,7 +107,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     // ── render ANSI: dropdown floating di bawah prompt ──
     const renderAnsi = () => {
-      const spec = buildRenderSpec(state, prompt, matches());
+      const spec = buildRenderSpec(state, prompt, matches(), opts.groupOf);
       const maxRows = Math.max(prevRows, spec.totalRows);
 
       process.stdout.write("\r" + CLEAR + spec.inputLine);
@@ -124,9 +125,13 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       if (spec.rows.length > 0) {
         process.stdout.write("\r\n");
         for (let i = 0; i < spec.rows.length; i++) {
-          const picked = spec.rows[i]!.picked;
-          const prefix = picked ? "  › " : "    ";
-          process.stdout.write(CLEAR + (picked ? SEL + prefix + spec.rows[i]!.text + RESTORE : DIM + prefix + spec.rows[i]!.text + RESTORE));
+          const row = spec.rows[i]!;
+          if (row.kind === "header") {
+            process.stdout.write(CLEAR + DIM + row.text + RESTORE);
+          } else {
+            const prefix = row.picked ? "  › " : "    ";
+            process.stdout.write(CLEAR + (row.picked ? SEL + prefix + row.text + RESTORE : DIM + prefix + row.text + RESTORE));
+          }
           if (i < spec.rows.length - 1) process.stdout.write("\r\n");
         }
         if (spec.moreCount > 0) {

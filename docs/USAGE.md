@@ -71,7 +71,7 @@ Config global (`~/.minicode/config.json`) + local (`.minicode/config.json`) — 
 
 ## Slash Commands (REPL)
 
-Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`↓` navigasi, `Tab` melengkapi, `Enter` melengkapi + submit, `Esc` tutup. Terminal lama tanpa ANSI: fallback inline hint.
+Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-lookup grouped `COMMANDS` / `SKILLS` saat keduanya match. `↑`/`↓` navigasi, `Tab` melengkapi, `Enter` melengkapi + submit, `Esc` tutup. Terminal lama tanpa ANSI: fallback inline hint.
 
 | Command | Fungsi |
 |---|---|
