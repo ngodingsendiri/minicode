@@ -7,8 +7,11 @@ import { friendlyError, friendlyFromCategory } from "./errors.ts";
 import { writeTrace } from "../src/telemetry/trace.ts";
 import type { CliSession } from "./setup.ts";
 
-export async function runRepl(ctx: CliSession): Promise<void> {
-  const {
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export async function runRepl(ctx: CliSession): Promise<void> {  const {
     session, cfg, cwd, sessionId, modelRef,
     permissionMode, sessionTools, allLoadedSkills, usage, budget,
     persistCurrent, runPromptWithVerify, close,
@@ -62,6 +65,24 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     const q = line.trim();
     if (!q) continue;
     await appendHistory(q);
+
+    // Output slash command (yang berbentuk daftar/hasil) tampil dalam
+    // jendela modal (panel), bukan mengalir ke prompt. Kecuali command
+    // interaktif (picker/wizard) yang sudah punya UI sendiri.
+    const PANEL_COMMANDS = new Set(["help", "providers", "models", "cost", "status", "sessions", "history", "sync"]);
+    const cmdName = q.slice(1).split(" ")[0]!.toLowerCase();
+    const isPanelCmd = PANEL_COMMANDS.has(cmdName) && process.stdin.isTTY;
+
+    if (isPanelCmd) {
+      const { captureOutput, runPanel } = await import("./panel.ts");
+      try {
+        const { lines } = await captureOutput(() => handleBuiltinCommand(q, commandCtx));
+        await runPanel({ title: capitalize(cmdName), lines });
+      } catch (e) {
+        process.stdout.write(`\n  ${formatError(e)}\n`);
+      }
+      continue;
+    }
 
     const builtinResult = await handleBuiltinCommand(q, commandCtx);
     if (builtinResult.handled) {
