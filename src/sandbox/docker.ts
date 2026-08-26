@@ -85,10 +85,26 @@ export function runInDocker(
       stdio: ["ignore", "pipe", "pipe"],
       env: sanitizeSpawnEnv(process.env, opts.env),
     })
+    // Cap buffer saat streaming — output container raksasa tidak menumpuk di RAM.
+    const OUT_CAP = 100_000 // di atas slice 20k milik bashTool, jauh di bawah OOM
     let out = "",
       err = ""
-    p.stdout.on("data", (d) => (out += d))
-    p.stderr.on("data", (d) => (err += d))
+    let truncated = false
+    const appendCapped = (target: "out" | "err", d: Buffer | string): void => {
+      const s = typeof d === "string" ? d : d.toString()
+      const cur = target === "out" ? out : err
+      if (cur.length >= OUT_CAP) {
+        truncated = true
+        return
+      }
+      const room = OUT_CAP - cur.length
+      if (s.length > room) truncated = true
+      const piece = s.slice(0, Math.max(0, room))
+      if (target === "out") out += piece
+      else err += piece
+    }
+    p.stdout.on("data", (d) => appendCapped("out", d))
+    p.stderr.on("data", (d) => appendCapped("err", d))
     const timeout = opts.timeoutMs ?? 30_000
     const t = setTimeout(() => p.kill("SIGKILL"), timeout)
     p.on("error", (e) => {
@@ -97,7 +113,8 @@ export function runInDocker(
     })
     p.on("close", (code) => {
       clearTimeout(t)
-      const output = (out + (err ? `\n[stderr]\n${err}` : "")).trim()
+      const marker = truncated ? "\n… [output truncated]" : ""
+      const output = (out + (err ? `\n[stderr]\n${err}` : "")).trim() + marker
       resolveResult({ code, output })
     })
   })

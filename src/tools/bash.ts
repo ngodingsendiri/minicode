@@ -48,15 +48,33 @@ export const bashTool: Tool = {
         env: sanitizeSpawnEnv(process.env),
         signal: ctx.signal,
       })
+      // Cap buffer SAAT streaming (bukan hanya slice di akhir) — command dengan
+      // output raksasa (yes / cat file 1GB) tidak boleh membawa proses ke OOM.
+      const OUT_CAP = 20_000
       let out = "",
         err = ""
-      p.stdout.on("data", (d) => (out += d))
-      p.stderr.on("data", (d) => (err += d))
+      let truncated = false
+      const appendCapped = (target: "out" | "err", d: Buffer | string): void => {
+        const s = typeof d === "string" ? d : d.toString()
+        const cur = target === "out" ? out : err
+        if (cur.length >= OUT_CAP) {
+          truncated = true
+          return
+        }
+        const room = OUT_CAP - cur.length
+        if (s.length > room) truncated = true
+        const piece = s.slice(0, Math.max(0, room))
+        if (target === "out") out += piece
+        else err += piece
+      }
+      p.stdout.on("data", (d) => appendCapped("out", d))
+      p.stderr.on("data", (d) => appendCapped("err", d))
       p.on("error", reject)
       p.on("close", (code) => {
+        const marker = truncated ? "\n… [output truncated]" : ""
         const text = scrubSecrets((out + (err ? "\n[stderr]\n" + err : "")).trim())
-        if (code !== 0) resolve(`exit ${code}\n${text.slice(0, 20000)}`)
-        else resolve(text.slice(0, 20000))
+        if (code !== 0) resolve(`exit ${code}${marker}\n${text.slice(0, 20000)}`)
+        else resolve((text.slice(0, 20000)) + marker)
       })
       let killTimer: ReturnType<typeof setTimeout> | undefined
       const t = setTimeout(() => {
