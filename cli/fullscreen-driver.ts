@@ -5,6 +5,7 @@ import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./c
 import { renderSkill } from "../src/skills/loader.ts"
 import { appendHistory, loadHistory } from "./input.ts"
 import { listSessions } from "../src/session/persistence.ts"
+import { expandMentions } from "../src/tui/file-mention.ts"
 import { captureOutput } from "./panel.ts"
 import type { CliSession } from "./setup.ts"
 import { attachFullscreenShell } from "../src/tui/fullscreen.tsx"
@@ -145,6 +146,12 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
       finalPrompt = await renderSkill(skill, skillArgs)
     }
     await appendHistory(q)
+    const cwdPath = cwd ?? process.cwd()
+    if (q.includes("@")) {
+      const { prompt: expanded, notes } = await expandMentions(q, cwdPath)
+      finalPrompt = expanded
+      for (const n of notes) process.stderr.write(`  [@mention] ${n}\n`)
+    }
     await runPromptWithVerify(finalPrompt, signal)
     const u = usage.get(modelRef.current)
     await persistCurrent(u)

@@ -382,7 +382,7 @@ function App(p: FullscreenProps) {
       {picker ? (
         <Box flexDirection="column">
           <Text bold color="cyan">
-            -- {picker.title} --
+            - {picker.title} -
           </Text>
           {picker.items.slice(Math.max(0, picker.sel - bodyH + 3), Math.max(0, picker.sel - bodyH + 3) + bodyH - 2).map((it, i) => {
             const idx = Math.max(0, picker.sel - bodyH + 3) + i
@@ -398,7 +398,7 @@ function App(p: FullscreenProps) {
       ) : overlay ? (
         <Box flexDirection="column">
           <Text bold color="cyan">
-            -- {overlay.title} --
+            - {overlay.title} -
           </Text>
           {overlay.lines.map((l, i) => (
             <Text key={i}>{l}</Text>
