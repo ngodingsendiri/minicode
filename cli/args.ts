@@ -6,6 +6,7 @@ const BOOLEAN_FLAGS = new Set([
   "--plan",
   "--interactive",
   "--tui",
+  "--verify",
   "--allowlist",
 ])
 const VALUE_FLAGS = new Set([
@@ -20,66 +21,47 @@ const VALUE_FLAGS = new Set([
   "--ratelimit",
   "--budget",
 ])
-const KNOWN_FLAGS = new Set([
-  "-h",
-  "--help",
-  "--verbose",
-  "--allow-all",
-  "--ask",
-  "--plan",
-  "--allowlist",
-  "--interactive",
-  "--tui",
-  "--cwd",
-  "--resume",
-  "--model",
-  "--session",
-  "--max-steps",
-  "--context-window",
-  "--timeout",
-  "--verify",
-  "--sandbox",
-  "--ratelimit",
-  "--budget",
-])
+const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help"])
+
+/** `--flag` atau `--flag=value` → normalisasi ke nama flag murni. */
+function flagNameOf(token: string): string | null {
+  if (!token.startsWith("-")) return null
+  const eq = token.indexOf("=")
+  const name = eq === -1 ? token : token.slice(0, eq)
+  return KNOWN_FLAGS.has(name) ? name : null
+}
 
 export function getArg(argv: string[], name: string): string | undefined {
-  const idx = argv.indexOf(name)
-  return idx !== -1 ? argv[idx + 1] : undefined
+  // dukung bentuk --name value DAN --name=value; ambil kemunculan terakhir
+  // (flag berulang → yang terakhir menang, konsisten dengan CLI umum)
+  let found: string | undefined
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a === name) {
+      const v = argv[i + 1]
+      if (v !== undefined && !v.startsWith("-")) found = v
+    } else if (a.startsWith(`${name}=`)) {
+      const v = a.slice(name.length + 1)
+      if (v !== "") found = v
+    }
+  }
+  return found
 }
 
 export function promptFromArgs(argv: string[]): string {
-  const idx = (flag: string) => argv.indexOf(flag)
-  const cwdIdx = idx("--cwd")
-  const resumeIdx = idx("--resume")
-  const modelIdx = idx("--model")
-  const sessionIdx = idx("--session")
-  const maxStepsIdx = idx("--max-steps")
-  const ctxWindowIdx = idx("--context-window")
-  const timeoutIdx = idx("--timeout")
-  const sandboxIdx = idx("--sandbox")
-  const ratelimitIdx = idx("--ratelimit")
-  const budgetIdx = idx("--budget")
-  // only filter known flags, not prompt words like "-123"
-  return argv
-    .filter((a, i) => {
-      if (BOOLEAN_FLAGS.has(a)) return false
-      if (VALUE_FLAGS.has(a)) return false
-      if (cwdIdx !== -1 && i === cwdIdx + 1) return false
-      if (resumeIdx !== -1 && i === resumeIdx + 1) return false
-      if (modelIdx !== -1 && i === modelIdx + 1) return false
-      if (sessionIdx !== -1 && i === sessionIdx + 1) return false
-      if (maxStepsIdx !== -1 && i === maxStepsIdx + 1) return false
-      if (ctxWindowIdx !== -1 && i === ctxWindowIdx + 1) return false
-      if (timeoutIdx !== -1 && i === timeoutIdx + 1) return false
-      if (sandboxIdx !== -1 && i === sandboxIdx + 1) return false
-      if (ratelimitIdx !== -1 && i === ratelimitIdx + 1) return false
-      if (budgetIdx !== -1 && i === budgetIdx + 1) return false
-      if (KNOWN_FLAGS.has(a)) return false
-      if (a.startsWith("-") && KNOWN_FLAGS.has(a.split("=")[0]!)) return false
-      return true
-    })
-    .join(" ")
+  const out: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    const fname = flagNameOf(a)
+    if (fname === null) {
+      out.push(a) // prompt word / unknown flag dibiarkan (perilaku lama utk kata)
+      continue
+    }
+    if (BOOLEAN_FLAGS.has(fname)) continue
+    // value flag: lewati flag-nya dan nilai terpisahnya (bila bukan bentuk =)
+    if (!a.includes("=")) i++
+  }
+  return out.join(" ")
 }
 
 export function readPrompt(): Promise<string> {
