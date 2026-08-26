@@ -1,8 +1,10 @@
 import type { EventBus } from "minicore/core/index.ts"
+import { registerStatusLine } from "./statusline.ts"
 
-// Turn status line - satu baris di stderr: `· bai/deepseek-v4-flash · 12 steps …`
-// Selalu single-line (systemd-style). Tidak pernah merusak output streaming.
-// Dibatasi: non-TTY / legacy console -> no-op.
+// Turn status line — satu baris di stderr: `·· model` (dots + label saja).
+// Kata status ("reasoning"/"working") sengaja tidak ditampilkan — indikator
+// cukup dari animasi dots. Selalu single-line, tidak merusak streaming:
+// output lain memakai runWithoutStatus() yang menahan repaint sesaat.
 export function attachTurnStatus(
   bus: EventBus,
   opts: { initialModel?: string; getModel?: () => string | undefined } = {},
@@ -18,15 +20,13 @@ export function attachTurnStatus(
     )
   if (isWinLegacy) return () => {}
 
-  let label = opts.initialModel ?? "…"
-  let reasoning = false
+  let label = opts.initialModel ?? "..."
   let spinner: ReturnType<typeof setInterval> | undefined
   let fi = 0
-  const F = ["·", "··", "···"] // dots cycling - reasoning indicator
+  const F = ["·", "··", "···"]
 
   const paint = () => {
-    const status = reasoning ? "reasoning" : "working"
-    process.stderr.write(`\r\x1b[2K${F[fi % F.length]} ${label} · ${status}`)
+    process.stderr.write(`\r\x1b[2K${F[fi % F.length]} ${label}`)
     fi++
   }
 
@@ -37,9 +37,29 @@ export function attachTurnStatus(
     process.stderr.write("\r\x1b[2K")
   }
 
+  // Dipakai renderer via runWithoutStatus: hentikan repaint sebentar,
+  // lalu gambar ulang agar garis status tetap hidup di bawah output.
+  let wasRunning = false
+  const handle = {
+    suspend() {
+      wasRunning = !!spinner
+      if (spinner) {
+        clearInterval(spinner)
+        spinner = undefined
+        process.stderr.write("\r\x1b[2K")
+      }
+    },
+    resume() {
+      if (wasRunning && !spinner) {
+        paint()
+        spinner = setInterval(paint, 150)
+      }
+    },
+  }
+  registerStatusLine(handle)
+
   const onStarted = () => {
     stopPainting()
-    reasoning = false
     if (opts.getModel) {
       const cur = opts.getModel()
       if (cur) label = cur
@@ -51,31 +71,18 @@ export function attachTurnStatus(
   const onExt = (e: { kind: string; data: unknown }) => {
     if (e.kind === "error") {
       stopPainting()
-    } else if (e.kind === "reasoning") {
-      // Collapsed indicator: teks reasoning tidak dicetak, cukup dots animasi.
-      if (!reasoning) {
-        reasoning = true
-        paint()
-      }
     } else if (e.kind === "effective-model") {
       const d = e.data as { effective?: string; provider?: string }
       if (d.effective) {
         label = d.provider ? `${d.provider}/${d.effective}` : d.effective
-        paint()
+        if (!spinner) paint()
       }
     }
   }
 
-  const onDone = () => {
-    reasoning = false
-    stopPainting()
-  }
-  const onText = () => {
-    reasoning = false
-    stopPainting()
-  }
+  const onDone = () => stopPainting()
+  const onText = () => stopPainting()
 
-  // event bus: on() returns the unsubscribe
   const detach = [
     bus.on("turn:started", onStarted),
     bus.on("provider:extension", onExt),
@@ -85,6 +92,7 @@ export function attachTurnStatus(
 
   return () => {
     stopPainting()
+    registerStatusLine(null)
     for (const d of detach) d()
   }
 }

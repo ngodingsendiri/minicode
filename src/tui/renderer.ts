@@ -2,12 +2,16 @@ import type { EventBus } from "minicore/core/index.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "./format.ts"
 import { decorateMarkdown } from "./markdown.ts"
 import { c } from "./theme.ts"
+import { runWithoutStatus } from "./statusline.ts"
 import { formatWrapped } from "./wrap.ts"
 
 export interface RendererOptions {
   verbose?: boolean
   quiet?: boolean
 }
+
+const wOut = (s: string): void => runWithoutStatus(() => wOut(s))
+const wErr = (s: string): void => runWithoutStatus(() => wErr(s))
 
 export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
   // Streaming buffer: kumpulkan chunk provider:text sampai newline penuh supaya
@@ -20,11 +24,11 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     const width = process.stdout.columns || 80
     const decorated = decorateMarkdown(line)
     if (!inStreamFence) {
-      process.stdout.write(formatWrapped(decorated, width, true))
+      wOut(formatWrapped(decorated, width, true))
     } else {
-      process.stdout.write(decorated)
+      wOut(decorated)
     }
-    process.stdout.write("\n")
+    wOut("\n")
   }
 
   const flushStreamBuffer = () => {
@@ -38,7 +42,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
 
   bus.on("turn:started", (e) => {
     if (opts.verbose) {
-      process.stderr.write(c.muted(`\n── Turn ${e.turn} ──\n`))
+      wErr(c.muted(`\n── Turn ${e.turn} ──\n`))
     }
   })
 
@@ -59,16 +63,16 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
   bus.on("provider:extension", (e) => {
     if (e.kind === "reasoning" && opts.verbose) {
       const d = e.data as { text?: string }
-      if (d.text) process.stderr.write(c.muted(`\n${d.text}\n`))
+      if (d.text) wErr(c.muted(`\n${d.text}\n`))
     } else if (e.kind === "usage") {
       const u = e.data as { inputTokens?: number; outputTokens?: number; totalTokens?: number }
       const usage = formatUsage(u)
-      if (usage && opts.verbose) process.stderr.write(c.muted(`  ${usage}\n`))
+      if (usage && opts.verbose) wErr(c.muted(`  ${usage}\n`))
     } else if (e.kind === "error") {
       const d = e.data as { message?: string; category?: string }
-      process.stderr.write(c.error(`\n✗ ${formatProviderError(d)}\n`))
+      wErr(c.error(`\n✗ ${formatProviderError(d)}\n`))
     } else if (e.kind === "content_filter") {
-      process.stderr.write(c.warning(`\n! Content filter blocked the response\n`))
+      wErr(c.warning(`\n! Content filter blocked the response\n`))
     }
   })
 
@@ -78,13 +82,13 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     const calls = e.step.toolCalls
       .map((tc) => `${c.info(tc.name)}(${c.muted(formatArgsPreview(tc.args))})`)
       .join(", ")
-    process.stderr.write(c.muted(`  Step ${e.step.index}: ${calls}\n`))
+    wErr(c.muted(`  Step ${e.step.index}: ${calls}\n`))
   })
 
   // Tool execution - systemd-style result
   bus.on("execution:started", (e) => {
     if (opts.verbose || !process.stderr.isTTY) {
-      process.stderr.write(c.muted(`  running ${e.execution.call.name}... `))
+      wErr(c.muted(`  running ${e.execution.call.name}... `))
     }
   })
 
@@ -95,7 +99,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
 
     if (r.isError) {
       const preview = String(r.content).slice(0, 200)
-      process.stderr.write(c.error(`  ✗ ${name}: ${preview}\n`))
+      wErr(c.error(`  ✗ ${name}: ${preview}\n`))
       return
     }
 
@@ -104,7 +108,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     // File writes - satu baris dengan ukuran
     if (name === "write_file" && target) {
       const size = typeof r.content === "string" ? `${r.content.length} chars` : ""
-      process.stdout.write(
+      wOut(
         c.success(`  ✓ write_file ${target}${size ? c.muted(` (${size})`) : ""}\n`),
       )
       return
@@ -112,21 +116,21 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
 
     // Edits - tampilkan diff ringkas
     if (name === "edit" && typeof args.path === "string" && typeof args.oldString === "string") {
-      process.stdout.write(c.success(`  ✓ edit ${args.path}\n`))
+      wOut(c.success(`  ✓ edit ${args.path}\n`))
       const oldLines = args.oldString.split("\n")
       const newLines = (args.newString as string).split("\n")
       for (const l of oldLines.slice(0, 3)) {
-        if (l.trim()) process.stdout.write(c.error(`    - ${l.trim()}\n`))
+        if (l.trim()) wOut(c.error(`    - ${l.trim()}\n`))
       }
       for (const l of newLines.slice(0, 3)) {
-        if (l.trim()) process.stdout.write(c.success(`    + ${l.trim()}\n`))
+        if (l.trim()) wOut(c.success(`    + ${l.trim()}\n`))
       }
       return
     }
 
     // apply_patch
     if (name === "apply_patch" && target) {
-      process.stdout.write(c.success(`  ✓ apply_patch ${target}\n`))
+      wOut(c.success(`  ✓ apply_patch ${target}\n`))
       return
     }
 
@@ -140,7 +144,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
           lines.length > 3
             ? lines.slice(0, 3).join("\n    ") + c.muted(`\n    ... (${lines.length - 3} more)`)
             : lines.join("\n    ")
-        process.stderr.write(
+        wErr(
           c.success(`  ✓ $ ${String(cmdStr).slice(0, 80)}\n`) + c.muted(`    ${preview}\n`),
         )
         return
@@ -151,16 +155,16 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     const raw = String(r.content).trim()
     const first = raw.split("\n")[0] ?? ""
     const preview = first.slice(0, 80) + (raw.length > 100 || raw.includes("\n") ? "..." : "")
-    process.stderr.write(c.success(`  ✓ ${name}`) + c.muted(preview ? ` ${preview}` : "\n"))
+    wErr(c.success(`  ✓ ${name}`) + c.muted(preview ? ` ${preview}` : "\n"))
   })
 
   bus.on("context:compacted", (e) => {
-    process.stderr.write(c.warning(`  ── context compacted: ${e.reason}\n`))
+    wErr(c.warning(`  ── context compacted: ${e.reason}\n`))
   })
 
   bus.on("turn:completed", (e) => {
     if (opts.verbose) {
-      process.stderr.write(
+      wErr(
         c.muted(`\n  done · ${e.result.usage.steps} steps · ${e.result.usage.turns} turns\n`),
       )
     }
