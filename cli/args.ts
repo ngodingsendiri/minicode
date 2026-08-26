@@ -1,4 +1,4 @@
-// Pure arg-parsing helpers — dipisah dari cli/index.ts agar mudah diuji.
+﻿// Pure arg-parsing helpers â€” dipisah dari cli/index.ts agar mudah diuji.
 const BOOLEAN_FLAGS = new Set([
   "--verbose",
   "--allow-all",
@@ -23,7 +23,7 @@ const VALUE_FLAGS = new Set([
 ])
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help"])
 
-/** `--flag` atau `--flag=value` → normalisasi ke nama flag murni. */
+/** `--flag` atau `--flag=value` â†’ normalisasi ke nama flag murni. */
 function flagNameOf(token: string): string | null {
   if (!token.startsWith("-")) return null
   const eq = token.indexOf("=")
@@ -33,10 +33,11 @@ function flagNameOf(token: string): string | null {
 
 export function getArg(argv: string[], name: string): string | undefined {
   // dukung bentuk --name value DAN --name=value; ambil kemunculan terakhir
-  // (flag berulang → yang terakhir menang, konsisten dengan CLI umum)
+  // (flag berulang -> yang terakhir menang, konsisten dengan CLI umum)
   let found: string | undefined
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!
+    const a = argv[i]
+    if (a === undefined) break
     if (a === name) {
       const v = argv[i + 1]
       if (v !== undefined && !v.startsWith("-")) found = v
@@ -51,7 +52,8 @@ export function getArg(argv: string[], name: string): string | undefined {
 export function promptFromArgs(argv: string[]): string {
   const out: string[] = []
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!
+    const a = argv[i]
+    if (a === undefined) break
     const fname = flagNameOf(a)
     if (fname === null) {
       out.push(a) // prompt word / unknown flag dibiarkan (perilaku lama utk kata)
