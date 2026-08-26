@@ -56,7 +56,7 @@ export interface CliSession {
   budget?: number
   detachInk?: () => void
   persistCurrent: (usageData: unknown) => Promise<void>
-  runPromptWithVerify: (prompt: string) => Promise<void>
+  runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
   close: () => Promise<void>
 }
 
@@ -183,13 +183,13 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     : ""
   const verifyActive = verifyCommand.length > 0
 
-  async function runPromptWithVerify(p: string): Promise<void> {
+  async function runPromptWithVerify(p: string, signal?: AbortSignal): Promise<void> {
     if (!verifyActive) {
-      await session.run(p, { model: modelRef.current })
+      await session.run(p, { model: modelRef.current, signal })
       return
     }
     await runWithSelfHeal(p, {
-      run: (prompt) => session.run(prompt, { model: modelRef.current }),
+      run: (prompt) => session.run(prompt, { model: modelRef.current, signal }),
       verify: () => runVerify(verifyCommand, cwd ?? process.cwd()),
       onCycle: (cycle, max, v) => {
         if (cycle === max) {

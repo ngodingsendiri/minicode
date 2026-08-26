@@ -55,6 +55,8 @@ export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
 
 export async function promptAsk(call: ToolCall): Promise<"allow" | "deny" | "always"> {
   if (!process.stdin.isTTY) return "deny"
+  // Attention bell (ala OpenCode): terminal bunyi saat butuh konfirmasi.
+  process.stdout.write("\x07")
 
   const { createInterface } = await import("node:readline")
   const rl = createInterface({ input: process.stdin, output: process.stdout })

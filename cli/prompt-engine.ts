@@ -35,6 +35,8 @@ export type PromptKey =
   | { type: "esc" }
   | { type: "ctrl-c" }
   | { type: "ctrl-d" }
+  | { type: "ctrl-u" } // clear line
+  | { type: "ctrl-w" } // delete previous word
 
 // Terapkan satu keypress -> state baru + render spec + action (submit/cancel).
 export type PromptAction = "none" | "render" | "submit" | "cancel"
@@ -117,6 +119,24 @@ export function applyKey(
     case "ctrl-c":
     case "ctrl-d":
       return { state, action: "cancel" }
+    case "ctrl-u": {
+      if (!state.line.length) return { state, action: "none" }
+      return { state: { line: "", sel: -1, menuOpen: false }, action: "render" }
+    }
+    case "ctrl-w": {
+      if (!state.line.length) return { state, action: "none" }
+      const trimmed = state.line.replace(/\S+\s*$/, "")
+      const line = trimmed
+      const menuOpen = line.startsWith("/")
+      return {
+        state: {
+          line,
+          sel: menuOpen ? Math.min(Math.max(state.sel, -1), countOf(line) - 1) : -1,
+          menuOpen,
+        },
+        action: "render",
+      }
+    }
     case "left":
     case "right":
       return { state, action: "none" }
@@ -191,6 +211,8 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (c === "\t") return { key: { type: "tab" }, width: 1 }
   if (code === 0x03) return { key: { type: "ctrl-c" }, width: 1 }
   if (code === 0x04) return { key: { type: "ctrl-d" }, width: 1 }
+  if (code === 0x15) return { key: { type: "ctrl-u" }, width: 1 }
+  if (code === 0x17) return { key: { type: "ctrl-w" }, width: 1 }
   // Multi-byte: s sudah decoded UTF-16 - ukur unit per code point.
   // 0xE6..0xE0 = leading surrogates (4-byte UTF-8 -> 2 unit), else 1.
   const width = code >= 0xd800 && code <= 0xdbff ? 2 : 1

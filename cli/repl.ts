@@ -61,6 +61,37 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   // Clear screen - bersihkan semua, langsung prompt
   process.stdout.write("\x1b[2J\x1b[H")
 
+  // ── SIGINT lifecycle ──
+  // Busy -> Ctrl+C membatalkan turn berjalan saja (kembali ke prompt).
+  // Idle -> Ctrl+C dua kali dalam 2 detik untuk keluar bersih.
+  let busyCtl: AbortController | null = null
+  let lastSigintAt = 0
+  let exiting = false
+  const gracefulExit = async () => {
+    if (exiting) return
+    exiting = true
+    try {
+      await close()
+    } finally {
+      process.exit(0)
+    }
+  }
+  process.on("SIGINT", () => {
+    if (exiting) return
+    if (busyCtl) {
+      busyCtl.abort()
+      return
+    }
+    const now = Date.now()
+    if (now - lastSigintAt < 2000) {
+      void gracefulExit()
+      return
+    }
+    lastSigintAt = now
+    process.stdout.write(`\n  ${c.muted("ctrl+c sekali lagi untuk keluar")}\n`)
+  })
+
+
   const commandCtx: CommandContext = {
     cwd,
     sessionId,
@@ -147,8 +178,9 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       }, effectiveTimeoutMs - 60_000)
     }
     try {
+      busyCtl = new AbortController()
       try {
-        await runPromptWithVerify(finalPrompt)
+        await runPromptWithVerify(finalPrompt, busyCtl.signal)
         const u = usage.get(modelRef.current)
         const costPart = u.cost != null ? ` · $${u.cost.toFixed(4)}` : ""
         process.stdout.write(
@@ -201,6 +233,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         })
       } finally {
         if (timeoutWarn) clearTimeout(timeoutWarn)
+        busyCtl = null
       }
       if (overBudget) {
         process.stdout.write(`\n  Budget exceeded. Ending session.\n`)
