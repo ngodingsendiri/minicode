@@ -99,8 +99,12 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
       const spaceIdx = q.indexOf(" ")
       const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx)
       const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1)
+      const isBuiltin = BUILTIN_COMMANDS.some((b) => b.name === skillName)
       const skill = allLoadedSkills.find((s) => s.name === skillName)
-      if (!skill) return "handled" // builtin tak dikenal sudah lewat overlay path
+      if (!skill) {
+        if (isBuiltin) return "handled" // sudah lewat overlay path
+        return { note: `perintah tidak dikenal: ${skillName} - ketik /help` }
+      }
       finalPrompt = await renderSkill(skill, skillArgs)
     }
     await runPromptWithVerify(finalPrompt, signal)
