@@ -1,5 +1,5 @@
-// Prompt engine — PURE functions untuk logika input interaktif.
-// Sama sekali tidak menyentuh stdin/stdout — hanya data → data.
+// Prompt engine - PURE functions untuk logika input interaktif.
+// Sama sekali tidak menyentuh stdin/stdout - hanya data -> data.
 // Dipakai askLine (cli/input.ts) + unit test (test/prompt-engine.test.ts).
 
 export interface PromptState {
@@ -10,7 +10,7 @@ export interface PromptState {
 
 export const MAX_VISIBLE = 10
 
-// Hasil render satu frame — pure spec, renderer (input.ts) yang menulis ke stdout.
+// Hasil render satu frame - pure spec, renderer (input.ts) yang menulis ke stdout.
 export interface RenderSpec {
   inputLine: string // prompt + line (baris 1)
   rows: { kind: "header" | "item"; text: string; picked: boolean }[] // baris dropdown
@@ -36,7 +36,7 @@ export type PromptKey =
   | { type: "ctrl-c" }
   | { type: "ctrl-d" }
 
-// Terapkan satu keypress → state baru + render spec + action (submit/cancel).
+// Terapkan satu keypress -> state baru + render spec + action (submit/cancel).
 export type PromptAction = "none" | "render" | "submit" | "cancel"
 
 export function applyKey(
@@ -123,8 +123,8 @@ export function applyKey(
   }
 }
 
-// Pure render — spec yang digambar renderer.
-// `groupOf` opsional: menandai item sebagai command/skill → header grup dinamis.
+// Pure render - spec yang digambar renderer.
+// `groupOf` opsional: menandai item sebagai command/skill -> header grup dinamis.
 export function buildRenderSpec(
   state: PromptState,
   prompt: string,
@@ -152,7 +152,7 @@ export function buildRenderSpec(
   }
 }
 
-// ── Binari dari chunk stdin → keystroke stream ──
+// ── Binari dari chunk stdin -> keystroke stream ──
 // Rust-style manual parsing: ESC [ A/B/C/D = arrows, ESC = esc, dsb.
 export function decodeKeys(buf: Uint8Array): DecodedKey[] {
   const out: DecodedKey[] = []
@@ -181,7 +181,7 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
       if (kind === "B") return { key: { type: "down" }, width: 3 }
       if (kind === "C") return { key: { type: "right" }, width: 3 }
       if (kind === "D") return { key: { type: "left" }, width: 3 }
-      // ESC [ … lainnya → konsumsi saja
+      // ESC [ … lainnya -> konsumsi saja
       return { key: { type: "esc" }, width: Math.max(3, scanCsi(s, i)) }
     }
     return { key: { type: "esc" }, width: 1 }
@@ -191,8 +191,8 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (c === "\t") return { key: { type: "tab" }, width: 1 }
   if (code === 0x03) return { key: { type: "ctrl-c" }, width: 1 }
   if (code === 0x04) return { key: { type: "ctrl-d" }, width: 1 }
-  // Multi-byte: s sudah decoded UTF-16 — ukur unit per code point.
-  // 0xE6..0xE0 = leading surrogates (4-byte UTF-8 → 2 unit), else 1.
+  // Multi-byte: s sudah decoded UTF-16 - ukur unit per code point.
+  // 0xE6..0xE0 = leading surrogates (4-byte UTF-8 -> 2 unit), else 1.
   const width = code >= 0xd800 && code <= 0xdbff ? 2 : 1
   const ch = s.slice(i, i + width)
   return { key: { type: "char", ch }, width }

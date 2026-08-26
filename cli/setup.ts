@@ -1,4 +1,4 @@
-// Setup CLI: orchestrator thin — delegates to src/app/* layers
+// Setup CLI: orchestrator thin - delegates to src/app/* layers
 
 import { readFileSync } from "node:fs"
 import { resolve as resolvePath } from "node:path"
@@ -91,7 +91,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const { cfg, router } = await createProviderLayer({ cwd, prompt, enterRepl, rateLimiter })
   const { systemExtra, skills: allLoadedSkills } = await createRagLayer({ cfg, prompt, cwd })
 
-  // resume: load full history from DB → seed into kernel ContextStore
+  // resume: load full history from DB -> seed into kernel ContextStore
   let initialMessages: readonly Message[] | undefined
   if (resumeId) {
     const prev = loadSession(resumeId, cwd)
@@ -100,7 +100,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`))
     } else {
       console.error(
-        c.yellow(`[resume] session ${resumeId} not found — starting new ${sessionId}\n`),
+        c.yellow(`[resume] session ${resumeId} not found - starting new ${sessionId}\n`),
       )
     }
   }
@@ -194,12 +194,12 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       onCycle: (cycle, max, v) => {
         if (cycle === max) {
           process.stderr.write(
-            c.red(`\n[verify] still failing after ${max} attempts — leaving for user\n`),
+            c.red(`\n[verify] still failing after ${max} attempts - leaving for user\n`),
           )
           process.stderr.write(v.output.slice(0, 1200) + "\n")
         } else {
           process.stderr.write(
-            c.yellow(`\n[verify] attempt ${cycle}/${max} failed — self-healing…\n`),
+            c.yellow(`\n[verify] attempt ${cycle}/${max} failed - self-healing…\n`),
           )
         }
       },
@@ -208,7 +208,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   // ── renderer ──
-  // Ink butuh TTY (raw mode) — di non-TTY fallback ke renderer ANSI.
+  // Ink butuh TTY (raw mode) - di non-TTY fallback ke renderer ANSI.
   const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY
   let detachInk: (() => void) | undefined
   if (useInk) {
@@ -226,7 +226,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   } else {
     attachRenderer(session.events, { verbose })
   }
-  // Turn status line (spinner + model) — hanya membuat repot saat interaktif
+  // Turn status line (spinner + model) - hanya membuat repot saat interaktif
   // non-verbose; di one-shot output tetap di stderr.
   const { attachTurnStatus } = await import("../src/tui/turn-status.ts")
   const detachStatus = attachTurnStatus(session.events, {

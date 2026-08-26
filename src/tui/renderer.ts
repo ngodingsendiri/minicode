@@ -50,7 +50,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     }
   })
 
-  // Agent text — streaming, per-baris markdown + wrap
+  // Agent text - streaming, per-baris markdown + wrap
   bus.on("provider:text", (e) => {
     streamBuffer += e.text
     flushStreamBuffer()
@@ -68,11 +68,11 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       const d = e.data as { message?: string; category?: string }
       process.stderr.write(c.error(`\n✗ ${formatProviderError(d)}\n`))
     } else if (e.kind === "content_filter") {
-      process.stderr.write(c.warning(`\n⚠ Content filter blocked the response\n`))
+      process.stderr.write(c.warning(`\n! Content filter blocked the response\n`))
     }
   })
 
-  // Step header — hanya di verbose
+  // Step header - hanya di verbose
   bus.on("step:started", (e) => {
     if (!opts.verbose) return
     const calls = e.step.toolCalls
@@ -81,7 +81,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
     process.stderr.write(c.muted(`  Step ${e.step.index}: ${calls}\n`))
   })
 
-  // Tool execution — systemd-style result
+  // Tool execution - systemd-style result
   bus.on("execution:started", (e) => {
     if (opts.verbose || !process.stderr.isTTY) {
       process.stderr.write(c.muted(`  running ${e.execution.call.name}... `))
@@ -101,7 +101,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
 
     const target = typeof args.path === "string" ? args.path : undefined
 
-    // File writes — satu baris dengan ukuran
+    // File writes - satu baris dengan ukuran
     if (name === "write_file" && target) {
       const size = typeof r.content === "string" ? `${r.content.length} chars` : ""
       process.stdout.write(
@@ -110,7 +110,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       return
     }
 
-    // Edits — tampilkan diff ringkas
+    // Edits - tampilkan diff ringkas
     if (name === "edit" && typeof args.path === "string" && typeof args.oldString === "string") {
       process.stdout.write(c.success(`  ✓ edit ${args.path}\n`))
       const oldLines = args.oldString.split("\n")
@@ -130,7 +130,7 @@ export function attachRenderer(bus: EventBus, opts: RendererOptions = {}) {
       return
     }
 
-    // Bash — tampilkan command + output singkat (support both cmd and command for compatibility)
+    // Bash - tampilkan command + output singkat (support both cmd and command for compatibility)
     {
       const cmdStr = (args.cmd as string) ?? (args.command as string)
       if (name === "bash" && typeof cmdStr === "string") {

@@ -1,4 +1,4 @@
-// Friendly error mapping — struktur formal (ProviderErrorCategory) di depan,
+// Friendly error mapping - struktur formal (ProviderErrorCategory) di depan,
 // regex hanya fallback untuk string mentah (AgentError non-provider dsb).
 
 export interface FriendlyError {
@@ -6,8 +6,8 @@ export interface FriendlyError {
   fix?: string
 }
 
-// Mapping kategori formal → pesan user-friendly. Sisa detail teknis tidak
-// ditampilkan — trace punya data mentahnya.
+// Mapping kategori formal -> pesan user-friendly. Sisa detail teknis tidak
+// ditampilkan - trace punya data mentahnya.
 export function friendlyFromCategory(category: string, detail: string): FriendlyError {
   const truth = detail.trim()
   switch (category) {
@@ -56,7 +56,7 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
         fix: "Start a new session (/exit then minicode) or use a model with a bigger context.",
       }
     default: {
-      // unknown & fallback — ambil field message dari JSON body jika ada
+      // unknown & fallback - ambil field message dari JSON body jika ada
       const jsonMsg = truth.match(/"message"\s*:\s*"([^"]+)"/)
       if (jsonMsg) return { message: jsonMsg[1]!.slice(0, 140) }
       const cut = truth.length > 160 ? truth.slice(0, 157) + "…" : truth

@@ -1,4 +1,4 @@
-// Modal panel — VS Code palette
+// Modal panel - VS Code palette
 import { c } from "../src/tui/theme.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 

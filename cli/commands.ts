@@ -123,7 +123,7 @@ export async function handleBuiltinCommand(
         p.models.map((m) => ({ name: m, provider: p.id, value: `${p.id}::${m}` })),
       )
       if (items.length === 0) {
-        console.log("(no models — use /provider)")
+        console.log("(no models - use /provider)")
         return { handled: true }
       }
       // If args provided as simple model name, try exact match without picker
@@ -140,8 +140,8 @@ export async function handleBuiltinCommand(
       // inject initial filter by simulating typing after open? Instead set title with hint and let user type
       await runPicker({
         title: filterPrefill
-          ? `Select Model — filter: ${filterPrefill}`
-          : "Select Model — type to filter",
+          ? `Select Model - filter: ${filterPrefill}`
+          : "Select Model - type to filter",
         items: (() => {
           if (!filterPrefill) return items
           const q = filterPrefill.toLowerCase()
@@ -197,14 +197,14 @@ export async function handleBuiltinCommand(
     }
 
     case "sync": {
-      // Re-detect model dari semua provider → config diperbarui otomatis
+      // Re-detect model dari semua provider -> config diperbarui otomatis
       console.log("\nSyncing models from providers...")
       const results = await refreshProviderModels({ cwd: ctx.cwd })
       if (results.length === 0) {
-        console.log("  (no provider found — use /provider-add first)")
+        console.log("  (no provider found - use /provider-add first)")
       } else {
         for (const r of results) {
-          console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`)
+          console.log(`  [OK] ${r.id}: ${r.from} -> ${r.to} models`)
         }
       }
       console.log("  Restart minicode for the router to pick up new models.\n")
@@ -293,7 +293,7 @@ export async function handleBuiltinCommand(
     }
 
     case "history": {
-      console.log("[deprecated] /history removed — use ↑ arrow to browse history")
+      console.log("[deprecated] /history removed - use ↑ arrow to browse history")
       return { handled: true }
     }
 

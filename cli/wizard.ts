@@ -71,7 +71,7 @@ export async function runSetupWizard(): Promise<boolean> {
       (targetUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"])
     const entry = await detectAndSave(targetUrl, apiKey, undefined, { fallbackModels })
     process.stdout.write(
-      `[OK] Provider "${entry.id}" saved — ${entry.models.length} models detected\n`,
+      `[OK] Provider "${entry.id}" saved - ${entry.models.length} models detected\n`,
     )
     process.stdout.write("Setup complete.\n\n")
     return true

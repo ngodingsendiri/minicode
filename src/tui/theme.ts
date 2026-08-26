@@ -1,4 +1,4 @@
-// Semantic color system — Ubuntu Server style.
+// Semantic color system - Ubuntu Server style.
 // Warna by function, bukan appearance. Auto-detect: NO_COLOR > truecolor > 256 > 16 > mono.
 
 const isWindows = process.platform === "win32"
@@ -45,21 +45,21 @@ function trueWrap(fg: string): (s: string) => string {
   return (s: string) => `\x1b[${fg}m${s}\x1b[39m`
 }
 
-// ── Semantic color slots — VS Code Dark+ Professional (single default) ──
+// ── Semantic color slots - VS Code Dark+ Professional (single default) ──
 export const c = {
   // Text hierarchy
   text: (s: string) => s,
-  muted: wrap(2, 22), // dim — secondary info, borders
+  muted: wrap(2, 22), // dim - secondary info, borders
   bold: wrap(1, 22),
   italic: wrap(3, 23),
 
-  // Status — VS Code muted tones
+  // Status - VS Code muted tones
   success: trueWrap("38;2;137;209;133"), // #89D185 green (was 32)
   error: trueWrap("38;2;244;135;113"), // #F48771 salmon (was 31)
   warning: trueWrap("38;2;204;167;0"), // #CCA700 warm yellow (was 33)
   info: trueWrap("38;2;117;190;255"), // #75BEFF cyan (was 36)
 
-  // Accent — VS Code blue #007ACC for headers/selected
+  // Accent - VS Code blue #007ACC for headers/selected
   accent: hasTruecolor ? wrap("38;2;0;122;204", 39) : wrap(94, 39), // #007ACC
   accentAlt: hasTruecolor ? wrap("38;2;86;156;214", 39) : wrap(95, 39), // #569CD6
   accentBold: hasTruecolor ? wrap("1;38;2;0;122;204", 39) : wrap(94, 39),
@@ -67,7 +67,7 @@ export const c = {
   // Muted variants
   gray: wrap(90, 39), // #858585 via 90
 
-  // Legacy compat (dipakai renderer lama) — mapped to muted tones
+  // Legacy compat (dipakai renderer lama) - mapped to muted tones
   red: trueWrap("38;2;244;135;113"),
   green: trueWrap("38;2;137;209;133"),
   yellow: trueWrap("38;2;204;167;0"),
@@ -76,17 +76,18 @@ export const c = {
   magenta: wrap(35, 39),
   white: wrap(37, 39),
   dim: wrap(2, 22),
-  // Syntax highlight — VS Code Dark+
+  // Syntax highlight - VS Code Dark+
   brightYellow: hasTruecolor ? wrap("38;2;215;186;125", 39) : wrap(93, 39), // #D7BA7D numbers
   brightMagenta: hasTruecolor ? wrap("38;2;197;134;192", 39) : wrap(95, 39), // #C586C0 keywords
   brightCyan: hasTruecolor ? wrap("38;2;78;201;176", 39) : wrap(96, 39), // #4EC9B0 types
 }
 
-// ── Glyphs — minimal, Ubuntu Server style ──
+// ── Glyphs - minimal, Ubuntu Server style ──
 export const glyphs = {
   check: supportsUtf8 ? "✓" : "[OK]",
   cross: supportsUtf8 ? "✗" : "[FAIL]",
   arrow: supportsUtf8 ? "›" : ">",
+  prompt: supportsUtf8 ? "❯" : ">",
   dot: supportsUtf8 ? "·" : ".",
   bullet: supportsUtf8 ? "●" : "*",
   ellipsis: supportsUtf8 ? "…" : "...",

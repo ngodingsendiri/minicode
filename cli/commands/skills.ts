@@ -10,7 +10,7 @@ export async function handleSkills(
   const all = await loadSkills(cwdArg)
   if (args[1] === "list" || !args[1]) {
     if (all.length === 0)
-      console.log(c.dim("(no skills found — add markdown files in .minicode/skills/*.md)"))
+      console.log(c.dim("(no skills found - add markdown files in .minicode/skills/*.md)"))
     else {
       const tableData = all.map((s) => ({
         skill: c.yellow(`/${s.name}`),
@@ -34,7 +34,7 @@ export async function handleSkills(
       console.error(`skill ${args[2]} not found`)
       process.exit(1)
     }
-    console.log(`${c.bold(c.cyan("/" + s.name))} ${c.dim("— " + s.description)}\n\n${s.body}`)
+    console.log(`${c.bold(c.cyan("/" + s.name))} ${c.dim("- " + s.description)}\n\n${s.body}`)
   }
   process.exit(0)
 }

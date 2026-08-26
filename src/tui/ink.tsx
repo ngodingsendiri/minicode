@@ -89,7 +89,7 @@ function InkApp({
 
     offs.push(
       bus.on("execution:started", (e) => {
-        addLog(`→ running ${e.execution.call.name}...`, "tool")
+        addLog(`-> running ${e.execution.call.name}...`, "tool")
       }),
     )
 
@@ -129,7 +129,7 @@ function InkApp({
           : "yellow"
   const isNarrow = getTerminalWidth() < 80
 
-  // Scroll response (arrow up/down) — dynamic viewport height
+  // Scroll response (arrow up/down) - dynamic viewport height
   const viewportH = Math.max(12, (process.stdout.rows || 24) - 10)
   const [scroll, setScroll] = useState(0)
   useInput((input, key) => {
@@ -176,7 +176,7 @@ function InkApp({
         </Text>
       </Box>
 
-      {/* Main content body — stack vertikal bila terminal sempit */}
+      {/* Main content body - stack vertikal bila terminal sempit */}
       <Box flexDirection={isNarrow ? "column" : "row"} flexGrow={1}>
         {/* Response viewport */}
         <Box
@@ -262,7 +262,7 @@ function InkApp({
           {budget != null && usage.cost != null && usage.cost > budget * 0.8 && (
             <Text color={usage.cost > budget ? "red" : "yellow"}>
               {" "}
-              {usage.cost > budget ? "⚠ over budget!" : " 80% budget"}
+              {usage.cost > budget ? "! over budget!" : " 80% budget"}
             </Text>
           )}
         </Box>

@@ -1,4 +1,4 @@
-// Diff renderer — Ubuntu Server style: indentasi + warna, tanpa border.
+// Diff renderer - Ubuntu Server style: indentasi + warna, tanpa border.
 import { c } from "./theme.ts"
 
 export interface DiffLine {

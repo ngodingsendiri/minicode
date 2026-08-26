@@ -7,7 +7,7 @@ export interface ColumnDef {
   align?: "left" | "right"
 }
 
-// Table minimal — kolom aligned + separator header, tanpa border.
+// Table minimal - kolom aligned + separator header, tanpa border.
 export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[]): string {
   if (data.length === 0) return c.muted("(no entries)")
 
@@ -27,7 +27,7 @@ export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[
     return align === "right" ? `${" ".repeat(diff)}${text}` : `${text}${" ".repeat(diff)}`
   }
 
-  // Header row — VS Code accent
+  // Header row - VS Code accent
   const header = columns
     .map((col, i) => ` ${c.bold(c.accent(pad(col.header, widths[i]!, col.align)))} `)
     .join(" ")

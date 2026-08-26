@@ -35,7 +35,7 @@ export async function appendHistory(entry: string): Promise<void> {
 // ── ANSI support detection (sekali per process, cached) ──
 // Semua console modern (Windows Terminal, VS Code, conhost Windows 10+,
 // macOS/Linux TTY) memproses VT sequences. JANGAN menggantungkan dropdown
-// pada probe DSR — conhost PS5.1 tidak selalu membalas \x1b[6n padahal VT
+// pada probe DSR - conhost PS5.1 tidak selalu membalas \x1b[6n padahal VT
 // bekerja (itulah kenapa dropdown 'hilang' kembali ke inline).
 // Opt-out eksplisit: MINICODE_DROPDOWN=0 (console benar-benar legacy).
 let ansiCache: Promise<boolean> | undefined
@@ -57,9 +57,10 @@ export interface AskLineOptions {
 // - ANSI (Windows Terminal/VS Code/macOS/Linux): dropdown baris di bawah prompt,
 //   seleksi › hijau, navigasi ↑/↓, Tab = complete tetap editing, Enter = complete + submit.
 // - Legacy console (tanpa VT): fallback inline hints di baris yang sama.
-// Semua logika transisi ada di prompt-engine.ts (pure) — di sini hanya IO + render.
+// Semua logika transisi ada di prompt-engine.ts (pure) - di sini hanya IO + render.
 export async function askLine(opts: AskLineOptions = {}): Promise<string | null> {
-  const prompt = opts.prompt ?? "minicode❯ "
+  const { glyphs } = await import("../src/tui/theme.ts")
+  const prompt = opts.prompt ?? `${glyphs.prompt} `
 
   if (!process.stdin.isTTY) {
     return new Promise((resolve) => {
@@ -186,7 +187,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     const onData = (chunk: Buffer) => {
       for (const d of decodeKeys(chunk)) {
-        // History navigation when dropdown not open (Up/Down → browse history with append)
+        // History navigation when dropdown not open (Up/Down -> browse history with append)
         if ((d.key.type === "up" || d.key.type === "down") && !state.menuOpen) {
           if (d.key.type === "up") {
             if (historyIdx < historyCache.length - 1) {
@@ -227,7 +228,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         state = r.state
         if (r.action === "submit" || r.action === "cancel") {
           const v = r.action === "submit" ? state.line.trim() : null
-          // Empty Enter = "" (not null) — REPL continues; null = cancel (break)
+          // Empty Enter = "" (not null) - REPL continues; null = cancel (break)
           if (ansi) {
             clearOverlay()
             const shown = scrollableLine(`${prompt}${state.line}`)
@@ -239,7 +240,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           return
         }
       }
-      // Satu render per chunk — paste 50+ char tidak meng-redraw 50 kali.
+      // Satu render per chunk - paste 50+ char tidak meng-redraw 50 kali.
       render()
     }
 

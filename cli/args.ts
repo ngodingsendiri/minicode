@@ -1,4 +1,4 @@
-﻿// Pure arg-parsing helpers â€” dipisah dari cli/index.ts agar mudah diuji.
+// Pure arg-parsing helpers - dipisah dari cli/index.ts agar mudah diuji.
 const BOOLEAN_FLAGS = new Set([
   "--verbose",
   "--allow-all",
@@ -23,7 +23,7 @@ const VALUE_FLAGS = new Set([
 ])
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help"])
 
-/** `--flag` atau `--flag=value` â†’ normalisasi ke nama flag murni. */
+/** `--flag` atau `--flag=value` -> normalisasi ke nama flag murni. */
 function flagNameOf(token: string): string | null {
   if (!token.startsWith("-")) return null
   const eq = token.indexOf("=")

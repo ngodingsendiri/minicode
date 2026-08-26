@@ -1,9 +1,9 @@
-﻿// REPL loop â€” mode interaktif dengan prompt, history, slash commands, verify, budget.
+// REPL loop - mode interaktif dengan prompt, history, slash commands, verify, budget.
 
 import { renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { formatError } from "../src/tui/renderer.ts"
-import { c } from "../src/tui/theme.ts"
+import { c, glyphs } from "../src/tui/theme.ts"
 import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"
 import { friendlyError, friendlyFromCategory } from "./errors.ts"
 import { appendHistory, askLine } from "./input.ts"
@@ -40,25 +40,25 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     }
   })
 
-  // Auto-suggest: slash commands + skills (dipakai askLine â†’ render inline)
+  // Auto-suggest: slash commands + skills (dipakai askLine -> render inline)
   const getSuggestions = (line: string): string[] => {
     if (!line.startsWith("/")) return []
     const candidates = [
       ...BUILTIN_COMMANDS.map((b) => `/${b.name}`),
       ...allLoadedSkills.map((s) => `/${s.name}`),
     ]
-    // Exact match (e.g. "/provider") â†’ suppress dropdown, let command open directly
+    // Exact match (e.g. "/provider") -> suppress dropdown, let command open directly
     if (candidates.includes(line.trim())) return []
     return candidates.filter((c) => c.startsWith(line))
   }
-  // Group label â€” commands vs skills di dropdown (header dinamis)
+  // Group label - commands vs skills di dropdown (header dinamis)
   const groupOf = (text: string): string => {
     const name = text.slice(1).split(" ")[0]!
     const isCmd = BUILTIN_COMMANDS.some((b) => b.name === name)
     return isCmd ? "commands" : "skills"
   }
 
-  // Clear screen â€” bersihkan semua, langsung prompt
+  // Clear screen - bersihkan semua, langsung prompt
   process.stdout.write("\x1b[2J\x1b[H")
 
   const commandCtx: CommandContext = {
@@ -81,12 +81,12 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   while (true) {
     // Prompt menampilkan cutoff budget (hanya saat --budget aktif)
-    let promptText = "minicodeâ¯ "
+    let promptText = glyphs.brandPrompt + " "
     if (budget != null) {
       const u = usage.get(modelRef.current)
       if (u.cost != null && budget > 0) {
         const pct = Math.min(100, Math.round((u.cost / budget) * 100))
-        promptText = `minicodeâ¯[${pct}%] `
+        promptText = `${glyphs.prompt}[${pct}%] `
       }
     }
     const line = await askLine({ prompt: promptText, hints: getSuggestions, groupOf })
@@ -97,7 +97,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
     // Output slash command (yang berbentuk daftar/hasil) tampil dalam
     // jendela modal (panel), bukan mengalir ke prompt. Command interaktif
-    // (provider/model picker) punya UI sendiri â€” JANGAN dibungkus captureOutput
+    // (provider/model picker) punya UI sendiri - JANGAN dibungkus captureOutput
     // karena monkey-patch stdout.write akan merusak overlay mereka.
     const PANEL_COMMANDS = new Set(["help", "cost", "status", "sessions", "sync"])
     const cmdName = q.slice(1).split(" ")[0]!.toLowerCase()
@@ -120,18 +120,18 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       continue
     }
 
-    // Slash yang bukan command & bukan skill â†’ jangan dipanggil ke LLM
+    // Slash yang bukan command & bukan skill -> jangan dipanggil ke LLM
     let finalPrompt = q
     if (q.startsWith("/")) {
       const spaceIdx = q.indexOf(" ")
       const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx)
       const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1)
-      // cache: allLoadedSkills dari setup â€” tidak perlu readdir ulang tiap prompt
+      // cache: allLoadedSkills dari setup - tidak perlu readdir ulang tiap prompt
       const skill = allLoadedSkills.find((s) => s.name === skillName)
       if (skill) {
         finalPrompt = await renderSkill(skill, skillArgs)
       } else {
-        process.stdout.write(`\n  Unknown command: ${q.split(" ")[0]} â€” type /help\n\n`)
+        process.stdout.write(`\n  Unknown command: ${q.split(" ")[0]} - type /help\n\n`)
         continue
       }
     }
@@ -139,26 +139,26 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     let overBudget = false
     let hadError: string | undefined
     const t0 = Date.now()
-    // Timeout countdown warning â€” jangan kaget "tiba-tiba timeout" pada model lambat
+    // Timeout countdown warning - jangan kaget "tiba-tiba timeout" pada model lambat
     let timeoutWarn: ReturnType<typeof setTimeout> | undefined
     if (Number.isFinite(effectiveTimeoutMs) && effectiveTimeoutMs > 60_000) {
       timeoutWarn = setTimeout(() => {
-        process.stderr.write(c.yellow(`\nâš  60s to timeout â€” /model faster or --timeout 0\n`))
+        process.stderr.write(c.yellow(`\n! 60s to timeout - /model faster or --timeout 0\n`))
       }, effectiveTimeoutMs - 60_000)
     }
     try {
       try {
         await runPromptWithVerify(finalPrompt)
         const u = usage.get(modelRef.current)
-        const costPart = u.cost != null ? ` Â· $${u.cost.toFixed(4)}` : ""
+        const costPart = u.cost != null ? ` · $${u.cost.toFixed(4)}` : ""
         process.stdout.write(
-          `\n  ${u.totalTokens.toLocaleString()} tokens${costPart} Â· ${session.state.stepCount} steps Â· ${Math.round((Date.now() - t0) / 1000)}s`,
+          `\n  ${u.totalTokens.toLocaleString()} tokens${costPart} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s`,
         )
         // Transparansi fallback: beri tahu jika router menyubstitusi model.
         const mUsed = usage.modelUsed()
         if (mUsed.effective && mUsed.effective !== modelRef.current) {
           process.stdout.write(
-            `  (via ${mUsed.provider ?? "?"}/${mUsed.effective} â€” requested ${modelRef.current})`,
+            `  (via ${mUsed.provider ?? "?"}/${mUsed.effective} - requested ${modelRef.current})`,
           )
         }
         process.stdout.write("\n\n")
@@ -166,7 +166,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         if (budget != null && u.cost != null) {
           if (u.cost > budget) overBudget = true
           else if (u.cost > budget * 0.8)
-            process.stderr.write(`  âš  80% of $${budget.toFixed(2)} budget used\n`)
+            process.stderr.write(`  ! 80% of $${budget.toFixed(2)} budget used\n`)
         }
 
         await writeTrace(cwd, {
@@ -217,7 +217,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         : friendlyError(hadError)
       lastCategory = undefined
       process.stdout.write(`\n  ${f.message}\n`)
-      if (f.fix) process.stdout.write(`  â†’ ${f.fix}\n\n`)
+      if (f.fix) process.stdout.write(`  -> ${f.fix}\n\n`)
     }
   }
 

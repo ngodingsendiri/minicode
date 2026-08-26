@@ -1,4 +1,4 @@
-// Provider Manager window — VS Code palette
+// Provider Manager window - VS Code palette
 
 import { detectAndSave, loadConfig, removeProvider } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
@@ -29,7 +29,7 @@ export async function runProviderManager(opts: {
     const cfg = await loadConfig(opts.cwd)
     console.log("\nProviders:")
     for (const p of cfg.providers)
-      console.log(`  ${p.id} — ${p.baseUrl} (${p.models.length} models)`)
+      console.log(`  ${p.id} - ${p.baseUrl} (${p.models.length} models)`)
     return
   }
 
@@ -68,7 +68,7 @@ export async function runProviderManager(opts: {
         `${DIM}─ ${c.accent(c.bold("Providers"))}${providers.length ? ` ${DIM}(${providers.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
       )
       if (providers.length === 0) {
-        lines.push(`${DIM}  (no providers — press a to add)${RESTORE}`)
+        lines.push(`${DIM}  (no providers - press a to add)${RESTORE}`)
       } else {
         for (let i = 0; i < rows.length; i++) {
           const it = rows[i]!
@@ -121,7 +121,7 @@ export async function runProviderManager(opts: {
     let busy = false
 
     // Suspend: hapus overlay + lepas raw mode + listener sementara
-    // (untuk askLine/askSecret di a/d/e). Tidak menyentuh `done` — manager
+    // (untuk askLine/askSecret di a/d/e). Tidak menyentuh `done` - manager
     // tetap hidup; resume() menggambar ulang overlay dari posisi kursor kini.
     const suspend = () => {
       process.stdout.write(SYNC_START)
@@ -324,7 +324,7 @@ export async function runProviderManager(opts: {
             break
           }
           case "enter": {
-            // Set model sync dari data yang sudah dimuat — tidak ada console.log
+            // Set model sync dari data yang sudah dimuat - tidak ada console.log
             // dan tidak ada async yang nembak setelah resolve (menghentikan REPL).
             const p = providers[sel]
             if (p && p.firstModel && opts.setModelOverride) {

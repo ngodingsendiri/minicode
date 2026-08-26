@@ -1,16 +1,16 @@
-// Markdown decoration — Ubuntu Server style.
-// Heading → bold, bullet → indentasi, code fence → indentasi + syntax highlight.
-// Inline: **bold**, *italic*, `code`, ~~strike~~, [text](url) → teks accent (no underline).
+// Markdown decoration - Ubuntu Server style.
+// Heading -> bold, bullet -> indentasi, code fence -> indentasi + syntax highlight.
+// Inline: **bold**, *italic*, `code`, ~~strike~~, [text](url) -> teks accent (no underline).
 
 import { highlightCode } from "./highlight.ts"
 import { c } from "./theme.ts"
 
-// ── Inline markdown → ANSI ──
+// ── Inline markdown -> ANSI ──
 export function renderInline(text: string): string {
   let t = text
-  // [text](url) → accent bold text (url hidden, no underline — terminal can't click)
+  // [text](url) -> accent bold text (url hidden, no underline - terminal can't click)
   t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string) => c.accent(c.bold(label)))
-  // `code` → brightCyan
+  // `code` -> brightCyan
   t = t.replace(/`([^`]+)`/g, (_m, code: string) => c.brightCyan(code))
   // **bold**
   t = t.replace(/\*\*([^*]+)\*\*/g, (_m, bold: string) => c.bold(bold))
@@ -41,20 +41,20 @@ export function decorateMarkdown(text: string): string {
       continue
     }
 
-    // Inside code fence → indentasi + syntax highlight
+    // Inside code fence -> indentasi + syntax highlight
     if (inFence && fenceLang) {
       out.push("  " + highlightCode(line, fenceLang))
       continue
     }
 
-    // Headings (# ## ###) → bold with vertical spacing
+    // Headings (# ## ###) -> bold with vertical spacing
     if (/^#{1,3}\s/.test(line)) {
       if (out.length > 0 && out[out.length - 1] !== "") out.push("")
       out.push(c.bold(line))
       continue
     }
 
-    // Bullet list → indentasi
+    // Bullet list -> indentasi
     if (/^\s*[-*]\s/.test(line)) {
       out.push("  " + renderInline(line.trimStart()))
       continue

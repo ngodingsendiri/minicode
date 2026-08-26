@@ -1,8 +1,8 @@
 import type { EventBus } from "minicore/core/index.ts"
 
-// Turn status line — satu baris di stderr: `· bai/deepseek-v4-flash · 12 steps …`
+// Turn status line - satu baris di stderr: `· bai/deepseek-v4-flash · 12 steps …`
 // Selalu single-line (systemd-style). Tidak pernah merusak output streaming.
-// Dibatasi: non-TTY / legacy console → no-op.
+// Dibatasi: non-TTY / legacy console -> no-op.
 export function attachTurnStatus(
   bus: EventBus,
   opts: { initialModel?: string; getModel?: () => string | undefined } = {},
@@ -22,7 +22,7 @@ export function attachTurnStatus(
   let reasoning = false
   let spinner: ReturnType<typeof setInterval> | undefined
   let fi = 0
-  const F = ["·", "··", "···"] // dots cycling — reasoning indicator
+  const F = ["·", "··", "···"] // dots cycling - reasoning indicator
 
   const paint = () => {
     const status = reasoning ? "reasoning" : "working"

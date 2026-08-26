@@ -13,7 +13,7 @@ export async function handleProviders(
   if (firstArg === "providers") {
     if (cfg.providers.length === 0) {
       console.log(
-        "(no providers configured — run `minicode --interactive` then /provider-add, or `minicode config add --baseUrl <url> --apiKey <key>`)",
+        "(no providers configured - run `minicode --interactive` then /provider-add, or `minicode config add --baseUrl <url> --apiKey <key>`)",
       )
     } else {
       console.log("")
@@ -35,7 +35,7 @@ export async function handleProviders(
     if (pid) {
       const p = cfg.providers.find((x) => x.id === pid)
       if (!p) {
-        console.error(`provider "${pid}" not found — minicode providers`)
+        console.error(`provider "${pid}" not found - minicode providers`)
         process.exit(1)
       }
       const list = p.models.filter(match)
@@ -45,7 +45,7 @@ export async function handleProviders(
       if (cfg.providers.length === 0) console.log("(no providers)")
       for (const p of cfg.providers) {
         const list = p.models.filter(match)
-        console.log(`${p.id} (${p.baseUrl})${filter ? ` — match "${filter}"` : ""}`)
+        console.log(`${p.id} (${p.baseUrl})${filter ? ` - match "${filter}"` : ""}`)
         if (!list.length) console.log("  (no match)")
         list.slice(0, 10).forEach((m) => console.log(`  ${m}`))
         if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`)
@@ -57,8 +57,8 @@ export async function handleProviders(
   if (firstArg === "sync") {
     console.log("Syncing models from providers...")
     const results = await refreshProviderModels({ cwd: cwdArg })
-    for (const r of results) console.log(`  [OK] ${r.id}: ${r.from} → ${r.to} models`)
-    if (!results.length) console.log("  (no provider found — use `minicode config add` first)")
+    for (const r of results) console.log(`  [OK] ${r.id}: ${r.from} -> ${r.to} models`)
+    if (!results.length) console.log("  (no provider found - use `minicode config add` first)")
     process.exit(0)
   }
   process.exit(0)

@@ -1,4 +1,4 @@
-// Word-wrap + justify (rata kanan-kiri) — untuk output teks AI.
+// Word-wrap + justify (rata kanan-kiri) - untuk output teks AI.
 // ANSI escape (warna/bold) tidak dihitung sebagai karakter lebar.
 
 export function stripAnsi(s: string): string {
@@ -10,7 +10,7 @@ export function visibleLen(s: string): number {
 }
 
 // Wrap teks ke baris-baris ≤ `width` dengan potongan di batas spasi.
-// Baris dalam code fence (```) tidak di-justify — hanya wrapped.
+// Baris dalam code fence (```) tidak di-justify - hanya wrapped.
 export function wordWrap(text: string, width: number): string {
   if (width <= 0) return text
   const lines = text.split("\n")

@@ -1,4 +1,4 @@
-// Modal picker — searchable, VS Code palette
+// Modal picker - searchable, VS Code palette
 import { c } from "../src/tui/theme.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 

@@ -34,7 +34,7 @@ export async function handleConfig(
   } else if (sub === "list") {
     const cfg = await loadConfig()
     if (cfg.providers.length === 0)
-      console.log(c.dim("(no providers configured — add via minicode config add or setup wizard)"))
+      console.log(c.dim("(no providers configured - add via minicode config add or setup wizard)"))
     else {
       const tableData = cfg.providers.map((p) => ({
         id: c.cyan(p.id),
@@ -113,7 +113,7 @@ export async function handleConfig(
     } else if (mcpSub === "list") {
       const cfg = await loadConfig()
       if (!cfg.mcpServers?.length)
-        console.log(c.dim("(no MCP servers configured — add via minicode config mcp add)"))
+        console.log(c.dim("(no MCP servers configured - add via minicode config mcp add)"))
       else {
         const tableData = cfg.mcpServers.map((m) => ({
           id: c.cyan(m.id),
@@ -181,7 +181,7 @@ export async function handleConfig(
     } else if (lspSub === "list") {
       const cfg = await loadConfig()
       if (!cfg.lspServers?.length)
-        console.log(c.dim("(no LSP servers configured — add via minicode config lsp add)"))
+        console.log(c.dim("(no LSP servers configured - add via minicode config lsp add)"))
       else {
         const tableData = cfg.lspServers.map((l) => ({
           ext: c.cyan(l.ext),
