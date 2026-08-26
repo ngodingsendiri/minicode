@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { THEMES, resolveThemeName } from "../src/tui/themes.ts"
+import { THEMES } from "../src/tui/themes.ts"
 import { applyTheme } from "../src/tui/theme.ts"
 
 test("themes: 4 presets with all tokens", () => {

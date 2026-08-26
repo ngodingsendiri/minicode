@@ -108,13 +108,30 @@ function App(p: FullscreenProps) {
       p.bus.on("execution:completed", (e) => {
         const name = e.execution.call.name
         const args = (e.execution.call.args ?? {}) as Record<string, unknown>
+        const isErr = e.execution.result.isError
+        const resTxt = String(e.execution.result.content ?? "").slice(0, 400)
         const target =
           typeof args.path === "string"
             ? args.path
             : typeof (args.cmd ?? args.command) === "string"
               ? String(args.cmd ?? args.command).slice(0, 50)
               : ""
-        add(e.execution.result.isError ? "error" : "tool", `${name} ${target}`.trim())
+        if (isErr) {
+          add("error", `${name} ${target}: ${resTxt.slice(0, 120)}`)
+          return
+        }
+        if ((name === "edit" || name === "apply_patch") && typeof args.path === "string") {
+          const oldS = String(args.oldString ?? "")
+          const newS = String(args.newString ?? "")
+          const dl = oldS.split("\n").filter((l) => l.trim())
+          const nl = newS.split("\n").filter((l) => l.trim())
+          const lines: string[] = [`edit ${args.path}`]
+          for (const l of dl.slice(0, 3)) lines.push(`  - ${l.trim().slice(0, 70)}`)
+          for (const l of nl.slice(0, 3)) lines.push(`  + ${l.trim().slice(0, 70)}`)
+          add("tool", lines.join("\n"))
+          return
+        }
+        add("tool", `${name} ${target}`.trim())
       }),
     )
     offs.push(
