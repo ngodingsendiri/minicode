@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { LIMITS } from "../constants.ts"
 
 function dbPath(cwd?: string): string {
   const local = resolve(cwd ?? process.cwd(), ".minicode", "sessions.db")
@@ -22,7 +23,10 @@ function open(cwd?: string): Database {
   const p = dbPath(cwd)
   const db = new Database(p)
   if (!initializedSessionPaths.has(p)) {
-    db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA synchronous=NORMAL;`)
+    // journal_size_limit + wal_autocheckpoint: WAL tidak tumbuh tak terbatas
+    db.exec(
+      `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=${LIMITS.SQLITE_BUSY_TIMEOUT_MS}; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=${LIMITS.SQLITE_WAL_SIZE_LIMIT_BYTES}; PRAGMA wal_autocheckpoint=${LIMITS.SQLITE_WAL_AUTOCHECKPOINT_PAGES};`,
+    )
     initializedSessionPaths.add(p)
   }
   db.exec(`
@@ -73,6 +77,27 @@ function safeContent(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+// SQLITE_BUSY / database-is-locked bisa muncul saat Pool(3) sub-agent menulis
+// bersamaan meski WAL+busy_timeout aktif (terutama Windows). Retry singkat
+// sinkron — call site saveSession/deleteSession memang sinkron.
+function withBusyRetry<T>(fn: () => T, attempts = 3): T {
+  let last: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return fn()
+    } catch (e) {
+      const msg = String((e as Error).message ?? e)
+      if (!msg.includes("SQLITE_BUSY") && !msg.includes("database is locked")) throw e
+      last = e
+      const end = Date.now() + 25 * 2 ** i
+      while (Date.now() < end) {
+        /* spin singkat */
+      }
+    }
+  }
+  throw last
 }
 
 export function saveSession(
@@ -166,7 +191,7 @@ export function saveSession(
     }
   })
   try {
-    txn()
+    withBusyRetry(() => txn())
   } finally {
     db.close()
   }
@@ -253,7 +278,7 @@ export function deleteSession(id: string, cwd?: string) {
     db.prepare("DELETE FROM sessions WHERE id = ?").run(id)
   })
   try {
-    txn()
+    withBusyRetry(() => txn())
   } finally {
     db.close()
   }

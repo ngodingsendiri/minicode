@@ -25,7 +25,10 @@ function open(cwd?: string): Database {
   const p = dbPath(cwd)
   const db = new Database(p)
   if (!initializedPaths.has(p)) {
-    db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000; PRAGMA synchronous=NORMAL;`)
+    // journal_size_limit + wal_autocheckpoint: WAL tidak tumbuh tak terbatas
+    db.exec(
+      `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=${LIMITS.SQLITE_BUSY_TIMEOUT_MS}; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=${LIMITS.SQLITE_WAL_SIZE_LIMIT_BYTES}; PRAGMA wal_autocheckpoint=${LIMITS.SQLITE_WAL_AUTOCHECKPOINT_PAGES};`,
+    )
     initializedPaths.add(p)
   }
   db.exec(`
@@ -117,13 +120,31 @@ async function embedTexts(
   return null
 }
 
+// Retry singkat utk SQLITE_BUSY saat beberapa sub-agent menulis bersamaan.
+function withBusyRetry<T>(fn: () => T, attempts = 3): T {
+  let last: unknown
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return fn()
+    } catch (e) {
+      const msg = String((e as Error).message ?? e)
+      if (!msg.includes("SQLITE_BUSY") && !msg.includes("database is locked")) throw e
+      last = e
+      const end = Date.now() + 25 * 2 ** i
+      while (Date.now() < end) {
+        /* spin singkat */
+      }
+    }
+  }
+  throw last
+}
+
 export function deleteMemoryByQuery(query: string, cwd?: string): number {
   const db = open(cwd)
   try {
     // full scan dulu (SELECT semua lalu filter di JS) → pakai SQL instr() langsung
-    const info = db
-      .prepare("DELETE FROM memory WHERE instr(lower(text), lower(?)) > 0")
-      .run(query.toLowerCase())
+    const stmt = db.prepare("DELETE FROM memory WHERE instr(lower(text), lower(?)) > 0")
+    const info = withBusyRetry(() => stmt.run(query.toLowerCase()))
     return info.changes
   } finally {
     db.close()
@@ -132,8 +153,10 @@ export function deleteMemoryByQuery(query: string, cwd?: string): number {
 
 export function clearAllMemory(cwd?: string): void {
   const db = open(cwd)
-  db.exec("DELETE FROM memory")
-  db.exec("VACUUM")
+  withBusyRetry(() => {
+    db.exec("DELETE FROM memory")
+    db.exec("VACUUM")
+  })
   db.close()
 }
 
@@ -149,12 +172,8 @@ export async function addMemory(
     if (vecs && vecs[0]) embedding = toBlob(vecs[0])
   }
   // fallback: store null embedding, will use keyword only
-  db.prepare("INSERT INTO memory (id, text, embedding, created_at) VALUES (?, ?, ?, ?)").run(
-    id,
-    text,
-    embedding,
-    Date.now(),
-  )
+  const ins = db.prepare("INSERT INTO memory (id, text, embedding, created_at) VALUES (?, ?, ?, ?)")
+  withBusyRetry(() => ins.run(id, text, embedding, Date.now()))
   db.close()
   return id
 }
