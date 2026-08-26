@@ -248,6 +248,20 @@ function App(p: FullscreenProps) {
       return
     }
     if (key.escape) return doInterrupt()
+    if (key.ctrl && input === "r") {
+      const h = p.history().slice().reverse()
+      if (!h.length) return
+      setPicker({
+        title: "history",
+        items: h.slice(0, 30).map((t) => ({ label: t.slice(0, 80), value: t })),
+        sel: 0,
+        onPick: (v) => {
+          setLine(v)
+          return "history dimuat - enter untuk kirim"
+        },
+      })
+      return
+    }
     if (key.ctrl && input === "o") return setExpanded((v) => !v)
     if (key.shift && key.tab) return setMode(p.onCycleMode())
     if (busy) return
