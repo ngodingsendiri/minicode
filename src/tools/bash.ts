@@ -1,25 +1,10 @@
 ﻿import { spawn } from "node:child_process"
 import type { Tool } from "minicore"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
-import { scrubSecrets } from "../policy/scrub.ts"
+// re-export untuk backward compat (helper kini terpusat di policy/scrub)
+export { SECRET_ENV_RE, sanitizeSpawnEnv, stripSecretsEnv } from "../policy/scrub.ts"
+import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
 import { dockerAvailable, runInDocker } from "../sandbox/docker.ts"
-
-export const SECRET_ENV_RE =
-  /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY|DATABASE_URL|ENCRYPTION)/i
-
-// strip credential env vars before spawning shell — reduce secret exfiltration
-export function stripSecretsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(env)) {
-    if (SECRET_ENV_RE.test(k)) continue
-    out[k] = v
-  }
-  return out
-}
-// backward compat
-function stripSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return stripSecretsEnv(env)
-}
 
 export const bashTool: Tool = {
   name: "bash",
@@ -43,10 +28,9 @@ export const bashTool: Tool = {
     // Docker sandbox mode — run in ephemeral isolated container
     if (process.env.MINICODE_SANDBOX === "docker") {
       if (dockerAvailable()) {
-        const stripped = stripSecretsEnv(process.env)
         const res = await runInDocker(cmd as string, c ?? process.cwd(), {
           timeoutMs: timeout,
-          env: stripped as Record<string, string>,
+          env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
         const text = scrubSecrets(res.output)
         if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
@@ -61,7 +45,7 @@ export const bashTool: Tool = {
       const p = spawn(cmd as string, {
         shell: true,
         cwd: c,
-        env: stripSecrets(process.env),
+        env: sanitizeSpawnEnv(process.env),
         signal: ctx.signal,
       })
       let out = "",

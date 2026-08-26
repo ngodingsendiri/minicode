@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { createInterface } from "node:readline"
+import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 export class McpTransport {
   private proc: ChildProcess | null = null
@@ -22,7 +23,8 @@ export class McpTransport {
 
     this.proc = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env },
+      // env kredensial di-strip; env eksplisit config server menang setelahnya
+      env: sanitizeSpawnEnv(process.env, env),
       signal: this.killSignal.signal,
     })
 

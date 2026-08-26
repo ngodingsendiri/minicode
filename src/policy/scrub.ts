@@ -46,3 +46,32 @@ export function scrubSecrets(text: string): string {
 export function scrubLine(line: string): string {
   return scrubSecrets(line)
 }
+
+// Env vars yang namanya cocok pola kredensial di-strip sebelum spawn proses
+// (bash / docker / MCP server / LSP server) — kurangi permukaan exfiltration.
+export const SECRET_ENV_RE =
+  /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY|DATABASE_URL|ENCRYPTION)/i
+
+export function stripSecretsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {}
+  for (const [k, v] of Object.entries(env)) {
+    if (SECRET_ENV_RE.test(k)) continue
+    out[k] = v
+  }
+  return out
+}
+
+// Satu pintu env utk semua spawn (docker/mcp/lsp/bash): merge base+extra lalu
+// strip kredensial dari HASIL AKHIR — extra tidak bisa me-reintroduce secret
+// dan base tak pernah lolos tanpa filter.
+export function sanitizeSpawnEnv(
+  base: NodeJS.ProcessEnv,
+  extra?: Record<string, string>,
+): Record<string, string> {
+  const merged: NodeJS.ProcessEnv = { ...base, ...(extra ?? {}) }
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(stripSecretsEnv(merged))) {
+    if (v !== undefined) out[k] = v
+  }
+  return out
+}

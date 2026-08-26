@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 let dockerOk: boolean | null = null
 
@@ -78,10 +79,11 @@ export function runInDocker(
   ]
 
   return new Promise((resolveResult) => {
-    // opts.env is already stripped when coming from bashTool; still merge safely
+    // env selalu disanitasi dari hasil merge final — secret (API_KEY/TOKEN/...)
+    // tidak pernah diwarisi container walau caller lupa strip.
     const p = spawn("docker", args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, ...(opts.env ?? {}) },
+      env: sanitizeSpawnEnv(process.env, opts.env),
     })
     let out = "",
       err = ""

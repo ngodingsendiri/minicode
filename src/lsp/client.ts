@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer"
 import { type ChildProcess, spawn } from "node:child_process"
 import { extname, resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
+import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 export interface LspServerEntry {
   ext: string // ".ts"
@@ -73,7 +74,8 @@ class LspConnection {
   private async doStart(rootPath: string): Promise<void> {
     this.proc = spawn(this.entry.command, this.entry.args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...(this.entry.env ?? {}) },
+      // env kredensial di-strip; env eksplisit config server menang setelahnya
+      env: sanitizeSpawnEnv(process.env, this.entry.env),
       signal: this.killSignal.signal,
     })
     this.proc.on("error", (err) => this.failAll(err))
