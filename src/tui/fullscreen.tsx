@@ -209,10 +209,10 @@ function App(p: FullscreenProps) {
       if (key.downArrow) return setPicker((v) => (v ? { ...v, sel: Math.min(v.items.length - 1, v.sel + 1) } : v))
       if (key.return || input === " ") {
         const cur = picker
-        const it = cur.items[cur.sel]
+        const picked = cur.items[cur.sel]
         setPicker(null)
-        if (it) {
-          const r = it.onPick(it.value)
+        if (picked) {
+          const r = cur.onPick(picked.value)
           if (typeof r === "string") add("info", r)
         }
       }
