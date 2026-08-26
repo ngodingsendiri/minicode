@@ -43,7 +43,15 @@ export async function loadCheckpointManifest(
   try {
     const raw = await readFile(path, "utf8")
     return JSON.parse(raw) as CheckpointManifest
-  } catch {
+  } catch (e) {
+    // manifest hilang = kondisi normal utk sesi baru; manifest KORUP = data
+    // riwayat checkpoint hilang diam-diam — minimal beri tahu user.
+    const code = (e as NodeJS.ErrnoException).code
+    if (code !== "ENOENT") {
+      process.stderr.write(
+        `[warn] checkpoint: manifest unreadable (${(e as Error).message}) — starting empty\n`,
+      )
+    }
     return { sessionId, currentIndex: -1, checkpoints: [] }
   }
 }

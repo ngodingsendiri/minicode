@@ -106,7 +106,12 @@ async function embedTexts(
         if (!res.ok) continue
         const json = (await res.json()) as { data?: { embedding: number[] }[] }
         if (json.data && Array.isArray(json.data)) return json.data.map((d) => d.embedding)
-      } catch {}
+      } catch (e) {
+        // fallback keyword-only tetap berjalan, tapi jangan senyap total
+        process.stderr.write(
+          `[warn] vector: embedding attempt failed: ${(e as Error).message}\n`,
+        )
+      }
     }
   }
   return null

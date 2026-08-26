@@ -39,14 +39,20 @@ function open(cwd?: string): Database {
       db.exec("UPDATE sessions SET updated_at = created_at WHERE updated_at IS NULL")
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)`)
-  } catch {}
+  } catch (e) {
+    process.stderr.write(`[warn] persistence: sessions migration skipped: ${(e as Error).message}\n`)
+  }
   try {
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]
     if (!msgCols.some((c) => c.name === "toolCallId")) {
       db.exec("ALTER TABLE messages ADD COLUMN toolCallId TEXT")
       db.exec("ALTER TABLE messages ADD COLUMN name TEXT")
     }
-  } catch {}
+  } catch (e) {
+    process.stderr.write(
+      `[warn] persistence: messages migration skipped: ${(e as Error).message}\n`,
+    )
+  }
   return db
 }
 
@@ -155,7 +161,9 @@ export function saveSession(
     // TTL: hapus sesi basi + orphan rows (best-effort; 0 = forever)
     try {
       purgeExpired(db, now)
-    } catch {}
+    } catch (e) {
+      process.stderr.write(`[warn] persistence: TTL purge failed: ${(e as Error).message}\n`)
+    }
   })
   try {
     txn()
