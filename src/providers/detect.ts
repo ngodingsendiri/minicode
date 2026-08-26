@@ -1,3 +1,5 @@
+import { LIMITS } from "../constants.ts"
+
 export interface DetectedModel {
   id: string
 }
@@ -38,8 +40,12 @@ async function tryFetchModels(
 ): Promise<string[] | null> {
   const urls = [`${baseUrl.replace(/\/+$/, "")}/models`, `${baseUrl.replace(/\/+$/, "")}/v1/models`]
   for (const url of urls) {
+    // timeout PER-ATTEMPT: satu fetch yang menggantung tidak memakan seluruh
+    // budget sinyal luar — kombinasi via AbortSignal.any.
+    const perAttempt = AbortSignal.timeout(LIMITS.DETECT_ATTEMPT_TIMEOUT_MS)
+    const attemptSignal = signal ? AbortSignal.any([signal, perAttempt]) : perAttempt
     try {
-      const res = await fetch(url, { headers, signal })
+      const res = await fetch(url, { headers, signal: attemptSignal })
       if (!res.ok) continue
       const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] }
       const data = json.data ?? json.models ?? []

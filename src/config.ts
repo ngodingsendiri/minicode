@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { atomicWriteText } from "./lib/atomic-write.ts"
-import { detectModels } from "./providers/detect.ts"
+import { clearDetectCache, detectModels } from "./providers/detect.ts"
 
 export interface ProviderEntry {
   id: string
@@ -207,6 +207,10 @@ export async function removeProvider(id: string, opts: { global?: boolean; cwd?:
 export async function refreshProviderModels(
   opts: { global?: boolean; cwd?: string } = {},
 ): Promise<{ id: string; from: number; to: number }[]> {
+  // /sync harus benar-benar re-fetch — tanpa ini detectModels menyajikan cache
+  // 30 menit dan /sync menjadi no-op ("from == to") padahal provider punya
+  // model baru.
+  clearDetectCache()
   const merged = await loadConfig(opts.cwd)
   const providers: ProviderEntry[] = merged.providers
   if (providers.length === 0 && (opts.global ?? true)) {
