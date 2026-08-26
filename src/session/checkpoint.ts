@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
+import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
 
 const MAX_CHECKPOINTS = 20
@@ -54,10 +55,7 @@ export async function saveCheckpointManifest(
   const dir = getCheckpointDir(manifest.sessionId, cwd)
   await mkdir(dir, { recursive: true }).catch(() => {})
   const path = getManifestPath(manifest.sessionId, cwd)
-  const tmp = `${path}.tmp.${process.pid}.${randomUUID().slice(0, 6)}`
-  await writeFile(tmp, JSON.stringify(manifest, null, 2), "utf8")
-  const { rename } = await import("node:fs/promises")
-  await rename(tmp, path)
+  await atomicWriteText(path, JSON.stringify(manifest, null, 2))
 }
 
 export async function captureFileSnapshot(

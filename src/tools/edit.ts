@@ -1,6 +1,7 @@
-import { readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
+import { readFile, realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
 
@@ -175,10 +176,8 @@ export const editTool: Tool = {
 
     const next = content.slice(0, match.start) + newS + content.slice(match.end)
     if (next.length > 5_000_000) throw new Error(`result too large: ${next.length} chars (max 5M)`)
-    // atomic
-    const tmp = `${realAbs}.tmp.${process.pid}.${Date.now()}`
-    await writeFile(tmp, next, "utf8")
-    await rename(tmp, realAbs)
+    // atomic (O_EXCL + randomUUID tmp)
+    await atomicWriteText(realAbs, next)
     const note = match.mode !== "exact" ? ` (${match.mode} match)` : ""
     const base = `edited ${realAbs}${note} (${oldS.length} → ${newS.length} chars)`
     return await appendLspDiagnostics(realAbs, next, base)

@@ -1,7 +1,8 @@
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { ToolCall } from "minicore/core/types.ts"
+import { atomicWriteText } from "../lib/atomic-write.ts"
 import { c } from "../tui/theme.ts"
 
 export interface Allowlist {
@@ -39,15 +40,8 @@ export async function saveAllowlist(entry: string, cwd?: string, opts: { global?
     if (Array.isArray(parsed.allowed)) list = parsed
   } catch {}
   if (!list.allowed.includes(entry)) list.allowed.push(entry)
-  const tmp = `${path}.tmp.${process.pid}`
-  await writeFile(tmp, JSON.stringify(list, null, 2), "utf8")
-  try {
-    await chmod(tmp, 0o600)
-  } catch {}
-  await rename(tmp, path)
-  try {
-    await chmod(path, 0o600)
-  } catch {}
+  await mkdir(dirname(path), { recursive: true }).catch(() => {})
+  await atomicWriteText(path, JSON.stringify(list, null, 2))
 }
 
 export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {

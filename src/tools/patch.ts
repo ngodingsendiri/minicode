@@ -1,6 +1,7 @@
-import { readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
+import { readFile, realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { flexibleMatch } from "./edit.ts"
 
@@ -79,9 +80,7 @@ export const applyPatchTool: Tool = {
     if (content.length > 5_000_000)
       throw new Error(`result too large: ${content.length} chars (max 5M)`)
 
-    const tmp = `${realAbs}.tmp.${process.pid}.${Date.now()}`
-    await writeFile(tmp, content, "utf8")
-    await rename(tmp, realAbs)
+    await atomicWriteText(realAbs, content)
 
     return `applied ${applied.length} patch(es) to ${realAbs}:\n${applied.join("\n")}`
   },

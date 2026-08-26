@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto"
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { join, resolve } from "node:path"
+import { atomicWriteText } from "./lib/atomic-write.ts"
 import { detectModels } from "./providers/detect.ts"
 
 export interface ProviderEntry {
@@ -69,16 +69,7 @@ function normalizeConfig(raw: unknown): MinicodeConfig {
 }
 
 async function writeConfigAtomic(path: string, cfg: MinicodeConfig): Promise<void> {
-  await mkdir(dirname(path), { recursive: true }).catch(() => {})
-  const tmp = `${path}.tmp.${process.pid}.${randomUUID().slice(0, 6)}`
-  await writeFile(tmp, JSON.stringify(cfg, null, 2), "utf8")
-  try {
-    await chmod(tmp, 0o600)
-  } catch {}
-  await rename(tmp, path)
-  try {
-    await chmod(path, 0o600)
-  } catch {}
+  await atomicWriteText(path, JSON.stringify(cfg, null, 2))
 }
 
 export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
