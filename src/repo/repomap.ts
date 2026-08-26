@@ -4,6 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
+import { LIMITS } from "../constants.ts"
 
 const execAsync = promisify(exec)
 
@@ -26,10 +27,10 @@ const SOURCE_EXTS = new Set([
   ".rb",
   ".php",
 ])
-const MAX_FILES = 60
-const MAX_FILE_BYTES = 100_000
-const MAX_REPOMAP_CHARS = 2500
-const MAX_SYMBOLS_PER_FILE = 40
+const MAX_FILES = LIMITS.REPOMAP_MAX_FILES
+const MAX_FILE_BYTES = LIMITS.REPOMAP_MAX_FILE_BYTES
+const MAX_REPOMAP_CHARS = LIMITS.REPOMAP_MAX_CHARS
+const MAX_SYMBOLS_PER_FILE = LIMITS.REPOMAP_MAX_SYMBOLS_PER_FILE
 
 function langFor(file: string): string {
   const ext = file.slice(file.lastIndexOf(".")).toLowerCase()

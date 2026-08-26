@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
+import { LIMITS } from "../constants.ts"
 
 const GLOBAL_MEM = join(homedir(), ".minicode", "MEMORY.md")
 const LOCAL_MEM = ".minicode/MEMORY.md"
@@ -17,7 +18,7 @@ export async function loadMemoryFiles(cwd = process.cwd()): Promise<string> {
   return parts.join("\n\n")
 }
 
-const MAX_MEMORY_FILE_BYTES = 200_000
+const MAX_MEMORY_FILE_BYTES = LIMITS.MEMORY_FILE_MAX_BYTES
 
 export async function appendMemory(text: string, cwd = process.cwd()): Promise<string> {
   const path = resolve(cwd, LOCAL_MEM)
@@ -34,7 +35,7 @@ export async function appendMemory(text: string, cwd = process.cwd()): Promise<s
     const st = await stat(path)
     if (st.size > MAX_MEMORY_FILE_BYTES) {
       const txt = await readFile(path, "utf8")
-      const keep = txt.slice(-150_000)
+      const keep = txt.slice(-LIMITS.MEMORY_TRUNCATE_KEEP_BYTES)
       const cut = keep.indexOf("\n")
       await import("node:fs/promises").then((m) =>
         m.writeFile(path, cut >= 0 ? keep.slice(cut + 1) : keep, "utf8"),

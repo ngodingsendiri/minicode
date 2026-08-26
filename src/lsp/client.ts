@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer"
 import { type ChildProcess, spawn } from "node:child_process"
 import { extname, resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
+import { LIMITS } from "../constants.ts"
 import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 export interface LspServerEntry {
@@ -107,7 +108,7 @@ class LspConnection {
           },
         },
       },
-      15_000,
+      LIMITS.LSP_INIT_TIMEOUT_MS,
     )
     this.notify("initialized", {})
     this.started = true

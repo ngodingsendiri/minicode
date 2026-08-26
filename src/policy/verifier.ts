@@ -2,6 +2,7 @@ import { exec } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { extname, resolve } from "node:path"
 import { promisify } from "node:util"
+import { LIMITS } from "../constants.ts"
 import { getConfiguredExts, lspDiagnostics } from "../lsp/client.ts"
 
 const execAsync = promisify(exec)
@@ -16,7 +17,7 @@ export interface VerifyResult {
 export async function runVerify(
   command: string,
   cwd: string,
-  timeoutMs = 30_000,
+  timeoutMs: number = LIMITS.VERIFY_DEFAULT_TIMEOUT_MS,
 ): Promise<VerifyResult> {
   try {
     const { stdout, stderr } = await execAsync(command, {

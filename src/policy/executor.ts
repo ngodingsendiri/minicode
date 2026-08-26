@@ -2,6 +2,7 @@ import { abortError } from "minicore/core/errors.ts"
 import { runCall } from "minicore/core/executor.ts"
 import type { ExecutorDeps, ToolExecutor } from "minicore/core/index.ts"
 import type { ToolCall, ToolResult } from "minicore/core/types.ts"
+import { LIMITS } from "../constants.ts"
 
 const WRITE_TOOLS = new Set([
   "write_file",
@@ -61,8 +62,8 @@ function makeWaiter(
 export function parallelExecutor(
   opts: { concurrency?: number; writeConcurrency?: number } = {},
 ): ToolExecutor {
-  const concurrency = opts.concurrency ?? 8
-  const writeConcurrency = opts.writeConcurrency ?? 2
+  const concurrency = opts.concurrency ?? LIMITS.EXECUTOR_CONCURRENCY
+  const writeConcurrency = opts.writeConcurrency ?? LIMITS.EXECUTOR_WRITE_CONCURRENCY
 
   return {
     async execute(calls: readonly ToolCall[], deps: ExecutorDeps): Promise<readonly ToolResult[]> {

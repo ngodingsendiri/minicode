@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { LIMITS } from "../constants.ts"
 import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 let dockerOk: boolean | null = null
@@ -86,7 +87,7 @@ export function runInDocker(
       env: sanitizeSpawnEnv(process.env, opts.env),
     })
     // Cap buffer saat streaming — output container raksasa tidak menumpuk di RAM.
-    const OUT_CAP = 100_000 // di atas slice 20k milik bashTool, jauh di bawah OOM
+    const OUT_CAP = LIMITS.DOCKER_OUTPUT_MAX_CHARS
     let out = "",
       err = ""
     let truncated = false
@@ -105,7 +106,7 @@ export function runInDocker(
     }
     p.stdout.on("data", (d) => appendCapped("out", d))
     p.stderr.on("data", (d) => appendCapped("err", d))
-    const timeout = opts.timeoutMs ?? 30_000
+    const timeout = opts.timeoutMs ?? LIMITS.DOCKER_TIMEOUT_MS
     const t = setTimeout(() => p.kill("SIGKILL"), timeout)
     p.on("error", (e) => {
       clearTimeout(t)

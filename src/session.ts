@@ -6,12 +6,17 @@ import { defaultRecoveryPolicy } from "minicore/core/recovery.ts"
 import { buildSystemPrompt, minicodeEstimator } from "./policy/context.ts"
 import { parallelExecutor } from "./policy/executor.ts"
 import { createPermissionHandler } from "./policy/permission.ts"
+import { LIMITS } from "./constants.ts"
 
 // P2 cap wrapper: limit retryAfter to 30s without mutating original error
 const cappedRecovery = {
   onError(error: ProviderError, attempt: number): RecoveryAction {
-    if (error.retryAfterMs != null && error.retryAfterMs > 30_000) {
-      const capped = new ProviderError(error.category, error.message, 30_000)
+    if (error.retryAfterMs != null && error.retryAfterMs > LIMITS.RETRY_AFTER_MAX_MS) {
+      const capped = new ProviderError(
+        error.category,
+        error.message,
+        LIMITS.RETRY_AFTER_MAX_MS,
+      )
       // preserve extra fields if any
       Object.assign(capped, { cause: (error as unknown as { cause?: unknown }).cause })
       return defaultRecoveryPolicy.onError(capped, attempt)
@@ -58,8 +63,8 @@ export async function createMinicodeSession(
     estimator: minicodeEstimator,
     recovery: cappedRecovery,
     executor: parallelExecutor({
-      concurrency: concurrency ?? 8,
-      writeConcurrency: writeConcurrency ?? 2,
+      concurrency: concurrency ?? LIMITS.EXECUTOR_CONCURRENCY,
+      writeConcurrency: writeConcurrency ?? LIMITS.EXECUTOR_WRITE_CONCURRENCY,
     }),
   })
 }

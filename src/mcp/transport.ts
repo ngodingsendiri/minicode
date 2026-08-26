@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process"
 import { createInterface } from "node:readline"
+import { LIMITS } from "../constants.ts"
 import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 export class McpTransport {
@@ -62,7 +63,7 @@ export class McpTransport {
   async request(
     method: string,
     params: Record<string, unknown> = {},
-    timeoutMs = 30_000,
+    timeoutMs: number = LIMITS.MCP_REQUEST_TIMEOUT_MS,
   ): Promise<unknown> {
     const id = ++this.seq
     this.write({ jsonrpc: "2.0", id, method, params })

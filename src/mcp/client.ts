@@ -1,4 +1,5 @@
 import type { Tool, ToolContext } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 import { McpTransport } from "./transport.ts"
 
@@ -96,7 +97,7 @@ class McpConnection {
         const content = Array.isArray((result as any)?.content)
           ? (result as any).content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")
           : String(result)
-        return scrubSecrets(content).slice(0, 100_000)
+        return scrubSecrets(content).slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
       },
     }))
   }

@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
@@ -154,7 +155,8 @@ export const editTool: Tool = {
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > 2_000_000) throw new Error(`file too large: ${p} (${st.size})`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES)
+      throw new Error(`file too large: ${p} (${st.size})`)
     const content = await readFile(realAbs, "utf8").catch(() => {
       throw new Error(`file not found: ${p}`)
     })
@@ -175,7 +177,8 @@ export const editTool: Tool = {
     }
 
     const next = content.slice(0, match.start) + newS + content.slice(match.end)
-    if (next.length > 5_000_000) throw new Error(`result too large: ${next.length} chars (max 5M)`)
+    if (next.length > LIMITS.WRITE_FILE_MAX_CHARS)
+      throw new Error(`result too large: ${next.length} chars (max 5M)`)
     // atomic (O_EXCL + randomUUID tmp)
     await atomicWriteText(realAbs, next)
     const note = match.mode !== "exact" ? ` (${match.mode} match)` : ""

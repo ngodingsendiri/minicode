@@ -1,4 +1,5 @@
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { callMcpTool, getMcpServerIds, listMcpTools } from "../mcp/client.ts"
 
 export const mcpListTool: Tool = {
@@ -67,7 +68,7 @@ export const mcpCallTool: Tool = {
       const content = Array.isArray((result as any)?.content)
         ? (result as any).content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")
         : String(result)
-      return content.slice(0, 100_000)
+      return content.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
     } catch (e) {
       return `[mcp] error: ${(e as Error).message}`
     }

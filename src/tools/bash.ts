@@ -1,5 +1,6 @@
 ﻿import { spawn } from "node:child_process"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
 // re-export untuk backward compat (helper kini terpusat di policy/scrub)
 export { SECRET_ENV_RE, sanitizeSpawnEnv, stripSecretsEnv } from "../policy/scrub.ts"
@@ -23,7 +24,7 @@ export const bashTool: Tool = {
     const c = cwd as string | undefined
     if (c && (isCwdOutsideRoot(c, process.cwd()) || isPathOutsideRoot(c, process.cwd())))
       throw new Error(`cwd outside workspace: ${c}`)
-    const timeout = timeoutMs ?? 30_000
+    const timeout = timeoutMs ?? LIMITS.BASH_DEFAULT_TIMEOUT_MS
 
     // Docker sandbox mode — run in ephemeral isolated container
     if (process.env.MINICODE_SANDBOX === "docker") {
@@ -50,7 +51,7 @@ export const bashTool: Tool = {
       })
       // Cap buffer SAAT streaming (bukan hanya slice di akhir) — command dengan
       // output raksasa (yes / cat file 1GB) tidak boleh membawa proses ke OOM.
-      const OUT_CAP = 20_000
+      const OUT_CAP = LIMITS.BASH_OUTPUT_MAX_CHARS
       let out = "",
         err = ""
       let truncated = false

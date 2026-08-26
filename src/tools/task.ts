@@ -1,12 +1,13 @@
 import type { Tool } from "minicore"
 import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import { LIMITS } from "../constants.ts"
 import { Pool } from "../agents/pool.ts"
 import { loadConfig } from "../config.ts"
 import { buildProviderList } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
 import { createMinicodeSession } from "../session.ts"
 
-const pool = new Pool(3)
+const pool = new Pool(LIMITS.SUB_AGENT_POOL_SIZE)
 
 async function getProvider() {
   const cfg = await loadConfig()
@@ -54,10 +55,10 @@ export const delegateTaskTool: Tool = {
     const requested = Number(maxSteps)
     const cap =
       Number.isFinite(requested) && requested > 0
-        ? Math.min(Math.floor(requested), 50)
+        ? Math.min(Math.floor(requested), LIMITS.DEFAULT_MAX_STEPS)
         : m === "explore"
-          ? 5
-          : 15
+          ? LIMITS.SUB_AGENT_BUDGET_EXPLORE
+          : LIMITS.SUB_AGENT_BUDGET_PLAN
 
     const { allTools } = await import("./index.ts")
     const base = allTools.filter(
@@ -99,7 +100,7 @@ export const delegateTaskTool: Tool = {
         cwd: parentCwd,
         permissionMode: "auto",
         maxSteps: cap,
-        timeoutMs: 120_000,
+        timeoutMs: LIMITS.SUB_AGENT_TIMEOUT_MS,
         systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory or forget_memory (isolated). Parent task: ${String(prompt).slice(0, 200)}`,
       })
 

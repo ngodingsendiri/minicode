@@ -1,13 +1,14 @@
 import { Buffer } from "node:buffer"
 import { ProviderError } from "minicore/core/errors.ts"
 import type { ModelProvider, ProviderEvent, StreamRequest } from "minicore/core/provider.ts"
+import { LIMITS } from "../constants.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"
 
 export interface RouterConfig {
   providers: ModelProvider[]
   defaultProviderId?: string
   // P2 cap
-  maxRetryAfterMs?: number // default 30_000
+  maxRetryAfterMs?: number // default LIMITS.RETRY_AFTER_MAX_MS
   // Token bucket rate limiter (opsional) — cegah request beruntun kena 429
   limiter?: RateLimiter
 }
@@ -42,7 +43,7 @@ function requestFor(
 }
 
 export function createRouterProvider(config: RouterConfig): ModelProvider {
-  const maxRetry = config.maxRetryAfterMs ?? 30_000
+  const maxRetry = config.maxRetryAfterMs ?? LIMITS.RETRY_AFTER_MAX_MS
   const byId = new Map(config.providers.map((p) => [p.id, p]))
   const defaultId = config.defaultProviderId ?? config.providers[0]?.id ?? "router"
 

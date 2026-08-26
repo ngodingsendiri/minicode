@@ -1,6 +1,7 @@
 import { realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
@@ -31,7 +32,8 @@ export const writeFileTool: Tool = {
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
     // guard large write
     const c = content as string
-    if (c.length > 5_000_000) throw new Error(`content too large: ${c.length} chars (max 5M)`)
+    if (c.length > LIMITS.WRITE_FILE_MAX_CHARS)
+      throw new Error(`content too large: ${c.length} chars (max 5M)`)
     // atomic: write tmp (O_EXCL + randomUUID) then rename — anti-hijack & atomic
     await atomicWriteText(realAbs, c)
     const st = await stat(realAbs).catch(() => null)

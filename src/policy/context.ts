@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import { promisify } from "node:util"
 import type { TokenEstimator } from "minicore"
 import { DEFAULT_CHARS_PER_TOKEN } from "minicore/core/tokens.ts"
+import { LIMITS } from "../constants.ts"
 import { loadMemoryFiles } from "../memory/files.ts"
 import { loadRepoMap } from "../repo/repomap.ts"
 
@@ -17,7 +18,7 @@ export function estimateImageTokens(bytes: number): number {
   return Math.ceil(b64 / DEFAULT_CHARS_PER_TOKEN)
 }
 
-const MAX_SYSTEM_CHARS = 8000
+const MAX_SYSTEM_CHARS = LIMITS.SYSTEM_PROMPT_MAX_CHARS
 
 export async function buildSystemPrompt(
   opts: { cwd?: string; extra?: string } = {},

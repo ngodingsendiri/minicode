@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { createInterface } from "node:readline"
 import type { Tool, ToolContext } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 import { allTools } from "../tools/index.ts"
 
@@ -89,7 +90,7 @@ async function invokeTool(
   const text =
     typeof out === "string" ? out : out instanceof Uint8Array ? "(binary)" : JSON.stringify(out)
   const scrubbed = scrubSecrets(text)
-  return { content: [{ type: "text", text: scrubbed.slice(0, 100_000) }], isError: false }
+  return { content: [{ type: "text", text: scrubbed.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS) }], isError: false }
 }
 
 export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {

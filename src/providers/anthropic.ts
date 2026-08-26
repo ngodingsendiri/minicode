@@ -3,6 +3,7 @@ import { ProviderError } from "minicore/core/errors.ts"
 import type { ModelProvider, ProviderEvent, StreamRequest } from "minicore/core/provider.ts"
 import type { ToolSchema } from "minicore/core/tool.ts"
 import type { Content, Message } from "minicore/core/types.ts"
+import { LIMITS } from "../constants.ts"
 
 export interface AnthropicConfig {
   id?: string
@@ -286,7 +287,7 @@ function toAnthropicError(status: number, body: string, headers: Headers): Provi
     return new ProviderError(
       "rate_limit",
       `rate limited (${status}): ${detail}`,
-      Number.isFinite(ms) ? Math.min(ms!, 30_000) : undefined,
+      Number.isFinite(ms) ? Math.min(ms!, LIMITS.RETRY_AFTER_MAX_MS) : undefined,
     )
   }
   if (status === 401 || status === 403)

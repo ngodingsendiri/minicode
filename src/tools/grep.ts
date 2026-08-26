@@ -1,6 +1,7 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
@@ -73,7 +74,10 @@ export const grepTool: Tool = {
   async execute({ pattern, cwd, include, limit }, ctx) {
     const root = (cwd as string) ?? "."
     if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`)
-    const lim = Math.min(Math.max((limit as number) ?? 100, 1), 500)
+    const lim = Math.min(
+      Math.max((limit as number) ?? LIMITS.SEARCH_DEFAULT_LIMIT, 1),
+      LIMITS.SEARCH_MAX_LIMIT,
+    )
     let re: RegExp
     try {
       re = new RegExp(pattern as string)

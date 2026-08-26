@@ -1,4 +1,5 @@
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
 // Host validasi untuk anti-SSRF. Catatan: WHATWG URL sudah menormalisasi host
@@ -29,9 +30,9 @@ export function isPrivateHost(host: string): boolean {
   return isPrivateIPv4(h)
 }
 
-const MAX_REDIRECTS = 5
+const MAX_REDIRECTS = LIMITS.WEB_FETCH_MAX_REDIRECTS
 // Hard-cap pembacaan body SEBELUM slicing — cegah OOM dari response raksasa.
-const BODY_HARD_CAP_CHARS = 2_000_000
+const BODY_HARD_CAP_CHARS = LIMITS.WEB_FETCH_BODY_HARD_CAP_CHARS
 
 async function readBodyCapped(
   res: Response,

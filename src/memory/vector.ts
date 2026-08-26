@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto"
 import { existsSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { LIMITS } from "../constants.ts"
 
 function dbPath(cwd?: string): string {
   const local = resolve(cwd ?? process.cwd(), ".minicode", "vector.db")
@@ -100,7 +101,7 @@ async function embedTexts(
           method: "POST",
           headers: headers as Record<string, string>,
           body,
-          signal: AbortSignal.timeout(3500),
+          signal: AbortSignal.timeout(LIMITS.EMBEDDING_TIMEOUT_MS),
         })
         if (!res.ok) continue
         const json = (await res.json()) as { data?: { embedding: number[] }[] }
@@ -170,19 +171,23 @@ export async function searchHybrid(
   if (keywords.length > 0) {
     const likeClauses = keywords.map(() => `instr(lower(text), lower(?)) > 0`).join(" OR ")
     const recentRows = db
-      .prepare(`SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT 300`)
+      .prepare(
+        `SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_RECENT_LIMIT}`,
+      )
       .all() as { text: string; embedding: Buffer | null }[]
     const keywordRows = db
       .prepare(
-        `SELECT text, embedding FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT 200`,
+        `SELECT text, embedding FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
       )
       .all(...keywords) as { text: string; embedding: Buffer | null }[]
     const merged = new Map<string, { text: string; embedding: Buffer | null }>()
     for (const r of [...recentRows, ...keywordRows]) if (!merged.has(r.text)) merged.set(r.text, r)
-    rows = [...merged.values()].slice(0, 500)
+    rows = [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
   } else {
     rows = db
-      .prepare("SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT 500")
+      .prepare(
+        `SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_SEARCH_LIMIT}`,
+      )
       .all() as { text: string; embedding: Buffer | null }[]
   }
   db.close()

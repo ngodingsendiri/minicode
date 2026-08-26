@@ -1,6 +1,7 @@
 ﻿import { readFile, realpath, stat } from "node:fs/promises"
 import { isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
@@ -27,7 +28,7 @@ export const readFileTool: Tool = {
     if (isPathOutsideRoot(real, root)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(abs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > 2_000_000) throw new Error(`file too large: ${p} (${st.size})`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
     const raw = await readFile(abs, "utf8")
     return scrubSecrets(raw)
   },

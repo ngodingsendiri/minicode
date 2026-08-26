@@ -2,6 +2,7 @@ import type { CompactionStrategy } from "minicore/core/compact.ts"
 import { mechanicalCompaction } from "minicore/core/compact.ts"
 import type { ContextStore } from "minicore/core/history.ts"
 import type { ModelProvider } from "minicore/core/provider.ts"
+import { LIMITS } from "../constants.ts"
 import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
 
 export interface LlmCompactionOptions {
@@ -34,7 +35,10 @@ export function createLlmCompaction(opts: LlmCompactionOptions = {}): Compaction
       // cap 15s — jangan biarkan LLM summary memblokir loop terlalu lama;
       // kalau gagal/timeout, loop otomatis fallback ke compact() sinkron.
       const ac = new AbortController()
-      const timer = setTimeout(() => ac.abort(new Error("llm compaction timeout")), 15_000)
+      const timer = setTimeout(
+        () => ac.abort(new Error("llm compaction timeout")),
+        LIMITS.COMPACTION_LLM_TIMEOUT_MS,
+      )
       const onAbort = () => ac.abort(signal.reason)
       signal.addEventListener("abort", onAbort, { once: true })
       try {

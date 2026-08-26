@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { flexibleMatch } from "./edit.ts"
@@ -48,7 +49,8 @@ export const applyPatchTool: Tool = {
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > 2_000_000) throw new Error(`file too large: ${p} (${st.size})`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES)
+      throw new Error(`file too large: ${p} (${st.size})`)
 
     let content = await readFile(realAbs, "utf8")
     const patchList = patches as { search: string; replace: string }[]
@@ -77,7 +79,7 @@ export const applyPatchTool: Tool = {
       applied.push(`[${i}] replaced ${oldS.length} → ${newS.length} chars${note}`)
     }
 
-    if (content.length > 5_000_000)
+    if (content.length > LIMITS.WRITE_FILE_MAX_CHARS)
       throw new Error(`result too large: ${content.length} chars (max 5M)`)
 
     await atomicWriteText(realAbs, content)
