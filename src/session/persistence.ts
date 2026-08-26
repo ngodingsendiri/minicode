@@ -1,21 +1,8 @@
 import { Database } from "bun:sqlite"
-import { existsSync, mkdirSync } from "node:fs"
-import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { resolveDbPath } from "../lib/db-path.ts"
 import { LIMITS } from "../constants.ts"
 
-function dbPath(cwd?: string): string {
-  const local = resolve(cwd ?? process.cwd(), ".minicode", "sessions.db")
-  const localDir = resolve(cwd ?? process.cwd(), ".minicode")
-  if (existsSync(local)) return local
-  if (existsSync(localDir)) {
-    mkdirSync(localDir, { recursive: true })
-    return local
-  }
-  const global = join(homedir(), ".minicode", "sessions.db")
-  mkdirSync(join(global, ".."), { recursive: true })
-  return global
-}
+const dbPath = (cwd?: string) => resolveDbPath("sessions.db", cwd)
 
 const initializedSessionPaths = new Set<string>()
 
