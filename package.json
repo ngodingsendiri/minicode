@@ -1,9 +1,10 @@
 {
   "name": "minicode",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Minicode: agencode/coding-agent built on frozen MiniCore runtime",
   "type": "module",
   "private": true,
+  "license": "UNLICENSED",
   "bin": {
     "minicode": "./cli/index.ts"
   },

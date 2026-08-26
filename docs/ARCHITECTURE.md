@@ -2,7 +2,7 @@
 
 > Coding agent minimal di atas kernel beku MiniCore. Ramping, clean, profesional — tidak menambah primitive, hanya layer agencode.
 
-**Version:** 0.5.0 — production hardening: 42 tasks across 9 phases, biome + LF + per-file lock, MCP scrub, Docker hardened, RAG hybrid, checkpoint dirty-git, router warn (202 tests, 194 pass + 8 skip).
+**Version:** 0.5.1 — security hardening: env-sanitasi terpusat (`sanitizeSpawnEnv`) untuk bash/docker/MCP/LSP, MCP tools bertitik selalu gated (tanpa wildcard auto-allow), web_fetch redirect-per-hop + body hard-cap, atomic write `O_EXCL`+randomUUID di semua tool tulis, jail `realpath` di permission layer, executor antrean abort-aware, SQLite WAL capped + busy-retry, telemetry opt-out + prompt scrub, router image bytes utk anthropic, `/sync` invalidate detect cache, pricing per-segment boundary, LIMITS diadopsi penuh, nol `as never/as any` produksi (243 tests, 235 pass + 8 skip).
 **Principle:** `minicore` core is frozen — only **additive backward-compatible** seams are allowed (optional `compactAsync` & `initialMessages`). Everything else as Tool / Policy / Provider here.
 
 ## Peta Pohon Komponen
@@ -115,10 +115,13 @@ prompt → CLI (config+skills+RAG+resume) → Router → Kernel LOOP ⇄ Tools
 ## Layer Guard (berlapis)
 
 ```
-PermissionHandler (denylist+SENSITIVE_RE+jail+cwd) → validateArgs (kernel) → executor (order-preserving 8 / write 2 semaphore) → tool defense-in-depth → execute
+PermissionHandler (denylist+jail realpath+cwd) → validateArgs (kernel) → executor (order-preserving 8/2, antrean abort-aware, file-lock realpath-key) → tool defense-in-depth → execute
+spawn env: sanitizeSpawnEnv(base, extra) — secret di-strip dari hasil merge final (bash/docker/MCP/LSP)
+file writes: atomicWriteText — tmp randomUUID + O_EXCL + 0600 + rename retry (Windows EPERM)
+web_fetch: redirect manual ≤5 hop, isPrivateHost per-hop (CGNAT/mapped-IPv6/ULA/link-local), body hard-cap 2MB
 ```
 
-`read_file/write_file/edit` punya jail ganda: `permission.ts` + di dalam tool sendiri. `bash` → `SIGTERM` lalu `SIGKILL` 2 detik. `grep` include filter + `glob` ignore `.git`.
+`read_file/write_file/edit` punya jail ganda: `permission.ts` (realpath-based) + di dalam tool sendiri. `bash` → `SIGTERM` lalu `SIGKILL` 2 detik. `grep` include filter + `glob` ignore `.git`.
 
 ## Mode CLI
 
@@ -158,14 +161,16 @@ PermissionHandler (denylist+SENSITIVE_RE+jail+cwd) → validateArgs (kernel) →
 
 ## Test Suite
 
-128 test (`bun test` — 128 di minicode + 153 di minicore): busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name), invalid config, router all-fail/clone + model substitution + rate limiter, deny-bypass 23 varian + auto-gate delegate/mcp + sensitive path + wildcard MCP, executor order+cap + abort-no-leak, symlink escape, glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme.
+243 test (`bun test` — offline/hermetic; live terpisah via `test:live`): busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name) + WAL capped + busy-retry, invalid config, router all-fail/clone + model substitution + rate limiter + **image bytes utk anthropic (magic-byte sniff)**, deny-bypass 23 varian + auto-gate delegate/mcp/**registered-MCP** + sensitive path + wildcard MCP, executor order+cap+abort-no-leak+**prompt-abort antrean**, symlink escape (**realpath di permission layer**), glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize + **buffer cap streaming**, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost + **pricing per-segment**, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub tanpa-whitelist + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args (**--verify boolean, --flag=value, repeated flags**), markdown fence, tui-diff/table/theme, **env-strip**, **ssrf-guard (redirect loop + body cap)**, **executor-abort**, **lib-fs (atomic write O_EXCL)**, **jail-realpath**, **bash-cap**, **router-image**, **trace (opt-out/scrub/rotate)**.
 
 ## Known Limitations
 
 1. Butuh `bun` (`bun install && bun test`). Symlink test skip di Windows tanpa privilege.
 2. MCP server v1 hanya `tools` (belum `resources/prompts`).
 3. `vector.db` `LIMIT 500` — paging belum untuk memory >5k.
-4. Bash security = regex denylist + env-sanitize + secret scrubber + **Docker sandbox opsional** (`--sandbox docker`) — sandbox default masih berbasis regex; pada Windows Docker butuh Docker Desktop + pull image.
+4. Bash security = regex denylist + env-sanitize + secret scrubber + **Docker sandbox opsional** (`--sandbox docker`) — denylist tetap blocklist (bisa di-bypass variable interpolation); untuk keamanan maksimal gunakan `--sandbox docker`. Windows Docker butuh Docker Desktop.
 5. Repo-map berbasis regex (bukan AST penuh) — akurat untuk simbol level-dasar; LSP `workspace/symbol` sebagai peningkatan berikutnya.
 6. Resume sejati sudah ada (initialMessages); snapshot/kompaksi tetap via kernel.
 7. Benchmark `bench/runner.ts` butuh provider ber-API-key untuk hasil nyata (`--fake` hanya smoke).
+8. `open()` SQLite masih sinkron per operasi (singleton pool = refactor berikutnya); `checkpoint.ts` memakai `spawnSync git status`.
+9. Software proprietary — lihat LICENSE (EULA). Kontribusi eksternal tunduk pada ketentuan CONTRIBUTING.

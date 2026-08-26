@@ -90,4 +90,33 @@ web_fetch → redirect manual ≤5 hop, tiap host divalidasi, body hard-cap 2MB
 - Jangan mengubah perilaku `../minicore/src/core/*` — satu-satunya pengecualian: seam **additif & backward-compatible** (mis. field opsional `compactAsync`) yang dibuka dari layer agencode. Kalau butuh primitive baru, buktikan dulu tidak bisa sebagai Tool/Provider/Policy.
 - P2/C4/C5 sisa minicore ditangani di sini sebagai policy/adapter agencode, bukan patch core.
 
+## Pengujian
+
+```bash
+bun install                 # sekali (butuh bun >= 1.0 + sibling ../minicore)
+bun test                    # offline: 243 test (235 pass + 8 skip live/docker)
+bun test test/ssrf-guard.test.ts          # satu file spesifik
+bun run typecheck           # tsc --noEmit (strict)
+bun run lint                # biome check src cli test bench scripts
+bun run lint:fix            # auto-fix format/lint
+bun run bench:smoke         # benchmark fake 10 task (tanpa API key, CI-safe)
+```
+
+Test **live** (jaringan + provider ber-API-key):
+
+```bash
+MINICODE_LIVE=1 bun run test:live   # E2E end-to-end via LLM sungguhan
+bun run bench                       # resolve-rate nyata (butuh config provider)
+bun run test:qa                     # QA fitur live ke layar
+```
+
+Catatan lingkungan:
+- `bun:sqlite` dipakai langsung → **wajib Bun**, tidak jalan di Node.js.
+- Test symlink di-skip otomatis tanpa privilege; test Docker di-skip bila daemon tidak jalan.
+- Semua test default **hermetic/offline** — fetch di-mock, DB pakai tmpdir, tanpa API key.
+
+## Lisensi
+
+**Proprietary / Closed Source.** Dilindungi undang-undang. Penggunaan Software tunduk pada EULA di [LICENSE](LICENSE) — dilarang menyalin, memodifikasi, mendistribusikan, atau melakukan reverse engineering tanpa izin tertulis dari pemilik hak cipta. Lihat LICENSE untuk ketentuan lengkap.
+
 Lihat `docs/ARCHITECTURE.md` + `../minicore/docs/MINICORE-FINAL-AUDIT.md`.

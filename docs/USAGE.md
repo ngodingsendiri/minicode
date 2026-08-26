@@ -54,6 +54,8 @@ bun install && bun link
 | `MINICODE_REPOMAP` | `regex` → paksa repo-map regex (skip LSP) |
 | `MINICODE_PLAN` | `1` → mode plan (tanpa `--plan`) |
 | `MINICODE_PERMISSION` | `allowlist` → mode allowlist |
+| `MINICODE_SESSION_TTL_DAYS` | TTL sesi (default 30; `0` = selamanya) |
+| `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` | Fallback API key |
 
 ## Config `.minicode/config.json`
@@ -109,7 +111,7 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 ## MCP & LSP
 
-**MCP:** `minicode config mcp add` untuk daftarkan server, lalu `mcp_list`/`mcp_call` tersedia. Tool dinamis `serverId.toolName` otomatis terdaftar.
+**MCP:** `minicode config mcp add` untuk daftarkan server, lalu `mcp_list`/`mcp_call` tersedia. Tool dinamis `serverId.toolName` otomatis terdaftar. **Catatan izin:** semua tool MCP bertitik **selalu di-gate** — mode `auto` akan meminta konfirmasi sekali per tool (jawab `[a] Always` untuk persist ke allowlist); mode `readonly`/`plan`/`allowlist` menolaknya. Server terdaftar tidak mendapat wildcard auto-allow (proteksi supply-chain).
 
 **LSP:** `minicode config lsp add` untuk daftarkan language server. Setelah terdaftar: `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover`, `lsp_symbols`, `lsp_workspace_symbols`. LSP diagnostics juga otomatis di tool `edit`/`write_file` bila server terkonfigurasi.
 
@@ -119,9 +121,10 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 ## Sandbox
 
-- **Default:** regex denylist 27 + env-strip + secret scrubber.
-- **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada.
+- **Default:** regex denylist 27 + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber.
+- **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada. Env container juga disanitasi dari hasil merge final.
 - **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`.
+- **web_fetch:** redirect ditangani manual (maks 5 hop, tiap host divalidasi anti-SSRF); body hard-cap 2MB.
 
 ## Plan Mode
 
@@ -168,7 +171,23 @@ Format `tasks.json` (SWE-bench-format):
 
 ## Telemetry
 
-`.minicode/traces.jsonl` — satu baris JSON per run (sessionId, timestamp, prompt, steps, tokens, cost, ok/error). Rotate keep 1000 baris.
+`.minicode/traces.jsonl` — satu baris JSON per run (sessionId, timestamp, prompt, steps, tokens, cost, ok/error). Rotate keep 1000 baris (atomic tmp+rename). Prompt di-redact via secret scrubber sebelum disimpan; file chmod 600. **Opt-out:** set `MINICODE_TELEMETRY=0` — tidak ada file yang ditulis.
+
+## Pengujian
+
+```bash
+bun install            # sekali
+bun test               # offline: 243 test (235 pass + 8 skip live/docker)
+bun run typecheck      # tsc strict
+bun run lint           # biome
+bun run bench:smoke    # benchmark fake, CI-safe
+MINICODE_LIVE=1 bun run test:live   # live E2E (butuh provider + API key)
+```
+
+Test penting pasca-hardening v0.5.1: `env-strip`, `ssrf-guard`, `executor-abort`,
+`lib-fs` (atomic write), `jail-realpath`, `bash-cap`, `router-image`, `trace`,
+`cli-args`. Semuanya hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan
+berulang tanpa jaringan.
 
 ## Troubleshooting
 
