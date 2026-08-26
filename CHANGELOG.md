@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0] - 2026-08-26
+
+### UI/UX Overhaul - "Clean CLI"
+- **Fullscreen Ink shell default** (`--ui auto|full|classic`): alternate-screen REPL terisolasi (ESC[?1049h/l) - header 1 baris (brand/model/mode/cost), transcript scrollable ring 200, status dots animasi, input dengan slash-dropdown, footer hint. Exit = terminal kembali bersih.
+- **Ctrl+C lifecycle**: busy = hentikan turn saja (AbortController via kernel seam `session.run({signal})`); idle = 2x dalam 2 detik keluar bersih. Esc juga interrupt.
+- **Mojibake Windows tuntas** - semua string konsol di-sweep ke ASCII-safe; prompt memakai `glyphs.prompt` (fallback `>` tanpa UTF-8).
+- **Status line rapi** - kata "reasoning"/"working" dihapus (dots cukup); output tool tidak lagi menyisakan fragmen spinner (statusline suspend/resume).
+- **Shift+Tab** cycle permission mode live (auto/ask/plan/allowlist) + badge header.
+- **`/thinking on|off`** toggle tampilan reasoning (default off). `/init` generator AGENTS.md dari repo-map.
+- **Ctrl+O** expand transcript; multiline `\`+Enter; edit keys Ctrl+U/W.
+- **Bel terminal** saat permission request (ala OpenCode attention).
 ## [0.5.1] — 2026-08-26
 
 ### Security (P0)
