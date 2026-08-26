@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { createEventBus } from "../../minicore/src/core/events.ts"
 import { friendlyError, friendlyFromCategory } from "../cli/errors.ts"
-import { createUsageCollector } from "../src/policy/usage.ts"
+import { costFor, createUsageCollector } from "../src/policy/usage.ts"
 
 test("friendlyFromCategory: auth + balance", () => {
   const f = friendlyFromCategory(
@@ -80,4 +80,23 @@ test("usage: reset clears effective model", () => {
   })
   collector.reset()
   expect(collector.modelUsed().effective).toBeUndefined()
+})
+
+// ── C18: pricing boundary matching ──────────────────────────────────────────
+
+test("pricing: exact and versioned model names match", () => {
+  // exact
+  expect(costFor("gpt-4o", 1_000_000, 0, 0, 0, false)).toBeCloseTo(5, 6)
+  // sufiks versi (pemisah -)
+  expect(costFor("gpt-4o-2024-11-20", 1_000_000, 0, 0, 0, false)).toBeCloseTo(5, 6)
+  // prefix provider openrouter + sufikh :free
+  expect(costFor("deepseek/deepseek-chat:free", 1_000_000, 0, 0, 0, false)).toBeCloseTo(0.14, 6)
+  // longest-key menang: claude-sonnet-4-5, bukan claude-sonnet-4
+  expect(costFor("claude-sonnet-4-5", 1_000_000, 0, 0, 0, false)).toBeCloseTo(3, 6)
+})
+
+test("pricing: wrapper/lookalike names do NOT match (no substring)", () => {
+  expect(costFor("my-gpt-4o-wrapper", 1_000_000, 0, 0, 0, false)).toBeUndefined()
+  expect(costFor("gpt-4o1-preview", 1_000_000, 0, 0, 0, false)).toBeUndefined()
+  expect(costFor("totally-unknown-model", 1_000_000, 0, 0, 0, false)).toBeUndefined()
 })

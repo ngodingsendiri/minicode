@@ -31,7 +31,12 @@ const PRICING: Record<
 // cacheIncluded=true (Anthropic): input_tokens SUDAH termasuk cache_read+cache_write,
 // jadi normal input = input - cacheRead - cacheWrite (hindari double-count).
 // cacheIncluded=false (provider lain): input_tokens terpisah dari cache → jangan kurangi.
-function costFor(
+// Match harga per-segment (pemisah "/" dan ":"): segmen harus sama persis
+// dengan key, atau diawali key + pemisah sufiks [._-] (menutup varian versi
+// seperti gpt-4o-2024). Menolak false-positive semacam "my-gpt-4o-wrapper"
+// dan "gpt-4o1" yang sebelumnya cocok via substring includes().
+// Diekspor untuk test.
+export function costFor(
   model: string,
   input: number,
   output: number,
@@ -39,15 +44,20 @@ function costFor(
   cacheWrite = 0,
   cacheIncluded = true,
 ): number | undefined {
+  const m = model.toLowerCase()
+  const segments = m.split(/[/:]/)
+  // longest-key first: claude-sonnet-4-5 menang atas claude-sonnet-4
   const sorted = Object.entries(PRICING).sort((a, b) => b[0].length - a[0].length)
   for (const [k, p] of sorted) {
-    if (model.includes(k)) {
-      const normalInput = cacheIncluded ? Math.max(0, input - cacheRead - cacheWrite) : input
-      const inputCost = (normalInput / 1_000_000) * p.input
-      const readCost = p.cacheRead ? (cacheRead / 1_000_000) * p.cacheRead : 0
-      const writeCost = p.cacheWrite ? (cacheWrite / 1_000_000) * p.cacheWrite : 0
-      const outputCost = (output / 1_000_000) * p.output
-      return inputCost + readCost + writeCost + outputCost
+    for (const s of segments) {
+      if (s === k || s.startsWith(`${k}.`) || s.startsWith(`${k}_`) || s.startsWith(`${k}-`)) {
+        const normalInput = cacheIncluded ? Math.max(0, input - cacheRead - cacheWrite) : input
+        const inputCost = (normalInput / 1_000_000) * p.input
+        const readCost = p.cacheRead ? (cacheRead / 1_000_000) * p.cacheRead : 0
+        const writeCost = p.cacheWrite ? (cacheWrite / 1_000_000) * p.cacheWrite : 0
+        const outputCost = (output / 1_000_000) * p.output
+        return inputCost + readCost + writeCost + outputCost
+      }
     }
   }
   return undefined
