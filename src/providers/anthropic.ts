@@ -52,9 +52,11 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
   const endpoint = `${baseUrl}/v1/messages`
   const enableCache = config.enablePromptCaching !== false
 
-  return {
+  // brand `kind` dipakai router agar tahu konten Uint8Array ditangani native
+  const provider: ModelProvider & { kind: "anthropic" } = {
     id: config.id ?? "anthropic",
     models: config.models,
+    kind: "anthropic",
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       // System prompt with optional ephemeral cache control for 90% cost savings on long runs
       const systemPayload = request.system
@@ -193,12 +195,31 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
       }
     },
   }
+  return provider
+}
+
+// Deteksi tipe gambar dari magic bytes — tool result biner yang jelas gambar
+// dikirim sebagai blok image (media_type benar), selain itu fallback base64.
+function sniffImageMime(b: Uint8Array): string | null {
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47)
+    return "image/png"
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg"
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif"
+  if (
+    b.length >= 12 &&
+    b[8] === 0x57 &&
+    b[9] === 0x45 &&
+    b[10] === 0x42 &&
+    b[11] === 0x50
+  )
+    return "image/webp"
+  return null
 }
 
 function toAnthropicMessages(messages: readonly Message[]): unknown[] {
   const out: unknown[] = []
   let toolGroup:
-    | { type: "tool_result"; tool_use_id: string; content: string; is_error?: boolean }[]
+    | { type: "tool_result"; tool_use_id: string; content: unknown; is_error?: boolean }[]
     | null = null
   const flushToolGroup = () => {
     if (toolGroup) {
@@ -228,19 +249,27 @@ function toAnthropicMessages(messages: readonly Message[]): unknown[] {
       })
     } else {
       const c = m as unknown as { toolCallId: string; content: unknown; isError?: boolean }
-      const text =
-        typeof c.content === "string"
-          ? c.content
-          : c.content instanceof Uint8Array
-            ? Buffer.from(c.content).toString("base64")
-            : JSON.stringify(c.content)
+      let entryContent: unknown
+      if (typeof c.content === "string") {
+        entryContent = c.content
+      } else if (c.content instanceof Uint8Array) {
+        // biner dari tool: bila jelas gambar → blok image base64 (spec Anthropic);
+        // selain itu kirim base64 string seperti sebelumnya.
+        const mime = sniffImageMime(c.content)
+        const b64 = Buffer.from(c.content).toString("base64")
+        entryContent = mime
+          ? [{ type: "image", source: { type: "base64", media_type: mime, data: b64 } }]
+          : b64
+      } else {
+        entryContent = JSON.stringify(c.content)
+      }
       toolGroup ??= []
       const entry: {
         type: "tool_result"
         tool_use_id: string
-        content: string
+        content: unknown
         is_error?: boolean
-      } = { type: "tool_result", tool_use_id: c.toolCallId, content: text }
+      } = { type: "tool_result", tool_use_id: c.toolCallId, content: entryContent }
       if (c.isError) entry.is_error = true
       toolGroup.push(entry)
     }

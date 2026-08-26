@@ -13,7 +13,10 @@ export interface RouterConfig {
   limiter?: RateLimiter
 }
 
-// C4 fix: convert Uint8Array tool content to base64 before provider sees it
+// C4 fix: convert Uint8Array tool content to base64 before an openai-compat
+// provider sees it. Anthropic handles Uint8Array natively (image →
+// source.base64 + media_type in toAnthropicMessages) — converting up-front
+// broke that image path, so the fix is applied per-provider below.
 function fixRequest(req: StreamRequest): StreamRequest {
   const messages = req.messages.map((m) => {
     if (m.role === "tool" && (m as unknown as { content: unknown }).content instanceof Uint8Array) {
@@ -23,6 +26,10 @@ function fixRequest(req: StreamRequest): StreamRequest {
     return m
   })
   return { ...req, messages }
+}
+
+function needsBinaryFix(p: ModelProvider): boolean {
+  return (p as unknown as { kind?: string }).kind !== "anthropic"
 }
 
 // Fallback provider mungkin tidak mendukung nama model request asli (mis. gpt-4o
@@ -51,11 +58,10 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
     id: "router",
     models: config.providers.flatMap((p) => [...p.models]),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
-      const fixed = fixRequest(request)
       // route by model name — first match wins (default/daftar urutan provider)
       // Format "providerId::modelName" → paksa provider spesifik
       let target: ModelProvider | undefined
-      let model: string | undefined = fixed.model
+      let model: string | undefined = request.model
       if (model && model.includes("::")) {
         const sep = model.indexOf("::")
         const pid = model.slice(0, sep)
@@ -81,15 +87,16 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
         try {
           // rate limit: tunggu token bucket sebelum tiap request
           if (config.limiter) await config.limiter.acquire()
+          const fixed = needsBinaryFix(current) ? fixRequest(request) : request
           const { req, effectiveModel, substituted } = requestFor(current, { ...fixed, model })
           if (substituted && effectiveModel) {
             process.stderr.write(
-              `[router] model "${fixed.model}" not on ${current.id} → substituting "${effectiveModel}"\n`,
+              `[router] model "${request.model}" not on ${current.id} → substituting "${effectiveModel}"\n`,
             )
             yield {
               type: "extension",
               kind: "effective-model",
-              data: { requested: fixed.model, effective: effectiveModel, provider: current.id },
+              data: { requested: request.model, effective: effectiveModel, provider: current.id },
             }
           } else if (current !== target) {
             // Fallback provider (non-substitusi) — model sama tapi provider beda.
