@@ -21,6 +21,7 @@ const VALUE_FLAGS = new Set([
   "--ratelimit",
   "--budget",
   "--ui",
+  "--theme",
 ])
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help"])
 

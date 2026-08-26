@@ -35,6 +35,7 @@ export const BUILTIN_COMMANDS = [
   { name: "status", desc: "Show runtime status" },
   { name: "thinking", args: "[on|off]", desc: "Toggle reasoning display" },
   { name: "init", desc: "Generate AGENTS.md for this project" },
+  { name: "theme", args: "[name]", desc: "Switch UI theme (dark/dim/light/mono)" },
 ]
 
 function pad(text: string, width: number): string {
@@ -83,6 +84,24 @@ export async function handleBuiltinCommand(
       const next = arg === "on" ? true : arg === "off" ? false : !cur
       process.env.MINICODE_SHOW_THINKING = next ? "1" : "0"
       console.log(`\nReasoning display: ${next ? "on" : "off"}\n`)
+      return { handled: true }
+    }
+
+    case "theme": {
+      const { THEMES } = await import("../src/tui/themes.ts")
+      const { applyTheme } = await import("../src/tui/theme.ts")
+      const names = Object.keys(THEMES) as string[]
+      const want = args || "next"
+      const cur = process.env.MINICODE_THEME ?? ""
+      const next =
+        want === "next"
+          ? names[(names.indexOf(cur) + 1) % names.length] ?? "dark"
+          : names.includes(want)
+            ? want
+            : (console.log(`\ntheme: ${names.join(" / ")}\n`), "dark")
+      process.env.MINICODE_THEME = next
+      applyTheme(next)
+      console.log(`\nTheme: ${next}\n`)
       return { handled: true }
     }
 

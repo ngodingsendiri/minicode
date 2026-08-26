@@ -1,3 +1,11 @@
+import { type Theme, THEMES, resolveThemeName } from "./themes.ts"
+export const themeState: { current: Theme } = { current: THEMES.dark }
+export function applyTheme(name?: string): ReturnType<typeof resolveThemeName> {
+  const n = resolveThemeName(name)
+  themeState.current = THEMES[n]
+  return n
+}
+const tk = (k: keyof Theme): string => themeState.current[k]
 // Semantic color system - Ubuntu Server style.
 // Warna by function, bukan appearance. Auto-detect: NO_COLOR > truecolor > 256 > 16 > mono.
 
@@ -54,10 +62,10 @@ export const c = {
   italic: wrap(3, 23),
 
   // Status - VS Code muted tones
-  success: trueWrap("38;2;137;209;133"), // #89D185 green (was 32)
-  error: trueWrap("38;2;244;135;113"), // #F48771 salmon (was 31)
-  warning: trueWrap("38;2;204;167;0"), // #CCA700 warm yellow (was 33)
-  info: trueWrap("38;2;117;190;255"), // #75BEFF cyan (was 36)
+  success: trueWrap(tk("success")),
+  error: trueWrap(tk("error")),
+  warning: trueWrap(tk("warning")),
+  info: trueWrap(tk("info")),
 
   // Accent - VS Code blue #007ACC for headers/selected
   accent: hasTruecolor ? wrap("38;2;0;122;204", 39) : wrap(94, 39), // #007ACC

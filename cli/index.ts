@@ -94,7 +94,10 @@ if (budgetRaw && !Number.isFinite(budget))
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 const uiRaw = getArg("--ui") ?? "auto"
-const uiMode = ["auto","full","classic"].includes(uiRaw) ? uiRaw : "auto"
+const uiRaw2 = getArg("--theme") ?? ""
+const themeName = ["dark","dim","light","mono"].includes(uiRaw2) ? uiRaw2 : (process.env.MINICODE_THEME ?? "")
+const { applyTheme } = await import("../src/tui/theme.ts")
+applyTheme(themeName)
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
