@@ -26,6 +26,13 @@ test("scrub: api_key=value redacted, normal text unchanged", () => {
   expect(scrubSecrets("just normal code: const x = 1;")).toBe("just normal code: const x = 1;")
 })
 
+test("scrub: no test/example/mock whitelist bypass (C5)", () => {
+  // secret yang mengandung kata whitelist tidak boleh lolos redaksi
+  expect(scrubSecrets('password = "test12345678901234"')).toContain("[REDACTED]")
+  expect(scrubSecrets("key is sk-test123456789012345678")).toContain("[REDACTED]")
+  expect(scrubSecrets("Bearer mockabcdefghijklmnopqrstu")).toContain("[REDACTED]")
+})
+
 test("scrub: env reference (process.env.X) NOT redacted", () => {
   const txt = "const key = process.env.OPENAI_API_KEY;"
   expect(scrubSecrets(txt)).toBe(txt)

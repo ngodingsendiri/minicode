@@ -29,16 +29,12 @@ const SECRET_PATTERNS: RegExp[] = [
 ]
 
 // Redact secrets dalam teks. Ganti match dengan [REDACTED].
-// Whitelist: bila value mengandung test/example/mock → jangan redact (hindari false positive).
+// Tidak ada whitelist kata (test/example/mock) — secret sungguhan bisa saja
+// mengandung substring itu; false-positive redaction lebih aman daripada leak.
 export function scrubSecrets(text: string): string {
   if (!text) return text
   let out = text
-  for (const re of SECRET_PATTERNS) {
-    out = out.replace(re, (m) => {
-      if (/test|example|mock/i.test(m)) return m
-      return "[REDACTED]"
-    })
-  }
+  for (const re of SECRET_PATTERNS) out = out.replace(re, "[REDACTED]")
   return out
 }
 
