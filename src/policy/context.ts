@@ -52,8 +52,8 @@ export async function buildSystemPrompt(
         cwd,
         timeout: 2000,
         encoding: "utf8",
-      } as unknown as never)
-      const files = (stdout as unknown as string).trim().split("\n").slice(0, 60).join("\n")
+      })
+      const files = stdout.trim().split("\n").slice(0, 60).join("\n")
       if (files) parts.push(`\n# Repo files (sample)\n${files}`)
     }
   } catch {}

@@ -29,7 +29,9 @@ const cappedRecovery = {
 }
 
 export async function createMinicodeSession(
-  opts: Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor"> & {
+  opts: Partial<
+    Omit<SessionConfig, "permissions" | "estimator" | "recovery" | "system" | "executor">
+  > & {
     systemExtra?: string
     cwd?: string
     permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
@@ -51,13 +53,13 @@ export async function createMinicodeSession(
     cwd,
     permissionMode,
     systemExtra: _extra,
+    provider,
     ...rest
-  } = opts as typeof opts & {
-    concurrency?: number
-    writeConcurrency?: number
-  }
+  } = opts
+  if (!provider) throw new Error("createMinicodeSession: provider is required")
   return createCoreSession({
     ...rest,
+    provider,
     system,
     permissions: createPermissionHandler({ mode: permissionMode ?? "auto", root: cwd }),
     estimator: minicodeEstimator,

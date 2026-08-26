@@ -137,7 +137,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
     timeoutMs: effectiveTimeoutMs === 0 ? Infinity : effectiveTimeoutMs,
     ...(compaction ? { compaction } : {}),
-  } as never)
+  })
 
   const effectiveInitialModel = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"
 

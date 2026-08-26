@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { createInterface } from "node:readline"
-import type { Tool, ToolContext } from "minicore"
+import type { ExecutorDeps, Tool, ToolContext } from "minicore"
 import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 import { allTools } from "../tools/index.ts"
@@ -67,10 +67,16 @@ async function invokeTool(
     const { createPermissionHandler } = await import("../policy/permission.ts")
     const perms = createPermissionHandler({ mode: "auto", root: opts.root })
     const toolCall = { id: randomUUID(), name: tool.name, args: args as Record<string, unknown> }
-    const decision = await perms.check(
-      toolCall as unknown as Parameters<typeof perms.check>[0],
-      {} as never,
-    )
+    const { createEventBus, createToolRegistry } = await import("minicore")
+    const deps: ExecutorDeps = {
+      registry: createToolRegistry([]),
+      permissions: perms,
+      events: createEventBus(),
+      signal,
+      state: { history: [], turnCount: 0, stepCount: 0 },
+      maxResultTokens: 4096,
+    }
+    const decision = await perms.check(toolCall, deps)
     if (decision !== "allow") {
       return {
         content: [

@@ -94,9 +94,7 @@ class McpConnection {
         const conn = activeConnections.get(serverId)
         if (!conn) throw new Error(`MCP server ${serverId} not connected`)
         const result = await conn.callTool(t.name, input ?? {})
-        const content = Array.isArray((result as any)?.content)
-          ? (result as any).content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")
-          : String(result)
+        const content = extractMcpText(result)
         return scrubSecrets(content).slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
       },
     }))
@@ -106,6 +104,23 @@ class McpConnection {
     await this.transport.close()
   }
 }
+
+/** Normalisasi konten tool MCP (string | blok {text} campuran) → teks. */
+export function extractMcpText(result: unknown): string {
+  if (result == null) return ""
+  const r = result as { content?: unknown }
+  if (!Array.isArray(r.content)) return String(result)
+  return r.content
+    .map((c) => {
+      if (typeof c === "string") return c
+      if (c && typeof c === "object" && typeof (c as { text?: unknown }).text === "string") {
+        return (c as { text: string }).text
+      }
+      return JSON.stringify(c)
+    })
+    .join("\n")
+}
+
 
 export async function connectAll(configs: McpServerConfig[]): Promise<Tool[]> {
   const allTools: Tool[] = []

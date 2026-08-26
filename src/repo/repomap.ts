@@ -254,12 +254,12 @@ async function walkForFiles(
 // Daftar file sumber (git ls-files dulu → fallback walk).
 async function listSourceFiles(cwd: string, limit: number): Promise<string[]> {
   try {
-    const res = (await execAsync("git ls-files", {
+    const { stdout } = await execAsync("git ls-files", {
       cwd,
       timeout: 3000,
       encoding: "utf8",
-    } as never)) as unknown as { stdout: string; stderr: string }
-    const files = res.stdout
+    })
+    const files = stdout
       .split("\n")
       .map((f) => f.replace(/\\/g, "/"))
       .filter(Boolean)

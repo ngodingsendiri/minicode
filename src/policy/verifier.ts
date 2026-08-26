@@ -24,7 +24,7 @@ export async function runVerify(
       cwd,
       timeout: timeoutMs,
       encoding: "utf8",
-    } as never)
+    })
     const output = `${stdout}${stderr ? `\n${stderr}` : ""}`.trim()
     return { ok: true, output, command }
   } catch (e) {
