@@ -2,7 +2,6 @@ import { resolve } from "node:path"
 import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "minicore"
 import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hooks/index.ts"
-import { getMcpServerIds } from "../mcp/client.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot, isSensitive } from "./jail.ts"
 
 export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
@@ -117,13 +116,10 @@ export function createPermissionHandler(
     }
   }
 
-  function isRegisteredMcp(name: string): boolean {
-    const dot = name.indexOf(".")
-    return dot !== -1 && getMcpServerIds().includes(name.slice(0, dot))
-  }
-
   function isGated(name: string): boolean {
-    return GATED_TOOLS.has(name) || (name.includes(".") && !isRegisteredMcp(name))
+    // Semua tool bertitik (MCP — terdaftar maupun tidak) = gated. Server jahat
+    // tidak boleh mendapat auto-allow hanya karena namanya terdaftar.
+    return GATED_TOOLS.has(name) || name.includes(".")
   }
 
   function bashDenied(cmd: string): boolean {
@@ -177,7 +173,6 @@ export function createPermissionHandler(
     auto: async (call, args) => {
       if (READONLY_TOOLS.has(call.name)) return "allow"
       if (isGated(call.name)) return await promptAskOr(call, () => "deny")
-      if (call.name.includes(".") && isRegisteredMcp(call.name)) return "allow" // MCP terdaftar
       if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch")
         return "allow"
       if (call.name === "write_memory" || call.name === "forget_memory") return "allow"

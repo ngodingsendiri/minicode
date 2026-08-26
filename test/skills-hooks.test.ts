@@ -72,6 +72,21 @@ test("auto gates unknown dotted MCP tool (wildcard bypass closed)", async () => 
   expect(await h.check({ id: "1", name: "evil.tool", args: {} } as never, {} as never)).toBe("deny")
 })
 
+test("auto gates REGISTERED dotted MCP tools too (no wildcard auto-allow)", async () => {
+  // Nama apapun yang bertitik kini gated — non-TTY → promptAskOr menolak.
+  // Menutup celah: server jahat terdaftar tidak lagi otomatis "allow" semua toolnya.
+  const h = createPermissionHandler({ mode: "auto" })
+  expect(await h.check({ id: "1", name: "fs.read", args: {} } as never, {} as never)).toBe("deny")
+  expect(
+    await h.check({ id: "1", name: "anything.at.all", args: {} } as never, {} as never),
+  ).toBe("deny")
+})
+
+test("allowlist mode denies dotted MCP tools", async () => {
+  const h = createPermissionHandler({ mode: "allowlist" })
+  expect(await h.check({ id: "1", name: "fs.read", args: {} } as never, {} as never)).toBe("deny")
+})
+
 test("auto allows local trusted surface", async () => {
   const h = createPermissionHandler({ mode: "auto" })
   expect(
