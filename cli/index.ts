@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+﻿#!/usr/bin/env bun
 import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
@@ -11,7 +11,7 @@ import { runRepl } from "./repl.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
 
-const HELP = `Minicode — coding agent on frozen MiniCore
+const HELP = `Minicode â€” coding agent on frozen MiniCore
 Usage:
   minicode                        # mode chat interaktif (setup wizard saat pertama)
   minicode "prompt" [options]     # sekali jalan
@@ -34,7 +34,7 @@ Options:
   --model <name>      override model
   --session <id>      session id (default random)
   --allow-all         allow all tools (no sandbox)
-  --ask               ask per tool (y/n/a) — human-in-loop
+  --ask               ask per tool (y/n/a) â€” human-in-loop
   --plan              read-only plan mode (no file writes / bash / sub-agents)
   --allowlist         bash allowlist only (git/bun/npm safe cmds; via MINICODE_BASH_ALLOWLIST)
   --max-steps <n>     max tool steps (default 50)
@@ -64,7 +64,7 @@ if (args.includes("-h") || args.includes("--help")) {
   process.exit(0)
 }
 
-// ── flag parsing ──
+// â”€â”€ flag parsing â”€â”€
 const verbose = args.includes("--verbose")
 const allowAll = args.includes("--allow-all")
 const ask = args.includes("--ask")
@@ -87,7 +87,7 @@ const timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined
 const sandboxMode = getArg("--sandbox")
 if (sandboxMode === "docker") process.env.MINICODE_SANDBOX = "docker"
 else if (sandboxMode)
-  process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" — only "docker"\n`)
+  process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" â€” only "docker"\n`)
 const budgetRaw = getArg("--budget")
 const budget = budgetRaw ? Number(budgetRaw) : undefined
 if (budgetRaw && !Number.isFinite(budget))
@@ -102,7 +102,7 @@ if (!prompt && !enterRepl) {
   process.exit(1)
 }
 
-// ── skills: expand /name args ──
+// â”€â”€ skills: expand /name args â”€â”€
 let effectivePrompt = prompt
 try {
   if (prompt.startsWith("/")) {
@@ -117,7 +117,7 @@ try {
   }
 } catch {}
 
-// ── build session ──
+// â”€â”€ build session â”€â”€
 const ctx = await createCliSession({
   cwd,
   sessionId,
@@ -161,7 +161,7 @@ if (enterRepl) {
     if (b != null && u.cost != null) {
       if (u.cost > b) {
         process.stderr.write(
-          c.red(`[budget] $${u.cost.toFixed(4)} > $${b.toFixed(2)} — over budget, exiting.\n`),
+          c.red(`[budget] $${u.cost.toFixed(4)} > $${b.toFixed(2)} â€” over budget, exiting.\n`),
         )
         overBudget = true
       } else if (u.cost > b * 0.8)
@@ -175,19 +175,19 @@ if (enterRepl) {
       process.exit(1)
     }
     const statusLine = c.muted(
-      `\n  ${u.totalTokens.toLocaleString()} tokens${u.cost != null ? ` · $${u.cost.toFixed(4)}` : ""} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s`,
+      `\n  ${u.totalTokens.toLocaleString()} tokens${u.cost != null ? ` Â· $${u.cost.toFixed(4)}` : ""} Â· ${session.state.stepCount} steps Â· ${Math.round((Date.now() - t0) / 1000)}s`,
     )
     process.stderr.write(`${statusLine}`)
     const mUsed = usage.modelUsed()
     if (mUsed.effective && mUsed.effective !== modelRef.current) {
       process.stderr.write(
         c.dim(
-          `  (via ${mUsed.provider ?? "?"}/${mUsed.effective} — requested ${modelRef.current})`,
+          `  (via ${mUsed.provider ?? "?"}/${mUsed.effective} â€” requested ${modelRef.current})`,
         ),
       )
     }
     process.stderr.write("\n")
-    writeTrace(wcwd, {
+    await writeTrace(wcwd, {
       sessionId: sid,
       timestamp: new Date().toISOString(),
       prompt: effectivePrompt,
@@ -202,7 +202,7 @@ if (enterRepl) {
     })
   } catch (e) {
     process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`)
-    writeTrace(wcwd, {
+    await writeTrace(wcwd, {
       sessionId: sid,
       timestamp: new Date().toISOString(),
       prompt: effectivePrompt,

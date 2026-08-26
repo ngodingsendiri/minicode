@@ -158,7 +158,7 @@ it("E2E-5: Session persistence — save/load roundtrip", async () => {
 it("E2E-6: Telemetry — traces.jsonl exists after run", async () => {
   const { writeTrace } = await import("../src/telemetry/trace.ts")
   const tracePath = `${dir}/.minicode/traces.jsonl`
-  writeTrace(dir, {
+  await writeTrace(dir, {
     sessionId: "trace-test",
     timestamp: new Date().toISOString(),
     prompt: "test prompt",
