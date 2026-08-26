@@ -93,7 +93,7 @@ function matchBashAllowlist(cmd: string, pattern: string): boolean {
 export function createPermissionHandler(
   opts: { mode?: PermissionMode; root?: string } = {},
 ): PermissionHandler {
-  const mode = opts.mode ?? "auto"
+  const state = { mode: (opts.mode ?? "auto") as PermissionMode }
   const root = resolve(opts.root ?? cwd())
   let allowlistCache: string[] | null = null
   // bash allowlist di-cache sekali (bukan baca env tiap panggilan)
@@ -185,8 +185,9 @@ export function createPermissionHandler(
     },
   }
 
-  return {
+  const returned = {
     async check(call: ToolCall): Promise<"allow" | "deny"> {
+      const mode = state.mode
       if (mode === "allow-all") return "allow"
       const earlyArgs = call.args as Record<string, unknown> | null
 
@@ -216,9 +217,14 @@ export function createPermissionHandler(
         if (isCwdOutsideRoot(cwdArg, root) || isRealPathOutsideRoot(cwdArg, root)) return "deny"
       }
 
-      return handlers[mode](call, earlyArgs)
+      return handlers[state.mode](call, earlyArgs)
     },
   }
+  const handle = returned as unknown as PermissionHandler & {
+    __setMode(m: PermissionMode): void
+    __getMode(): PermissionMode
+  }
+  return handle
 
   async function promptAskOr(call: ToolCall, noTty: () => "deny"): Promise<"allow" | "deny"> {
     if (!process.stdin.isTTY) return noTty()

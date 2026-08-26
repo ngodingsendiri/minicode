@@ -21,6 +21,7 @@ import { attachRenderer } from "../src/tui/renderer.ts"
 import { c } from "../src/tui/theme.ts"
 
 export interface CliSessionOptions {
+  ui?: "auto" | "full" | "classic"
   cwd?: string
   sessionId: string
   resumeId?: string
@@ -56,6 +57,7 @@ export interface CliSession {
   budget?: number
   detachInk?: () => void
   persistCurrent: (usageData: unknown) => Promise<void>
+  useFullscreen: boolean
   runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
   close: () => Promise<void>
 }
@@ -207,9 +209,10 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     })
   }
 
+  const useFullscreen = !!enterRepl && (opts.ui === "full" || (opts.ui ?? "auto") === "auto")
   // ── renderer ──
   // Ink butuh TTY (raw mode) - di non-TTY fallback ke renderer ANSI.
-  const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY
+  const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY && !useFullscreen
   let detachInk: (() => void) | undefined
   if (useInk) {
     try {
@@ -223,13 +226,13 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     } catch {
       attachRenderer(session.events, { verbose })
     }
-  } else {
+  } else if (!useFullscreen) {
     attachRenderer(session.events, { verbose })
   }
   // Turn status line (spinner + model) - hanya membuat repot saat interaktif
   // non-verbose; di one-shot output tetap di stderr.
   const { attachTurnStatus } = await import("../src/tui/turn-status.ts")
-  const detachStatus = attachTurnStatus(session.events, {
+  const detachStatus = useFullscreen ? () => {} : attachTurnStatus(session.events, {
     initialModel: effectiveInitialModel,
     getModel: () => modelRef.current ?? effectiveInitialModel,
   })
@@ -251,6 +254,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   return {
+    useFullscreen,
     session,
     cfg,
     cwd,

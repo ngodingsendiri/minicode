@@ -94,6 +94,8 @@ if (budgetRaw && !Number.isFinite(budget))
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
+const uiRaw = getArg("--ui") ?? "auto"
+const uiMode = ["auto","full","classic"].includes(uiRaw) ? uiRaw : "auto"
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
@@ -137,10 +139,16 @@ const ctx = await createCliSession({
   contextWindowTokens,
   timeoutMs,
   rateLimiter,
+  uiMode,
 })
 
 if (enterRepl) {
-  await runRepl(ctx)
+  if (ctx.useFullscreen) {
+    const { runFullscreen } = await import("./fullscreen-driver.ts")
+    await runFullscreen(ctx)
+  } else {
+    await runRepl(ctx)
+  }
 } else {
   const {
     session,

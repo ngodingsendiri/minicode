@@ -33,7 +33,8 @@ export const BUILTIN_COMMANDS = [
   { name: "sessions", desc: "List recent sessions" },
   { name: "resume", args: "[id]", desc: "Resume a session (pick from list)" },
   { name: "status", desc: "Show runtime status" },
-  { name: "exit", desc: "Quit Minicode" },
+  { name: "thinking", args: "[on|off]", desc: "Toggle reasoning display" },
+  { name: "init", desc: "Generate AGENTS.md for this project" },
 ]
 
 function pad(text: string, width: number): string {
@@ -72,6 +73,45 @@ export async function handleBuiltinCommand(
 
     case "clear": {
       process.stdout.write("\x1b[2J\x1b[H")
+      return { handled: true }
+    }
+
+    case "thinking": {
+      // display-only toggle; state disimpan di env proses (sederhana, no-state UI)
+      const arg = args.toLowerCase()
+      const cur = process.env.MINICODE_SHOW_THINKING === "1"
+      const next = arg === "on" ? true : arg === "off" ? false : !cur
+      process.env.MINICODE_SHOW_THINKING = next ? "1" : "0"
+      console.log(`\nReasoning display: ${next ? "on" : "off"}\n`)
+      return { handled: true }
+    }
+
+    case "init": {
+      const target = `${ctx.cwd ?? process.cwd()}\\AGENTS.md`
+      if (require("node:fs").existsSync(target)) {
+        console.log(`\nAGENTS.md sudah ada - tidak ditimpa.\n`)
+        return { handled: true }
+      }
+      const { loadRepoMap } = await import("../src/repo/repomap.ts")
+      const map = await loadRepoMap(ctx.cwd ?? process.cwd())
+      const body = [
+        "# AGENTS.md",
+        "",
+        "Petunjuk untuk agent yang bekerja di repo ini.",
+        "",
+        "## Struktur (repo-map)",
+        "```",
+        map ?? "(repo-map kosong)",
+        "```",
+        "",
+        "## Konvensi",
+        "- Ikuti gaya kode existing.",
+        "- Jalankan typecheck/test sebelum menyatakan selesai.",
+        "",
+      ].join("\n")
+      const { atomicWriteText } = await import("../src/lib/atomic-write.ts")
+      await atomicWriteText(target, body)
+      console.log(`\nAGENTS.md dibuat: ${target}\n`)
       return { handled: true }
     }
 
