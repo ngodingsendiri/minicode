@@ -2,10 +2,13 @@ import { realpathSync } from "node:fs"
 import { isAbsolute, relative, resolve, sep } from "node:path"
 
 // Satu sumber untuk aturan sandbox path — dipakai permission layer + setiap tool
-// (defense-in-depth). File .env / .git/config / node_modules dianggap sensitif.
-// v0.2.0: tambah .ssh, .aws, .npmrc, .netrc, .git/credentials, private keys, .kube.
+// (defense-in-depth). File kredensial / direktori toolchain dianggap sensitif.
+//
+// Semua alternatif ter-anchor ke batas segmen (awal string atau setelah / \)
+// dan bila relevan akhir path. Ini menutup bug operator-precedence lama di mana
+// `node_modules` dan ekstensi `.pem/.key/.p12` match di mana saja tanpa anchor.
 export const SENSITIVE_RE =
-  /(?:^|[/\\])(?:\.env(?:\.|$|[/\\])|\.git[/\\](?:config|credentials)|\.ssh[/\\]|\.aws[/\\]|\.npmrc(?:\.|$|[/\\])|\.netrc(?:\.|$|[/\\])|\.kube[/\\]|id_(?:rsa|ecdsa|ed25519|dsa)(?:\.(?:pub|ppk))?$)|node_modules|\.(?:pem|key|p12)$/i
+  /(?:^|[/\\])(?:\.env(?:\.[a-z0-9_.-]+)?(?:[/\\]|$)|\.git[/\\](?:config|credentials)(?:[/\\]|$)|\.git-credentials$|\.npmrc(?:\.[a-z0-9_-]+)?(?:[/\\]|$)|\.netrc(?:\.[a-z0-9_-]+)?(?:[/\\]|$)|\.ssh(?:[/\\]|$)|\.aws(?:[/\\]|$)|\.kube(?:[/\\]|$)|\.docker[/\\]config\.json$|id_(?:rsa|ecdsa|ed25519|dsa)(?:\.(?:pub|ppk))?$|credentials\.json$|secrets?\.(?:yaml|yml|json)$|terraform(?:\.[a-z0-9_-]+)*\.tfvars$|node_modules(?:[/\\]|$))|\.(?:pem|key|p12|pfx|jks|keystore)$/i
 
 export function isSensitive(p: string): boolean {
   return SENSITIVE_RE.test(p)
@@ -20,6 +23,24 @@ export function isPathOutsideRoot(p: string, root: string): boolean {
   return (
     rel === ".." || rel.startsWith(`..${sep}`) || rel.startsWith("../") || rel.startsWith("..\\")
   )
+}
+
+/**
+ * Cek jail berbasis REALPATH — symlink yang menunjuk keluar workspace
+ * terdeteksi di sini, bukan hanya di dalam tiap tool (defense-in-depth tetap).
+ * Bila path belum ada (ENOENT — mis. write_file file baru), fallback ke cek
+ * logis agar kasus penulisan file baru tetap diizinkan.
+ */
+export function isRealPathOutsideRoot(p: string, root: string): boolean {
+  if (!p) return false
+  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
+  try {
+    const real = realpathSync(abs)
+    const realRoot = realpathSync(resolve(root))
+    return isPathOutsideRoot(real, realRoot)
+  } catch {
+    return isPathOutsideRoot(p, root)
+  }
 }
 
 export function isCwdOutsideRoot(cwd: string, root: string): boolean {

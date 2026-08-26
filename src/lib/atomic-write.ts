@@ -28,7 +28,7 @@ export async function atomicWriteText(path: string, data: string): Promise<void>
       // Windows: rename menimpa target yang baru saja ditulis penulis lain
       // bisa EPERM/EBUSY/EACCES sesaat (lock AV / replace window) → backoff.
       let lastErr: unknown
-      for (let r = 0; r < 5; r++) {
+      for (let r = 0; r < 8; r++) {
         try {
           await rename(tmp, path)
           lastErr = undefined
@@ -37,7 +37,7 @@ export async function atomicWriteText(path: string, data: string): Promise<void>
           const code = (e as NodeJS.ErrnoException).code
           if (code === "EPERM" || code === "EBUSY" || code === "EACCES") {
             lastErr = e
-            await new Promise((res) => setTimeout(res, 5 * (r + 1)))
+            await new Promise((res) => setTimeout(res, Math.min(10 * 2 ** r, 100)))
           } else throw e
         }
       }

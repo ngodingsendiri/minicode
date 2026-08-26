@@ -2,7 +2,7 @@ import { resolve } from "node:path"
 import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "minicore"
 import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hooks/index.ts"
-import { isCwdOutsideRoot, isPathOutsideRoot, isSensitive } from "./jail.ts"
+import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
 
 export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
 
@@ -191,6 +191,7 @@ export function createPermissionHandler(
       const earlyArgs = call.args as Record<string, unknown> | null
 
       // universal file-path jail (applies to all modes before any allow)
+      // pakai realpath-based check: symlink keluar workspace terdeteksi di sini
       if (
         call.name === "write_file" ||
         call.name === "edit" ||
@@ -198,11 +199,11 @@ export function createPermissionHandler(
         call.name === "read_file"
       ) {
         const p = (earlyArgs?.path as string) ?? ""
-        if (!p || isPathOutsideRoot(p, root) || isSensitive(p)) return "deny"
+        if (!p || isRealPathOutsideRoot(p, root) || isSensitive(p)) return "deny"
       }
       if (call.name.startsWith("lsp_")) {
         const f = (earlyArgs?.file as string) ?? ""
-        if (f && (isPathOutsideRoot(f, root) || isSensitive(f))) return "deny"
+        if (f && (isRealPathOutsideRoot(f, root) || isSensitive(f))) return "deny"
       }
       const cwdArg = (earlyArgs?.cwd as string) ?? ""
       if (
@@ -212,7 +213,7 @@ export function createPermissionHandler(
           call.name === "grep" ||
           call.name.startsWith("git_"))
       ) {
-        if (isCwdOutsideRoot(cwdArg, root) || isPathOutsideRoot(cwdArg, root)) return "deny"
+        if (isCwdOutsideRoot(cwdArg, root) || isRealPathOutsideRoot(cwdArg, root)) return "deny"
       }
 
       return handlers[mode](call, earlyArgs)
