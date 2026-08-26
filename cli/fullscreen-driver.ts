@@ -3,13 +3,13 @@
 // skill-render lalu dikirim ke LLM (alur sama dengan classic repl).
 import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts"
 import { renderSkill } from "../src/skills/loader.ts"
-import { loadHistory } from "./input.ts"
+import { appendHistory, loadHistory } from "./input.ts"
+import { listSessions } from "../src/session/persistence.ts"
 import { captureOutput } from "./panel.ts"
 import type { CliSession } from "./setup.ts"
 import { attachFullscreenShell } from "../src/tui/fullscreen.tsx"
 
 const MODES = ["auto", "ask", "plan", "allowlist"] as const
-const PICKER_HINTS = new Set(["provider", "model", "resume"])
 
 export async function runFullscreen(ctx: CliSession): Promise<void> {
   const {
@@ -69,19 +69,56 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
 
   const history = await loadHistory()
 
+  const onPicker = async (
+    q: string,
+  ): Promise<{
+    title: string
+    items: { label: string; value: string }[]
+    onPick(v: string): string | void
+  } | null> => {
+    const cmd = q.slice(1).split(" ")[0]!.toLowerCase()
+    if (cmd === "model" || cmd === "models") {
+      const items = cfg.providers.flatMap((p) =>
+        p.models.map((m) => ({ label: `${p.id} :: ${m}`, value: `${p.id}::${m}` })),
+      )
+      if (!items.length) return { title: "model", items: [], onPick: () => {} }
+      return {
+        title: "model",
+        items,
+        onPick: (v) => {
+          modelRef.current = v
+          return `model aktif: ${v}`
+        },
+      }
+    }
+    if (cmd === "provider" || cmd === "providers") {
+      return {
+        title: "providers",
+        items: cfg.providers.map((p) => ({
+          label: `${p.id}  ${p.baseUrl}  (${p.models.length} model)`,
+          value: p.id,
+        })),
+        onPick: (id) => `"${id}" terpilih - atur model via /model`,
+      }
+    }
+    if (cmd === "resume") {
+      const sessions = listSessions(cwd)
+      if (!sessions.length) return { title: "resume", items: [], onPick: () => {} }
+      return {
+        title: "resume",
+        items: sessions.slice(0, 20).map((s) => ({
+          label: `${s.id}  ${new Date(s.updated_at ?? s.created_at).toLocaleString()}`,
+          value: s.id,
+        })),
+        onPick: (id) => `keluar lalu jalankan: minicode --resume ${id}`,
+      }
+    }
+    return null
+  }
+
   const onOverlay = async (
     q: string,
   ): Promise<{ title: string; lines: string[] } | null> => {
-    const cmdName = q.slice(1).split(" ")[0]!.toLowerCase()
-    if (PICKER_HINTS.has(cmdName)) {
-      return {
-        title: cmdName,
-        lines: [
-          "Picker interaktif butuh mode classic.",
-          "Keluar dulu (ctrl+c 2x) lalu jalankan: minicode --ui classic",
-        ],
-      }
-    }
     try {
       const { lines } = await captureOutput(() => handleBuiltinCommand(q, commandCtx))
       return { title: cmdName, lines }
@@ -107,6 +144,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
       }
       finalPrompt = await renderSkill(skill, skillArgs)
     }
+    await appendHistory(q)
     await runPromptWithVerify(finalPrompt, signal)
     const u = usage.get(modelRef.current)
     await persistCurrent(u)
@@ -131,6 +169,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     suggestions,
     history: () => history,
     onLine,
+    onPicker,
     onOverlay,
     onExit: async () => {
       await close()

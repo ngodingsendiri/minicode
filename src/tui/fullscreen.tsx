@@ -48,6 +48,11 @@ export interface FullscreenProps {
   suggestions(line: string): { text: string; group?: string }[]
   history(): string[]
   onLine(q: string, signal: AbortSignal): Promise<"handled" | "prompt" | { note: string }>
+  onPicker(q: string): Promise<{
+    title: string
+    items: { label: string; value: string }[]
+    onPick(v: string): string | void
+  } | null>
   onOverlay(q: string): Promise<{ title: string; lines: string[] } | null>
   onExit(): Promise<void>
 }
@@ -59,6 +64,8 @@ function App(p: FullscreenProps) {
   const [mode, setMode] = useState(p.initialMode)
   const [expanded, setExpanded] = useState(false)
   const [overlay, setOverlay] = useState<{ title: string; lines: string[] } | null>(null)
+  type PickerCfg = { title: string; items: { label: string; value: string }[]; sel: number; onPick(v: string): string | void }
+  const [picker, setPicker] = useState<PickerCfg | null>(null)
   const [cost, setCost] = useState<number | undefined>(undefined)
   const [line, setLine] = useState("")
   const [sel, setSel] = useState(-1)
@@ -164,6 +171,11 @@ function App(p: FullscreenProps) {
           add("info", `reasoning display: ${showThinking.ref ? "on" : "off"}`)
           return
         }
+        const pk = await p.onPicker(q)
+        if (pk) {
+          setPicker({ ...pk, sel: 0 })
+          return
+        }
         const ov = await p.onOverlay(q)
         if (ov) {
           setOverlay({ title: ov.title, lines: ov.lines.map((l) => plain(l, getW() - 4)) })
@@ -192,6 +204,21 @@ function App(p: FullscreenProps) {
   }
 
   useInput((input, key) => {
+    if (picker) {
+      if (key.upArrow) return setPicker((v) => (v ? { ...v, sel: Math.max(0, v.sel - 1) } : v))
+      if (key.downArrow) return setPicker((v) => (v ? { ...v, sel: Math.min(v.items.length - 1, v.sel + 1) } : v))
+      if (key.return || input === " ") {
+        const cur = picker
+        const it = cur.items[cur.sel]
+        setPicker(null)
+        if (it) {
+          const r = it.onPick(it.value)
+          if (typeof r === "string") add("info", r)
+        }
+      }
+      if (key.escape) setPicker(null)
+      return
+    }
     if (overlay) {
       if (key.escape || input === "q") setOverlay(null)
       return
@@ -276,11 +303,12 @@ function App(p: FullscreenProps) {
   const H = process.stdout.rows || 24
   const getW = () => W
   const m = matches()
-  const menuLines = overlay ? 0 : Math.min(m.length, 8)
+  const pickerLines = picker ? Math.min(picker.items.length, H - 5) : 0
+  const menuLines = overlay || picker ? 0 : Math.min(m.length, 8)
   const overlayLines = overlay ? Math.min(overlay.lines.length, H - 5) : 0
   const bodyH = Math.max(
     3,
-    H - 1 /*header*/ - (overlay ? overlayLines + 2 : 0) - menuLines - 2 /*input+footer*/ - (busy ? 1 : 0),
+    H - 1 /*header*/ - (overlay ? overlayLines + 2 : 0) - (picker ? pickerLines + 3 : 0) - menuLines - 2 /*input+footer*/ - (busy ? 1 : 0),
   )
 
   // flatten transcript -> baris pendek siap cetak
@@ -320,7 +348,23 @@ function App(p: FullscreenProps) {
         {expanded ? " - DETAIL" : ""}
       </Text>
 
-      {overlay ? (
+      {picker ? (
+        <Box flexDirection="column">
+          <Text bold color="cyan">
+            -- {picker.title} --
+          </Text>
+          {picker.items.slice(Math.max(0, picker.sel - bodyH + 3), Math.max(0, picker.sel - bodyH + 3) + bodyH - 2).map((it, i) => {
+            const idx = Math.max(0, picker.sel - bodyH + 3) + i
+            return (
+              <Text key={it.value} color={idx === picker.sel ? "cyan" : undefined} wrap="truncate-end">
+                {idx === picker.sel ? "> " : "  "}
+                {plain(it.label, W - 6)}
+              </Text>
+            )
+          })}
+          <Text dimColor>[up/down] pilih · [enter] ok · [esc] batal</Text>
+        </Box>
+      ) : overlay ? (
         <Box flexDirection="column">
           <Text bold color="cyan">
             -- {overlay.title} --
@@ -356,7 +400,7 @@ function App(p: FullscreenProps) {
       <Text wrap="truncate-end">
         <Text color="cyan">{"> "}</Text>
         {line}
-        <Text inverse> </Text>
+        <Text dimColor>_</Text>
       </Text>
       <Text dimColor wrap="truncate-end">
         ctrl+c stop/keluar · esc stop · ctrl+o detail · shift+tab mode · /help perintah

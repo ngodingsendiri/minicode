@@ -7,7 +7,6 @@ import { writeTrace } from "../src/telemetry/trace.ts"
 import { attachRenderer, formatError } from "../src/tui/renderer.ts"
 import { c, glyphs } from "../src/tui/theme.ts"
 import { promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
-import { runRepl } from "./repl.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
 
@@ -143,12 +142,8 @@ const ctx = await createCliSession({
 })
 
 if (enterRepl) {
-  if (ctx.useFullscreen) {
-    const { runFullscreen } = await import("./fullscreen-driver.ts")
-    await runFullscreen(ctx)
-  } else {
-    await runRepl(ctx)
-  }
+  const { runFullscreen } = await import("./fullscreen-driver.ts")
+  await runFullscreen(ctx)
 } else {
   const {
     session,

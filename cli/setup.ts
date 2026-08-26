@@ -209,7 +209,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     })
   }
 
-  const useFullscreen = !!enterRepl && (opts.ui === "full" || (opts.ui ?? "auto") === "auto")
+  const useFullscreen = !!enterRepl // classic REPL sudah dihapus - satu jalur UI
   // ── renderer ──
   // Ink butuh TTY (raw mode) - di non-TTY fallback ke renderer ANSI.
   const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY && !useFullscreen
