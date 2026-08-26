@@ -2,6 +2,8 @@
 
 Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam additif `compactAsync` + `initialMessages`).
 
+**v0.5.1** — security hardening: env-sanitasi terpusat untuk semua spawn (bash/docker/MCP/LSP), MCP tools bertitik selalu gated (tanpa wildcard auto-allow), SSRF guard redirect-per-hop + body cap, atomic write O_EXCL di semua tool tulis, jail realpath di permission layer, executor antrean abort-aware, SQLite WAL capped + busy-retry, telemetry opt-in scrub (`MINICODE_TELEMETRY=0`), router image bytes utk anthropic, `/sync` invalidate cache, pricing per-segment, nol `as never/as any` produksi — **243 test** (8 skip live/docker).
+
 **v0.4.0** — UI/UX overhaul: preset gateway (`/provider-add` pilih 6 gateway), `provider::model` routing, `/sync` auto-refresh models, dropdown suggestions grouped `COMMANDS/SKILLS`, `minicode providers|models|sync` tanpa LLM, transparansi fallback di summary, turn status line, budget prompt, `/resume` interaktif, error user-friendly, TTL configurable, Fase 1–6 plan (prompt engine pure + fuzz test, live test terpisah, CI fix, telemetry gate) — **197 test** (8 skip live/docker).
 
 **v0.3.x** — hardening keamanan (allowlist mode, Docker sandbox, plan mode, budget enforce, secret scrubber, jail), repo-map (9 bahasa + LSP), self-heal `--verify`, resume sejati, apply_patch, checkpoint pre-turn, `minicode stats`, benching.
@@ -64,12 +66,14 @@ FS `read_file`(2MB+realpath jail, **secret-scrubbed**) `write_file`(atomic tmp�
 OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM/DeepSeek), Anthropic streaming tool_use cap 30s max_tokens configurable, Router fallback rate_limit/server/network clone-error + C4 base64 fix + P2 retryAfter cap. Detect `GET /models` timeout 4s. Config global+local merge (local prioritas) atomic write + chmod 600. Build provider terpusat di `src/providers/build.ts`.
 
 ## Policy & Memory
-permission `auto|ask|readonly|allow-all` — bash denylist 27 regex (`rm -rf /*`, `${HOME}`, fork bomb, curl|sh, shred, truncate, sudo rm, `python -c`, `sh -c`, `base64|sh`, `printenv`, baca `.env`), path jail sep-aware + **symlink realpath escape-check**, `.env`/`.git/config`/`node_modules` deny; ask = allowlist glob merge global+local + TUI prompt persist. Auto mode: `delegate_task`/`mcp_call` di-gate (prompt saat TTY, **tolak** tanpa TTY); tool MCP dinamis hanya jika server terdaftar. Compaction: mekanikal sinkron default; **LLM async otomatis via seam kernel `compactAsync`** (bila `DEEPSEEK_API_KEY` diset — fallback mechanical bila LLM gagal/timeout). Executor order-preserving: mixed step sequential, pure-read 8× parallel, pure-write cap 2. Usage cost pricing longest-key (deepseek/gpt-4.1/o1/o3/gemini). Sessions sqlite WAL `updated_at`, **persistence incremental** + placeholder untuk content binary. Vector hybrid WAL `0.7 cosine + 0.3 keyword`, dim-mismatch safe.
+permission `auto|ask|readonly|allow-all` — bash denylist 27 regex (`rm -rf /*`, `${HOME}`, fork bomb, curl|sh, shred, truncate, sudo rm, `python -c`, `sh -c`, `base64|sh`, `printenv`, baca `.env`), path jail sep-aware + **symlink realpath di permission layer**, `.env`/`.git/config`/`node_modules` deny; ask = allowlist glob merge global+local + TUI prompt persist. Auto mode: `delegate_task`/`mcp_call`/**semua tool MCP bertitik** di-gate (prompt saat TTY, **tolak** tanpa TTY) — server terdaftar tidak mendapat wildcard auto-allow. Compaction: mekanikal sinkron default; **LLM async otomatis via seam kernel `compactAsync`** (bila `DEEPSEEK_API_KEY` diset — fallback mechanical bila LLM gagal/timeout). Executor order-preserving: mixed step sequential, pure-read 8× parallel, pure-write cap 2, antrean abort-aware. Usage cost pricing longest-key **per-segment** (wrapper model tak salah harga). Sessions sqlite WAL capped + busy-retry, **persistence incremental** + placeholder binary. Vector hybrid WAL `0.7 cosine + 0.3 keyword`, dim-mismatch safe.
 
 ## Security Layers
 ```
-PermissionHandler (denylist+jail+cwd) → validateArgs (kernel) → executor (order/cap) → tool realpath+atomic → execute
-config.json/allowlist.json → atomic tmp+rename + chmod 600 · MCP serve curated tools + permission aktif
+PermissionHandler (denylist+jail realpath+cwd) → validateArgs (kernel) → executor (order/cap/abort-aware) → tool realpath+atomic(O_EXCL) → execute
+spawn env → sanitizeSpawnEnv (secret strip final-merge; bash/docker/MCP/LSP)
+config.json/allowlist.json → atomic randomUUID tmp+rename + chmod 600 · MCP serve curated tools + permission aktif
+web_fetch → redirect manual ≤5 hop, tiap host divalidasi, body hard-cap 2MB
 ```
 
 ## Skills
@@ -78,8 +82,8 @@ config.json/allowlist.json → atomic tmp+rename + chmod 600 · MCP serve curate
 ## Verification & Benchmark
 - **Auto-verify** (`--verify`): deteksi command (`typecheck` → `test` → `tsconfig`) atau `MINICODE_VERIFY_CMD`; loop self-heal maks 3 siklus.
 - **Repo-map**: simbol per file (TS/Py/Go/Rust/Java/C) di-cache `.minicode/repomap.json`, disuntik ke system prompt.
-- **Secret scrubber**: `sk-`, `ghp_`, `AKIA`, PEM, JWT, Bearer, `api_key=...` di-redact sebelum sampai ke LLM (read_file/bash/grep).
-- **Telemetry**: `.minicode/traces.jsonl` — satu baris JSON per run (tokens, steps, cost, durasi).
+- **Secret scrubber**: `sk-`, `ghp_`, `AKIA`, PEM, JWT, Bearer, `api_key=...` di-redact sebelum sampai ke LLM (read_file/bash/grep) — tanpa whitelist kata.
+- **Telemetry**: `.minicode/traces.jsonl` — satu baris JSON per run (tokens, steps, cost, durasi); prompt di-scrub; **opt-out** `MINICODE_TELEMETRY=0`.
 - **Benchmark**: `bun run bench` (butuh provider) / `bun run bench:smoke` (fake, untuk CI) → `bench/results.json` (resolve rate, steps, token, cost).
 
 ## Aturan
