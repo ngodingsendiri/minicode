@@ -28,14 +28,11 @@
   },
   "workspaces": ["../minicore"],
   "dependencies": {
-    "ink": "^7.1.1",
-    "minicore": "workspace:*",
-    "react": "^19.2.8"
+    "minicore": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
     "@types/bun": "^1.3.14",
-    "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18"
+    "@types/node": "^26.2.0"
   }
 }

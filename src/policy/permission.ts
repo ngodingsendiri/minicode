@@ -73,11 +73,20 @@ const DEFAULT_BASH_ALLOWLIST = [
   "bun test*",
   "bun x tsc*",
   "npm run *",
+  "npm exec *",
+  "npx *",
   "bun run *",
   "echo *",
   "ls*",
   "cat *",
 ]
+
+// 6.4 — npm exec / npx hanya di-allow bila arg "known-good": tak ada
+// ekspansi shell ($/backtick) atau redirection (< >). Chaining ;|& sudah
+// diblokir oleh matchBashAllowlist (pattern tak mengandungnya).
+function npmNpxSafe(cmd: string): boolean {
+  return !/[`$<>]/.test(cmd)
+}
 
 function matchBashAllowlist(cmd: string, pattern: string): boolean {
   // prevent shell chaining bypass: if cmd contains ; & | and pattern does not explicitly allow them, deny
@@ -145,7 +154,11 @@ export function createPermissionHandler(
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? ""
         if (!cmd.trim() || bashDenied(cmd)) return "deny"
-        return bashAllowlist.some((pat) => matchBashAllowlist(cmd, pat)) ? "allow" : "deny"
+        const matched = bashAllowlist.filter((pat) => matchBashAllowlist(cmd, pat))
+        if (matched.length === 0) return "deny"
+        if (matched.some((p) => /^(npx|npm exec)\b/i.test(p)) && !npmNpxSafe(cmd))
+          return "deny"
+        return "allow"
       }
       if (isGated(call.name)) return "deny"
       if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch")
@@ -187,12 +200,10 @@ export function createPermissionHandler(
 
   const returned = {
     async check(call: ToolCall): Promise<"allow" | "deny"> {
-      const mode = state.mode
-      if (mode === "allow-all") return "allow"
       const earlyArgs = call.args as Record<string, unknown> | null
 
-      // universal file-path jail (applies to all modes before any allow)
-      // pakai realpath-based check: symlink keluar workspace terdeteksi di sini
+      // universal file-path jail — harus sebelum allow-all (defense-in-depth)
+      // realpath-based: symlink keluar workspace tetap tertangkap walau --allow-all
       if (
         call.name === "write_file" ||
         call.name === "edit" ||
@@ -216,6 +227,9 @@ export function createPermissionHandler(
       ) {
         if (isCwdOutsideRoot(cwdArg, root) || isRealPathOutsideRoot(cwdArg, root)) return "deny"
       }
+
+      const mode = state.mode
+      if (mode === "allow-all") return "allow"
 
       return handlers[state.mode](call, earlyArgs)
     },

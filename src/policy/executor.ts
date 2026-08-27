@@ -1,3 +1,4 @@
+import { resolve } from "node:path"
 import { abortError } from "minicore/core/errors.ts"
 import { runCall } from "minicore/core/executor.ts"
 import type { ExecutorDeps, ToolExecutor } from "minicore/core/index.ts"
@@ -93,7 +94,14 @@ export function parallelExecutor(
       function getFilePath(call: ToolCall): string | null {
         if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch") {
           const p = (call.args as Record<string, unknown>)?.path
-          return typeof p === "string" ? p : null
+          if (typeof p !== "string" || !p) return null
+          // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock
+          try {
+            const abs = resolve(p)
+            return process.platform === "win32" ? abs.toLowerCase() : abs
+          } catch {
+            return process.platform === "win32" ? p.toLowerCase() : p
+          }
         }
         return null
       }

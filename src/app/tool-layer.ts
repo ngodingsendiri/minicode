@@ -3,7 +3,7 @@ import type { MinicodeConfig } from "../config.ts"
 import { configureServers as lspConfigure } from "../lsp/client.ts"
 import { connectAll as mcpConnectAll } from "../mcp/client.ts"
 import { allTools, withMcpTools } from "../tools/index.ts"
-import { formatError } from "../tui/renderer.ts"
+import { formatError } from "../tui/minimal/simple.ts"
 
 export async function setupToolLayer(cfg: MinicodeConfig): Promise<{ sessionTools: Tool[] }> {
   let sessionTools: Tool[] = allTools

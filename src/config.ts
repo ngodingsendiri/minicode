@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { atomicWriteText } from "./lib/atomic-write.ts"
 import { clearDetectCache, detectModels } from "./providers/detect.ts"
+import { GATEWAY_PRESETS } from "./providers/presets.ts"
 
 export interface ProviderEntry {
   id: string
@@ -140,6 +141,37 @@ export async function saveProvider(
   await writeConfigAtomic(path, cfg)
 }
 
+// 5.1 — id ramah: pakai id preset (openrouter/deepseek/generic/...) atau slug
+// baseUrl; dedupe dengan indeks numerik, BUKAN hash acak.
+export function deriveProviderId(baseUrl: string, existingIds: string[], id?: string): string {
+  let baseId: string
+  if (id) {
+    baseId = id
+  } else {
+    const norm = baseUrl.replace(/\/+$/, "")
+    const preset = GATEWAY_PRESETS.find((p) => p.baseUrl.replace(/\/+$/, "") === norm)
+    baseId =
+      (preset?.id ??
+        norm
+          .replace(/\/v1$/i, "") // OpenAI-compatible gateways: buang akhiran /v1
+          .replace(/https?:\/\//, "")
+          .replace(/[^a-z0-9]/gi, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 24)) ||
+      "gateway"
+  }
+  let uniqId = baseId.slice(0, 30)
+  if (!id) {
+    let n = 2
+    while (existingIds.includes(uniqId)) {
+      uniqId = `${baseId}-${n}`.slice(0, 30)
+      n++
+    }
+  }
+  return uniqId
+}
+
 export async function detectAndSave(
   baseUrl: string,
   apiKey: string,
@@ -166,18 +198,9 @@ export async function detectAndSave(
       providerHint: hint as "openai" | "anthropic" | "unknown",
     }
   }
-  // dedup id: base + 4-char hash to avoid collision on slice(0,30)
-  const baseId =
-    (id ??
-      baseUrl
-        .replace(/https?:\/\//, "")
-        .replace(/[^a-z0-9]/gi, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 24)) ||
-    "gateway"
-  const suffix = id ? "" : `-${Math.random().toString(36).slice(2, 6)}`
-  const uniqId = `${baseId}${suffix}`.slice(0, 30)
+  // dedup id: id ramah via preset/slug, tanpa hash acak (lihat deriveProviderId)
+  const existing = (await loadConfig(opts.cwd)).providers.map((p) => p.id)
+  const uniqId = deriveProviderId(baseUrl, existing, id)
   const entry: ProviderEntry = {
     id: uniqId,
     baseUrl,

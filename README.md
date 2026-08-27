@@ -2,6 +2,8 @@
 
 Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam additif `compactAsync` + `initialMessages`).
 
+**v0.6.0** — Fase 0-1 hardening: fix `renderer.ts` rekursi `wOut` crash, `allow-all` jail bypass (universal jail sebelum `allow-all`), `busy-spin` → `Atomics.wait` (vector/persistence), SSRF DNS pinning (lookup + cache 30s), executor file-lock normalize `resolve+toLowerCase`, checkpoint `atomicWriteText`, scrub `REDIS|GITHUB|GOOGLE|AZURE|SUPABASE`, `LIMITS` sync (`DETECT_GLOBAL_TIMEOUT_MS` 6s) — **243 test** hermetic (8 skip live/docker), klasik TUI siap dihapus di Fase 2.
+
 **v0.5.1** — security hardening: env-sanitasi terpusat untuk semua spawn (bash/docker/MCP/LSP), MCP tools bertitik selalu gated (tanpa wildcard auto-allow), SSRF guard redirect-per-hop + body cap, atomic write O_EXCL di semua tool tulis, jail realpath di permission layer, executor antrean abort-aware, SQLite WAL capped + busy-retry, telemetry opt-in scrub (`MINICODE_TELEMETRY=0`), router image bytes utk anthropic, `/sync` invalidate cache, pricing per-segment, nol `as never/as any` produksi — **243 test** (8 skip live/docker).
 
 **v0.4.0** — UI/UX overhaul: preset gateway (`/provider-add` pilih 6 gateway), `provider::model` routing, `/sync` auto-refresh models, dropdown suggestions grouped `COMMANDS/SKILLS`, `minicode providers|models|sync` tanpa LLM, transparansi fallback di summary, turn status line, budget prompt, `/resume` interaktif, error user-friendly, TTL configurable, Fase 1–6 plan (prompt engine pure + fuzz test, live test terpisah, CI fix, telemetry gate) — **197 test** (8 skip live/docker).
@@ -10,14 +12,14 @@ Coding agent built on **MiniCore** (`../minicore` v0.1.0, 153 tests — seam add
 
 📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark).
 
-MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 22 tools, sub-agents, MCP/LSP, skills, hooks ask, Ink TUI, memory hybrid RAG, sessions sqlite, repo-map, verifier.
+MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode lengkap: 23 tools, sub-agents, MCP/LSP, skills, hooks ask, TUI minimal pure ANSI (alternate-screen, tanpa Ink/React), memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
 ## Hubungan
 ```
 minicore (zero-dep, 16 modul — inti di-freeze; hanya seam additif `compactAsync` di-loop yang dibuka) ← perubahan additif saja, backward-compatible
    ↑
 minicode (coding-agent, depends file:../minicore)
-  ├─ src/tools/     → 20 Tool (fs/bash/git/memory/task/mcp/lsp) + symlink jail defense-in-depth
+   ├─ src/tools/     → 23 Tool (fs/bash/git/memory/task/mcp/lsp) + symlink jail defense-in-depth
   ├─ src/agents/    → Pool concurrency 3 (sub-agent isolasi, abort-aware)
   ├─ src/hooks/     → allowlist merge global+local atomic chmod600 + promptAsk card [y/n/a]
   ├─ src/policy/    → permission auto|ask|readonly|allow-all, executor order-preserving 8/2,
@@ -26,7 +28,7 @@ minicode (coding-agent, depends file:../minicore)
   ├─ src/mcp/       → client/server/transport stdio (backpressure, circular-safe)
   ├─ src/lsp/       → client diagnostics/definition/references/hover/symbols (didClose cleanup)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
-  ├─ src/tui/       → theme ANSI, highlight, diff visualizer, spinner, table & Ink TUI v2
+   ├─ src/tui/       → minimal/simple+fullscreen (pure ANSI ?1049h) + theme/highlight/diff/spinner
   ├─ docs/          → ARCHITECTURE.md
   └─ cli/           → REPL (tab completion, multiline, history, slash commands), wizard, subcommands
 ```
@@ -48,7 +50,7 @@ minicode sync           # refresh model baru dari semua provider
 Wizard & `/provider-add` menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google), API Key ter-masking, auto-detect models.
 
 ```bash
-minicode --tui "refactor src/utils"     # Ink TUI Dashboard (split-view & token gauge)
+minicode --tui "refactor src/utils"     # TUI minimal alternate-screen (pure ANSI, tanpa Ink)
 minicode --ask "deploy script"          # human-in-loop confirmation card
 minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah run
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral
@@ -59,7 +61,7 @@ bun run test:live                       # E2E live (butuh config + jaringan)
 bun run bench:smoke                     # benchmark smoke (tanpa API key)
 ```
 
-## Tools (22)
+## Tools (23)
 FS `read_file`(2MB+realpath jail, **secret-scrubbed**) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, **env kredensial di-strip**, **Docker sandbox optional**) · git `git_status/diff/log`(timeout 8s paralel) · memory `read/write/forget_memory` (hybrid RAG WAL) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols`(\b word-boundary)
 
 ## Providers (hybrid x-api-key + Bearer)

@@ -17,7 +17,8 @@ import { recordCheckpointFromSnapshots, snapshotWorkspace } from "../src/session
 import { loadSession, saveSession } from "../src/session/persistence.ts"
 import { createMinicodeSession } from "../src/session.ts"
 import type { Skill } from "../src/skills/loader.ts"
-import { attachRenderer } from "../src/tui/renderer.ts"
+import { attachSimpleLogger } from "../src/tui/minimal/simple.ts"
+import { runRunHooks } from "../src/hooks/run.ts"
 import { c } from "../src/tui/theme.ts"
 
 export interface CliSessionOptions {
@@ -26,6 +27,7 @@ export interface CliSessionOptions {
   sessionId: string
   resumeId?: string
   modelOverride?: string
+  providerOverride?: string
   prompt: string
   enterRepl: boolean
   verbose: boolean
@@ -55,7 +57,7 @@ export interface CliSession {
   allLoadedSkills: Skill[]
   usage: ReturnType<typeof createUsageCollector>
   budget?: number
-  detachInk?: () => void
+  detachSimple?: () => void
   persistCurrent: (usageData: unknown) => Promise<void>
   useFullscreen: boolean
   runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
@@ -68,6 +70,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     sessionId,
     resumeId,
     modelOverride,
+    providerOverride,
     prompt,
     enterRepl,
     verbose,
@@ -90,7 +93,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const effectiveTimeoutMs =
     timeoutMs ?? (envTimeout != null && envTimeout !== "" ? Number(envTimeout) : 900_000)
 
-  const { cfg, router } = await createProviderLayer({ cwd, prompt, enterRepl, rateLimiter })
+  const { cfg, router } = await createProviderLayer({ cwd, prompt, enterRepl, rateLimiter, providerOverride })
   const { systemExtra, skills: allLoadedSkills } = await createRagLayer({ cfg, prompt, cwd })
 
   // resume: load full history from DB -> seed into kernel ContextStore
@@ -186,8 +189,10 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const verifyActive = verifyCommand.length > 0
 
   async function runPromptWithVerify(p: string, signal?: AbortSignal): Promise<void> {
+    await runRunHooks("pre", { phase: "pre", prompt: p, cwd })
     if (!verifyActive) {
       await session.run(p, { model: modelRef.current, signal })
+      await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
       return
     }
     await runWithSelfHeal(p, {
@@ -207,30 +212,17 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       },
       onOk: (cycles) => process.stderr.write(c.green(`\n[verify] ok after ${cycles} fix cycles\n`)),
     })
+    await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
   }
 
-  const useFullscreen = !!enterRepl // classic REPL sudah dihapus - satu jalur UI
-  // ── renderer ──
-  // Ink butuh TTY (raw mode) - di non-TTY fallback ke renderer ANSI.
-  const useInk = useTui && !enterRepl && !!prompt && !!process.stdout.isTTY && !useFullscreen
-  let detachInk: (() => void) | undefined
-  if (useInk) {
-    try {
-      // Lazy: ink/react hanya di-bundle saat --tui benar-benar dipakai.
-      const { attachInkRenderer } = await import("../src/tui/ink.tsx")
-      detachInk = attachInkRenderer(session.events, {
-        verbose,
-        model: effectiveInitialModel,
-        budget,
-      })
-    } catch {
-      attachRenderer(session.events, { verbose })
-    }
-  } else if (!useFullscreen) {
-    attachRenderer(session.events, { verbose })
+  const useFullscreen = !!enterRepl // REPL = fullscreen minimal; one-shot = simple logger
+  // ── one-shot logger (hapus klasik renderer & Ink — satu jalur minimal) ──
+  let detachSimple: (() => void) | undefined
+  if (!useFullscreen) {
+    // hanya TTY yang butuh ANSI; non-TTY tetap log via simple (akan no-op di statusline)
+    detachSimple = attachSimpleLogger(session.events, { verbose })
   }
-  // Turn status line (spinner + model) - hanya membuat repot saat interaktif
-  // non-verbose; di one-shot output tetap di stderr.
+  // Turn status line — hanya untuk one-shot non-fullscreen
   const { attachTurnStatus } = await import("../src/tui/turn-status.ts")
   const detachStatus = useFullscreen ? () => {} : attachTurnStatus(session.events, {
     initialModel: effectiveInitialModel,
@@ -248,7 +240,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   async function close(): Promise<void> {
     detachStatus()
-    if (detachInk) detachInk()
+    if (detachSimple) detachSimple()
     await mcpCloseAll()
     await lspCloseAll()
   }
@@ -267,7 +259,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     allLoadedSkills,
     usage,
     budget,
-    detachInk,
+    detachSimple,
     persistCurrent,
     runPromptWithVerify,
     close,

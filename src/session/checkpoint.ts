@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
-import { dirname, join, relative, resolve } from "node:path"
+import { mkdir, readdir, readFile, rm } from "node:fs/promises"
+import { join, relative, resolve } from "node:path"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
 
@@ -194,8 +194,7 @@ async function applySnapshots(snapshots: FileSnapshot[], cwd: string): Promise<s
         applied.push(`${snap.path} (removed)`)
       }
     } else {
-      await mkdir(dirname(absPath), { recursive: true }).catch(() => {})
-      await writeFile(absPath, snap.content, "utf8")
+      await atomicWriteText(absPath, snap.content)
       applied.push(`${snap.path} (restored)`)
     }
   }

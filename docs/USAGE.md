@@ -16,7 +16,8 @@ bun install && bun link
 | `minicode` | Mode interaktif (REPL) + wizard bila belum ada provider |
 | `minicode "prompt"` | Sekali jalan (headless) |
 | `echo "prompt" \| minicode` | Via pipe |
-| `minicode --tui "prompt"` | Ink TUI split-view |
+| `minicode --tui "prompt"` | TUI minimal alternate-screen pure ANSI (tanpa Ink) |
+| `minicode --provider <id> "prompt"` | Paksa provider agnostik tanpa ubah config (atau `provider::model`) |
 | `minicode config add --baseUrl <url> --apiKey <key>` | Tambah provider LLM |
 | `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server |
 | `minicode config lsp add <ext> --command <cmd> --args "<a1,a2>"` | Daftarkan LSP server |
@@ -36,7 +37,8 @@ bun install && bun link
 | `--allowlist` | Bash hanya perintah aman (git/bun test/bun run/npm run) |
 | `--ask` | Tanya persetujuan setiap tool |
 | `--allow-all` | Nonaktifkan semua sandbox |
-| `--model <name>` | Override model LLM |
+| `--model <name>` | Override model LLM (atau `providerId::model` paksa provider) |
+| `--provider <id>` | Paksa provider id agnostik (tanpa ubah config; filter single) |
 | `--resume <id>` | Lanjutkan sesi sebelumnya (full history, bukan teks dump) |
 | `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
 | `--interactive` | Paksa mode REPL |
@@ -56,6 +58,8 @@ bun install && bun link
 | `MINICODE_PERMISSION` | `allowlist` → mode allowlist |
 | `MINICODE_SESSION_TTL_DAYS` | TTL sesi (default 30; `0` = selamanya) |
 | `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
+| `MINICODE_PROVIDER_ORDER` | Urutkan provider agnostik tanpa edit config: `openai,anthropic,deepseek` |
+| `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` | Fallback API key |
 
 ## Config `.minicode/config.json`
@@ -80,7 +84,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 |---|---|
 | `/help` | Daftar command + skill |
 | `/providers` | Daftar provider + active model |
-| `/provider-add` | Tambah provider — pilih preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google) atau custom URL, auto-detect models |
+| `/provider-add` | Tambah provider — pilih preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google/**Generic Ollama**) atau custom URL, auto-detect models |
 | `/provider-remove <id>` | Hapus provider |
 | `/models [id] [keyword]` | List model per provider; keyword = filter substring (case-insensitive) |
 | `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
@@ -123,7 +127,7 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 - **Default:** regex denylist 27 + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber.
 - **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada. Env container juga disanitasi dari hasil merge final.
-- **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`.
+- **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, npm exec, npx, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`. Untuk `npm exec`/`npx`, arg harus "known-good": tidak boleh ada ekspansi shell (`$`, backtick) atau redirection (`<`, `>`); chaining `;|&` sudah diblokir.
 - **web_fetch:** redirect ditangani manual (maks 5 hop, tiap host divalidasi anti-SSRF); body hard-cap 2MB.
 
 ## Plan Mode
@@ -136,7 +140,7 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 ## Checkpoint & Undo
 
-Setiap `edit`/`write_file` otomatis membuat checkpoint (pre-edit state). `/undo` mengembalikan file ke kondisi sebelum turn. `/redo` mengembalikan ke kondisi setelah turn. Checkpoint disimpan di `.minicode/checkpoints/` dengan cap 50 terbaru.
+Setiap `edit`/`write_file` otomatis membuat checkpoint (pre-edit state, `atomicWriteText`). `/undo` mengembalikan file ke kondisi sebelum turn. `/redo` mengembalikan ke kondisi setelah turn. Checkpoint disimpan di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`).
 
 ## Sessions
 

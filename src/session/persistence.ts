@@ -69,6 +69,8 @@ function safeContent(value: unknown): string {
 // SQLITE_BUSY / database-is-locked bisa muncul saat Pool(3) sub-agent menulis
 // bersamaan meski WAL+busy_timeout aktif (terutama Windows). Retry singkat
 // sinkron — call site saveSession/deleteSession memang sinkron.
+// Fase 0: ganti busy-spin CPU 100% → Atomics.wait (block tanpa spin)
+// TODO Fase 1: jadikan async + await Bun.sleep untuk tidak block event-loop
 function withBusyRetry<T>(fn: () => T, attempts = 3): T {
   let last: unknown
   for (let i = 0; i < attempts; i++) {
@@ -78,10 +80,7 @@ function withBusyRetry<T>(fn: () => T, attempts = 3): T {
       const msg = String((e as Error).message ?? e)
       if (!msg.includes("SQLITE_BUSY") && !msg.includes("database is locked")) throw e
       last = e
-      const end = Date.now() + 25 * 2 ** i
-      while (Date.now() < end) {
-        /* spin singkat */
-      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * 2 ** i)
     }
   }
   throw last

@@ -1,6 +1,5 @@
-// Driver fullscreen REPL — menjembatani CliSession dengan shell Ink.
-// Slash command: semua builtin di-capture jadi overlay; selain itu
-// skill-render lalu dikirim ke LLM (alur sama dengan classic repl).
+// Driver fullscreen REPL — minimal pure ANSI (tanpa Ink)
+// Slash builtin → overlay; skill → renderSkill → LLM
 import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { appendHistory, loadHistory } from "./input.ts"
@@ -8,7 +7,7 @@ import { listSessions } from "../src/session/persistence.ts"
 import { expandMentions } from "../src/tui/file-mention.ts"
 import { captureOutput } from "./panel.ts"
 import type { CliSession } from "./setup.ts"
-import { attachFullscreenShell } from "../src/tui/fullscreen.tsx"
+import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
 
 const MODES = ["auto", "ask", "plan", "allowlist"] as const
 
@@ -166,7 +165,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     return mode
   }
 
-  const shell = attachFullscreenShell({
+  const shell = attachFullscreenMinimal({
     bus: session.events,
     model: () => modelRef.current ?? cfg.providers[0]?.models[0],
     cwdName: cwd ?? process.cwd(),
@@ -186,5 +185,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
   void sessionId
   void effectiveTimeoutMs
   void budget
+  // keep handle alive — attachFullscreenMinimal menulis langsung ke stdout
+  void shell
   return new Promise(() => {}) // app hidup sampai onExit
 }

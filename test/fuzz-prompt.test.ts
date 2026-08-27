@@ -110,3 +110,46 @@ test("fuzz decodeKeys: chunk pecah ESC di akhir buffer aman", () => {
   const keys = decodeKeys(new Uint8Array(partial))
   expect(Array.isArray(keys)).toBe(true)
 })
+
+// 6.5 — Seed test deterministik: RNG seed sama → hasil akhir identik (reproducible)
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function runSeeded(seed: number): string {
+  const rng = mulberry32(seed)
+  const chars = "abcdefghijklmnopABCDEFGHIJKLMNOP !?/'\"".split("")
+  const hints = (l: string): string[] => (l.startsWith("/") ? ["/help", "/providers"] : [])
+  let s = createState()
+  const h = hints(s.line)
+  for (let i = 0; i < 300; i++) {
+    const r = rng()
+    if (r < 0.85) {
+      const ch = chars[Math.floor(rng() * chars.length)]!
+      s = applyKey(s, { type: "char", ch }, h).state
+    } else if (r < 0.92) {
+      s = applyKey(s, { type: "backspace" }, h).state
+    } else if (r < 0.96) {
+      s = applyKey(s, { type: "left" }, h).state
+    } else {
+      s = applyKey(s, { type: "right" }, h).state
+    }
+    if (s.line.includes("\n")) break
+  }
+  return s.line
+}
+
+test("seed test: seed sama → line akhir identik (deterministik)", () => {
+  const a = runSeeded(12345)
+  const b = runSeeded(12345)
+  const c = runSeeded(99999)
+  expect(a).toBe(b)
+  expect(a).not.toBe(c)
+})

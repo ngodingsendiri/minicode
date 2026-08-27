@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises"
 import type { Tool } from "minicore"
 import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
@@ -28,6 +29,34 @@ export function isPrivateHost(host: string): boolean {
   if (/^f[cd][0-9a-f]{2}:/.test(h)) return true // fc00::/7 unique-local
   if (/^fe[89ab][0-9a-f]{0,1}:/.test(h)) return true // fe80::/10 link-local
   return isPrivateIPv4(h)
+}
+
+// DNS pinning untuk tutup DNS rebinding: resolve hostname → cek IP private
+// timeout 400ms, fail-open agar tidak block availability bila DNS lambat; cache 30s per host
+const dnsCache = new Map<string, { addrs: string[]; at: number }>()
+async function isPrivateWithDns(hostname: string): Promise<boolean> {
+  if (isPrivateHost(hostname)) return true
+  if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) return false
+  const cached = dnsCache.get(hostname)
+  if (cached && Date.now() - cached.at < 30_000) {
+    for (const a of cached.addrs) if (isPrivateHost(a) || isPrivateIPv4(a)) return true
+    return false
+  }
+  try {
+    const addrs = (await Promise.race([
+      lookup(hostname, { all: true } as never).then((r) => {
+        if (Array.isArray(r)) return (r as { address: string }[]).map((x) => x.address)
+        return [(r as { address: string }).address]
+      }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("dns timeout")), 400)),
+    ])) as string[]
+    dnsCache.set(hostname, { addrs, at: Date.now() })
+    for (const a of addrs) if (isPrivateHost(a) || isPrivateIPv4(a)) return true
+  } catch {
+    // lookup gagal/timeout → tidak block, fail-open; cache kosong agar tidak spam lookup
+    dnsCache.set(hostname, { addrs: [], at: Date.now() })
+  }
+  return false
 }
 
 const MAX_REDIRECTS = LIMITS.WEB_FETCH_MAX_REDIRECTS
@@ -91,10 +120,10 @@ export const webFetchTool: Tool = {
     if (ctx.signal.aborted) controller.abort(ctx.signal.reason)
 
     try {
-      // Redirect ditangani MANUAL: tiap hop divalidasi ulang isPrivateHost —
-      // menutup SSRF via open-redirect ke 169.254.169.254 / localhost dsb.
+      // Redirect ditangani MANUAL: tiap hop divalidasi ulang isPrivateHost + DNS —
+      // menutup SSRF via open-redirect & DNS rebinding ke 169.254.169.254 / localhost dsb.
       let current = parsed
-      if (isPrivateHost(current.hostname)) {
+      if (await isPrivateWithDns(current.hostname)) {
         throw new Error(`blocked private host: ${current.hostname}`)
       }
       const headers = {
@@ -120,7 +149,7 @@ export const webFetchTool: Tool = {
         if (next.protocol !== "http:" && next.protocol !== "https:") {
           throw new Error(`redirect to disallowed protocol: ${next.protocol}`)
         }
-        if (isPrivateHost(next.hostname)) {
+        if (await isPrivateWithDns(next.hostname)) {
           throw new Error(`blocked private host (redirect target): ${next.hostname}`)
         }
         current = next

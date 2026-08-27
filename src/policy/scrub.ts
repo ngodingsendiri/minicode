@@ -46,7 +46,7 @@ export function scrubLine(line: string): string {
 // Env vars yang namanya cocok pola kredensial di-strip sebelum spawn proses
 // (bash / docker / MCP server / LSP server) — kurangi permukaan exfiltration.
 export const SECRET_ENV_RE =
-  /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY|DATABASE_URL|ENCRYPTION)/i
+  /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY|DATABASE_URL|ENCRYPTION|REDIS|GITHUB|GOOGLE|AZURE|SUPABASE)/i
 
 export function stripSecretsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}

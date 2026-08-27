@@ -48,6 +48,12 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     fallbackModels: ["gemini-2.0-flash"],
   },
+  {
+    id: "generic",
+    label: "Generic OpenAI-Compatible (Ollama/vLLM/Groq/Qwen)",
+    baseUrl: "http://localhost:11434/v1",
+    fallbackModels: ["llama3"],
+  },
 ]
 
 // id preset → opsi "custom" di ujung daftar

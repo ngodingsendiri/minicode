@@ -13,6 +13,7 @@ const VALUE_FLAGS = new Set([
   "--cwd",
   "--resume",
   "--model",
+  "--provider",
   "--session",
   "--max-steps",
   "--context-window",

@@ -1,13 +1,8 @@
 import { createInterface } from "node:readline"
 import { detectAndSave } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
-import { formatError } from "../src/tui/renderer.ts"
+import { formatError } from "../src/tui/minimal/simple.ts"
 import { askSecret } from "./input.ts"
-
-// Wizard tetap mendukung Ollama lokal + custom (bukan gateway umum)
-const EXTRA = [
-  { name: "Ollama (Local)", url: "http://localhost:11434/v1", hint: "Run offline local models" },
-]
 
 export async function runSetupWizard(): Promise<boolean> {
   if (!process.stdin.isTTY) return false
@@ -22,7 +17,6 @@ export async function runSetupWizard(): Promise<boolean> {
 
   const options = [
     ...GATEWAY_PRESETS.map((p) => ({ name: p.label, url: p.baseUrl, hint: "" })),
-    ...EXTRA,
     { name: "Custom URL", url: "", hint: "Any OpenAI-compatible endpoint" },
   ]
   options.forEach((p, idx) => {
@@ -50,7 +44,7 @@ export async function runSetupWizard(): Promise<boolean> {
   rl.close()
 
   let apiKey = ""
-  if (selected.name.includes("Ollama")) {
+  if (/^(https?:\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/.test(targetUrl)) {
     apiKey = fakeKey
   } else {
     apiKey = await askSecret("API Key (masked): ")

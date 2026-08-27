@@ -34,7 +34,7 @@ import { globTool } from "../src/tools/glob.ts"
 import { grepTool } from "../src/tools/grep.ts"
 import { readFileTool } from "../src/tools/read_file.ts"
 import { writeFileTool } from "../src/tools/write_file.ts"
-import { formatError } from "../src/tui/renderer.ts"
+import { formatError } from "../src/tui/minimal/simple.ts"
 
 const tmp = ".tmp-extreme"
 const ctx: any = { signal: new AbortController().signal }

@@ -69,9 +69,8 @@ export async function detectModels(
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result
 
-  // CAP global 6s — jangan pernah biarkan user menunggu >6s pada gateway
-  // yang offline (2 url × 3 header = sampai 30s sebelumnya).
-  const sig = signal ?? AbortSignal.timeout(6000)
+  // CAP global — jangan pernah biarkan user menunggu lama pada gateway offline
+  const sig = signal ?? AbortSignal.timeout(LIMITS.DETECT_GLOBAL_TIMEOUT_MS)
   for (const h of hybridHeaders(apiKey)) {
     if (sig.aborted) break
     const models = await tryFetchModels(baseUrl, h, sig)

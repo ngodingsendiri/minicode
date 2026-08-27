@@ -2,7 +2,7 @@
 
 > Coding agent minimal di atas kernel beku MiniCore. Ramping, clean, profesional — tidak menambah primitive, hanya layer agencode.
 
-**Version:** 0.5.1 — security hardening: env-sanitasi terpusat (`sanitizeSpawnEnv`) untuk bash/docker/MCP/LSP, MCP tools bertitik selalu gated (tanpa wildcard auto-allow), web_fetch redirect-per-hop + body hard-cap, atomic write `O_EXCL`+randomUUID di semua tool tulis, jail `realpath` di permission layer, executor antrean abort-aware, SQLite WAL capped + busy-retry, telemetry opt-out + prompt scrub, router image bytes utk anthropic, `/sync` invalidate detect cache, pricing per-segment boundary, LIMITS diadopsi penuh, nol `as never/as any` produksi (243 tests, 235 pass + 8 skip).
+**Version:** 0.6.0 — Fase 0-1: fix renderer `wOut` rekursi, `allow-all` jail bypass, `busy-spin` → `Atomics.wait`, SSRF DNS pinning (cache 30s), executor `resolve+toLowerCase`, checkpoint `atomicWriteText`, scrub `REDIS|GITHUB|GOOGLE|AZURE|SUPABASE`, `LIMITS` sync (`DETECT_GLOBAL_TIMEOUT_MS` 6s) — security + minimalis (243 tests, 235 pass + 8 skip; klasik TUI siap hapus di Fase 2).
 **Principle:** `minicore` core is frozen — only **additive backward-compatible** seams are allowed (optional `compactAsync` & `initialMessages`). Everything else as Tool / Policy / Provider here.
 
 ## Peta Pohon Komponen
@@ -32,7 +32,7 @@ minicode/
 │   ├── McpServerEntry {id, command, args[], env} — validasi
 │   └── LspServerEntry {ext, command, args[], env} — normalizeExt
 │
-├── src/tools/ — 20 tools
+├── src/tools/ — 23 tools
 │   ├── read_file.ts   2MB cap, jail + SENSITIVE_RE defense-in-depth
 │   ├── write_file.ts  mkdir -p, jail + sensitive block
 │   ├── edit.ts        fuzzy 4-level (exact/CRLF/trimmed/indent), jail
@@ -47,7 +47,7 @@ minicode/
 │
 ├── src/providers/
 │   ├── anthropic.ts   SSE streaming, pendingTools per-stream, 429→30s, prompt caching ephemeral, cache token usage, baseUrl /v1 normalize, tool_result group
-│   ├── detect.ts      GET /models hybrid Bearer + x-api-key, timeout 4s/5s per fetch
+│   ├── detect.ts      GET /models hybrid Bearer + x-api-key, timeout 2.5s/attempt global 6s (LIMITS)
 │   ├── build.ts       buildProviderList(cfg) — satu sumber bangun provider (hybrid), dipakai CLI+sub-agent
 │   └── router.ts      route by model, fallback + substitusi model target, rate limiter, C4 base64 fix
 │
@@ -72,7 +72,7 @@ minicode/
 │
 ├── src/session/
 │   ├── persistence.ts sessions.db WAL+b, persistence incremental, placeholder binary, toolCallId/name (resume sejati)
-│   └── checkpoint.ts  pre+post snapshot per turn (undo/redo), jail path, cap 50
+│   └── checkpoint.ts  pre+post snapshot per turn (undo/redo), jail path, cap 20, applySnapshots atomicWriteText
 │
 ├── src/mcp/
 │   ├── transport.ts   JSON-RPC newline stdio, pending+timeout, killSignal on close only, log JSON invalid
@@ -87,14 +87,15 @@ minicode/
 ├── src/skills/loader.ts — frontmatter quote-aware, render {{args}} single replace
 │
 ├── src/tui/
-│   ├── renderer.ts    ANSI (default) + diff card + spinner + bash highlight
-│   ├── ink.tsx        Ink React (--tui) split-view + token gauge + markdown fence
-│   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI
+│   ├── minimal/simple.ts      — one-shot logger (streaming markdown per-line, tanpa Ink)
+│   ├── minimal/fullscreen.ts  — REPL alternate-screen pure ANSI (header·transcript·input·dropdown)
+│   ├── minimal/screen.ts      — ?1049h enter/exit + resize + cursor
+│   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI (klasik renderer & Ink dihapus)
 │
 ├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI, external tasks jail)
 ├── src/constants.ts — centralized LIMITS (file size, timeout, search limit)
 ├── src/app/ — provider-layer / rag-layer / tool-layer (setup orchestration)
-├── test/ bun:test — 202 tests
+├── test/ bun:test — 243 tests (235 pass + 8 skip live/docker)
 │
 ├── .minicode/ (gitignored) — sessions.db / vector.db / allowlist.json / skills / checkpoints / repomap.json / traces.jsonl
 │
@@ -115,10 +116,10 @@ prompt → CLI (config+skills+RAG+resume) → Router → Kernel LOOP ⇄ Tools
 ## Layer Guard (berlapis)
 
 ```
-PermissionHandler (denylist+jail realpath+cwd) → validateArgs (kernel) → executor (order-preserving 8/2, antrean abort-aware, file-lock realpath-key) → tool defense-in-depth → execute
-spawn env: sanitizeSpawnEnv(base, extra) — secret di-strip dari hasil merge final (bash/docker/MCP/LSP)
-file writes: atomicWriteText — tmp randomUUID + O_EXCL + 0600 + rename retry (Windows EPERM)
-web_fetch: redirect manual ≤5 hop, isPrivateHost per-hop (CGNAT/mapped-IPv6/ULA/link-local), body hard-cap 2MB
+PermissionHandler (denylist+jail realpath+cwd, allow-all tetap jail) → validateArgs (kernel) → executor (order-preserving 8/2, antrean abort-aware, file-lock resolve+toLowerCase) → tool defense-in-depth → execute
+spawn env: sanitizeSpawnEnv(base, extra) — secret di-strip REDIS|GITHUB|GOOGLE|AZURE|SUPABASE (final-merge)
+file writes: atomicWriteText — tmp randomUUID + O_EXCL + 0600 + rename retry (Windows EPERM) — termasuk checkpoint applySnapshots
+web_fetch: redirect manual ≤5 hop, isPrivateHost + DNS pinning (lookup+cache 30s) per-hop (CGNAT/mapped-IPv6/ULA/link-local), body hard-cap 2MB
 ```
 
 `read_file/write_file/edit` punya jail ganda: `permission.ts` (realpath-based) + di dalam tool sendiri. `bash` → `SIGTERM` lalu `SIGKILL` 2 detik. `grep` include filter + `glob` ignore `.git`.

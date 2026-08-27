@@ -4,7 +4,7 @@ import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
-import { attachRenderer, formatError } from "../src/tui/renderer.ts"
+import { formatError } from "../src/tui/minimal/simple.ts"
 import { c, glyphs } from "../src/tui/theme.ts"
 import { promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
 import { dispatch } from "./router.ts"
@@ -30,7 +30,8 @@ Options:
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
   --resume <id>       resume session id
-  --model <name>      override model
+  --model <name>      override model (atau provider::model)
+  --provider <id>     paksa provider id (agnostik, tanpa ubah config)
   --session <id>      session id (default random)
   --allow-all         allow all tools (no sandbox)
   --ask               ask per tool (y/n/a) - human-in-loop
@@ -40,7 +41,7 @@ Options:
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
   --interactive       REPL loop
-  --tui               Ink TUI dashboard (split-view, activity stream)
+  --tui               TUI minimal alternate-screen (pure ANSI)
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
   --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
@@ -76,6 +77,7 @@ const cwdRaw = getArg("--cwd")
 const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
 const resumeId = getArg("--resume")
 const modelOverride = getArg("--model")
+const providerOverride = getArg("--provider")
 const sessionId = getArg("--session") ?? randomUUID().slice(0, 8)
 const maxStepsRaw = getArg("--max-steps")
 const maxSteps = maxStepsRaw ? Number(maxStepsRaw) : undefined
@@ -127,6 +129,7 @@ const ctx = await createCliSession({
   sessionId,
   resumeId,
   modelOverride,
+  providerOverride,
   prompt,
   enterRepl,
   verbose,
@@ -141,7 +144,7 @@ const ctx = await createCliSession({
   contextWindowTokens,
   timeoutMs,
   rateLimiter,
-  uiMode,
+  ui: uiRaw as "auto" | "full" | "classic",
 })
 
 if (enterRepl) {

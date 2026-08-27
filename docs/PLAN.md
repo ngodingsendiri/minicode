@@ -23,16 +23,16 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 # Bagian B — UI/UX Fase 5 (dari audit mendalam)
 
 ## 5.1 Preset gateway di `/provider-add`  (P1)
-- [ ] Pilihan preset: OpenAI | Anthropic | OpenRouter | DeepSeek | OpenCode Zen | Google — user tinggal pilih, baseUrl terisi otomatis.
-- [ ] Dukungan paste API key satu baris; auto-detect model; fallback `--id` ramah (penamaan `openrouter`, bukan hash acak).
-- [ ] Output sukses menampilkan: id + jumlah model + halaman tersebut secara terskrol (tidak line panjang).
+- [x] Pilihan preset: OpenAI | Anthropic | OpenRouter | DeepSeek | OpenCode Zen | Google — user tinggal pilih, baseUrl terisi otomatis.
+- [x] Dukungan paste API key satu baris; auto-detect model; fallback `--id` ramah (penamaan `openrouter`, bukan hash acak).
+- [x] Output sukses menampilkan: id + jumlah model + halaman tersebut secara terskrol (tidak line panjang).
 
 **Kenapa penting:** user bukan admin API — tidak harus tahu `https://openrouter.ai/api/v1`.
 
 ## 5.2 Transparansi fallback saat run  (P1)
-- [ ] Setelah `session.run` selesai, jika `effective-model` terjadi: tampilkan satu baris
+- [x] Setelah `session.run` selesai, jika `effective-model` terjadi: tampilkan satu baris
       `(via openrouter/nemotron — requested gpt-4o)` di summary turn.
-- [ ] Baris yang sama di one-shot (`--model x` yang disubstitusi).
+- [x] Baris yang sama di one-shot (`--model x` yang disubstitusi).
 - [ ] Test: router fallback → event `effective-model` tetap muncul di akhir stream.
 
 **Kenapa penting:** user harus tahu jika request-nya tidak benar-benar memakai model yang diminta.
@@ -46,8 +46,8 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 **Kenapa penting:** opencode-go 61 model — daftar tak terfilter tidak berguna untuk mencari satu nama.
 
 ## 5.4 Indikator model aktif saat running  (P2)
-- [ ] Spinner + nama model/provider di baris status turn (`› bai/deepseek-v4-flash …`).
-- [ ] Jika fallback: label berubah halaman server-nya (`› openrouter/nemotron …`).
+- [x] Spinner + nama model/provider di baris status turn (`› bai/deepseek-v4-flash …`).
+- [x] Jika fallback: label berubah halaman server-nya (`› openrouter/nemotron …`).
 - [ ] Test snapshot dengan mock provider delay 100ms.
 
 **Kenapa penting:** turn panjang → user butuh tahu sedang menunggu/provider apa.
@@ -74,16 +74,16 @@ Bonus bugs yang sudah terfix sepanjang jalan: provider-id kolisi (routing `provi
 - [ ] `detectModels` sudah 6s cap; tambahkan memori cache per baseUrl (30 menit) supaya `/sync` cepat dan agresif.
 
 ## 6.3 Provider health (P2)
-- [ ] `minicode providers` menampilkan status dari probe ringan (model terakhir berhasil dipakai / belum pernah).
-- [ ] Ambil dari `traces.jsonl` — tanpa jaringan.
+- [x] `minicode providers` menampilkan status dari probe ringan (model terakhir berhasil dipakai / belum pernah).
+- [x] Ambil dari `traces.jsonl` — tanpa jaringan.
 
 ## 6.4 Sekuriti & governance (P3)
-- [ ] Hooks: file global `~/.minicode/hooks/*.js` (pre/post run) — mungkin berguna untuk CI hooks user; evaluate apakah worth.
-- [ ] `--allowlist` extend: `npm exec`, `npx` dengan arg known-good.
+- [x] Hooks: file global `~/.minicode/hooks/*.js` (pre/post run) — `src/hooks/run.ts` opt-in via `MINICODE_HOOKS=1`, konteks di env `MINICODE_HOOK_CTX` (JSON).
+- [x] `--allowlist` extend: `npm exec`, `npx` dengan arg known-good (tolak `$`/backtick/redirection).
 
 ## 6.5 Pengujian keandalan (P2)
-- [ ] Fuzz `applyKey`/`decodeKeys` (1000 iterasi acak byte → tidak throw).
-- [ ] Seed test deterministik (mock provider idle delay) untuk timing-sensitive test.
+- [x] Fuzz `applyKey`/`decodeKeys` (1000 iterasi acak byte → tidak throw).
+- [x] Seed test deterministik (RNG seed sama → hasil identik) untuk reproducibility.
 
 ---
 
