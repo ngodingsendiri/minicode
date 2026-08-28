@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0] - 2026-08-29
+
+### TUI & UX Polish — "Production Ready"
+- **Theme-aware TUI** — `modeColor` dari semantic colors (`c.success` auto, `c.warning` plan, `c.info` ask), header responsive `<80 cols`, footer dynamic cost + hints
+- **Input engine unified** — `decodeKeys` + `applyKey` dari `prompt-engine` single source, emoji 2-unit, bracket paste `\x1b[200~` support, Ctrl+O/R/Shift+Tab native key types
+- **Diff cards** — `renderDiffCard` untuk edit/apply_patch (Ubuntu style +/−), ANSI-safe wrap via `formatWrapped`
+- **Performance** — `RING_MAX 100→60`, spinner `setInterval→setTimeout` coalesce, diff repaint `prevOut` cache
+- **Accessibility** — bracket paste `\x1b[?2004h`, mouse `\x1b[?1000h`, cursor restore on crash
+- **Input fixes** — Tab/enter sel=-1 bug fix, case-insensitive matches, history via prompt-engine
+
+### License
+- **MIT License** — `UNLICENSED → MIT`, `private: false`, npm publish ready
+
+### Security & Core
+- **Minicore v0.1.1** — retryAfter cap 30s (`RETRY_AFTER_MAX_MS`) P2 fix
+- **Extreme experiments** — fuzz/context/security all pass (257+154 tests)
+
 ## [0.6.0] - 2026-08-26
 
 ### UI/UX Overhaul - "Clean CLI"
