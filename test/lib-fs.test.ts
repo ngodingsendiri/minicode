@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { atomicWriteText } from "../src/lib/atomic-write.ts"
@@ -52,9 +52,7 @@ describe("atomicWriteText (C7)", () => {
 
   test("concurrent writes to same path leave a valid file", async () => {
     const p = join(dir, "race.txt")
-    await Promise.all(
-      Array.from({ length: 8 }, (_, i) => atomicWriteText(p, `content-${i}`)),
-    )
+    await Promise.all(Array.from({ length: 8 }, (_, i) => atomicWriteText(p, `content-${i}`)))
     const final = await readFile(p, "utf8")
     expect(final).toMatch(/^content-\d$/)
     const leftovers = (await readdir(dir)).filter((f) => f.startsWith("race.txt.tmp"))

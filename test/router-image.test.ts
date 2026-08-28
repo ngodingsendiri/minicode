@@ -11,7 +11,10 @@ const SSE = [
 ].join("")
 
 function makeToolMessage(content: unknown) {
-  return [{ role: "user", content: "lihat" }, { role: "tool", toolCallId: "c1", name: "read_file", content }] as never
+  return [
+    { role: "user", content: "lihat" },
+    { role: "tool", toolCallId: "c1", name: "read_file", content },
+  ] as never
 }
 
 test("router preserves Uint8Array tool content for anthropic (image block, C11)", async () => {
@@ -42,7 +45,9 @@ test("router preserves Uint8Array tool content for anthropic (image block, C11)"
     }
 
     const parsed = JSON.parse(capturedBody)
-    const blocks = parsed.messages.find((m: { role: string; content?: unknown }) => m.role === "user" && Array.isArray(m.content)).content
+    const blocks = parsed.messages.find(
+      (m: { role: string; content?: unknown }) => m.role === "user" && Array.isArray(m.content),
+    ).content
     const tr = blocks.find((b: { type: string }) => b.type === "tool_result")
     expect(Array.isArray(tr.content)).toBe(true)
     expect(tr.content[0].type).toBe("image")
@@ -77,7 +82,9 @@ test("non-image binary tool content falls back to base64 string", async () => {
       break
     }
     const parsed = JSON.parse(capturedBody)
-    const blocks = parsed.messages.find((m: { role: string; content?: unknown }) => m.role === "user" && Array.isArray(m.content)).content
+    const blocks = parsed.messages.find(
+      (m: { role: string; content?: unknown }) => m.role === "user" && Array.isArray(m.content),
+    ).content
     const tr = blocks.find((b: { type: string }) => b.type === "tool_result")
     expect(typeof tr.content).toBe("string")
     expect(tr.content).toBe(Buffer.from(bytes).toString("base64"))

@@ -6,15 +6,44 @@ import { LIMITS } from "../constants.ts"
 const GLOBAL_MEM = join(homedir(), ".minicode", "MEMORY.md")
 const LOCAL_MEM = ".minicode/MEMORY.md"
 const ROOT_MEM = "MEMORY.md"
+// Claude-like hierarchy extensions
+const CLAUDE_MEM = "CLAUDE.md"
 
 export async function loadMemoryFiles(cwd = process.cwd()): Promise<string> {
   const parts: string[] = []
-  for (const p of [GLOBAL_MEM, resolve(cwd, LOCAL_MEM), resolve(cwd, ROOT_MEM)]) {
+  // Hierarchy: global → local → root → CLAUDE compat → rules/
+  const candidates = [
+    GLOBAL_MEM,
+    resolve(cwd, LOCAL_MEM),
+    resolve(cwd, ROOT_MEM),
+    resolve(cwd, CLAUDE_MEM),
+  ]
+  for (const p of candidates) {
     try {
       const txt = await readFile(p, "utf8")
       if (txt.trim()) parts.push(`# ${p}\n${txt.slice(0, 6000)}`)
     } catch {}
   }
+  // Load .minicode/rules/*.md (Kiro steering style)
+  try {
+    const { readdir } = await import("node:fs/promises")
+    const rulesDir = resolve(cwd, ".minicode/rules")
+    const entries = await readdir(rulesDir).catch(() => [] as string[])
+    // entries may be string[] or Dirent — handle both
+    const files: string[] =
+      Array.isArray(entries) && typeof entries[0] === "string"
+        ? (entries as string[]).filter((f) => f.endsWith(".md")).slice(0, 10)
+        : (entries as unknown as import("node:fs").Dirent[])
+            .filter((e) => e.isFile() && e.name.endsWith(".md"))
+            .map((e) => e.name)
+            .slice(0, 10)
+    for (const f of files) {
+      try {
+        const txt = await readFile(join(rulesDir, f as string), "utf8")
+        if (txt.trim()) parts.push(`# rules/${f}\n${txt.slice(0, 3000)}`)
+      } catch {}
+    }
+  } catch {}
   return parts.join("\n\n")
 }
 

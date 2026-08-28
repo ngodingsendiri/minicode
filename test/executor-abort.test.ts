@@ -33,7 +33,13 @@ test("executor rejects PROMPTLY on abort while queued on write semaphore", async
   // Call1 memegang slot 500ms; Call2 mengantre. Abort @10ms harus reject <300ms,
   // TIDAK menunggu tool in-flight selesai.
   await expect(
-    exec.execute([{ id: "1", name: "bash", args: {} }, { id: "2", name: "bash", args: {} }], deps),
+    exec.execute(
+      [
+        { id: "1", name: "bash", args: {} },
+        { id: "2", name: "bash", args: {} },
+      ],
+      deps,
+    ),
   ).rejects.toThrow()
   expect(Date.now() - t0).toBeLessThan(300)
 })

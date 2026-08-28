@@ -5,7 +5,7 @@ describe("deriveProviderId (5.1 friendly id)", () => {
   test("preset baseUrl → ramah id (no hash)", () => {
     expect(deriveProviderId("https://openrouter.ai/api/v1", [])).toBe("openrouter")
     expect(deriveProviderId("https://api.deepseek.com/v1", [])).toBe("deepseek")
-    expect(deriveProviderId("http://localhost:11434/v1", [])).toBe("generic")
+    expect(deriveProviderId("http://localhost:11434/v1", [])).toBe("ollama")
   })
   test("unknown baseUrl → slug, no random suffix", () => {
     const id = deriveProviderId("https://my.gateway.example.com/v1", [])
@@ -17,9 +17,9 @@ describe("deriveProviderId (5.1 friendly id)", () => {
   })
   test("collision → numeric suffix ramah", () => {
     expect(deriveProviderId("https://openrouter.ai/api/v1", ["openrouter"])).toBe("openrouter-2")
-    expect(
-      deriveProviderId("https://openrouter.ai/api/v1", ["openrouter", "openrouter-2"]),
-    ).toBe("openrouter-3")
+    expect(deriveProviderId("https://openrouter.ai/api/v1", ["openrouter", "openrouter-2"])).toBe(
+      "openrouter-3",
+    )
   })
   test("id sliced to 30 chars", () => {
     const long = "a".repeat(40)

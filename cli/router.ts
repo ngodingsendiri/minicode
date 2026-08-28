@@ -36,5 +36,10 @@ export async function dispatch(
     await handleProviders(args, getArg)
     return true
   }
+  if (cmd === "exec") {
+    const { handleExec } = await import("./commands/exec.ts")
+    await handleExec(args, getArg)
+    return true
+  }
   return false
 }

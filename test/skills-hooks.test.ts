@@ -18,7 +18,7 @@ test("skills: load, find, render", async () => {
   )
   const all = await loadSkills(tmp)
   expect(all.length).toBe(1)
-  expect(all[0]!.name).toBe("review")
+  expect(all[0]?.name).toBe("review")
   const found = await findSkill("review", tmp)
   expect(found?.description).toBe("Review code")
   const rendered = await renderSkill(found!, "src/a.ts")
@@ -77,9 +77,9 @@ test("auto gates REGISTERED dotted MCP tools too (no wildcard auto-allow)", asyn
   // Menutup celah: server jahat terdaftar tidak lagi otomatis "allow" semua toolnya.
   const h = createPermissionHandler({ mode: "auto" })
   expect(await h.check({ id: "1", name: "fs.read", args: {} } as never, {} as never)).toBe("deny")
-  expect(
-    await h.check({ id: "1", name: "anything.at.all", args: {} } as never, {} as never),
-  ).toBe("deny")
+  expect(await h.check({ id: "1", name: "anything.at.all", args: {} } as never, {} as never)).toBe(
+    "deny",
+  )
 })
 
 test("allowlist mode denies dotted MCP tools", async () => {
@@ -225,6 +225,6 @@ test("createLlmCompaction compactAsync rejects without provider (loop falls back
     { role: "user", content: "u2" },
   ])
   await expect(
-    strategy.compactAsync!(store, { keepRecentTurns: 1 }, new AbortController().signal),
+    strategy.compactAsync?.(store, { keepRecentTurns: 1 }, new AbortController().signal),
   ).rejects.toThrow()
 })

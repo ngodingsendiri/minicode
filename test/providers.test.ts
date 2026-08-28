@@ -229,7 +229,7 @@ test("router fallback substitutes model not supported by target provider", async
   }
   expect(out.join("")).toBe("ok")
   // request ke provider kedua harus memakai model miliknya, bukan gpt-4o
-  expect(received[0]!.model).toBe("claude-sonnet-4")
+  expect(received[0]?.model).toBe("claude-sonnet-4")
 })
 
 test("router emits effective-model extension saat substitusi model fallback", async () => {

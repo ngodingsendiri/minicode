@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import {
-  SECRET_ENV_RE,
-  sanitizeSpawnEnv,
-  stripSecretsEnv,
-} from "../src/policy/scrub.ts"
+import { SECRET_ENV_RE, sanitizeSpawnEnv, stripSecretsEnv } from "../src/policy/scrub.ts"
 
 describe("env sanitization (C1)", () => {
   test("stripSecretsEnv removes credential-named vars", () => {

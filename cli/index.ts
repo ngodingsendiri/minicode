@@ -14,6 +14,7 @@ const HELP = `Minicode - coding agent on frozen MiniCore
 Usage:
   minicode                        # mode chat interaktif (setup wizard saat pertama)
   minicode "prompt" [options]     # sekali jalan
+  minicode exec "prompt" [--json] # headless CI mode (Codex/Gemini-like, JSON stream)
   echo "prompt" | minicode        # via pipe
   minicode providers              # daftar provider gateway (tanpa LLM)
   minicode models [id]            # daftar model per provider (tanpa LLM)
@@ -86,9 +87,15 @@ const contextWindowTokens = ctxWindowRaw ? Number(ctxWindowRaw) : undefined
 const timeoutRaw = getArg("--timeout")
 const timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined
 const sandboxMode = getArg("--sandbox")
-if (sandboxMode === "docker") process.env.MINICODE_SANDBOX = "docker"
+if (
+  sandboxMode === "docker" ||
+  sandboxMode === "os" ||
+  sandboxMode === "bwrap" ||
+  sandboxMode === "seatbelt"
+)
+  process.env.MINICODE_SANDBOX = sandboxMode
 else if (sandboxMode)
-  process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" - only "docker"\n`)
+  process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" - only "docker" or "os"\n`)
 const budgetRaw = getArg("--budget")
 const budget = budgetRaw ? Number(budgetRaw) : undefined
 if (budgetRaw && !Number.isFinite(budget))
@@ -97,7 +104,9 @@ const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 const uiRaw = getArg("--ui") ?? "auto"
 const uiRaw2 = getArg("--theme") ?? ""
-const themeName = ["dark","dim","light","mono"].includes(uiRaw2) ? uiRaw2 : (process.env.MINICODE_THEME ?? "")
+const themeName = ["dark", "dim", "light", "mono"].includes(uiRaw2)
+  ? uiRaw2
+  : (process.env.MINICODE_THEME ?? "")
 const { applyTheme } = await import("../src/tui/theme.ts")
 applyTheme(themeName)
 

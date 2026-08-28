@@ -5,6 +5,7 @@ import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
+import { applyHashline } from "./hashline.ts"
 
 function normalizeLf(s: string): string {
   return s.replace(/\r\n/g, "\n")
@@ -97,7 +98,7 @@ export function flexibleMatch(content: string, needle: string): MatchResult | nu
     for (let i = 0; i <= cLines.length - nLines.length; i++) {
       let isMatch = true
       for (let j = 0; j < nLines.length; j++) {
-        if (cLines[i + j]!.trim() !== nStripped[j]) {
+        if (cLines[i + j]?.trim() !== nStripped[j]) {
           isMatch = false
           break
         }
@@ -155,14 +156,40 @@ export const editTool: Tool = {
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > LIMITS.READ_FILE_MAX_BYTES)
-      throw new Error(`file too large: ${p} (${st.size})`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
     const content = await readFile(realAbs, "utf8").catch(() => {
       throw new Error(`file not found: ${p}`)
     })
     const oldS = oldString as string
     const newS = newString as string
     if (oldS === newS) throw new Error("oldString == newString (no change)")
+    // Hashline fast path (OpenCode): hanya bila line endings konsisten (hindari CRLF→LF corrupt)
+    // CRLF vs LF ditangani oleh flexibleMatch mode "crlf" yang preservasi original.
+    const canHashline = content.includes("\r\n") === oldS.includes("\r\n")
+    let hashApply: string | null = null
+    if (canHashline) {
+      const hunk = applyHashline(content, oldS, newS)
+      if (hunk !== null) {
+        // uniqueness: if exact oldString occurs >1 times, require more context (mirror flexibleMatch)
+        const firstIdx = content.indexOf(oldS)
+        if (firstIdx !== -1 && content.indexOf(oldS, firstIdx + oldS.length) !== -1) {
+          throw new Error(
+            `oldString found multiple times in ${p} — provide more surrounding lines to make it unique`,
+          )
+        }
+        hashApply = hunk
+      }
+    }
+    if (hashApply !== null) {
+      if (hashApply.length > LIMITS.WRITE_FILE_MAX_CHARS)
+        throw new Error(`result too large: ${hashApply.length} chars (max 5M)`)
+      await atomicWriteText(realAbs, hashApply)
+      return await appendLspDiagnostics(
+        realAbs,
+        hashApply,
+        `edited ${realAbs} (hashline match) (${oldS.length} → ${newS.length} chars)`,
+      )
+    }
     const match = flexibleMatch(content, oldS)
     if (!match) throw new Error(`oldString not found in ${p}`)
 

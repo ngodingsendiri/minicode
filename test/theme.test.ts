@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { THEMES } from "../src/tui/themes.ts"
 import { applyTheme } from "../src/tui/theme.ts"
+import { THEMES } from "../src/tui/themes.ts"
 
 test("themes: 4 presets with all tokens", () => {
   for (const [name, t] of Object.entries(THEMES)) {

@@ -74,6 +74,6 @@ test("checkpoint cap: hanya menyimpan 20 checkpoint terakhir", async () => {
   const manifest = await loadCheckpointManifest("cp-sess", tmp)
   expect(manifest.checkpoints.length).toBe(20)
   // yang paling akhir harus tetap ada
-  expect(manifest.checkpoints[19]!.description).toBe("turn 24")
+  expect(manifest.checkpoints[19]?.description).toBe("turn 24")
   rmSync(tmp, { recursive: true, force: true })
 })

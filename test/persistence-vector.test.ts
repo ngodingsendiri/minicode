@@ -17,7 +17,7 @@ afterAll(async () => {
 
 test("persistence roundtrip + delete", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const id = "t-" + randomUUID().slice(0, 6)
+  const id = `t-${randomUUID().slice(0, 6)}`
   saveSession(
     id,
     tmp,
@@ -39,7 +39,7 @@ test("persistence roundtrip + delete", async () => {
 
 test("persistence incremental: append-only pada turn ke-2", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const id = "i-" + randomUUID().slice(0, 6)
+  const id = `i-${randomUUID().slice(0, 6)}`
   // turn 1: 2 pesan
   saveSession(
     id,
@@ -88,7 +88,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
 
 test("persistence Uint8Array content disimpan sebagai placeholder", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const id = "b-" + randomUUID().slice(0, 6)
+  const id = `b-${randomUUID().slice(0, 6)}`
   saveSession(
     id,
     tmp,
@@ -109,7 +109,7 @@ test("persistence Uint8Array content disimpan sebagai placeholder", async () => 
 
 test("persistence compaction (history menyusut) tulis ulang penuh", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const id = "c-" + randomUUID().slice(0, 6)
+  const id = `c-${randomUUID().slice(0, 6)}`
   // simulate 3 turns
   saveSession(
     id,
@@ -145,15 +145,15 @@ test("persistence compaction (history menyusut) tulis ulang penuh", async () => 
 })
 
 test("vector hybrid keyword fallback (no embedding key)", async () => {
-  const marker = "vec-test-" + randomUUID().slice(0, 6)
+  const marker = `vec-test-${randomUUID().slice(0, 6)}`
   await addMemory(`unique ${marker} content about persistence`, {})
   const hits = (await searchHybrid("persistence", {})) as unknown as {
     text: string
     score: number
   }[]
   expect(hits.some((h) => h.text.includes(marker))).toBe(true)
-  expect(hits[0]!.score).toBeGreaterThanOrEqual(0)
-  expect(hits[0]!.score).toBeLessThanOrEqual(1)
+  expect(hits[0]?.score).toBeGreaterThanOrEqual(0)
+  expect(hits[0]?.score).toBeLessThanOrEqual(1)
   // cleanup
   const { Database } = await import("bun:sqlite")
   const { homedir } = await import("node:os")
@@ -165,7 +165,7 @@ test("vector hybrid keyword fallback (no embedding key)", async () => {
 
 test("deleteMemoryByQuery SQL removes matching memories", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const marker = "del-vec-" + randomUUID().slice(0, 6)
+  const marker = `del-vec-${randomUUID().slice(0, 6)}`
   await addMemory(`${marker} alpha`, { cwd: tmp })
   await addMemory(`${marker} beta`, { cwd: tmp })
   await addMemory("keep-this-note", { cwd: tmp })
@@ -181,7 +181,7 @@ test("deleteMemoryByQuery SQL removes matching memories", async () => {
 
 test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", async () => {
   await mkdir(tmpDir, { recursive: true })
-  const id = "resume-" + randomUUID().slice(0, 6)
+  const id = `resume-${randomUUID().slice(0, 6)}`
   const msgs = [
     { role: "user", content: "u1" },
     {
@@ -211,7 +211,7 @@ test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", a
   const s = createSession({
     provider: p,
     permissions: allowAll,
-    initialMessages: loaded!.messages as never,
+    initialMessages: loaded?.messages as never,
   })
   await s.run("lanjut")
   expect(s.state.history).toHaveLength(6) // 4 initial + 1 user + 1 assistant

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { parseMentions, resolveMentionContent, expandMentions } from "../src/tui/file-mention.ts"
+import { expandMentions, parseMentions, resolveMentionContent } from "../src/tui/file-mention.ts"
 
 let dir: string
 beforeAll(async () => {
@@ -11,7 +11,9 @@ beforeAll(async () => {
   await writeFile(join(dir, "hello.txt"), "world")
   await writeFile(join(dir, ".env"), "secret=1")
 })
-afterAll(async () => { await rm(dir, { recursive: true, force: true }).catch(() => {}) })
+afterAll(async () => {
+  await rm(dir, { recursive: true, force: true }).catch(() => {})
+})
 
 test("parseMentions extracts @paths", () => {
   expect(parseMentions("see @hello.txt x")).toEqual(["hello.txt"])

@@ -98,20 +98,20 @@ test("02 session max_steps exceeded", async () => {
 
 // ── 03 Persistence ───────────────────────────────────────────────────────────
 test("03 persistence corrupt session id → null", () => {
-  const id = "x-" + randomUUID().slice(0, 6)
+  const id = `x-${randomUUID().slice(0, 6)}`
   expect(loadSession(id, tmp)).toBeNull()
 })
 
 test("03 persistence updated_at sorts most recent first", async () => {
   const d = `.tmp-extreme-${randomUUID().slice(0, 4)}`
   await mkdir(`${d}/.minicode`, { recursive: true })
-  const a = "t-a-" + randomUUID().slice(0, 6)
-  const b = "t-b-" + randomUUID().slice(0, 6)
+  const a = `t-a-${randomUUID().slice(0, 6)}`
+  const b = `t-b-${randomUUID().slice(0, 6)}`
   saveSession(a, d, "s", [{ role: "user", content: "a" }] as any, {})
   await new Promise((r) => setTimeout(r, 10))
   saveSession(b, d, "s", [{ role: "user", content: "b" }] as any, {})
   const list = listSessions(d)
-  expect(list[0]!.id).toBe(b)
+  expect(list[0]?.id).toBe(b)
   await rm(d, { recursive: true, force: true }).catch(() => {})
 })
 
@@ -451,7 +451,7 @@ test("11 git status in non-repo returns message not crash", async () => {
 // ── 12 Memory ────────────────────────────────────────────────────────────────
 test("12 vector add/search/forget + dim mismatch cosine", async () => {
   const d = `.tmp-extreme-${randomUUID().slice(0, 4)}`
-  const marker = "ext-" + randomUUID().slice(0, 6)
+  const marker = `ext-${randomUUID().slice(0, 6)}`
   await addMemory(`unique ${marker} marker`, { cwd: d })
   const hits = await searchHybrid("marker", { cwd: d, topK: 3 })
   expect(hits.some((h) => h.text.includes(marker))).toBe(true)
@@ -497,7 +497,7 @@ test("17 findSymbolPosition word boundary (skips substring in comment)", () => {
   // 'foobar' in comment must NOT match \bfoo\b; real 'foo' at line 1 matches
   const txt = "// foobar note\nfunction foo() {}"
   const pos = findSymbolPosition(txt, "foo")
-  expect(pos!.line).toBe(1)
+  expect(pos?.line).toBe(1)
 })
 
 // ── 18 Hooks ─────────────────────────────────────────────────────────────────
@@ -701,7 +701,7 @@ test("25 context_length → force_compact_and_retry → then provider", async ()
   store.appendAll([{ role: "user", content: "hello world this is a long prompt ".repeat(10) }])
   const compacted = mechanicalCompaction.compact(store, { keepRecentTurns: 1 })
   expect(compacted.length).toBeGreaterThan(0)
-  expect(compacted[0]!.role).toBe("user")
+  expect(compacted[0]?.role).toBe("user")
 })
 
 test("25 session integration: tool then stop", async () => {

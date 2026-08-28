@@ -8,7 +8,7 @@ test("fuzzy-match: matches exact and trimmed trailing whitespace", () => {
 
   const match = flexibleMatch(content, needle)
   expect(match).not.toBeNull()
-  expect(match!.mode).toBe("trimmed")
+  expect(match?.mode).toBe("trimmed")
 })
 
 test("fuzzy-match: matches lines with different indentation", () => {
@@ -17,7 +17,7 @@ test("fuzzy-match: matches lines with different indentation", () => {
 
   const match = flexibleMatch(content, needle)
   expect(match).not.toBeNull()
-  expect(match!.mode).toBe("fuzzy")
+  expect(match?.mode).toBe("fuzzy")
 })
 
 test("fuzzy-edit: editTool replaces fuzzy matched content", async () => {

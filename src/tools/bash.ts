@@ -2,10 +2,13 @@
 import type { Tool } from "minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
+
 // re-export untuk backward compat (helper kini terpusat di policy/scrub)
 export { SECRET_ENV_RE, sanitizeSpawnEnv, stripSecretsEnv } from "../policy/scrub.ts"
+
 import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
 import { dockerAvailable, runInDocker } from "../sandbox/docker.ts"
+import { osSandboxAvailable, runInOsSandbox } from "../sandbox/os.ts"
 
 export const bashTool: Tool = {
   name: "bash",
@@ -41,6 +44,25 @@ export const bashTool: Tool = {
         "[warn] MINICODE_SANDBOX=docker but docker unavailable — falling back to direct execution\n",
       )
     }
+    // OS-native sandbox (Seatbelt macOS / bubblewrap Linux) — Codex/Gemini-like without Docker
+    if (
+      process.env.MINICODE_SANDBOX === "os" ||
+      process.env.MINICODE_SANDBOX === "seatbelt" ||
+      process.env.MINICODE_SANDBOX === "bwrap"
+    ) {
+      if (osSandboxAvailable()) {
+        const res = await runInOsSandbox(cmd as string, c ?? process.cwd(), {
+          timeoutMs: timeout,
+          env: sanitizeSpawnEnv(process.env) as Record<string, string>,
+        })
+        const text = scrubSecrets(res.output)
+        if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
+        return text.slice(0, 20000)
+      }
+      process.stderr.write(
+        "[warn] MINICODE_SANDBOX=os but OS sandbox unavailable — falling back to direct execution\n",
+      )
+    }
 
     return await new Promise((resolve, reject) => {
       const p = spawn(cmd as string, {
@@ -73,9 +95,9 @@ export const bashTool: Tool = {
       p.on("error", reject)
       p.on("close", (code) => {
         const marker = truncated ? "\n… [output truncated]" : ""
-        const text = scrubSecrets((out + (err ? "\n[stderr]\n" + err : "")).trim())
+        const text = scrubSecrets((out + (err ? `\n[stderr]\n${err}` : "")).trim())
         if (code !== 0) resolve(`exit ${code}${marker}\n${text.slice(0, 20000)}`)
-        else resolve((text.slice(0, 20000)) + marker)
+        else resolve(text.slice(0, 20000) + marker)
       })
       let killTimer: ReturnType<typeof setTimeout> | undefined
       const t = setTimeout(() => {

@@ -39,6 +39,7 @@ import { applyPatchTool } from "./patch.ts"
 import { readFileTool } from "./read_file.ts"
 import { delegateTaskTool } from "./task.ts"
 import { webFetchTool } from "./web_fetch.ts"
+import { webSearchTool } from "./web_search.ts"
 import { writeFileTool } from "./write_file.ts"
 
 export const allTools: Tool[] = [
@@ -53,6 +54,7 @@ export const allTools: Tool[] = [
   gitDiffTool,
   gitLogTool,
   webFetchTool,
+  webSearchTool,
   readMemoryTool,
   writeMemoryTool,
   forgetMemoryTool,

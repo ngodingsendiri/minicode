@@ -5,7 +5,12 @@ import type { MinicodeConfig } from "../src/config.ts"
 const cfg = {
   providers: [
     { id: "openai", baseUrl: "https://api.openai.com/v1", apiKey: "x", models: ["gpt-4o"] },
-    { id: "anthropic", baseUrl: "https://api.anthropic.com", apiKey: "y", models: ["claude-sonnet-4"] },
+    {
+      id: "anthropic",
+      baseUrl: "https://api.anthropic.com",
+      apiKey: "y",
+      models: ["claude-sonnet-4"],
+    },
   ],
 } as unknown as MinicodeConfig
 

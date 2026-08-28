@@ -37,7 +37,7 @@ beforeAll(async () => {
   const { createOpenAICompatProvider } = await import(
     "../../minicore/src/providers/openai-compat.ts"
   )
-  if (bai && bai.apiKey) {
+  if (bai?.apiKey) {
     provider = createOpenAICompatProvider({
       baseUrl: bai.baseUrl,
       apiKey: bai.apiKey,
@@ -46,7 +46,7 @@ beforeAll(async () => {
     })
     process.env._TEST_MODEL = "deepseek-v4-flash"
     console.log("Using provider: bai / deepseek-v4-flash")
-  } else if (orFree && orFree.apiKey) {
+  } else if (orFree?.apiKey) {
     provider = createOpenAICompatProvider({
       baseUrl: orFree.baseUrl,
       apiKey: orFree.apiKey,
@@ -136,7 +136,7 @@ it("E2E-4: Repo-map generates symbol overview", async () => {
 
 it("E2E-5: Session persistence — save/load roundtrip", async () => {
   const { saveSession, loadSession, deleteSession } = await import("../src/session/persistence.ts")
-  const id = "e2e-sess-" + Date.now()
+  const id = `e2e-sess-${Date.now()}`
   saveSession(
     id,
     undefined,
@@ -149,8 +149,8 @@ it("E2E-5: Session persistence — save/load roundtrip", async () => {
   )
   const loaded = loadSession(id)
   expect(loaded).not.toBeNull()
-  expect(loaded!.messages[0]).toMatchObject({ role: "user", content: "hello e2e" })
-  expect((loaded!.messages[1] as { content?: string }).content).toBe("response")
+  expect(loaded?.messages[0]).toMatchObject({ role: "user", content: "hello e2e" })
+  expect((loaded?.messages[1] as { content?: string }).content).toBe("response")
   deleteSession(id)
   expect(loadSession(id)).toBeNull()
 })

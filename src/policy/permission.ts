@@ -93,7 +93,7 @@ function matchBashAllowlist(cmd: string, pattern: string): boolean {
   const trimmed = cmd.trim()
   if (/[;&|]/.test(trimmed) && !/[;&|]/.test(pattern)) return false
   const re = new RegExp(
-    "^" + pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$",
+    `^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`,
     "i",
   )
   return re.test(trimmed)
@@ -156,8 +156,7 @@ export function createPermissionHandler(
         if (!cmd.trim() || bashDenied(cmd)) return "deny"
         const matched = bashAllowlist.filter((pat) => matchBashAllowlist(cmd, pat))
         if (matched.length === 0) return "deny"
-        if (matched.some((p) => /^(npx|npm exec)\b/i.test(p)) && !npmNpxSafe(cmd))
-          return "deny"
+        if (matched.some((p) => /^(npx|npm exec)\b/i.test(p)) && !npmNpxSafe(cmd)) return "deny"
         return "allow"
       }
       if (isGated(call.name)) return "deny"
@@ -199,7 +198,7 @@ export function createPermissionHandler(
   }
 
   const returned = {
-    async check(call: ToolCall): Promise<"allow" | "deny"> {
+    async check(call: ToolCall, _deps?: unknown): Promise<"allow" | "deny"> {
       const earlyArgs = call.args as Record<string, unknown> | null
 
       // universal file-path jail — harus sebelum allow-all (defense-in-depth)

@@ -33,12 +33,35 @@ export async function buildSystemPrompt(
     const mem = await loadMemoryFiles(cwd)
     if (mem.trim()) parts.push(`\n# MEMORY (hybrid RAG)\n${mem.slice(0, 4000)}`)
   } catch {}
-  // try load AGENTS.md
-  for (const p of ["AGENTS.md", "CLAUDE.md", ".cursorrules"]) {
+  // try load AGENTS.md hierarchy (OpenCode/Claude/Cursor compat)
+  const agentFiles = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursorrules",
+    ".cursor/rules.mdc",
+    ".minicode/steering.md",
+  ]
+  let loadedAgent = false
+  for (const p of agentFiles) {
     try {
       const txt = await readFile(`${cwd}/${p}`, "utf8")
       parts.push(`\n# ${p}\n${txt.slice(0, 3000)}`)
-      break
+      loadedAgent = true
+      if (p === "AGENTS.md") break // prefer AGENTS.md, else collect all
+    } catch {}
+  }
+  // Also load steering if not already
+  if (!loadedAgent) {
+    try {
+      const { readdir } = await import("node:fs/promises")
+      const steeringDir = `${cwd}/.minicode/steering`
+      const files = await readdir(steeringDir).catch(() => [] as unknown as string[])
+      for (const f of (files as string[]).slice(0, 3)) {
+        try {
+          const txt = await readFile(`${steeringDir}/${f}`, "utf8")
+          parts.push(`\n# steering/${f}\n${txt.slice(0, 2000)}`)
+        } catch {}
+      }
     } catch {}
   }
   // Repo-map compact (simbol per file) — cache di .minicode/repomap.json.

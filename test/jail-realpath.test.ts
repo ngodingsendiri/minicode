@@ -4,10 +4,10 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
-  SENSITIVE_RE,
   isPathOutsideRoot,
   isRealPathOutsideRoot,
   isSensitive,
+  SENSITIVE_RE,
 } from "../src/policy/jail.ts"
 
 test("isSensitive: sensitive paths blocked (incl. new coverage)", () => {

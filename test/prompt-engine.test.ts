@@ -158,7 +158,7 @@ test("buildRenderSpec: selection row marked picked", () => {
   const spec = buildRenderSpec(s, "p", cmds)
   const picked = spec.rows.filter((r) => r.picked)
   expect(picked.length).toBe(1)
-  expect(picked[0]!.text).toBe(cmds[3]!)
+  expect(picked[0]?.text).toBe(cmds[3]!)
 })
 
 test("buildRenderSpec: grouped hints → header rows dinamis", () => {
@@ -177,7 +177,7 @@ test("buildRenderSpec: grouped hints → header rows dinamis", () => {
 test("decodeKeys: plain text + enter", () => {
   const keys = decodeKeys(new TextEncoder().encode("ok\n"))
   expect(keys.map((k) => k.key.type)).toEqual(["char", "char", "enter"])
-  expect(keys[0]!.key).toEqual({ type: "char", ch: "o" })
+  expect(keys[0]?.key).toEqual({ type: "char", ch: "o" })
 })
 
 test("decodeKeys: arrows & escape", () => {
@@ -194,26 +194,26 @@ test("decodeKeys: multi-byte UTF-8 emoji decoded correctly", () => {
   const emoji = new TextEncoder().encode("✓")
   const keys = decodeKeys(emoji)
   expect(keys.length).toBe(1)
-  expect(keys[0]!.key).toEqual({ type: "char", ch: "✓" })
+  expect(keys[0]?.key).toEqual({ type: "char", ch: "✓" })
 })
 
 test("decodeKeys: 4-byte emoji char", () => {
   const keys = decodeKeys(new TextEncoder().encode("✅"))
   expect(keys.length).toBe(1)
-  expect(keys[0]!.key).toEqual({ type: "char", ch: "✅" })
+  expect(keys[0]?.key).toEqual({ type: "char", ch: "✅" })
 })
 
 test("decodeKeys: 2-unit surrogate pair emoji (4-byte UTF-8)", () => {
   const keys = decodeKeys(new TextEncoder().encode("😀"))
   expect(keys.length).toBe(1)
-  expect(keys[0]!.key).toEqual({ type: "char", ch: "😀" })
+  expect(keys[0]?.key).toEqual({ type: "char", ch: "😀" })
 })
 
 test("decodeKeys: mixed emoji + text stays intact", () => {
   const keys = decodeKeys(new TextEncoder().encode("halo😀ok\n"))
   const chars = keys.map((k) => (k.key.type === "char" ? k.key.ch : null)).filter(Boolean)
   expect(chars.join("")).toBe("halo😀ok")
-  expect(keys[keys.length - 1]!.key.type).toBe("enter")
+  expect(keys[keys.length - 1]?.key.type).toBe("enter")
 })
 
 test("applyKey: backspace removes full surrogate pair", () => {

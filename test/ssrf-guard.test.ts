@@ -64,7 +64,11 @@ test("blocks direct private host without fetching", async () => {
 
 test("blocks SSRF via open redirect to private host", async () => {
   globalThis.fetch = (async () =>
-    htmlResponse(302, { location: "http://169.254.169.254/latest/meta-data/" }, [])) as unknown as typeof fetch
+    htmlResponse(
+      302,
+      { location: "http://169.254.169.254/latest/meta-data/" },
+      [],
+    )) as unknown as typeof fetch
   await expect(
     webFetchTool.execute({ url: "https://public.example.com/redir" }, ctx),
   ).rejects.toThrow(/blocked private host \(redirect target\)/)
@@ -83,9 +87,9 @@ test("rejects redirect loops beyond MAX_REDIRECTS", async () => {
     void init
     return htmlResponse(302, { location: "/next" }, [])
   }) as unknown as typeof fetch
-  await expect(
-    webFetchTool.execute({ url: "https://loop.example.com/a" }, ctx),
-  ).rejects.toThrow(/too many redirects/)
+  await expect(webFetchTool.execute({ url: "https://loop.example.com/a" }, ctx)).rejects.toThrow(
+    /too many redirects/,
+  )
 })
 
 test("follows safe redirects and returns content", async () => {
@@ -111,7 +115,11 @@ test("follows safe redirects and returns content", async () => {
 test("body hard-cap aborts oversized responses before OOM", async () => {
   const bigChunk = "x".repeat(500_000)
   globalThis.fetch = (async () =>
-    htmlResponse(200, { "content-type": "text/plain" }, Array(20).fill(bigChunk))) as unknown as typeof fetch
+    htmlResponse(
+      200,
+      { "content-type": "text/plain" },
+      Array(20).fill(bigChunk),
+    )) as unknown as typeof fetch
   const out = await webFetchTool.execute(
     { url: "https://big.example.com/blob", maxChars: 5000 },
     ctx,

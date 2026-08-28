@@ -34,7 +34,7 @@ interface JsonRpcMsg {
 }
 
 function send(msg: JsonRpcMsg) {
-  process.stdout.write(JSON.stringify(msg) + "\n")
+  process.stdout.write(`${JSON.stringify(msg)}\n`)
 }
 
 function reply(id: string | number, result: unknown) {
@@ -96,7 +96,10 @@ async function invokeTool(
   const text =
     typeof out === "string" ? out : out instanceof Uint8Array ? "(binary)" : JSON.stringify(out)
   const scrubbed = scrubSecrets(text)
-  return { content: [{ type: "text", text: scrubbed.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS) }], isError: false }
+  return {
+    content: [{ type: "text", text: scrubbed.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS) }],
+    isError: false,
+  }
 }
 
 export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {
@@ -139,7 +142,7 @@ export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {
       case "server/discover":
         reply(msg.id!, {
           supportedVersions: [PROTOCOL_VERSION],
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: SERVER_INFO,
         })
         return
@@ -147,7 +150,7 @@ export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {
       case "initialize":
         reply(msg.id!, {
           protocolVersion: PROTOCOL_VERSION,
-          capabilities: { tools: {} },
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           serverInfo: SERVER_INFO,
         })
         return
@@ -169,6 +172,24 @@ export async function serveMcp(opts: McpServeOptions = {}): Promise<void> {
           })),
         })
         return
+
+      case "resources/list":
+        reply(msg.id!, { resources: [] })
+        return
+
+      case "resources/read": {
+        replyError(msg.id, CODE_INVALID_PARAMS, "no resources exposed")
+        return
+      }
+
+      case "prompts/list":
+        reply(msg.id!, { prompts: [] })
+        return
+
+      case "prompts/get": {
+        replyError(msg.id, CODE_INVALID_PARAMS, "no prompts exposed")
+        return
+      }
 
       case "tools/call": {
         const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> }

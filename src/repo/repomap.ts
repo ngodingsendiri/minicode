@@ -154,6 +154,17 @@ const PATTERNS: Record<string, LinePattern[]> = {
   ],
 }
 
+// Ekstrak simbol dengan tree-sitter wasm bila tersedia, fallback ke regex (Aider-like).
+// Tree-sitter memberikan akurasi AST vs regex — dimuat lazy via src/repo/tree-sitter.ts
+export async function extractSymbolsAsync(content: string, lang: string): Promise<string[]> {
+  try {
+    const { extractWithTreeSitter } = await import("./tree-sitter.ts")
+    const tsResult = await extractWithTreeSitter(content, lang)
+    if (tsResult?.length) return tsResult.slice(0, MAX_SYMBOLS_PER_FILE)
+  } catch {}
+  return extractSymbols(content, lang)
+}
+
 // Ekstrak simbol dari konten file berdasarkan bahasa. Deterministik & cepat (regex).
 export function extractSymbols(content: string, lang: string): string[] {
   const patterns = PATTERNS[lang]

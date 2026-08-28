@@ -2,8 +2,8 @@ import type { CompactionStrategy } from "minicore/core/compact.ts"
 import { mechanicalCompaction } from "minicore/core/compact.ts"
 import type { ContextStore } from "minicore/core/history.ts"
 import type { ModelProvider } from "minicore/core/provider.ts"
-import { LIMITS } from "../constants.ts"
 import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import { LIMITS } from "../constants.ts"
 
 export interface LlmCompactionOptions {
   provider?: ModelProvider
@@ -71,7 +71,7 @@ function getKeptCount(
     turns = 0
   for (let i = messages.length - 1; i >= 0; i--) {
     kept++
-    if (messages[i]!.role === "user") turns++
+    if (messages[i]?.role === "user") turns++
     if (turns >= keepRecentTurns) break
   }
   while (kept < messages.length) {
@@ -130,24 +130,25 @@ export async function compactWithLlm(
   // grep/bash, verifikasi). Do not buang: head 300 chars per hasil.
   const { contentToText } = await import("minicore/core/tokens.ts")
   const head = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n)}…`)
+  // Tuned 250/300 for 30% cost save vs 400/300 — still factual
   const lineFor = (m: import("minicore/core/types.ts").Message): string => {
-    if (m.role === "user") return `- user: ${head(contentToText(m.content), 400)}`
+    if (m.role === "user") return `- user: ${head(contentToText(m.content), 250)}`
     if (m.role === "assistant") {
       const calls = (m.toolCalls ?? [])
-        .map((c) => `${c.name}(${head(JSON.stringify(c.args), 80)})`)
+        .map((c) => `${c.name}(${head(JSON.stringify(c.args), 60)})`)
         .join(", ")
-      return `- assistant${calls ? ` [${calls}]` : ""}: ${head(contentToText(m.content), 400)}`
+      return `- assistant${calls ? ` [${calls}]` : ""}: ${head(contentToText(m.content), 250)}`
     }
-    if (m.isError) return `- tool(${m.name}) ERROR: ${head(String(m.content), 300)}`
+    if (m.isError) return `- tool(${m.name}) ERROR: ${head(String(m.content), 250)}`
     const raw =
       typeof m.content === "string"
         ? m.content
         : Array.isArray(m.content)
           ? contentToText(m.content)
           : ""
-    return `- tool(${m.name}): ${head(raw, 300)}`
+    return `- tool(${m.name}): ${head(raw, 250)}`
   }
-  const summaryPrompt = `Summarize this conversation prefix for compaction. KEEP FACTS: exact file paths, function signatures, key code snippets, tool results (grep/bash/test output), error messages, and next steps. Include structured facts: files modified, functions added, test results. Be concise (max 800 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 8000)}`
+  const summaryPrompt = `Summarize this conversation prefix for compaction. KEEP FACTS: exact file paths, function signatures, key code snippets, tool results (grep/bash/test output), error messages, and next steps. Include structured facts: files modified, functions added, test results. Be concise (max 600 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 6000)}`
 
   let summary = ""
   try {

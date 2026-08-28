@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { writeTrace } from "../src/telemetry/trace.ts"
@@ -50,13 +50,15 @@ describe("telemetry trace (C16)", () => {
     await mkdir(`${dir}/.minicode`, { recursive: true })
     // tulis 1005 baris manual lalu satu trace baru → harus terpotong ke <=1000
     let seed = ""
-    for (let i = 0; i < 1005; i++) seed += JSON.stringify({ sessionId: `old-${i}` }) + "\n"
+    for (let i = 0; i < 1005; i++) seed += `${JSON.stringify({ sessionId: `old-${i}` })}\n`
     await import("node:fs/promises").then((m) =>
       m.writeFile(`${dir}/.minicode/traces.jsonl`, seed, "utf8"),
     )
     const t = baseTrace()
     await writeTrace(dir, t)
-    const after = (await readFile(`${dir}/.minicode/traces.jsonl`, "utf8")).split("\n").filter(Boolean)
+    const after = (await readFile(`${dir}/.minicode/traces.jsonl`, "utf8"))
+      .split("\n")
+      .filter(Boolean)
     expect(after.length).toBe(1000)
     expect(after[999]).toContain(t.sessionId)
     const leftovers = (await readdir(`${dir}/.minicode`)).filter((f) => f.includes(".tmp."))

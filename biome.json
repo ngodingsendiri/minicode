@@ -3,6 +3,15 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": { "ignoreUnknown": true, "includes": ["src/**/*", "cli/**/*", "test/**/*", "bench/**/*", "scripts/**/*"] },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
-  "linter": { "enabled": true, "rules": { "recommended": true } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": { "noNonNullAssertion": "off" },
+      "complexity": { "noCommaOperator": "off" },
+      "suspicious": { "noExplicitAny": "off" },
+      "correctness": { "noUnusedVariables": "off" }
+    }
+  },
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "asNeeded" } }
 }

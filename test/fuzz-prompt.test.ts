@@ -128,18 +128,17 @@ function runSeeded(seed: number): string {
   const chars = "abcdefghijklmnopABCDEFGHIJKLMNOP !?/'\"".split("")
   const hints = (l: string): string[] => (l.startsWith("/") ? ["/help", "/providers"] : [])
   let s = createState()
-  const h = hints(s.line)
   for (let i = 0; i < 300; i++) {
     const r = rng()
     if (r < 0.85) {
       const ch = chars[Math.floor(rng() * chars.length)]!
-      s = applyKey(s, { type: "char", ch }, h).state
+      s = applyKey(s, { type: "char", ch }, hints).state
     } else if (r < 0.92) {
-      s = applyKey(s, { type: "backspace" }, h).state
+      s = applyKey(s, { type: "backspace" }, hints).state
     } else if (r < 0.96) {
-      s = applyKey(s, { type: "left" }, h).state
+      s = applyKey(s, { type: "left" }, hints).state
     } else {
-      s = applyKey(s, { type: "right" }, h).state
+      s = applyKey(s, { type: "right" }, hints).state
     }
     if (s.line.includes("\n")) break
   }

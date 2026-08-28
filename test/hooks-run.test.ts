@@ -1,7 +1,7 @@
+import { afterAll, expect, test } from "bun:test"
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { afterAll, expect, test } from "bun:test"
 import { findRunHooks } from "../src/hooks/run.ts"
 
 const dir = join(tmpdir(), `minicode-hooks-test-${process.pid}`)

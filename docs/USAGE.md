@@ -127,8 +127,9 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 - **Default:** regex denylist 27 + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber.
 - **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada. Env container juga disanitasi dari hasil merge final.
+- **`--sandbox os` (baru, Codex-like):** tanpa Docker — `seatbelt` macOS / `bubblewrap` Linux (`--unshare-net --cap-drop ALL`). Fallback ke docker bila tersedia, else direct. `src/sandbox/os.ts`.
 - **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, npm exec, npx, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`. Untuk `npm exec`/`npx`, arg harus "known-good": tidak boleh ada ekspansi shell (`$`, backtick) atau redirection (`<`, `>`); chaining `;|&` sudah diblokir.
-- **web_fetch:** redirect ditangani manual (maks 5 hop, tiap host divalidasi anti-SSRF); body hard-cap 2MB.
+- **web_fetch / web_search:** redirect manual 5 hop + DNS pinning 30s + body 2MB; `web_search` via Tavily (jika `TAVILY_API_KEY`) else DuckDuckGo. `src/tools/web_search.ts`.
 
 ## Plan Mode
 
@@ -148,7 +149,7 @@ Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk d
 
 ## Repo Intelligence
 
-System prompt otomatis memuat repo-map (simbol per file — regex 9 bahasa + LSP `workspace/symbol` fallback). Cache di `.minicode/repomap.json`. File diurutkan berdasarkan skor import-graph. `MINICODE_REPOMAP=regex` untuk skip LSP.
+System prompt otomatis memuat repo-map (regex 9 bahasa + LSP `workspace/symbol` fallback, tree-sitter wasm optional `src/repo/tree-sitter.ts`). Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` (OpenCode) deterministik.
 
 ## Benchmark
 
@@ -180,11 +181,12 @@ Format `tasks.json` (SWE-bench-format):
 ## Pengujian
 
 ```bash
-bun install            # sekali
-bun test               # offline: 243 test (235 pass + 8 skip live/docker)
-bun run typecheck      # tsc strict
-bun run lint           # biome
-bun run bench:smoke    # benchmark fake, CI-safe
+bun install            # sekali (butuh bun >=1.0 + sibling ../minicore)
+bun test               # offline: 257 test (249 pass + 8 skip) + minicore 154
+bun x tsc --noEmit     # tsc strict — 0 error (lint 27w sisa non-critical)
+bun run bench:smoke    # fake 10 tasks 1.0 resolve rate
+bun run bench --runs 2 # median 2 runs
+minicode exec "prompt" --json # headless CI (Codex/Gemini-like)
 MINICODE_LIVE=1 bun run test:live   # live E2E (butuh provider + API key)
 ```
 
