@@ -119,6 +119,6 @@ Catatan lingkungan:
 
 ## Lisensi
 
-**Proprietary / Closed Source.** Dilindungi undang-undang. Penggunaan Software tunduk pada EULA di [LICENSE](LICENSE) — dilarang menyalin, memodifikasi, mendistribusikan, atau melakukan reverse engineering tanpa izin tertulis dari pemilik hak cipta. Lihat LICENSE untuk ketentuan lengkap.
+**MIT License.** Bebas pakai, modifikasi, distribusi — lihat [LICENSE](LICENSE). Copyright (c) 2026 ngodingsendiri.
 
 Lihat `docs/ARCHITECTURE.md` + `../minicore/docs/MINICORE-FINAL-AUDIT.md`.

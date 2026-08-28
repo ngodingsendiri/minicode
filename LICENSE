@@ -1,120 +1,21 @@
-MINICODE PROPRIETARY SOFTWARE LICENSE AGREEMENT (EULA)
-=======================================================
+MIT License
 
-Copyright (c) 2026 ngodingsendiri. All Rights Reserved.
+Copyright (c) 2026 ngodingsendiri
 
-IMPORTANT — READ CAREFULLY BEFORE INSTALLING, COPYING, OR USING THIS
-SOFTWARE. BY INSTALLING, COPYING, DOWNLOADING, ACCESSING, OR OTHERWISE
-USING THIS SOFTWARE, YOU AGREE TO BE BOUND BY THE TERMS OF THIS END USER
-LICENSE AGREEMENT ("AGREEMENT"). IF YOU DO NOT AGREE, DO NOT INSTALL,
-COPY, OR USE THE SOFTWARE.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-This Agreement is a legal agreement between you (an individual or a
-single entity, "Licensee" or "you") and ngodingsendiri ("Licensor") for
-the Minicode software, including its source code, binaries,
-documentation, and associated files ("Software"). The Software is
-licensed, not sold.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-1. GRANT OF LICENSE
--------------------
-Subject to the terms of this Agreement and to the extent Licensor makes
-the Software available to you, Licensor grants you a limited,
-non-exclusive, non-transferable, revocable license to:
-
-   a) install and use the Software on machines under your control for
-      your own personal or internal business purposes;
-   b) run the Software as an agent on code repositories you are
-      authorized to modify.
-
-No other rights are granted. All rights not expressly granted herein are
-reserved by Licensor.
-
-2. RESTRICTIONS
----------------
-You shall NOT, directly or indirectly:
-
-   a) copy, reproduce, distribute, sublicense, sell, rent, lease, lend,
-      or otherwise transfer the Software or any copy thereof to any
-      third party;
-   b) publish, host, mirror, or make available the source code of the
-      Software, in whole or in part, to any third party or to the public;
-   c) modify, adapt, translate, or create derivative works of the
-      Software, except configuration files and skills expressly intended
-      to be user-authored (.minicode/config.json, .minicode/skills/*);
-   d) reverse engineer, decompile, disassemble, or otherwise attempt to
-      derive the source code, algorithms, or underlying ideas of the
-      Software, except to the extent such restriction is prohibited by
-      applicable law;
-   e) remove, alter, or obscure any copyright, trademark, or other
-      proprietary notices contained in the Software;
-   f) use the Software to develop a competing product or service;
-   g) circumvent or attempt to circumvent any technical protection
-      measures or license enforcement of the Software.
-
-3. OWNERSHIP
-------------
-The Software is licensed, not sold. Licensor retains all right, title,
-and interest in and to the Software, including all copyrights, trade
-secrets, trademarks, and other intellectual property rights therein.
-This Agreement does not grant you any rights to trademarks or service
-marks of Licensor.
-
-4. THIRD-PARTY COMPONENTS
--------------------------
-The Software depends on third-party packages governed by their own
-license terms (see package.json / lockfile). Nothing in this Agreement
-restricts your rights under those third-party licenses with respect to
-those components. The MiniCore kernel (../minicore) is licensed
-separately by its own terms.
-
-5. TERMINATION
---------------
-This Agreement is effective until terminated. Your rights under this
-Agreement terminate automatically without notice if you fail to comply
-with any term(s). Upon termination you must cease all use of the
-Software and destroy all copies in your possession or control.
-Sections 2, 3, 6, 7, and 8 survive termination.
-
-6. NO WARRANTY
---------------
-THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
-WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
-NON-INFRINGEMENT. LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE
-UNINTERRUPTED, ERROR-FREE, OR SECURE. THE ENTIRE RISK AS TO THE QUALITY
-AND PERFORMANCE OF THE SOFTWARE IS WITH YOU.
-
-7. LIMITATION OF LIABILITY
---------------------------
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL
-LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL,
-OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, OR GOODWILL,
-ARISING OUT OF OR RELATED TO YOUR USE OF (OR INABILITY TO USE) THE
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. LICENSOR'S
-TOTAL AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL NOT EXCEED THE
-AMOUNT YOU ACTUALLY PAID FOR THE SOFTWARE IN THE TWELVE (12) MONTHS
-PRECEDING THE CLAIM, OR ZERO IF NO AMOUNT WAS PAID.
-
-8. GOVERNING LAW
-----------------
-This Agreement is governed by the laws of the Republic of Indonesia,
-without regard to its conflict-of-laws rules. The United Nations
-Convention on Contracts for the International Sale of Goods does not
-apply.
-
-9. UPDATES
-----------
-Licensor may provide updates, patches, or new versions of the Software.
-Unless accompanied by a separate license, updates are provided under this
-Agreement. Licensor reserves the right to modify or discontinue the
-Software at any time.
-
-10. CONTACT
------------
-For licensing inquiries, commercial licenses, or permission requests,
-contact: https://github.com/ngodingsendiri
-
-------------------------------------------------------------------------
-THIS IS A PROPRIETARY, CLOSED-SOURCE LICENSE. UNAUTHORIZED COPYING,
-MODIFICATION, DISTRIBUTION, OR USE OF THIS SOFTWARE IS PROHIBITED AND
-MAY RESULT IN CIVIL AND CRIMINAL PENALTIES.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
