@@ -40,6 +40,15 @@ export async function runSetupWizard(): Promise<boolean> {
     process.stdout.write("Setup canceled.\n")
     return false
   }
+  // URL validate (instant feedback)
+  try {
+    const u = new URL(targetUrl)
+    if (!["http:", "https:"].includes(u.protocol)) throw new Error("protocol")
+  } catch {
+    process.stdout.write(`[FAIL] Invalid URL: ${targetUrl}\n`)
+    rl.close()
+    return false
+  }
 
   rl.close()
 
@@ -55,8 +64,9 @@ export async function runSetupWizard(): Promise<boolean> {
     return false
   }
 
+  const { createSpinner } = await import("../src/tui/spinner.ts")
+  const spin = createSpinner("Detecting models...")
   try {
-    process.stdout.write("Detecting models...\n")
     const preset = GATEWAY_PRESETS.find(
       (p) => p.baseUrl.replace(/\/+$/, "") === targetUrl.replace(/\/+$/, ""),
     )
@@ -64,13 +74,11 @@ export async function runSetupWizard(): Promise<boolean> {
       preset?.fallbackModels ??
       (targetUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"])
     const entry = await detectAndSave(targetUrl, apiKey, undefined, { fallbackModels })
-    process.stdout.write(
-      `[OK] Provider "${entry.id}" saved - ${entry.models.length} models detected\n`,
-    )
+    spin.success(`Provider "${entry.id}" saved — ${entry.models.length} models`)
     process.stdout.write("Setup complete.\n\n")
     return true
   } catch (e) {
-    process.stdout.write(`[FAIL] Detection failed: ${formatError(e)}\n\n`)
+    spin.error(`Detection failed: ${formatError(e)}`)
     return false
   }
 }

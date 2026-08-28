@@ -61,6 +61,40 @@ function getArg(name: string): string | undefined {
 await dispatch(args, getArg, HELP)
 
 if (args.includes("-h") || args.includes("--help")) {
+  if (args.includes("--json")) {
+    // machine-readable help for CI (minicode exec --help --json)
+    console.log(
+      JSON.stringify({
+        name: "minicode",
+        version: "0.7.0",
+        usage: [
+          "minicode",
+          'minicode "prompt" [options]',
+          "minicode exec \"prompt\" [--json]",
+          "minicode providers|models|sync|config|mcp|skills|sessions",
+        ],
+        options: [
+          { flag: "--verbose", desc: "show reasoning & usage" },
+          { flag: "--cwd <dir>", desc: "workspace root" },
+          { flag: "--resume <id>", desc: "resume session id" },
+          { flag: "--model <name>", desc: "override model (provider::model)" },
+          { flag: "--provider <id>", desc: "force provider id" },
+          { flag: "--allow-all", desc: "allow all tools (no sandbox)" },
+          { flag: "--ask", desc: "ask per tool" },
+          { flag: "--plan", desc: "read-only plan mode" },
+          { flag: "--allowlist", desc: "bash allowlist only" },
+          { flag: "--max-steps <n>", desc: "max tool steps (default 50)" },
+          { flag: "--timeout <ms>", desc: "hard deadline per run" },
+          { flag: "--tui", desc: "fullscreen TUI (pure ANSI)" },
+          { flag: "--verify", desc: "auto-verify + self-heal" },
+          { flag: "--sandbox <docker|os>", desc: "bash sandbox" },
+          { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
+          { flag: "--budget <usd>", desc: "session cost limit" },
+        ],
+      }),
+    )
+    process.exit(0)
+  }
   console.log(HELP)
   process.exit(0)
 }

@@ -37,6 +37,9 @@ export type PromptKey =
   | { type: "ctrl-d" }
   | { type: "ctrl-u" } // clear line
   | { type: "ctrl-w" } // delete previous word
+  | { type: "ctrl-o" } // expand detail (TUI)
+  | { type: "ctrl-r" } // reverse history search (TUI)
+  | { type: "shift-tab" } // cycle mode (TUI) — caller maps raw \x1b[Z
 
 // Terapkan satu keypress -> state baru + render spec + action (submit/cancel).
 export type PromptAction = "none" | "render" | "submit" | "cancel"
@@ -119,6 +122,10 @@ export function applyKey(
     case "ctrl-c":
     case "ctrl-d":
       return { state, action: "cancel" }
+    case "ctrl-o": // expand/collapse transcript — handled oleh renderer TUI
+    case "ctrl-r": // history search — handled oleh renderer TUI
+    case "shift-tab": // cycle mode — handled oleh renderer TUI
+      return { state, action: "none" }
     case "ctrl-u": {
       if (!state.line.length) return { state, action: "none" }
       return { state: { line: "", sel: -1, menuOpen: false }, action: "render" }
@@ -195,6 +202,13 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   const c = s[i]!
   const code = c.charCodeAt(0)
   if (code === 0x1b) {
+    // Bracketed paste: ESC[200~ … ESC[201~ — emit satu char "paste" per segmen
+    if (s[i + 1] === "[" && s[i + 2] === "2" && s[i + 3] === "0" && s[i + 4] === "0" && s[i + 5] === "~") {
+      const endIdx = s.indexOf("\x1b[201~", i + 6)
+      if (endIdx !== -1) {
+        return { key: { type: "char", ch: s.slice(i + 6, endIdx) }, width: endIdx + 6 - i }
+      }
+    }
     if (s[i + 1] === "[" || s[i + 1] === "O") {
       const kind = s[i + 2]
       if (kind === "A") return { key: { type: "up" }, width: 3 }
@@ -206,6 +220,9 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
     }
     return { key: { type: "esc" }, width: 1 }
   }
+  // Ctrl+O (15) & Ctrl+R (18) sebagai key types sendiri
+  if (code === 0x0f) return { key: { type: "ctrl-o" }, width: 1 }
+  if (code === 0x12) return { key: { type: "ctrl-r" }, width: 1 }
   if (code === 0x7f || code === 0x08) return { key: { type: "backspace" }, width: 1 }
   if (c === "\n" || c === "\r") return { key: { type: "enter" }, width: 1 }
   if (c === "\t") return { key: { type: "tab" }, width: 1 }

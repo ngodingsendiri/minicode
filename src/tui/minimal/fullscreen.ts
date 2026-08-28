@@ -7,7 +7,7 @@ import { disableBracketedPaste, disableMouse, enableBracketedPaste, enableMouse,
 import { applyKey, decodeKeys, type PromptState } from "../../../cli/prompt-engine.ts"
 import { renderDiffCard } from "../diff.ts"
 
-const RING_MAX = 100
+const RING_MAX = 60
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
 const plain = (s: string, w: number) => {
   const clean = strip(s)
@@ -163,11 +163,13 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     finally { busy=false; abortRef=null; render() }
   }
 
-  // render
+  // render — diff repaint: hanya write bila output berubah (anti flicker)
   let spinnerIdx=0
-  let spinnerTimer: ReturnType<typeof setInterval>|undefined
-  const startSpinner=()=>{ if(spinnerTimer) return; spinnerTimer=setInterval(()=>{spinnerIdx++; render()},150)}
-  const stopSpinner=()=>{ if(spinnerTimer){clearInterval(spinnerTimer); spinnerTimer=undefined}}
+  let spinnerTimer: ReturnType<typeof setTimeout>|undefined
+  let prevOut = ""
+  const startSpinner=()=>{ if(spinnerTimer) return; tickSpinner() }
+  const stopSpinner=()=>{ if(spinnerTimer){clearTimeout(spinnerTimer); spinnerTimer=undefined}}
+  const tickSpinner=()=>{ spinnerIdx++; render(); spinnerTimer=setTimeout(tickSpinner,150) }
   const glyphDot="·"
 
   function render() {
@@ -175,8 +177,8 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     if (busy) startSpinner(); else stopSpinner()
     const m = matches()
     const pickerLines = picker ? Math.min(picker.items.length, H-5) : 0
-    const menuLines = overlay || picker ? 0 : Math.min(m.length, 8)
-    const overlayLines = overlay ? Math.min(overlay.lines.length, H-5) : 0
+    const menuLines = overlay || picker ? 0 : Math.min(m.length, Math.min(6, Math.floor(H*0.3)))
+    const overlayLines = overlay ? Math.min(overlay.lines.length, H-8) : 0
     const bodyH = Math.max(3, H -1 -(overlay?overlayLines+2:0) -(picker?pickerLines+3:0) -menuLines -2 -(busy?1:0))
 
     const lines: {c:string; t:string}[]=[]
@@ -194,12 +196,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
 
     // build output
     let out=""
-    // header
-    const modeColor = mode==="plan"?"\x1b[33m":mode==="ask"?"\x1b[36m":"\x1b[32m"
+    // header — narrow terminal (<80 cols) → brand di baris 1, model+mode baris 2
+    const modeColored = mode==="plan" ? c.warning(mode) : mode==="ask" ? c.info(mode) : c.success(mode)
     const dispModel = effModel ?? opts.model() ?? "-"
     const viaTag = effProvider ? ` ${c.muted(`(via ${effProvider})`)}` : ""
+    const narrow = W < 80
     out+=`\x1b[H\x1b[2J`
-    out+=`${c.cyan("minicode")} ${c.muted("-")} ${c.yellow(trunc(dispModel,30))}${viaTag} ${c.muted("-")} ${modeColor}${mode}\x1b[39m${cost!=null?` ${c.muted(`$${cost.toFixed(4)}`)}`:""}${expanded?" "+c.muted("- DETAIL"):""}\n`
+    const headerModel = `${c.yellow(trunc(dispModel, narrow ? W-8 : Math.max(20, (W-40))))}${viaTag}`
+    const header = narrow
+      ? `${c.cyan("minicode")} ${c.muted("-")} ${modeColored}${cost!=null?` ${c.muted(`$${cost.toFixed(4)}`)}`:""}${expanded?" "+c.muted("- DETAIL"):""}\n ${headerModel}\n`
+      : `${c.cyan("minicode")} ${c.muted("-")} ${headerModel} ${c.muted("-")} ${modeColored}${cost!=null?` ${c.muted(`$${cost.toFixed(4)}`)}`:""}${expanded?" "+c.muted("- DETAIL"):""}\n`
+    out+=header
 
     if(picker){
       out+=`${c.cyan(`- ${picker.title} -`)}\n`
@@ -235,8 +242,19 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     }
     // input
     out+=`${c.cyan("> ")}${line}${c.muted("_")}\n`
-    out+=`${c.muted("ctrl+c stop/keluar · esc stop · ctrl+o detail · shift+tab mode · /help")}`
-    process.stdout.write(out)
+    const footerHints = [
+      "ctrl+c stop/keluar",
+      "esc stop",
+      "ctrl+o detail",
+      "shift+tab mode",
+      "/help",
+    ]
+    if (cost != null && cost > 0) footerHints.unshift(`$${cost.toFixed(4)}`)
+    out+=`${c.muted(footerHints.join(" · "))}`
+    if (out !== prevOut) {
+      process.stdout.write(out)
+      prevOut = out
+    }
   }
 
   // input handling — unified via prompt-engine decodeKeys + applyKey (single source)
@@ -285,9 +303,9 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         if (key.type === "enter" || (key.type === "char" && key.ch === "q")) { overlay = null; render(); continue }
         continue
       }
-      // Ctrl+O / Ctrl+R via char code (not in prompt-engine)
-      if (key.type === "char" && key.ch.charCodeAt(0) === 15) { expanded = !expanded; render(); continue } // Ctrl+O
-      if (key.type === "char" && key.ch.charCodeAt(0) === 18) { // Ctrl+R history
+      // Ctrl+O / Ctrl+R (decodeKeys native)
+      if (key.type === "ctrl-o") { expanded = !expanded; render(); continue }
+      if (key.type === "ctrl-r") { // history reverse picker
         const h = histCache.slice().reverse()
         if (!h.length) continue
         picker = { title: "history", items: h.slice(0, 30).map((t) => ({ label: t.slice(0, 80), value: t })), sel: 0, onPick: (v) => { line = v; return "history dimuat" } }
@@ -316,17 +334,18 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
           continue
         }
       }
-      // enter
+      // enter — pick selected suggestion if valid, else submit raw line
       if (key.type === "enter") {
-        if (menuOpen && sel >= 0 && matches()[sel]) { line = matches()[sel]!; menuOpen = false; sel = -1; render(); continue }
+        const m = matches()
+        if (menuOpen && sel >= 0 && sel < m.length) { line = m[sel]!; menuOpen = false; sel = -1; render(); continue }
         const cont = line.endsWith("\\")
         const toSend = cont ? line.slice(0, -1) : line
         void submit(toSend); continue
       }
-      // tab
+      // tab — complete to current selection, or first match when no selection
       if (key.type === "tab") {
         const m = matches()
-        if (m.length) { line = m[Math.max(0, sel)]!; menuOpen = false; sel = -1; render() }
+        if (m.length) { line = m[sel >= 0 && sel < m.length ? sel : 0]!; menuOpen = false; sel = -1; render() }
         continue
       }
       // delegate line editing to prompt-engine (char/backspace/ctrl-u/ctrl-w/left/right)
