@@ -28,5 +28,14 @@ export function onResize(cb: () => void): () => void {
   return () => process.stdout.off("resize", cb)
 }
 export function enableMouse(): void {
-  // minimal — tidak pakai mouse, tapi siapkan hook
+  process.stdout.write("\x1b[?1000h")
+}
+export function disableMouse(): void {
+  process.stdout.write("\x1b[?1000l")
+}
+export function enableBracketedPaste(): void {
+  process.stdout.write("\x1b[?2004h")
+}
+export function disableBracketedPaste(): void {
+  process.stdout.write("\x1b[?2004l")
 }

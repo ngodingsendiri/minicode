@@ -3,9 +3,11 @@
 import type { EventBus } from "minicore/core/index.ts"
 import { decorateMarkdown } from "../markdown.ts"
 import { c } from "../theme.ts"
-import { enterAlternate, exitAlternate, getSize, hideCursor, onResize, showCursor } from "./screen.ts"
+import { disableBracketedPaste, disableMouse, enableBracketedPaste, enableMouse, enterAlternate, exitAlternate, getSize, hideCursor, onResize, showCursor } from "./screen.ts"
+import { applyKey, decodeKeys, type PromptState } from "../../../cli/prompt-engine.ts"
+import { renderDiffCard } from "../diff.ts"
 
-const RING_MAX = 200
+const RING_MAX = 100
 const strip = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
 const plain = (s: string, w: number) => {
   const clean = strip(s)
@@ -36,6 +38,8 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   let exited = false
   enterAlternate()
   hideCursor()
+  enableBracketedPaste()
+  enableMouse()
 
   let items: TranscriptItem[] = []
   let streamTail: string[] = []
@@ -95,12 +99,9 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     if ((name==="edit"||name==="apply_patch") && typeof args.path==="string") {
       const oldS = String(args.oldString ?? "")
       const newS = String(args.newString ?? "")
-      const dl = oldS.split("\n").filter(l=>l.trim())
-      const nl = newS.split("\n").filter(l=>l.trim())
-      const lines: string[] = [`edit ${args.path}`]
-      for (const l of dl.slice(0,3)) lines.push(`  - ${l.trim().slice(0,70)}`)
-      for (const l of nl.slice(0,3)) lines.push(`  + ${l.trim().slice(0,70)}`)
-      add("tool", lines.join("\n")); return
+      // Use diff card (Ubuntu style) — limited 6 lines for TUI compactness
+      const diffCard = renderDiffCard(args.path as string, oldS, newS, { maxLines: 6 })
+      add("tool", diffCard); return
     }
     add("tool", `${name} ${target}`.trim())
   }))
@@ -113,7 +114,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     render()
   }))
 
-  const matches = (): string[] => menuOpen || line.startsWith("/") ? opts.suggestions(line).filter(s=>s.text.startsWith(line)).map(s=>s.text) : []
+  const matches = (): string[] => menuOpen || line.startsWith("/") ? opts.suggestions(line).filter(s=>s.text.toLowerCase().startsWith(line.toLowerCase())).map(s=>s.text) : []
 
   const doInterrupt = () => {
     if (busy && abortRef) {
@@ -238,82 +239,108 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     process.stdout.write(out)
   }
 
-  // input handling
+  // input handling — unified via prompt-engine decodeKeys + applyKey (single source)
   process.stdin.setRawMode(true)
   process.stdin.resume()
-  const onData=(chunk:Buffer)=>{
-    const str=chunk.toString("utf8")
-    // decode keys manually (simplified)
-    for(let i=0;i<str.length;i++){
-      const ch=str[i]!
-      const code=str.charCodeAt(i)
+  const onData = (chunk: Buffer) => {
+    const raw = chunk.toString("utf8")
+    // shift+tab raw early (before decode)
+    if (raw.includes("\x1b[Z")) {
+      mode = opts.onCycleMode()
+      render()
+      return
+    }
+    const keys = decodeKeys(chunk)
+    for (const { key } of keys) {
       // Ctrl+C
-      if(code===3){
-        if(busy) {doInterrupt(); return}
-        const now=Date.now()
-        if(now-lastCtrlC<2000) void opts.onExit()
-        else lastCtrlC=now
+      if (key.type === "ctrl-c") {
+        if (busy) {
+          doInterrupt()
+          return
+        }
+        const now = Date.now()
+        if (now - lastCtrlC < 2000) void opts.onExit()
+        else lastCtrlC = now
         return
       }
-      if(code===27){ // ESC or shift+tab etc
-        if(str.slice(i,i+3)==="\x1b[Z"){ // shift+tab
-          mode=opts.onCycleMode(); render(); i+=2; continue
+      // ESC
+      if (key.type === "esc") {
+        if (picker) { picker = null; render(); continue }
+        if (overlay) { overlay = null; render(); continue }
+        doInterrupt()
+        continue
+      }
+      // picker mode
+      if (picker) {
+        if (key.type === "up") { picker.sel = Math.max(0, picker.sel - 1); render(); continue }
+        if (key.type === "down") { picker.sel = Math.min(picker.items.length - 1, picker.sel + 1); render(); continue }
+        if (key.type === "enter" || (key.type === "char" && key.ch === " ")) {
+          const cur = picker; const picked = cur.items[cur.sel]; picker = null
+          if (picked) { const r = cur.onPick(picked.value); if (typeof r === "string") add("info", r) }
+          render(); continue
         }
-        if(picker){ picker=null; render(); continue}
-        if(overlay){ overlay=null; render(); continue}
-        doInterrupt(); continue
-      }
-      if(picker){
-        if(str.slice(i,i+3)==="\x1b[A"){ picker.sel=Math.max(0,picker.sel-1); render(); i+=2; continue}
-        if(str.slice(i,i+3)==="\x1b[B"){ picker.sel=Math.min(picker.items.length-1,picker.sel+1); render(); i+=2; continue}
-        if(code===13||code===32){ const cur=picker; const picked=cur.items[cur.sel]; picker=null; if(picked){ const r=cur.onPick(picked.value); if(typeof r==="string") add("info",r)} render(); continue}
         continue
       }
-      if(overlay){
-        if(code===13||code===27||str[i]==="q"){ overlay=null; render(); continue}
+      if (overlay) {
+        if (key.type === "enter" || (key.type === "char" && key.ch === "q")) { overlay = null; render(); continue }
         continue
       }
-      if(code===13){ // enter
-        if(menuOpen && sel>=0 && matches()[sel]){ line=matches()[sel]!; menuOpen=false; sel=-1; render(); continue}
-        const cont=line.endsWith("\\")
-        const toSend=cont?line.slice(0,-1):line
-        void submit(toSend); continue
-      }
-      if(code===127||code===8){ // backspace
-        line=line.slice(0,-1); menuOpen=line.startsWith("/"); render(); continue
-      }
-      if(code===21){ // Ctrl+U
-        line=""; menuOpen=false; render(); continue
-      }
-      if(code===23){ // Ctrl+W
-        line=line.replace(/\S+\s*$/,""); render(); continue
-      }
-      if(code===15){ // Ctrl+O
-        expanded=!expanded; render(); continue
-      }
-      if(code===18){ // Ctrl+R history
-        const h=histCache.slice().reverse()
-        if(!h.length) continue
-        picker={title:"history", items:h.slice(0,30).map(t=>({label:t.slice(0,80),value:t})), sel:0, onPick:(v)=>{line=v; return "history dimuat"}}
+      // Ctrl+O / Ctrl+R via char code (not in prompt-engine)
+      if (key.type === "char" && key.ch.charCodeAt(0) === 15) { expanded = !expanded; render(); continue } // Ctrl+O
+      if (key.type === "char" && key.ch.charCodeAt(0) === 18) { // Ctrl+R history
+        const h = histCache.slice().reverse()
+        if (!h.length) continue
+        picker = { title: "history", items: h.slice(0, 30).map((t) => ({ label: t.slice(0, 80), value: t })), sel: 0, onPick: (v) => { line = v; return "history dimuat" } }
         render(); continue
       }
-      if(str.slice(i,i+3)==="\x1b[A"){ // up
-        const m=matches()
-        if(menuOpen && m.length){ sel= sel<=0? m.length-1 : sel-1; render(); i+=2; continue}
-        if(histCache.length){ histIdx=Math.min(histIdx+1, histCache.length-1); line=histCache[histCache.length-1-histIdx]??""; menuOpen=false; render(); i+=2; continue}
+      // up/down: history when not in menu, else via prompt-engine
+      if (key.type === "up" || key.type === "down") {
+        const m = matches()
+        if (menuOpen && m.length) {
+          // delegate to prompt-engine for sel navigation
+          const ps: PromptState = { line, sel, menuOpen }
+          const res = applyKey(ps, key, (_l: string) => m)
+          line = res.state.line; sel = res.state.sel; menuOpen = res.state.menuOpen
+          render(); continue
+        }
+        // history navigation
+        if (key.type === "up") {
+          if (histCache.length) { histIdx = Math.min(histIdx + 1, histCache.length - 1); line = histCache[histCache.length - 1 - histIdx] ?? ""; menuOpen = false; sel = -1; render() }
+          continue
+        }
+        if (key.type === "down") {
+          const m2 = matches()
+          if (menuOpen && m2.length) { const ps: PromptState = { line, sel, menuOpen }; const res = applyKey(ps, key, (_l: string) => m2); line = res.state.line; sel = res.state.sel; menuOpen = res.state.menuOpen; render(); continue }
+          if (histIdx > 0) { histIdx--; line = histCache[histCache.length - 1 - histIdx] ?? ""; render(); continue }
+          if (histIdx === 0) { histIdx = -1; line = ""; render(); continue }
+          continue
+        }
       }
-      if(str.slice(i,i+3)==="\x1b[B"){ // down
-        const m=matches()
-        if(menuOpen && m.length){ sel=(sel+1)%m.length; render(); i+=2; continue}
-        if(histIdx>0){ histIdx--; line=histCache[histCache.length-1-histIdx]??""; render(); i+=2; continue}
-        if(histIdx===0){ histIdx=-1; line=""; render(); i+=2; continue}
+      // enter
+      if (key.type === "enter") {
+        if (menuOpen && sel >= 0 && matches()[sel]) { line = matches()[sel]!; menuOpen = false; sel = -1; render(); continue }
+        const cont = line.endsWith("\\")
+        const toSend = cont ? line.slice(0, -1) : line
+        void submit(toSend); continue
       }
-      if(code===9){ // Tab
-        const m=matches()
-        if(m.length){ line=m[Math.max(0,sel)]!; menuOpen=false; sel=-1; render() } continue
+      // tab
+      if (key.type === "tab") {
+        const m = matches()
+        if (m.length) { line = m[Math.max(0, sel)]!; menuOpen = false; sel = -1; render() }
+        continue
       }
-      if(code>=32 && code<127){
-        line+=ch; menuOpen=line.startsWith("/"); sel=-1; render()
+      // delegate line editing to prompt-engine (char/backspace/ctrl-u/ctrl-w/left/right)
+      if (key.type === "char" || key.type === "backspace" || key.type === "ctrl-u" || key.type === "ctrl-w" || key.type === "left" || key.type === "right") {
+        const ps: PromptState = { line, sel, menuOpen }
+        const hintsFn = (l: string) => opts.suggestions(l).map((s) => s.text)
+        const res = applyKey(ps, key, hintsFn)
+        // applyKey doesn't know about case-insensitive filter — keep fullscreen matches() for sel, but line comes from prompt-engine
+        line = res.state.line; sel = res.state.sel; menuOpen = res.state.menuOpen
+        // sync sel to fullscreen matches indices (prompt-engine sel is hint-index, but fullscreen matches is filtered)
+        // Recompute sel to stay in range
+        const m = matches()
+        if (sel >= m.length) sel = m.length - 1
+        render(); continue
       }
     }
   }
@@ -332,6 +359,8 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       process.stdin.setRawMode(false)
       process.stdin.pause()
       showCursor()
+      disableBracketedPaste()
+      disableMouse()
       exitAlternate()
     }
   }
