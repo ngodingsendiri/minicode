@@ -2,6 +2,7 @@ import { resolve } from "node:path"
 import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "minicore"
 import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hooks/index.ts"
+import { inspectBashCommand } from "./bash-guard.ts"
 import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
 
 export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
@@ -46,58 +47,46 @@ const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
 const GATED_TOOLS = new Set(["delegate_task", "mcp_call"])
 
-const BASH_DENY_RE = [
-  /rm\s+[^;|]*-r[f]*\s+[^;|]*(\/\*?|~|(\$HOME|\$\{HOME\})|--no-preserve-root)/i,
-  /:\(\)\s*\{\s*:\|:&\s*\}\s*;/,
-  /\bmkfs\b/i,
-  /\bdd\s+if=/i,
-  /\bchmod\s+(-R\s+)?777\b/i,
-  /\bshred\b/i,
-  /\btruncate\b/i,
-  /\bmv\s+[^;|]*\s+\/(?:etc|boot|usr|lib)\b/i,
-  /\bsudo\b.*\brm\b/i,
-  /\bcurl\b.*\|\s*sh/i,
-  /\bwget\b.*\|\s*sh/i,
-  /\bcurl\b.*\|\s*bash/i,
-  /\bwget\b.*\|\s*bash/i,
-  /\bpowershell\b.*-EncodedCommand/i,
-  />\s*\/dev\/sda/i,
-  />\s*\/dev\/nvme/i,
-  /:\s*>\s*\/dev\/null.*&/i,
-  /\b(?:python|python2|python3|pypy)\s+-c\b/i,
-  /\b(?:sh|bash|dash|zsh|ksh)\s+-c\b/i,
-  /\b(?:node|perl)\s+-(?:e|pe|ne)\b/i,
-  /\bphp\s+-r\b/i,
-  /\bruby\s+-e\b/i,
-  /(?:^|[;&|]\s*)(?:base64|xxd)[^\n]*\|\s*(?:sh|bash|python|python3|node|perl)\b/i,
-  /\bawk\b[^\n]*\bsystem\s*\(/i,
-  /\b(?:curl|wget)\b[^\n]*\|\s*(?:python|python3|node|perl|php)\b/i,
-  /\bprintenv\b/i,
-  /\b(?:cat|less|more|head|tail|type|grep|sed|awk|cut|sort|xargs)\b[^\n]*\.env/i,
-  // Windows destructive / credential exfiltration
-  /\bdel\b.*\/[sfaq]/i,
-  /\brmdir\b.*\/s/i,
-  /\bRemove-Item\b.*-Recurse/i,
-  /\b(?:Get-Content|type)\b[^\n]*\.env/i,
-  /\[System\.IO\.File\]::ReadAllText/i,
-  /\b(?:Invoke-Expression|iex)\b/i,
-  /\bInvoke-WebRequest\b.*\|\s*iex/i,
-]
+// Denylist bash kini di src/policy/bash-guard.ts — pemeriksaan dilakukan pada
+// bentuk TERNORMALISASI (quote dibuang, variabel sederhana disubstitusi), bukan
+// string mentah. Regex-atas-string-mentah yang lama trivially dilewati oleh
+// `cat .e""nv`, `X=.env; cat $X`, `p=python3; $p -c 1`, dan `node --eval`.
 
+// Perintah yang dianggap aman di mode `allowlist` — mode paling ketat, dipakai
+// saat menjalankan task tak terpercaya. Isinya sengaja **read-only + build**:
+// operasi tulis (`rm`, `mv`, `cp`, `mkdir`) TIDAK di sini, karena tujuan mode
+// ini memang menahan efek samping. Agent yang butuh menulis file punya
+// `write_file`/`edit` yang ter-jail, bukan shell.
+//
+// Perhatikan: allowlist diperiksa SETELAH bash-guard, jadi `cat *` di sini
+// tidak berarti `cat .env` lolos — guard menolaknya lebih dulu. Pola di sini
+// soal "bentuk perintah apa yang boleh", bukan "target apa yang boleh".
 const DEFAULT_BASH_ALLOWLIST = [
   "git status*",
   "git diff*",
   "git log*",
   "git branch*",
+  "git show*",
   "bun test*",
   "bun x tsc*",
+  "bun run *",
   "npm run *",
   "npm exec *",
   "npx *",
-  "bun run *",
   "echo *",
   "ls*",
+  "dir*",
+  "pwd",
   "cat *",
+  "head *",
+  "tail *",
+  "wc *",
+  "grep *",
+  "rg *",
+  "find *",
+  "which *",
+  "node --version",
+  "bun --version",
 ]
 
 // 6.4 — npm exec / npx hanya di-allow bila arg "known-good": tak ada
@@ -151,8 +140,7 @@ export function createPermissionHandler(
   }
 
   function bashDenied(cmd: string): boolean {
-    for (const re of BASH_DENY_RE) if (re.test(cmd)) return true
-    return false
+    return inspectBashCommand(cmd).denied
   }
 
   function saveAlways(call: ToolCall): Promise<void> {

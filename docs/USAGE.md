@@ -34,7 +34,8 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 |---|---|
 | `--verify` | Auto-verify + self-heal (detect: typecheck → test → tsconfig) |
 | `--sandbox docker` | Eksekusi bash dalam container ephemeral (`--network none`) |
-| `--sandbox os` | Sandbox OS-native: bubblewrap (Linux) / seatbelt (macOS). Tidak tersedia di Windows |
+| `--sandbox none` | Matikan sandbox otomatis (opt-out sadar, tanpa downgrade permission) |
+| `--sandbox os` | Paksa OS-native: bubblewrap (Linux) / seatbelt (macOS). Sudah otomatis bila tersedia |
 | `--ratelimit <rpm>` | Batas request LLM per menit (token bucket) |
 | `--budget <usd>` | Batas biaya sesi; warn 80%, exit/break bila lewat |
 | `--plan` | Read-only plan mode (tidak bisa edit file / bash) |
@@ -55,7 +56,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 |---|---|
 | `MINICODE_VERIFY_CMD` | Custom verify command (ganti `detectVerifyCommand`) |
 | `MINICODE_BASH_ALLOWLIST` | Kustom allowlist bash (koma-pisah, ganti DEFAULT) |
-| `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) |
+| `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) \| `none` |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
 | `MINICODE_GREP_ENGINE` | `js` → paksa walker internal, jangan pakai ripgrep |
@@ -178,13 +179,52 @@ Batas: `BASH_BACKGROUND_MAX_JOBS` job hidup sekaligus; semua job dimatikan saat 
 
 ## Sandbox
 
-- **Default:** regex denylist + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber. **Ini blocklist, bukan sandbox** — lihat peringatan di bawah.
-- **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada. Env container juga disanitasi dari hasil merge final.
-- **`--sandbox os` (Codex-like):** tanpa Docker — `seatbelt` macOS / `bubblewrap` Linux (`--unshare-net --cap-drop ALL`). **Tidak tersedia di Windows**; bila tak tersedia, jatuh ke eksekusi langsung dengan peringatan. `src/sandbox/os.ts`.
-- **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, npm exec, npx, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`. Untuk `npm exec`/`npx`, arg harus "known-good": tidak boleh ada ekspansi shell (`$`, backtick) atau redirection (`<`, `>`); chaining `;|&` sudah diblokir.
-- **web_fetch / web_search:** redirect manual 5 hop + DNS pinning 30s + body 2MB; `web_search` via Tavily (jika `TAVILY_API_KEY`) else DuckDuckGo. `src/tools/web_search.ts`.
+**Aktif otomatis.** Sejak Fase 2, sandbox tidak lagi murni opt-in:
 
-> **Batas nyata mode default.** Denylist regex bisa dilewati, dan ini terukur, bukan teoretis. Yang masih lolos di mode `auto`: indirection variabel (`X=.env; cat $X`), quote-splitting (`cat .e""nv`), interpreter via variabel (`p=python3; $p -c 1`), `node --eval` (`-e` diblok, `--eval` tidak), `env | grep KEY`, exfiltrasi langsung (`curl -d @.env`, `curl -F file=@$HOME/.ssh/id_rsa`), unduh-lalu-jalankan dua tahap, `bash <(curl ...)`, `cat ~/.aws/credentials`, `rm -rf ..`. Untuk pekerjaan tak terpercaya gunakan `--sandbox os` atau `--sandbox docker`, atau `--allowlist`. Path jail (termasuk saat `--allow-all`) dan secret-scrub tetap berlaku di semua mode.
+| Kondisi | Yang terjadi |
+|---|---|
+| bubblewrap (Linux) / seatbelt (macOS) tersedia | bash berjalan di dalamnya, tanpa perlu flag |
+| tidak tersedia (termasuk **semua Windows**) | permission default turun ke `allowlist` + alasannya dicetak sekali |
+| `--allow-all` / `--ask` / `--plan` / `--allowlist` diberikan | pilihan Anda dihormati, tidak ditimpa dan tidak ada peringatan |
+| `--sandbox none` | opt-out sadar; tanpa downgrade, tanpa peringatan |
+| `--sandbox docker` | container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`) |
+| `--sandbox docker` tapi daemon mati | tidak berpura-pura terisolasi: turun ke `allowlist` + peringatan |
+
+Docker **tidak** dipakai otomatis meski tersedia — menarik image dan menjalankan container tanpa diminta terlalu invasif untuk sebuah default.
+
+### Lapisan perlindungan bash
+
+1. **bash-guard ternormalisasi** (`src/policy/bash-guard.ts`) — quote pemisah kata dibuang dan assignment variabel sederhana disubstitusi **sebelum** pemeriksaan. Ini menutup kelas bypass, bukan pola individual:
+
+   | Dulu lolos | Kenapa | Sekarang |
+   |---|---|---|
+   | `cat .e""nv` | regex melihat `.e""nv`, shell membaca `.env` | ditolak |
+   | `X=.env; cat $X` | regex tak pernah melihat `.env` | ditolak |
+   | `p=python3; $p -c 1` | regex tak melihat `python3 -c` | ditolak |
+   | `node --eval "1"` | hanya `-e` yang di-regex | ditolak |
+   | `env`, `set`, `export -p` | hanya `printenv` yang diblok | ditolak |
+   | `curl -F file=@~/.ssh/id_rsa` | tak ada aturan upload | ditolak |
+   | `bash <(curl x)` | tak ada aturan process substitution | ditolak |
+   | `rm -rf ..` | pola lama hanya kenal `/` dan `~` | ditolak |
+
+2. **Allowlist** (`--allowlist`, dan default bila tak ada sandbox) — hanya bentuk perintah read/build: `git status/diff/log/branch/show`, `bun test/run/x tsc`, `npm run/exec`, `npx`, `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `which`, `echo`, `pwd`. Operasi tulis lewat shell (`mkdir`, `cp`, `mv`, `rm`, `touch`) **ditahan** — agent yang perlu menulis file punya `write_file`/`edit` yang ter-jail. Untuk `npm exec`/`npx`, arg tak boleh memuat ekspansi shell (`$`, backtick) atau redirection.
+
+3. **Path jail** — realpath-based, berlaku bahkan saat `--allow-all`.
+
+4. **Env scrub** — `sanitizeSpawnEnv` menghapus variabel berkata-kunci kredensial dari hasil merge final. Nama vendor telanjang tidak lagi ikut: `GITHUB_WORKSPACE`, `GITHUB_REF`, `GOOGLE_CHROME_PATH`, `REDIS_HOST`, `AWS_REGION` **tetap ada** (sebelumnya terhapus dan memecahkan build CI), sementara `GITHUB_TOKEN`, `AWS_SECRET_ACCESS_KEY`, `DATABASE_URL` tetap di-strip.
+
+5. **web_fetch / web_search** — redirect manual 5 hop + DNS pinning 30s + body 2MB.
+
+### Mengukur, bukan mengklaim
+
+```bash
+bun experiments/bash-bypass-probe.ts                  # mode auto
+bun experiments/bash-bypass-probe.ts --mode allowlist
+```
+
+38 pola serangan + 15 perintah sah (guard anti-over-block). Exit 0 hanya bila **0 bypass dan 0 over-block**. Angka saat ini: 0/38 bypass di kedua mode.
+
+> **Batas yang tetap jujur.** bash-guard adalah analisis statis atas bahasa Turing-complete. Command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Guard menaikkan biaya serangan; **sandbox OS/container yang memberi isolasi**. Untuk task benar-benar tak terpercaya, jalankan di Linux/macOS (bwrap/seatbelt otomatis) atau `--sandbox docker`.
 
 ## Plan Mode
 
@@ -254,8 +294,10 @@ Semua test hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan berulang tanp
 ## Troubleshooting
 
 - **LSP tidak jalan:** `minicode config lsp add .ts --command typescript-language-server --args --stdio`. Pastikan server terinstall.
-- **Docker sandbox:** `docker pull node:22-alpine`. Bila `dockerAvailable()` false, fallback ke bash langsung.
-- **`--sandbox os` tidak berefek:** bubblewrap/seatbelt tidak ada di Windows. Pakai `--sandbox docker` atau `--allowlist`.
+- **Docker sandbox:** `docker pull node:22-alpine`. Bila daemon mati, permission turun ke `allowlist` (bukan diam-diam tanpa isolasi).
+- **Kenapa perintah saya ditolak padahal aman?** Kemungkinan mode default `allowlist` aktif karena tak ada OS sandbox. Pesan `[sandbox]` di awal run menjelaskannya. Pilih sendiri dengan `--allow-all` atau `--ask`, atau jalankan `bun experiments/bash-bypass-probe.ts` untuk melihat apa yang dianggap sah.
+- **`--sandbox os` tidak berefek:** bubblewrap/seatbelt tidak ada di Windows. Pakai `--sandbox docker`, atau terima default `allowlist`.
+- **Variabel env hilang di subprocess:** hanya yang berkata-kunci kredensial di-strip. `GITHUB_WORKSPACE`/`REDIS_HOST`/`AWS_REGION` seharusnya tetap ada sejak Fase 2; kalau variabel non-rahasia Anda ikut hilang, itu bug — laporkan nama variabelnya.
 - **`grep` terasa lambat:** install `rg` (ripgrep). Cek jalur aktif dengan `MINICODE_GREP_ENGINE=js` untuk membandingkan.
 - **File besar tak bisa dibaca:** pakai `offset`/`limit` di `read_file` — file >2 MB memang ditolak tanpa itu.
 - **Background job tak jalan:** `background:true` ditolak saat `--sandbox` aktif; jalankan tanpa sandbox atau pakai foreground.

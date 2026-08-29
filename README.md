@@ -50,13 +50,14 @@ minicode --tui "refactor src/utils"     # TUI minimal alternate-screen (pure ANS
 minicode --ask "deploy script"          # human-in-loop confirmation card
 minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah run
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral
-minicode --sandbox os "task"            # sandbox OS-native (bubblewrap/seatbelt)
+minicode --sandbox none "task"          # matikan sandbox otomatis (opt-out sadar)
 minicode --ratelimit 30 "task"          # batasi request LLM (rpm)
 minicode "/review src/a.ts"             # skill slash-command
 minicode exec "prompt" --json           # headless CI (JSONL stream + summary)
 bun test                                # offline/hermetic (live & docker di-skip)
 bun run test:live                       # E2E live (butuh config + jaringan)
 bun run bench:smoke                     # benchmark smoke (tanpa API key)
+bun experiments/bash-bypass-probe.ts    # ukur postur denylist bash (0 bypass = lulus)
 ```
 
 ## Tools
@@ -70,16 +71,19 @@ Catatan `grep`: `rg` dipakai otomatis bila ada di PATH. Paksa jalur fallback den
 OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM/DeepSeek), Anthropic streaming tool_use cap 30s max_tokens configurable, Router fallback rate_limit/server/network clone-error + C4 base64 fix + P2 retryAfter cap. Detect `GET /models` timeout 4s. Config global+local merge (local prioritas) atomic write + chmod 600. Build provider terpusat di `src/providers/build.ts`.
 
 ## Policy & Memory
-permission `auto|ask|readonly|plan|allowlist|allow-all` — bash denylist regex (`rm -rf /*`, `${HOME}`, fork bomb, curl|sh, shred, truncate, sudo rm, `python -c`, `sh -c`, `base64|sh`, `printenv`, baca `.env`), path jail sep-aware + **symlink realpath di permission layer**, `.env`/`.git/config`/`node_modules` deny; ask = allowlist glob merge global+local + TUI prompt persist. Mode bisa diganti runtime via Shift+Tab di TUI. Auto mode: `delegate_task`/`mcp_call`/**semua tool MCP bertitik** di-gate (prompt saat TTY, **tolak** tanpa TTY) — server terdaftar tidak mendapat wildcard auto-allow. Compaction: mekanikal sinkron default; **LLM async otomatis via seam kernel `compactAsync`** (bila `DEEPSEEK_API_KEY` diset — fallback mechanical bila LLM gagal/timeout). Executor order-preserving: mixed step sequential, pure-read paralel, pure-write di-cap, antrean abort-aware (angka di `src/constants.ts`). Usage cost pricing longest-key **per-segment** (wrapper model tak salah harga). Sessions sqlite WAL capped + busy-retry, **persistence incremental** + placeholder binary. Vector hybrid WAL `0.7 cosine + 0.3 keyword`, dim-mismatch safe.
+permission `auto|ask|readonly|plan|allowlist|allow-all` — bash guard **berbasis normalisasi** (`src/policy/bash-guard.ts`): quote pemisah kata dibuang dan assignment variabel sederhana disubstitusi **sebelum** pemeriksaan, jadi `cat .e""nv`, `X=.env; cat $X`, dan `p=python3; $p -c 1` tidak lagi lolos. Path jail sep-aware + **symlink realpath di permission layer**, `.env`/`.git/config`/`node_modules` deny; ask = allowlist glob merge global+local + TUI prompt persist. Mode bisa diganti runtime via Shift+Tab di TUI. Auto mode: `delegate_task`/`mcp_call`/**semua tool MCP bertitik** di-gate (prompt saat TTY, **tolak** tanpa TTY). Compaction: mekanikal sinkron default; **LLM async otomatis via seam kernel `compactAsync`**. Executor order-preserving: mixed step sequential, pure-read paralel, write di-cap, antrean abort-aware. Usage cost pricing longest-key **per-segment**. Sessions sqlite WAL capped + busy-retry, **persistence incremental** + placeholder binary. Vector hybrid WAL `0.7 cosine + 0.3 keyword`.
 
-> **Batas nyata denylist bash:** ini blocklist regex, bukan sandbox. Pola seperti indirection variabel (`X=.env; cat $X`), quote-splitting (`cat .e""nv`), atau exfiltrasi langsung (`curl -d @.env`) masih lolos di mode `auto`. Untuk isolasi sungguhan pakai `--sandbox os` (bubblewrap/seatbelt) atau `--sandbox docker`. Lihat [PLAN_V4](docs/PLAN_V4.md) Fase 2.1.
+**Sandbox aktif otomatis.** Bila bubblewrap (Linux) atau seatbelt (macOS) tersedia, bash berjalan di dalamnya tanpa perlu flag. Bila tidak tersedia — termasuk **semua Windows** — permission default diturunkan ke `allowlist` dan alasannya dicetak sekali, karena lebih baik membatasi perintah daripada menjalankan apa pun sambil menampilkan label aman. Pilih sendiri dengan `--allow-all`/`--ask`, matikan dengan `--sandbox none`, atau pakai `--sandbox docker`.
+
+Postur keamanan bash terukur, bukan diklaim: `bun experiments/bash-bypass-probe.ts` menjalankan 38 pola serangan (indirection variabel, quote-splitting, flag panjang, env dump, exfiltrasi upload, download-then-run, process substitution, akses kredensial, container escape, `rm` destruktif) plus 15 perintah sah sebagai guard anti-over-block. Hasil saat ini **0 bypass / 0 over-block** di mode `auto` dan `allowlist`. Batasnya tetap jujur: ini analisis statis, jadi command substitution dinamis (`$(...)`) tak bisa diselesaikan tanpa mengeksekusi — untuk itulah sandbox OS ada.
 
 ## Security Layers
 ```
-PermissionHandler (denylist+jail realpath+cwd) → validateArgs (kernel) → executor (order/cap/abort-aware) → tool realpath+atomic(O_EXCL) → execute
-spawn env → sanitizeSpawnEnv (secret strip final-merge; bash/docker/MCP/LSP)
-config.json/allowlist.json → atomic randomUUID tmp+rename + chmod 600 · MCP serve curated tools + permission aktif
-web_fetch → redirect manual ≤5 hop, tiap host divalidasi, body hard-cap 2MB
+PermissionHandler (bash-guard ternormalisasi + jail realpath + cwd) → validateArgs (kernel) → executor (order/cap/abort-aware) → tool realpath+atomic(O_EXCL) → execute
+bash              → sandbox OS-native otomatis (bwrap/seatbelt) bila tersedia; tanpa itu default permission = allowlist
+spawn env         → sanitizeSpawnEnv (strip kata-kunci kredensial di hasil merge final; GITHUB_WORKSPACE dsb TIDAK ikut terhapus)
+config/allowlist  → atomic randomUUID tmp+rename + chmod 600 · MCP serve curated tools + permission aktif
+web_fetch         → redirect manual ≤5 hop, DNS pinning per-hop, body hard-cap 2MB
 ```
 
 ## Skills

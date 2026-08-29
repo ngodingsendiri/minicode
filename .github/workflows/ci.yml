@@ -71,6 +71,16 @@ jobs:
           MINICODE_GREP_ENGINE: js
         run: bun test test/phase1-tools.test.ts test/tools.test.ts
 
+      # Gate keamanan: korpus 38 pola serangan + 15 perintah sah. Exit 1 bila
+      # ada bypass ATAU over-block, jadi regresi ke dua arah tertangkap.
+      - name: Bash bypass probe (auto)
+        working-directory: minicode
+        run: bun experiments/bash-bypass-probe.ts
+
+      - name: Bash bypass probe (allowlist)
+        working-directory: minicode
+        run: bun experiments/bash-bypass-probe.ts --mode allowlist
+
       - name: Test with docker sandbox (experimental)
         working-directory: minicode
         continue-on-error: true

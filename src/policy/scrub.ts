@@ -45,8 +45,35 @@ export function scrubLine(line: string): string {
 
 // Env vars yang namanya cocok pola kredensial di-strip sebelum spawn proses
 // (bash / docker / MCP server / LSP server) — kurangi permukaan exfiltration.
-export const SECRET_ENV_RE =
-  /(API[_-]?KEY|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|CREDENTIAL|DEEPSEEK|ANTHROPIC|OPENAI|AGENT_[A-Z_]*KEY|DATABASE_URL|ENCRYPTION|REDIS|GITHUB|GOOGLE|AZURE|SUPABASE)/i
+//
+// Pola sebelumnya memuat nama vendor telanjang (`GITHUB`, `GOOGLE`, `AZURE`,
+// `REDIS`, `SUPABASE`), sehingga variabel non-rahasia yang kebetulan mengandung
+// nama itu juga hilang: `GITHUB_WORKSPACE`, `GITHUB_REF`, `GITHUB_SHA`,
+// `GOOGLE_CHROME_PATH`, `AZURE_CONFIG_DIR`. Di CI itu memecahkan build karena
+// subprocess kehilangan konteks yang dibutuhkannya.
+//
+// Sekarang: cocokkan berdasarkan **kata-kunci kredensial**, dan untuk nama
+// vendor hanya bila diikuti/didahului penanda rahasia. Prinsipnya sama —
+// jangan wariskan secret — tapi tanpa memakan variabel yang jelas bukan secret.
+const CREDENTIAL_WORD =
+  "(?:API[_-]?KEYS?|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|SECRET[_-]?KEY|CREDENTIALS?|AUTH|BEARER|SESSION[_-]?KEY|ENCRYPTION[_-]?KEY|SIGNING[_-]?KEY|CLIENT[_-]?SECRET|REFRESH[_-]?TOKEN|DSN|CONNECTION[_-]?STRING)"
+
+// Nama provider LLM: variabel apa pun yang diawali ini praktis selalu kunci
+// (mis. `OPENAI_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `DEEPSEEK_API_KEY`).
+const LLM_VENDOR =
+  "(?:OPENAI|ANTHROPIC|DEEPSEEK|GEMINI|MISTRAL|GROQ|TOGETHER|FIREWORKS|COHERE|TAVILY|OPENROUTER|HUGGINGFACE|HF)"
+
+export const SECRET_ENV_RE = new RegExp(
+  [
+    CREDENTIAL_WORD, // mengandung kata kredensial di mana pun
+    `^${LLM_VENDOR}_`, // kunci provider LLM
+    "^(?:AWS|GCP|AZURE|GITHUB|GITLAB|SUPABASE|STRIPE|TWILIO|SENDGRID|SLACK|NPM|DOCKER)_[A-Z0-9_]*" +
+      `${CREDENTIAL_WORD}`, // vendor + penanda rahasia, bukan vendor telanjang
+    "^(?:DATABASE|POSTGRES|POSTGRESQL|MYSQL|MONGO|MONGODB|REDIS)_(?:URL|URI|PASSWORD|DSN)$",
+    "^AGENT_[A-Z_]*KEY$",
+  ].join("|"),
+  "i",
+)
 
 export function stripSecretsEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {}

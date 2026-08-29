@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
+import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
 import { formatError } from "../../src/tui/minimal/simple.ts"
 import { getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
@@ -22,14 +23,21 @@ export async function handleExec(
   const modelOverride = getArg("--model")
   const providerOverride = getArg("--provider")
   const sessionId = getArg("--session") ?? randomUUID().slice(0, 8)
-  const sandboxMode = getArg("--sandbox")
-  if (
-    sandboxMode === "docker" ||
-    sandboxMode === "os" ||
-    sandboxMode === "bwrap" ||
-    sandboxMode === "seatbelt"
+  const allowAll = args.includes("--allow-all")
+  const ask = args.includes("--ask")
+  const plan = args.includes("--plan")
+  const allowlistFlag = args.includes("--allowlist")
+  // Sama seperti jalur interaktif: OS sandbox otomatis, dan tanpa isolasi nyata
+  // permission default turun ke allowlist. Headless CI justru paling butuh ini —
+  // di sana tak ada manusia yang bisa menyetujui prompt.
+  const sandbox = resolveSandbox(
+    getArg("--sandbox") ?? process.env.MINICODE_SANDBOX,
+    allowAll || ask || plan || allowlistFlag,
   )
-    process.env.MINICODE_SANDBOX = sandboxMode
+  if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
+  else process.env.MINICODE_SANDBOX = sandbox.mode
+  if (sandbox.notice) process.stderr.write(`${sandbox.notice}\n`)
+  const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
   const budgetRaw = getArg("--budget")
   const budget = budgetRaw ? Number(budgetRaw) : undefined
   const ratelimitRaw = getArg("--ratelimit")
@@ -88,10 +96,10 @@ export async function handleExec(
     prompt: effectivePrompt,
     enterRepl: false,
     verbose: false,
-    allowAll: args.includes("--allow-all"),
-    ask: args.includes("--ask"),
-    plan: args.includes("--plan"),
-    allowlist: args.includes("--allowlist"),
+    allowAll,
+    ask,
+    plan,
+    allowlist,
     useTui: false,
     verify: args.includes("--verify"),
     budget,

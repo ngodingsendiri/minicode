@@ -1,8 +1,24 @@
 # Changelog
 
-## [Unreleased] — Audit V4 Fase 0 & 1
+## [Unreleased] — Audit V4 Fase 0, 1 & 2
 
 Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua angka di dokumen itu terverifikasi dengan eksekusi, bukan salinan klaim lama.
+
+### Security — Fase 2
+
+- **bash-guard berbasis normalisasi** (`src/policy/bash-guard.ts`) menggantikan denylist regex-atas-string-mentah. Rencana awal "tambal celah satu-satu" ditinggalkan karena tidak menyelesaikan akar masalahnya: shell menganggap banyak bentuk setara sementara regex melihat karakter. Sekarang quote pemisah kata dibuang dan assignment variabel literal disubstitusi (dengan re-scan per lintasan untuk rantai) **sebelum** pemeriksaan, lalu bentuk ternormalisasi dan mentah keduanya diperiksa.
+
+  Kelas yang kini tertutup: indirection variabel (`X=.env; cat $X`), quote-splitting (`cat .e""nv`, `pyt"h"on3 -c`), flag panjang (`node --eval`/`--print`), env dump (`env`/`set`/`export -p`/`declare -x`/`compgen -v` — sebelumnya hanya `printenv`), referensi env berkata-kunci rahasia, upload-exfil (`-d @`, `-F …=@`, `-T`, `--upload-file`, `--post-file`), process substitution dan here-string, download-then-run dua tahap, container escape (`-v /:`, `--privileged`, `--pid host`), scan dari root filesystem, akses berkas/direktori kredensial, serta `rm` rekursif dengan target berbahaya.
+
+  Terukur oleh `experiments/bash-bypass-probe.ts` (38 pola serangan + 15 perintah sah sebagai guard anti-over-block): mode `auto` dari **33/38 bypass → 0/38**, mode `allowlist` dari **7/38 → 0/38**, over-block dari 1 dan 4 → **0**. Audit awal melaporkan 13 bypass karena hanya 13 pola yang diuji saat itu; setelah korpus diperluas, angka sebenarnya lebih buruk.
+
+- **`rm -rf` dipisah dari target berbahaya.** Pola lama menganggap setiap `/` berbahaya sehingga `rm -rf node_modules/.cache` ikut ditolak. Sekarang `rm` rekursif hanya ditolak bila targetnya root, home, traversal `..`, wildcard telanjang, atau `--no-preserve-root`.
+
+- **Sandbox aktif otomatis** (`src/policy/sandbox-policy.ts`). Bila bubblewrap (Linux) atau seatbelt (macOS) tersedia, bash berjalan di dalamnya tanpa flag. Bila tidak ada isolasi nyata — termasuk semua Windows — permission default turun ke `allowlist` dan alasannya dicetak sekali; prinsipnya jangan pernah menjanjikan isolasi yang tak bisa dipenuhi. Pilihan user (`--allow-all`/`--ask`/`--plan`/`--allowlist`) tidak ditimpa dan tidak dapat peringatan. `--sandbox none` = opt-out sadar dan senyap. `--sandbox docker` yang daemonnya mati juga tidak berpura-pura: downgrade + peringatan. Docker tidak dipakai otomatis meski tersedia karena menarik image tanpa diminta terlalu invasif untuk sebuah default. Berlaku juga di `minicode exec`, yang justru paling butuh karena tak ada manusia untuk menyetujui prompt.
+
+- **Allowlist diperluas ke perintah read/build yang sah.** Sebelumnya hanya 13 pola sehingga `grep -r TODO src` ikut ditolak. Operasi tulis lewat shell (`mkdir`, `cp`, `mv`, `rm`, `touch`) **tetap ditahan** — itu memang tujuan mode paling ketat; agent yang perlu menulis punya `write_file`/`edit` yang ter-jail.
+
+- **`SECRET_ENV_RE` berbasis kata-kunci kredensial.** Pola lama memuat nama vendor telanjang (`GITHUB`, `GOOGLE`, `AZURE`, `REDIS`, `SUPABASE`), sehingga `GITHUB_WORKSPACE`, `GITHUB_REF`, `GITHUB_SHA`, `GOOGLE_CHROME_PATH`, `AZURE_CONFIG_DIR`, `REDIS_HOST`, `AWS_REGION` ikut terhapus dari env subprocess dan memecahkan build CI. Nama vendor sekarang hanya dicocokkan bila disertai penanda rahasia. Diuji dengan 24 nama rahasia dan 21 nama benign.
 
 ### Fixed — tiga bug yang lolos CI karena `cli/` di luar `tsconfig` dan tanpa test
 
@@ -10,7 +26,7 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 - **`exec --json` tidak pernah stream event.** `events.on(handler)` satu argumen mendaftarkan listener di bawah key `"function"` sehingga tak pernah terpanggil — mode headless untuk CI tidak berfungsi seperti didokumentasikan. Diganti `on("*", handler)`. Ringkasan pindah dari stderr ke stdout sebagai `{"type":"summary"}` supaya pipeline membaca satu stream. `--allowlist` yang bocor menjadi bagian prompt di subcommand `exec` juga diperbaiki.
 - **Shift+Tab cycle permission adalah placebo.** `__setMode`/`__getMode` di `src/policy/permission.ts` hanya ada di *type-cast* tanpa implementasi, dan `session.config` tidak diekspos kernel — header menampilkan "plan" sementara agent tetap bisa menulis file dan menjalankan bash. Kedua method diimplementasikan (plus invalidasi `allowlistCache`), dan seam `onPermissions` di `createMinicodeSession` menyerahkan handle ke `CliSession.permissions`. Kernel tidak disentuh.
 
-### Added — tool fundamental
+### Added — tool fundamental (Fase 1)
 
 - **`read_file` paging bernomor.** Output diberi nomor baris (`12: const x = 1`) agar rujukan `edit`/`apply_patch` akurat. Param `offset` (1-indexed) + `limit` (default 2000, max 5000). File di atas 2 MB kini bisa dibaca per bagian; tanpa paging tetap ditolak — memotong konteks diam-diam lebih berbahaya daripada error eksplisit. Baris sangat panjang dipotong per baris, direktori ditolak dengan pesan spesifik.
 - **`grep` dua engine.** `rg` dipakai bila ada di PATH (`--vimgrep --no-follow`, exclude `.git`/`node_modules`/dotdir), fallback walker internal dipertahankan dan diuji memberi hasil identik. `MINICODE_GREP_ENGINE=js` memaksa fallback; CI menguji jalur itu eksplisit. Jail berlaku di keduanya — walker via `realpath`, ripgrep via validasi tiap baris hasil.
@@ -41,6 +57,8 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 
 - `test/cli-regression.test.ts` — 10 test untuk tiga bug di atas. B2 diuji dengan membandingkan `on("*")` versus `on(handler)` di run yang sama, jadi test itu mendokumentasikan kenapa pola lamanya salah.
 - `test/phase1-tools.test.ts` — 35 test: paging `read_file` (termasuk file >2 MB), kesetaraan dua engine grep, normalisasi/render/roundtrip todo, background job (output baru, cap, kill, penolakan saat sandbox), dan permission untuk tool baru di mode auto/plan/readonly.
+- `test/phase2-security.test.ts` — 160 test: normalisasi bash-guard, 33 kelas bypass yang dulu lolos, 25 pola lama yang harus tetap tertutup, 32 perintah sah sebagai guard anti-over-block, integrasi guard di tiap mode permission, 10 skenario resolusi sandbox, dan 45 nama variabel env.
+- `experiments/bash-bypass-probe.ts` — harness pengukuran postur denylist yang outputnya dipakai di dokumentasi. Exit 0 hanya bila 0 bypass **dan** 0 over-block, jadi bisa dijadikan gate CI.
 
 ## [0.7.0] - 2026-08-29
 

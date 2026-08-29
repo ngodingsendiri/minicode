@@ -17,6 +17,7 @@
     "test:qa": "bun scripts/live-qa.ts",
     "test:coverage": "bun test --coverage",
     "gate:coverage": "bun scripts/coverage-gate.ts",
+    "gate:bash": "bun experiments/bash-bypass-probe.ts && bun experiments/bash-bypass-probe.ts --mode allowlist",
     "vendor:minicore": "bun scripts/vendor-minicore.ts",
     "vendor:check": "bun scripts/vendor-minicore.ts --check",
     "typecheck": "bun x tsc --noEmit",

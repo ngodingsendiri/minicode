@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
+import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { formatError } from "../src/tui/minimal/simple.ts"
@@ -120,16 +121,20 @@ const ctxWindowRaw = getArg("--context-window")
 const contextWindowTokens = ctxWindowRaw ? Number(ctxWindowRaw) : undefined
 const timeoutRaw = getArg("--timeout")
 const timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined
-const sandboxMode = getArg("--sandbox")
-if (
-  sandboxMode === "docker" ||
-  sandboxMode === "os" ||
-  sandboxMode === "bwrap" ||
-  sandboxMode === "seatbelt"
+
+// Sandbox: OS-native dipakai otomatis bila tersedia. Bila tidak ada isolasi
+// nyata dan user belum memilih mode permission sendiri, default diturunkan ke
+// `allowlist` — lebih baik membatasi perintah daripada menjalankan apa pun
+// sambil menampilkan label aman. Lihat src/policy/sandbox-policy.ts.
+const explicitPermission = allowAll || ask || plan || allowlist
+const sandbox = resolveSandbox(
+  getArg("--sandbox") ?? process.env.MINICODE_SANDBOX,
+  explicitPermission,
 )
-  process.env.MINICODE_SANDBOX = sandboxMode
-else if (sandboxMode)
-  process.stderr.write(`[warn] unknown sandbox mode "${sandboxMode}" - only "docker" or "os"\n`)
+if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
+else process.env.MINICODE_SANDBOX = sandbox.mode
+if (sandbox.notice) process.stderr.write(`${sandbox.notice}\n`)
+const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
 const budget = budgetRaw ? Number(budgetRaw) : undefined
 if (budgetRaw && !Number.isFinite(budget))
@@ -179,7 +184,7 @@ const ctx = await createCliSession({
   allowAll,
   ask,
   plan,
-  allowlist,
+  allowlist: effectiveAllowlist,
   useTui,
   verify,
   budget,
