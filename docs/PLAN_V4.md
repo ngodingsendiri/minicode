@@ -302,6 +302,7 @@ Sudah dikerjakan: angka test/tool/coverage dibuang dari README/ARCHITECTURE/CONT
 | `git_commit` dipakai untuk operasi berbahaya | Hanya commit; push/amend/reset/rebase/checkout sengaja tidak ada. Pesan lewat `-m` argumen (bukan shell), path lewat `--` |
 | Harga models.dev berbeda antar provider | Buang kandidat $0 bila ada yang berbayar, ambil median — bukan "yang pertama" yang bergantung urutan iterasi |
 | Fetch pricing memperlambat startup / membocorkan pola pakai | Tidak ada fetch otomatis; hanya `pricing sync` eksplisit. Jalur run hanya baca cache lokal |
+| Test yang bergantung waktu jadi flake | Sleep tetap diganti polling ber-deadline; timeout git dipindah ke `LIMITS.GIT_TIMEOUT_MS` (8s→20s) setelah 17 test gagal sekali di bawah beban coverage |
 | `rg` tidak ada / beda flavour regex | Fallback walker dipertahankan + auto-fallback saat rg error, dengan peringatan |
 | Background job jadi proses yatim | Cap job, reap, `killAllBackgroundJobs()` di `close()` CLI |
 

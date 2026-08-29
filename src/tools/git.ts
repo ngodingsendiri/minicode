@@ -1,12 +1,18 @@
 import { spawn } from "node:child_process"
 import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const p = spawn("git", args, {
       cwd,
-      signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
+      // Timeout dari LIMITS, bukan hardcode: `git_commit` menjalankan beberapa
+      // operasi berurutan (rev-parse → add → commit → log), dan di mesin yang
+      // sibuk (mis. CI menjalankan test dengan coverage) spawn git bisa jauh
+      // lebih lambat dari batas 8s yang dulu dipakai — kegagalannya muncul
+      // sebagai flake, bukan bug nyata.
+      signal: AbortSignal.any([signal, AbortSignal.timeout(LIMITS.GIT_TIMEOUT_MS)]),
     })
     let out = "",
       err = ""

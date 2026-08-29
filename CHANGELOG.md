@@ -26,6 +26,7 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 
 - **Harga `gpt-4o` 2× terlalu tinggi.** Tabel lama menulis $5/M input — itu harga peluncuran Mei 2024 yang dipotong separuh pada Agustus 2024 menjadi $2,50. Estimasi biaya dan `--budget` untuk model ini salah sejak lama. Test yang mengunci angka lama diperbarui **dengan catatan alasannya**, bukan diam-diam.
 - **Harga bisa jadi $0 karena urutan iterasi objek.** Satu model id sering ditawarkan beberapa provider dengan harga berbeda — terukur: `qwen3-coder-plus` muncul di 6 provider, dua di antaranya $0 (paket berlangganan). Implementasi awal mengambil "yang pertama" dan hasilnya **$0**, artinya estimasi biaya nol dan `--budget` tak akan pernah memicu. Diganti: buang kandidat gratis bila ada yang berbayar, lalu ambil **median** (bukan min yang menyesatkan ke bawah, bukan max yang alarmis).
+- **Test yang bergantung waktu.** Suite gagal 17 test sekali saat dijalankan dengan `--coverage` (instrumentasi memperlambat spawn), lalu hijau 6× berturut setelahnya. Dua penyebab diperbaiki alih-alih dibiarkan sebagai flake: timeout tool git dipindah dari hardcode 8 s ke `LIMITS.GIT_TIMEOUT_MS` (20 s) karena `git_commit` menjalankan empat operasi berurutan, dan `Bun.sleep` tetap di test MCP diganti polling ber-deadline (server yang tak pernah membalas untuk uji timeout, poll sampai request diterima untuk uji notify).
 
 ### Changed — Fase 3
 

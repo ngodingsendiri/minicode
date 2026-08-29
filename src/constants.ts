@@ -35,6 +35,9 @@ export const LIMITS = {
    * tergantung repo raksasa; batch path menghindari batas command-line Windows. */
   SHADOW_GIT_TIMEOUT_MS: 20_000,
   SHADOW_GIT_PATH_BATCH: 200,
+  /** Tool git (status/diff/log/commit). Longgar karena `git_commit` menjalankan
+   * beberapa operasi berurutan dan mesin sibuk membuat spawn git lambat. */
+  GIT_TIMEOUT_MS: 20_000,
   /** Executor & sub-agents — tuned for 4-core laptop (6/1) vs 8/2 server */
   DEFAULT_MAX_STEPS: 50,
   EXECUTOR_CONCURRENCY: 6,
