@@ -33,8 +33,10 @@ export function isPrivateHost(host: string): boolean {
 
 // DNS pinning untuk tutup DNS rebinding: resolve hostname → cek IP private
 // timeout 400ms, fail-open agar tidak block availability bila DNS lambat; cache 30s per host
+// Diekspor karena transport MCP HTTP memakai penjaga yang sama — server MCP
+// remote yang menunjuk ke metadata endpoint adalah jalur SSRF yang identik.
 const dnsCache = new Map<string, { addrs: string[]; at: number }>()
-async function isPrivateWithDns(hostname: string): Promise<boolean> {
+export async function isPrivateHostWithDns(hostname: string): Promise<boolean> {
   if (isPrivateHost(hostname)) return true
   if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) return false
   const cached = dnsCache.get(hostname)
@@ -120,7 +122,7 @@ export const webFetchTool: Tool = {
       // Redirect ditangani MANUAL: tiap hop divalidasi ulang isPrivateHost + DNS —
       // menutup SSRF via open-redirect & DNS rebinding ke 169.254.169.254 / localhost dsb.
       let current = parsed
-      if (await isPrivateWithDns(current.hostname)) {
+      if (await isPrivateHostWithDns(current.hostname)) {
         throw new Error(`blocked private host: ${current.hostname}`)
       }
       const headers = {
@@ -146,7 +148,7 @@ export const webFetchTool: Tool = {
         if (next.protocol !== "http:" && next.protocol !== "https:") {
           throw new Error(`redirect to disallowed protocol: ${next.protocol}`)
         }
-        if (await isPrivateWithDns(next.hostname)) {
+        if (await isPrivateHostWithDns(next.hostname)) {
           throw new Error(`blocked private host (redirect target): ${next.hostname}`)
         }
         current = next

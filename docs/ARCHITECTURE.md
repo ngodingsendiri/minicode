@@ -79,7 +79,8 @@ minicode/
 │   ├── executor.ts    order-preserving; WRITE_TOOLS (path-lock) vs EXCLUSIVE_TOOLS (bash/memory/todo) + abortError
 │   └── usage.ts       cost pricing + cache read/write tokens
 │
-├── src/repo/repomap.ts — extractSymbols (TS/Py/Go/Rust/Java/C), buildRepoMap, cache .minicode/repomap.json
+├── src/repo/repomap.ts — extractSymbols regex (TS/Py/Go/Rust/Java/C/C#/Rb/PHP), buildRepoMap, cache .minicode/repomap.json
+│                        (tree-sitter dihapus di Fase 3.2 — alasan terukur ada di komentar extractSymbolsAsync)
 ├── src/sandbox/docker.ts — runInDocker ephemeral (--network none, mem/CPU cap), path mount Windows
 ├── src/sandbox/os.ts — bubblewrap (Linux) / seatbelt (macOS); tidak tersedia di win32
 ├── src/telemetry/trace.ts — .minicode/traces.jsonl (JSON per run)
@@ -90,12 +91,17 @@ minicode/
 │
 ├── src/session/
 │   ├── persistence.ts sessions.db WAL+b, persistence incremental, placeholder binary, toolCallId/name (resume sejati)
-│   └── checkpoint.ts  pre+post snapshot per turn (undo/redo), jail path, cap 20, applySnapshots atomicWriteText
+│   ├── shadow-git.ts  snapshot/restore via object store git — GIT_INDEX_FILE + write-tree,
+│   │                  ref refs/minicode/<sesi> menunjuk TREE (tak tampil di git log),
+│   │                  restore hanya path yang berubah; core.autocrlf=false (byte-preserving)
+│   └── checkpoint.ts  pre+post per turn (undo/redo) — mode git (SHA) atau fallback snapshot file
 │
 ├── src/mcp/
-│   ├── transport.ts   JSON-RPC newline stdio, pending+timeout, killSignal on close only, log JSON invalid
-│   ├── client.ts      discover→initialize fallback, tools/list, wrap "{server}.{tool}" — stdio saja
-│   └── server.ts      curated tools + resources/prompts, permission aktif, isError, ping, parse-error balas {id:null}
+│   ├── transport.ts      JSON-RPC newline stdio, pending+timeout, killSignal on close only
+│   ├── http-transport.ts Streamable HTTP (spec 2025-03-26) + SSE — Mcp-Session-Id,
+│   │                     protocol negotiation, host privat ditolak, redirect tak diikuti, body cap
+│   ├── client.ts         pilih transport dari config (url→http, else stdio), tools/list, wrap "{server}.{tool}"
+│   └── server.ts         curated tools + resources/prompts, permission aktif, isError, ping
 │
 ├── src/lsp/
 │   └── client.ts      Content-Length framing, initialize, didOpen/didChange versioned, diagnostics poll, findSymbolPosition \b word-boundary, start-once guard
@@ -187,26 +193,28 @@ Mode permission bisa diganti saat runtime lewat Shift+Tab di TUI — handle-nya 
 * **Fase 0 (audit v0.7.0)** — `cmdName` ReferenceError yang mematikan semua slash builtin di TUI, `exec --json` yang tak pernah stream (`on(handler)` 1-argumen → `on("*")`), Shift+Tab permission placebo (`__setMode`/`__getMode` tanpa implementasi + seam `onPermissions`), `cli/`+`scripts/` masuk `tsconfig`
 * **Fase 1** — vendor `minicore` (self-contained install + gate `vendor:check`), `read_file` offset/limit bernomor, `grep` ripgrep, `todo_write`/`todo_read`, `bash` streaming + background
 * **Fase 2** — `bash-guard.ts` berbasis normalisasi (menutup kelas bypass quote-split/indirection/flag-panjang/env-dump/upload-exfil/process-sub/rm-destruktif), `sandbox-policy.ts` (OS sandbox otomatis, downgrade `allowlist` bila tak ada isolasi), `SECRET_ENV_RE` berbasis kata-kunci (berhenti memakan `GITHUB_WORKSPACE` dsb), allowlist diperluas ke perintah read/build yang sah
+* **Fase 3** — checkpoint `shadow-git.ts` (tree git, O(delta), tanpa cap file, `core.autocrlf=false` byte-preserving, HEAD/index user tak tersentuh), `tree-sitter.ts` **dihapus** setelah prototipe menunjukkan manfaat nol pada cap repo-map yang sudah penuh, MCP client `http-transport.ts` Streamable HTTP + SSE dengan penjaga SSRF
 
 ## Test Suite
 
-`bun test` — offline/hermetic (fetch di-mock, DB di tmpdir, tanpa API key); live terpisah via `test:live`. Cakupan area: busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name) + WAL capped + busy-retry, invalid config, router all-fail/clone + model substitution + rate limiter + image bytes utk anthropic (magic-byte sniff), deny-bypass varian + auto-gate delegate/mcp/registered-MCP + sensitive path + wildcard MCP, executor order+cap+abort-no-leak+prompt-abort antrean, symlink escape (realpath di permission layer), glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize + buffer cap streaming, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost + pricing per-segment, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub tanpa-whitelist + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme, env-strip, ssrf-guard, executor-abort, lib-fs (atomic write O_EXCL), jail-realpath, bash-cap, router-image, trace, **cli-regression (slash builtin overlay, EventBus wildcard, permission setMode)**, **phase1-tools (read_file paging, kesetaraan dua engine grep, todo, background job, permission tool baru)**, **phase2-security (normalisasi bash-guard, 33 kelas bypass, 25 pola lama, 32 perintah sah anti-over-block, resolusi sandbox 10 skenario, SECRET_ENV_RE 45 nama variabel)**.
+`bun test` — offline/hermetic (fetch di-mock, DB di tmpdir, tanpa API key); live terpisah via `test:live`. Cakupan area: busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name) + WAL capped + busy-retry, invalid config, router all-fail/clone + model substitution + rate limiter + image bytes utk anthropic (magic-byte sniff), deny-bypass varian + auto-gate delegate/mcp/registered-MCP + sensitive path + wildcard MCP, executor order+cap+abort-no-leak+prompt-abort antrean, symlink escape (realpath di permission layer), glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize + buffer cap streaming, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost + pricing per-segment, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub tanpa-whitelist + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme, env-strip, ssrf-guard, executor-abort, lib-fs (atomic write O_EXCL), jail-realpath, bash-cap, router-image, trace, **cli-regression (slash builtin overlay, EventBus wildcard, permission setMode)**, **phase1-tools (read_file paging, kesetaraan dua engine grep, todo, background job, permission tool baru)**, **phase2-security (normalisasi bash-guard, 33 kelas bypass, 25 pola lama, 32 perintah sah anti-over-block, resolusi sandbox 10 skenario, SECRET_ENV_RE 45 nama variabel)**, **shadow-git (index/HEAD user utuh, ref tak tampil di git log, tahan `gc --prune=now`, line-ending preserved, sessionId ilegal, 250 file tanpa cap)**, **mcp-http (server HTTP nyata: SSE terpotong antar chunk, CRLF, event non-JSON, sesi, redirect ditolak, host privat ditolak, body cap)**.
 
-Gate CI: `bun run vendor:check`, `bun x tsc --noEmit` (mencakup `cli`/`scripts`/`experiments`), `bun run lint`, `bun test`, `bun run gate:coverage` (agregat baris "All files"), `bun test` dengan `MINICODE_GREP_ENGINE=js` (jalur fallback grep), `bun experiments/bash-bypass-probe.ts` untuk kedua mode (0 bypass / 0 over-block), `bench:smoke`, `gate:telemetry`.
+Gate CI: `bun run vendor:check`, `bun x tsc --noEmit` (mencakup `cli`/`scripts`/`experiments`), `bun run lint`, `bun test`, `bun run gate:coverage` (agregat baris "All files"), `bun test` dengan `MINICODE_GREP_ENGINE=js` (jalur fallback grep), `bun run gate:bash` untuk kedua mode (0 bypass / 0 over-block), `bench:smoke`, `gate:telemetry`.
 
 ## Known Limitations
 
-Diperbarui setelah Fase 0–2 dari audit v0.7.0 — daftar ini disengaja jujur; perbaikan terjadwal ada di [PLAN_V4.md](PLAN_V4.md).
+Diperbarui setelah Fase 0–3 dari audit v0.7.0 — daftar ini disengaja jujur; perbaikan terjadwal ada di [PLAN_V4.md](PLAN_V4.md).
 
 1. Butuh `bun` (`bun:sqlite` dipakai langsung). Symlink test skip di Windows tanpa privilege.
-2. **MCP client hanya stdio** — belum SSE/Streamable HTTP, jadi server MCP remote tak terjangkau. Sisi *server* (`src/mcp/server.ts`) sudah punya `tools`/`resources`/`prompts`. → Fase 3.3.
-3. **bash-guard adalah analisis statis.** Korpus 38 pola serangan kini 0 bypass, tapi command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Isolasi nyata datang dari sandbox OS/container, bukan dari guard.
-4. **Windows tidak punya OS sandbox.** bubblewrap/seatbelt hanya Linux/macOS, jadi di Windows default turun ke `allowlist` — lebih ketat, dan sebagian perintah tulis lewat shell ditolak. Pakai `--sandbox docker` atau `--allow-all` bila memang perlu.
-5. **`background:true` tidak bersandbox** — ditolak eksplisit saat `--sandbox` aktif, karena container/namespace ephemeral mati bersama call-nya.
-6. **Git read-only** (`git_status/diff/log`); checkpoint memakai snapshot file (cap `WORKSPACE_SNAPSHOT_LIMIT`) + `spawnSync git status`, bukan shadow-git. → Fase 3.1, 4.2.
-7. **`src/repo/tree-sitter.ts` adalah stub** yang selalu `return null`; repo-map nyata berbasis regex. → Fase 3.2 (implementasi atau hapus).
-8. Auth hanya API key mentah — belum ada OAuth/device-code untuk provider dengan free tier. → Fase 4.1.
-9. `vector.db` `LIMIT 500` — paging belum untuk memory >5k. `open()` SQLite masih sinkron per operasi (singleton pool = refactor berikutnya).
-10. Benchmark `bench/runner.ts` butuh provider ber-API-key untuk hasil nyata (`--fake` hanya smoke).
-11. `vendor/minicore` adalah salinan — mengeditnya langsung akan hilang saat `vendor:minicore`. Sumber kebenaran tetap repo `minicore`; publish ke npm masih opsi terbuka.
-12. Lisensi **MIT** (lihat `LICENSE`) — dokumen lama menyebut EULA/proprietary, itu sudah tidak berlaku.
+2. **bash-guard adalah analisis statis.** Korpus 38 pola serangan kini 0 bypass, tapi command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Isolasi nyata datang dari sandbox OS/container, bukan dari guard.
+3. **Windows tidak punya OS sandbox.** bubblewrap/seatbelt hanya Linux/macOS, jadi di Windows default turun ke `allowlist` — lebih ketat, dan sebagian perintah tulis lewat shell ditolak. Pakai `--sandbox docker` atau `--allow-all` bila memang perlu.
+4. **`background:true` tidak bersandbox** — ditolak eksplisit saat `--sandbox` aktif, karena container/namespace ephemeral mati bersama call-nya.
+5. **Checkpoint menghormati `.gitignore`.** Mode shadow-git memakai `git add -A`, jadi file yang di-ignore (mis. `node_modules`, `.minicode/*.db`) tidak ter-snapshot dan perubahan padanya tidak bisa di-undo. Ini disengaja — kami tidak ingin menyimpan artifact build — tapi berarti undo mencakup "yang dilacak git", bukan "seluruh disk". Repo non-git memakai fallback snapshot file dengan cap `WORKSPACE_SNAPSHOT_LIMIT`.
+6. **Git read-only** (`git_status/diff/log`) — belum ada `git_commit`/branch/worktree. → Fase 4.2.
+7. **Repo-map berbasis regex** dan sudah menyentuh cap `REPOMAP_MAX_CHARS` pada repo sebesar ini, sehingga simbol tambahan akan menggeser yang lebih penting. Tree-sitter sengaja tidak dipakai (alasan terukur di `extractSymbolsAsync`); ditimbang ulang bila repo-map dipisah per-file.
+8. **MCP: `resources`/`prompts` hanya di sisi server.** Client memakai `tools/list` + `tools/call`; transport HTTP sudah ada tapi client belum mengonsumsi resource/prompt dari server remote.
+9. Auth hanya API key mentah — belum ada OAuth/device-code untuk provider dengan free tier. → Fase 4.1.
+10. `vector.db` `LIMIT 500` — paging belum untuk memory >5k. `open()` SQLite masih sinkron per operasi (singleton pool = refactor berikutnya).
+11. Benchmark `bench/runner.ts` butuh provider ber-API-key untuk hasil nyata (`--fake` hanya smoke).
+12. `vendor/minicore` adalah salinan — mengeditnya langsung akan hilang saat `vendor:minicore`. Sumber kebenaran tetap repo `minicore`; publish ke npm masih opsi terbuka.
+13. Lisensi **MIT** (lihat `LICENSE`) — dokumen lama menyebut EULA/proprietary, itu sudah tidak berlaku.

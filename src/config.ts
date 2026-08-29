@@ -15,9 +15,16 @@ export interface ProviderEntry {
 
 export interface McpServerEntry {
   id: string
-  command: string
-  args: string[]
+  /** stdio: perintah yang di-spawn. Kosong bila memakai `url` (HTTP). */
+  command?: string
+  args?: string[]
   env?: Record<string, string>
+  /** Streamable HTTP / SSE endpoint. Bila diisi, `command` diabaikan. */
+  url?: string
+  /** Header tambahan untuk transport HTTP (mis. Authorization). */
+  headers?: Record<string, string>
+  /** Izinkan endpoint di host privat (server MCP lokal). Default: tolak (anti-SSRF). */
+  allowPrivateHost?: boolean
 }
 
 export interface LspServerEntry {
@@ -45,9 +52,15 @@ function normalizeConfig(raw: unknown): MinicodeConfig {
         (p) => p && typeof p.id === "string" && typeof p.baseUrl === "string",
       )
     : []
+  // Server MCP sah bila punya `command` (stdio) ATAU `url` (HTTP). Entri tanpa
+  // keduanya dibuang di sini supaya kegagalan tampak saat config dibaca, bukan
+  // sebagai error misterius saat connect.
   const mcpServers = Array.isArray(cfg?.mcpServers)
     ? (cfg.mcpServers as McpServerEntry[]).filter(
-        (m) => m && typeof m.id === "string" && typeof m.command === "string",
+        (m) =>
+          m &&
+          typeof m.id === "string" &&
+          (typeof m.command === "string" || typeof m.url === "string"),
       )
     : undefined
   const lspServers = Array.isArray(cfg?.lspServers)
@@ -299,7 +312,8 @@ export async function saveMcpServer(
   entry: McpServerEntry,
   opts: { global?: boolean; cwd?: string } = {},
 ) {
-  if (!entry.id || !entry.command) throw new Error("mcp id/command required")
+  if (!entry.id || (!entry.command && !entry.url))
+    throw new Error("mcp entry butuh id + (command untuk stdio atau url untuk http)")
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
   let cfg: MinicodeConfig = { providers: [] }
   try {

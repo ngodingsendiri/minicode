@@ -19,8 +19,9 @@ minicode (coding-agent, depends file:./vendor/minicore — self-contained, tanpa
   ├─ src/policy/    → permission auto|ask|readonly|plan|allowlist|allow-all, executor order-preserving,
   │                   compaction mechanical sync + LLM async (compactAsync seam kernel, fallback aman)
   ├─ src/providers/ → openai-compat + anthropic + router fallback rate_limit/server/network
-  ├─ src/mcp/       → client/server/transport stdio (backpressure, circular-safe)
+  ├─ src/mcp/       → client stdio + Streamable HTTP/SSE (host privat ditolak) · server tools/resources/prompts
   ├─ src/lsp/       → client diagnostics/definition/references/hover/symbols (didClose cleanup)
+  ├─ src/session/   → persistence sqlite + checkpoint shadow-git (tree, O(delta), HEAD user utuh)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
   ├─ src/tui/       → minimal/simple+fullscreen (pure ANSI ?1049h) + theme/highlight/diff/spinner
   ├─ docs/          → ARCHITECTURE.md · PLAN_V4.md
@@ -91,7 +92,8 @@ web_fetch         → redirect manual ≤5 hop, DNS pinning per-hop, body hard-c
 
 ## Verification & Benchmark
 - **Auto-verify** (`--verify`): deteksi command (`typecheck` → `test` → `tsconfig`) atau `MINICODE_VERIFY_CMD`; loop self-heal maks 3 siklus.
-- **Repo-map**: simbol per file (TS/Py/Go/Rust/Java/C) di-cache `.minicode/repomap.json`, disuntik ke system prompt.
+- **Checkpoint shadow-git**: snapshot per turn sebagai SHA tree git — O(delta), tanpa cap jumlah file, `HEAD`/index Anda tak pernah disentuh, ref menunjuk *tree* sehingga tak muncul di `git log`. `.gitignore` dihormati (jadi undo mencakup yang dilacak git). Non-repo memakai fallback snapshot file.
+- **Repo-map**: simbol per file (regex, 9 bahasa) di-cache `.minicode/repomap.json`, disuntik ke system prompt. Tree-sitter sengaja tidak dipakai — alasan terukur di `extractSymbolsAsync`.
 - **Secret scrubber**: `sk-`, `ghp_`, `AKIA`, PEM, JWT, Bearer, `api_key=...` di-redact sebelum sampai ke LLM (read_file/bash/grep) — tanpa whitelist kata.
 - **Telemetry**: `.minicode/traces.jsonl` — satu baris JSON per run (tokens, steps, cost, durasi); prompt di-scrub; **opt-out** `MINICODE_TELEMETRY=0`.
 - **Benchmark**: `bun run bench` (butuh provider) / `bun run bench:smoke` (fake, untuk CI) → `bench/results.json` (resolve rate, steps, token, cost).

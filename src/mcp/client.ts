@@ -1,13 +1,19 @@
 import type { Tool, ToolContext } from "minicore"
 import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
+import { McpHttpTransport, type McpTransportLike } from "./http-transport.ts"
 import { McpTransport } from "./transport.ts"
 
 export interface McpServerConfig {
   id: string
-  command: string
-  args: string[]
+  /** stdio: perintah yang di-spawn. */
+  command?: string
+  args?: string[]
   env?: Record<string, string>
+  /** Streamable HTTP endpoint. Bila ada, dipakai alih-alih stdio. */
+  url?: string
+  headers?: Record<string, string>
+  allowPrivateHost?: boolean
 }
 
 interface McpToolDef {
@@ -19,46 +25,76 @@ interface McpToolDef {
 const activeConnections = new Map<string, McpConnection>()
 
 class McpConnection {
-  transport = new McpTransport()
+  /** Transport konkret; tipe union agar `connect` yang berbeda tetap tersalur. */
+  private readonly http: McpHttpTransport | null
+  private readonly stdio: McpTransport | null
+  transport: McpTransportLike
   tools: McpToolDef[] = []
   ready = false
 
-  constructor(public config: McpServerConfig) {}
+  constructor(public config: McpServerConfig) {
+    // Transport dipilih dari bentuk config: `url` → HTTP, else stdio.
+    if (config.url) {
+      this.http = new McpHttpTransport({
+        url: config.url,
+        headers: config.headers,
+        allowPrivateHost: config.allowPrivateHost,
+      })
+      this.stdio = null
+      this.transport = this.http
+    } else {
+      this.stdio = new McpTransport()
+      this.http = null
+      this.transport = this.stdio
+    }
+  }
+
+  get kind(): "http" | "stdio" {
+    return this.http ? "http" : "stdio"
+  }
 
   async connect(): Promise<void> {
-    await this.transport.connect(this.config.command, this.config.args, this.config.env ?? {})
+    if (this.http) {
+      await this.http.connect()
+    } else {
+      if (!this.config.command) throw new Error("config MCP butuh `command` atau `url`")
+      await this.stdio!.connect(this.config.command, this.config.args ?? [], this.config.env ?? {})
+    }
 
     let handshakeOk = false
-    try {
-      const disc = (await this.transport.request(
-        "server/discover",
-        {
-          _meta: {
-            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientInfo": { name: "minicode", version: "0.1.0" },
-            "io.modelcontextprotocol/clientCapabilities": { tools: {} },
-          },
-        },
-        2_000,
-      )) as Record<string, unknown>
-      if (disc?.capabilities) handshakeOk = true
-    } catch {
+    // `server/discover` adalah ekstensi non-standar; hanya masuk akal untuk
+    // stdio lokal. Server HTTP mengikuti spec → langsung `initialize`.
+    if (this.kind === "stdio") {
       try {
-        await this.transport.request(
-          "initialize",
+        const disc = (await this.transport.request(
+          "server/discover",
           {
-            protocolVersion: "2026-07-28",
-            capabilities: { tools: {} },
-            clientInfo: { name: "minicode", version: "0.1.0" },
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientInfo": { name: "minicode", version: "0.1.0" },
+              "io.modelcontextprotocol/clientCapabilities": { tools: {} },
+            },
           },
-          3_000,
-        )
-        // wajib per spec: notification initialized setelah initialize
-        this.transport.notify("notifications/initialized", {})
-        handshakeOk = true
+          2_000,
+        )) as Record<string, unknown>
+        if (disc?.capabilities) handshakeOk = true
       } catch {
-        throw new Error("handshake failed")
+        // jatuh ke initialize di bawah
       }
+    }
+    if (!handshakeOk) {
+      await this.transport.request(
+        "initialize",
+        {
+          protocolVersion: "2025-06-18",
+          capabilities: { tools: {} },
+          clientInfo: { name: "minicode", version: "0.1.0" },
+        },
+        LIMITS.MCP_HANDSHAKE_TIMEOUT_MS,
+      )
+      // wajib per spec: notification initialized setelah initialize
+      this.transport.notify("notifications/initialized", {})
+      handshakeOk = true
     }
     if (!handshakeOk) throw new Error("handshake failed")
 
@@ -135,7 +171,7 @@ export async function connectAll(configs: McpServerConfig[]): Promise<Tool[]> {
       const tools = conn.wrapTools(cfg.id)
       allTools.push(...tools)
       activeConnections.set(cfg.id, conn)
-      process.stderr.write(`[mcp] ${cfg.id} connected (${tools.length} tools)\n`)
+      process.stderr.write(`[mcp] ${cfg.id} connected via ${conn.kind} (${tools.length} tools)\n`)
     } catch (e) {
       process.stderr.write(`[mcp] ${cfg.id} failed: ${(e as Error).message}\n`)
     }

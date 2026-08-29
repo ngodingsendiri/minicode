@@ -1,8 +1,27 @@
 # Changelog
 
-## [Unreleased] — Audit V4 Fase 0, 1 & 2
+## [Unreleased] — Audit V4 Fase 0–3
 
 Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua angka di dokumen itu terverifikasi dengan eksekusi, bukan salinan klaim lama.
+
+### Changed — Fase 3
+
+- **Checkpoint berbasis shadow-git** (`src/session/shadow-git.ts`). `snapshotWorkspace` lama menyalin **isi** setiap file ke JSON manifest: O(ukuran workspace) per turn, di-cap 200 file sehingga undo tidak lengkap secara senyap pada perubahan besar. Sekarang memakai object store git: index sementara lewat `GIT_INDEX_FILE` → `git write-tree`, tree di-pin dengan ref `refs/minicode/<sesi>/…`, undo = diff dua tree lalu pulihkan hanya path yang berubah.
+
+  Jaminan yang diuji, bukan diasumsikan: index dan `HEAD` user tidak pernah disentuh (tak ada `add`/`commit`/`checkout`/`reset`/`stash` pada state user), ref menunjuk *tree* bukan commit sehingga tak muncul di `git log --all`/`git branch`, tree tetap terbaca setelah `git gc --prune=now`, dan restore hanya menyentuh path yang berbeda. Manifest kini menyimpan SHA: file 200 KB tidak lagi membuat manifest membengkak (<2 KB). Turn tanpa perubahan tidak membuat checkpoint kosong. Perubahan 250 file dari satu `bash` ter-undo seluruhnya — sebelumnya cap 200 menyisakan 50 file. Repo non-git memakai fallback snapshot file.
+
+- **MCP client mendukung Streamable HTTP** (`src/mcp/http-transport.ts`). Client sebelumnya hanya stdio, sementara sisi *server* minicode sudah menyajikan `tools`/`resources`/`prompts` — asimetri yang membuat seluruh ekosistem MCP remote tak terjangkau. Spec 2025-03-26: POST JSON-RPC, respons `application/json` atau `text/event-stream`, `Mcp-Session-Id` disimpan dari `initialize` dan dikirim ulang, `Mcp-Protocol-Version` hasil negosiasi, `DELETE` saat close.
+
+  Config menerima `url` sebagai alternatif `command`: `minicode config mcp add ctx7 --url https://… --header "authorization=Bearer xxx"`. Keamanan yang **bukan** bawaan spec: host privat ditolak kecuali `--allow-private` (server MCP yang menunjuk `169.254.169.254`/localhost adalah SSRF klasik — memakai penjaga DNS-pinning yang sama dengan `web_fetch`), redirect tidak diikuti, ukuran balasan dibatasi, `Authorization` tidak pernah di-log. `server/discover` (ekstensi non-standar) kini hanya dicoba untuk stdio lokal.
+
+### Fixed — Fase 3
+
+- **`core.autocrlf` merusak byte saat restore.** Di Windows default-nya `true`, sehingga `checkout-index` menerapkan smudge filter dan memulihkan file LF sebagai CRLF — restore mengubah isi yang tidak diminta siapa pun (terukur: `a\nb\n` → `a\r\nb\r\n`). Setiap invokasi git kini memakai `-c core.autocrlf=false -c core.safecrlf=false`.
+- **`sessionId` tertentu mematikan snapshot.** `--session "sess/../..~weird:id"` menghasilkan path index `.git\..~weird:id-…` yang ditolak Windows (`Invalid argument`), jadi snapshot gagal total dan checkpoint hilang senyap. Sanitasi kini dipakai untuk nama berkas **dan** nama ref.
+
+### Removed — Fase 3
+
+- **`src/repo/tree-sitter.ts` dihapus**, bukan diimplementasikan. Prototipe `web-tree-sitter` + `tree-sitter-typescript` berjalan dan cepat (init 89 ms, load grammar 19 ms, parse 6 ms), tapi perbandingan pada 5 file nyata menunjukkan yang terlewat regex hampir seluruhnya **member kelas dan helper lokal** (`constructor`, `append`, `execute`, `check`, `__setMode`) — bukan simbol top-level yang berguna untuk orientasi. Biayanya: dua dependensi, ~1,4 MB wasm per bahasa dikali sembilan bahasa, grammar terpisah, jalur async baru. Faktor penentu: repo-map **sudah menyentuh cap 2.500 char** pada repo ini, jadi simbol tambahan tidak akan sampai ke prompt — ia justru menggeser yang lebih penting. Alasan + tabel pengukuran dicatat di komentar `extractSymbolsAsync` agar keputusan tak perlu diulang dari nol.
 
 ### Security — Fase 2
 
@@ -58,7 +77,9 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 - `test/cli-regression.test.ts` — 10 test untuk tiga bug di atas. B2 diuji dengan membandingkan `on("*")` versus `on(handler)` di run yang sama, jadi test itu mendokumentasikan kenapa pola lamanya salah.
 - `test/phase1-tools.test.ts` — 35 test: paging `read_file` (termasuk file >2 MB), kesetaraan dua engine grep, normalisasi/render/roundtrip todo, background job (output baru, cap, kill, penolakan saat sandbox), dan permission untuk tool baru di mode auto/plan/readonly.
 - `test/phase2-security.test.ts` — 160 test: normalisasi bash-guard, 33 kelas bypass yang dulu lolos, 25 pola lama yang harus tetap tertutup, 32 perintah sah sebagai guard anti-over-block, integrasi guard di tiap mode permission, 10 skenario resolusi sandbox, dan 45 nama variabel env.
-- `experiments/bash-bypass-probe.ts` — harness pengukuran postur denylist yang outputnya dipakai di dokumentasi. Exit 0 hanya bila 0 bypass **dan** 0 over-block, jadi bisa dijadikan gate CI.
+- `test/shadow-git.test.ts` — 22 test: index/HEAD user utuh, ref tak tampil di `git log`/`branch`, tahan `gc --prune=now`, line ending preserved (regresi `core.autocrlf`), `sessionId` ilegal (regresi path index Windows), `.gitignore` dihormati saat snapshot **dan** restore, undo/redo lintas tree, 250 file tanpa cap, manifest tetap kecil untuk file besar.
+- `test/mcp-http.test.ts` — 28 test terhadap **server HTTP nyata** (`Bun.serve`), bukan mock fetch, karena yang rawan justru perilaku di atas kabel: event SSE terpotong tepat di tengah payload JSON, pemisah CRLF, event non-JSON di antara balasan, notifikasi sebelum balasan, aliran berakhir tanpa balasan (harus error bukan hang), sesi & protocol header, redirect ditolak, host privat ditolak, body cap.
+- `experiments/bash-bypass-probe.ts` — harness pengukuran postur denylist yang outputnya dipakai di dokumentasi. Exit 0 hanya bila 0 bypass **dan** 0 over-block, jadi bisa dijadikan gate CI (`bun run gate:bash`).
 
 ## [0.7.0] - 2026-08-29
 

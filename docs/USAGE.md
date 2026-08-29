@@ -22,7 +22,8 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode --tui "prompt"` | TUI minimal alternate-screen pure ANSI (tanpa Ink) |
 | `minicode --provider <id> "prompt"` | Paksa provider agnostik tanpa ubah config (atau `provider::model`) |
 | `minicode config add --baseUrl <url> --apiKey <key>` | Tambah provider LLM |
-| `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server |
+| `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server stdio |
+| `minicode config mcp add <id> --url <https://…>` | Daftarkan MCP server HTTP (Streamable HTTP/SSE) |
 | `minicode config lsp add <ext> --command <cmd> --args "<a1,a2>"` | Daftarkan LSP server |
 | `minicode skills list` | Daftar skill terpasang |
 | `minicode sessions list` | Riwayat sesi |
@@ -75,7 +76,10 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 ```json
 {
   "providers": [{ "id": "my-provider", "baseUrl": "...", "apiKey": "...", "models": ["gpt-4o"] }],
-  "mcpServers": [{ "id": "my-mcp", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"] }],
+  "mcpServers": [
+    { "id": "fs", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"] },
+    { "id": "remote", "url": "https://mcp.example.com/mcp", "headers": { "authorization": "Bearer xxx" } }
+  ],
   "lspServers": [{ "ext": ".ts", "command": "typescript-language-server", "args": ["--stdio"] }],
   "verifyCommand": "bun run typecheck",
   "bashAllowlist": ["git status*", "bun test*", "npm run build*"]
@@ -169,7 +173,24 @@ Batas: `BASH_BACKGROUND_MAX_JOBS` job hidup sekaligus; semua job dimatikan saat 
 
 ## MCP & LSP
 
-**MCP:** `minicode config mcp add` untuk daftarkan server, lalu `mcp_list`/`mcp_call` tersedia. Tool dinamis `serverId.toolName` otomatis terdaftar. **Catatan izin:** semua tool MCP bertitik **selalu di-gate** — mode `auto` akan meminta konfirmasi sekali per tool (jawab `[a] Always` untuk persist ke allowlist); mode `readonly`/`plan`/`allowlist` menolaknya. Server terdaftar tidak mendapat wildcard auto-allow (proteksi supply-chain).
+**MCP:** dua transport didukung.
+
+```bash
+# stdio — server lokal yang di-spawn minicode
+minicode config mcp add fs --command npx --args "-y,@modelcontextprotocol/server-filesystem,."
+
+# Streamable HTTP — server remote (spec 2025-03-26, SSE juga ditangani)
+minicode config mcp add ctx7 --url https://mcp.example.com/mcp --header "authorization=Bearer xxx"
+
+# server HTTP di localhost butuh opt-in eksplisit (anti-SSRF)
+minicode config mcp add lokal --url http://127.0.0.1:3000/mcp --allow-private
+```
+
+Setelah terdaftar, `mcp_list`/`mcp_call` tersedia dan tool dinamis `serverId.toolName` otomatis muncul.
+
+**Keamanan transport HTTP:** host privat **ditolak** kecuali `--allow-private` — server MCP yang menunjuk `169.254.169.254` atau `localhost` adalah jalur SSRF, dan penjaganya sama dengan `web_fetch` (DNS pinning). Redirect tidak diikuti. Ukuran balasan dibatasi agar server nakal tak bisa memicu OOM. Header `Authorization` diteruskan tapi tidak pernah masuk log.
+
+**Catatan izin:** semua tool MCP bertitik **selalu di-gate** — mode `auto` meminta konfirmasi sekali per tool (jawab `[a] Always` untuk persist ke allowlist); mode `readonly`/`plan`/`allowlist` menolaknya. Server terdaftar tidak mendapat wildcard auto-allow (proteksi supply-chain).
 
 **LSP:** `minicode config lsp add` untuk daftarkan language server. Setelah terdaftar: `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover`, `lsp_symbols`, `lsp_workspace_symbols`. LSP diagnostics juga otomatis di tool `edit`/`write_file` bila server terkonfigurasi.
 
@@ -236,7 +257,22 @@ bun experiments/bash-bypass-probe.ts --mode allowlist
 
 ## Checkpoint & Undo
 
-Setiap `edit`/`write_file` otomatis membuat checkpoint (pre-edit state, `atomicWriteText`). `/undo` mengembalikan file ke kondisi sebelum turn. `/redo` mengembalikan ke kondisi setelah turn. Checkpoint disimpan di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`). Snapshot dibatasi `WORKSPACE_SNAPSHOT_LIMIT` file — untuk repo sangat besar, shadow-git terjadwal di PLAN_V4 Fase 3.1.
+Setiap turn otomatis membuat checkpoint. Ada dua mode, dipilih otomatis:
+
+**Repo git (utama).** Snapshot disimpan sebagai **SHA tree git**, bukan salinan isi file. Biayanya O(delta) bukan O(ukuran workspace), dan tidak ada batas jumlah file — perubahan 250 file dari satu `bash` ter-undo seluruhnya.
+
+Jaminannya:
+- Index dan `HEAD` Anda **tidak pernah** disentuh. Tidak ada `git add`, `commit`, `checkout`, `reset`, atau `stash` pada state Anda.
+- Ref disimpan di `refs/minicode/<sesi>/…` dan menunjuk *tree*, bukan commit — jadi tidak muncul di `git log --all` maupun `git branch`.
+- Aman dari `git gc`: ref mem-pin object-nya.
+- Line ending tidak diubah (`core.autocrlf=false` dipaksa di setiap operasi).
+- Restore hanya menyentuh path yang berbeda; file lain tak tersentuh.
+
+**Batas yang perlu diketahui:** snapshot memakai `git add -A`, jadi **file ber-`.gitignore` tidak ikut** dan perubahan padanya tidak bisa di-undo. Ini disengaja (kami tidak ingin menyimpan `node_modules`), tapi berarti undo mencakup "yang dilacak git", bukan "seluruh disk".
+
+**Non-repo (fallback).** Snapshot isi file seperti sebelumnya, dengan cap `WORKSPACE_SNAPSHOT_LIMIT`.
+
+`/undo` kembali ke kondisi sebelum turn, `/redo` ke kondisi sesudahnya. Manifest di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`). Turn yang tidak mengubah apa pun tidak membuat checkpoint.
 
 ## Sessions
 
@@ -244,7 +280,9 @@ Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk d
 
 ## Repo Intelligence
 
-System prompt otomatis memuat repo-map. **Implementasi nyata berbasis regex** (9 bahasa) dengan fallback LSP `workspace/symbol`; `src/repo/tree-sitter.ts` masih stub yang selalu mengembalikan `null` (keputusan implementasi-atau-hapus ada di PLAN_V4 Fase 3.2). Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` deterministik.
+System prompt otomatis memuat repo-map berbasis **regex** (9 bahasa) dengan fallback LSP `workspace/symbol`. Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` deterministik.
+
+Tree-sitter **tidak** dipakai. Prototipe `web-tree-sitter` berjalan dan cepat, tapi perbandingan pada file nyata menunjukkan yang terlewat regex hampir seluruhnya member kelas dan helper lokal — bukan simbol top-level. Sementara repo-map sudah menyentuh cap 2.500 char, jadi simbol tambahan justru menggeser yang lebih penting. Alasan lengkap + tabel pengukuran ada di komentar `extractSymbolsAsync` (`src/repo/repomap.ts`).
 
 ## Benchmark
 
@@ -299,6 +337,9 @@ Semua test hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan berulang tanp
 - **`--sandbox os` tidak berefek:** bubblewrap/seatbelt tidak ada di Windows. Pakai `--sandbox docker`, atau terima default `allowlist`.
 - **Variabel env hilang di subprocess:** hanya yang berkata-kunci kredensial di-strip. `GITHUB_WORKSPACE`/`REDIS_HOST`/`AWS_REGION` seharusnya tetap ada sejak Fase 2; kalau variabel non-rahasia Anda ikut hilang, itu bug — laporkan nama variabelnya.
 - **`grep` terasa lambat:** install `rg` (ripgrep). Cek jalur aktif dengan `MINICODE_GREP_ENGINE=js` untuk membandingkan.
+- **`/undo` tidak memulihkan file tertentu:** kemungkinan file itu ada di `.gitignore`. Mode shadow-git hanya men-snapshot yang dilacak git (disengaja, agar `node_modules` tak ikut).
+- **MCP HTTP ditolak "host privat":** server di localhost/LAN butuh `--allow-private` saat `config mcp add`. Ini penjaga SSRF, bukan bug.
+- **MCP HTTP gagal "redirect tidak diikuti":** URL server salah atau server mengarahkan ke host lain. Perbaiki URL-nya; redirect sengaja tidak diikuti.
 - **File besar tak bisa dibaca:** pakai `offset`/`limit` di `read_file` — file >2 MB memang ditolak tanpa itu.
 - **Background job tak jalan:** `background:true` ditolak saat `--sandbox` aktif; jalankan tanpa sandbox atau pakai foreground.
 - **Verify tidak jalan:** set `MINICODE_VERIFY_CMD` atau `verifyCommand` di config.

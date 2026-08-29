@@ -14,8 +14,13 @@ import { createLlmCompaction } from "../src/policy/compaction.ts"
 import type { RateLimiter } from "../src/policy/ratelimit.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { detectVerifyCommand, runVerify, runWithSelfHeal } from "../src/policy/verifier.ts"
-import { recordCheckpointFromSnapshots, snapshotWorkspace } from "../src/session/checkpoint.ts"
+import {
+  beginTurnSnapshot,
+  recordCheckpointFromSnapshots,
+  recordCheckpointFromTrees,
+} from "../src/session/checkpoint.ts"
 import { loadSession, saveSession } from "../src/session/persistence.ts"
+import { snapshotTree } from "../src/session/shadow-git.ts"
 import { createMinicodeSession, type PermissionControl } from "../src/session.ts"
 import type { Skill } from "../src/skills/loader.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
@@ -164,12 +169,15 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const effectiveInitialModel = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"
 
   // ── Shadow checkpoint ──
-  // Pre-turn: snapshot seluruh workspace (menangkap perubahan bash/git, bukan cuma
-  // edit/write_file). Post-edit: untuk /redo, dari tool yang mengubah file.
-  let preTurnPromise: Promise<Awaited<ReturnType<typeof snapshotWorkspace>>> | null = null
+  // Repo git: simpan SHA tree pre/post turn (O(delta), tanpa cap file, tidak
+  // menyentuh index/HEAD user). Non-repo: fallback snapshot isi file seperti
+  // sebelumnya. Keduanya menangkap perubahan dari bash/git juga, bukan cuma
+  // edit/write_file.
+  type TurnSnapshot = Awaited<ReturnType<typeof beginTurnSnapshot>>
+  let preTurnPromise: Promise<TurnSnapshot> | null = null
   const postEditSnapshots = new Map<string, { path: string; content: string | null }>()
   session.events.on("turn:started", () => {
-    preTurnPromise = snapshotWorkspace(cwd ?? ".", 200)
+    preTurnPromise = beginTurnSnapshot(sessionId, cwd ?? ".")
   })
   session.events.on("execution:completed", (e) => {
     const name = e.execution.call.name
@@ -184,19 +192,23 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
   })
   session.events.on("turn:completed", async (e) => {
-    const snapshots = (await preTurnPromise) ?? []
+    const pre = await preTurnPromise
     const redoSnapshots = [...postEditSnapshots.values()]
     preTurnPromise = null
     postEditSnapshots.clear()
-    if (snapshots.length === 0) return
-    recordCheckpointFromSnapshots(
-      sessionId,
-      e.result.usage.turns,
-      snapshots,
-      `turn ${e.result.usage.turns}`,
-      cwd,
-      redoSnapshots,
-    ).catch(() => {})
+    if (!pre) return
+    const turn = e.result.usage.turns
+    const desc = `turn ${turn}`
+    if (pre.mode === "git") {
+      // Tree post-turn diambil sekarang, setelah semua tool selesai.
+      const after = await snapshotTree(cwd ?? ".", sessionId, `post-${turn}`)
+      recordCheckpointFromTrees(sessionId, turn, pre.tree, after?.tree, desc, cwd).catch(() => {})
+      return
+    }
+    if (pre.snapshots.length === 0) return
+    recordCheckpointFromSnapshots(sessionId, turn, pre.snapshots, desc, cwd, redoSnapshots).catch(
+      () => {},
+    )
   })
 
   // ── Auto-verify & self-heal ──

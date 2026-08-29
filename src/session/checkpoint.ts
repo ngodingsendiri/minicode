@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readdir, readFile, rm } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
+import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
+import { restoreTree, snapshotTree } from "./shadow-git.ts"
 
 const MAX_CHECKPOINTS = 20
 
@@ -19,6 +21,10 @@ export interface Checkpoint {
   description: string
   snapshots: FileSnapshot[] // pre-edit state (untuk /undo)
   redoSnapshots?: FileSnapshot[] // post-edit state (untuk /redo)
+  /** Tree git pre-turn (mode shadow-git). Bila ada, snapshots dibiarkan kosong. */
+  treeBefore?: string
+  /** Tree git post-turn (mode shadow-git) untuk /redo. */
+  treeAfter?: string
 }
 
 export interface CheckpointManifest {
@@ -125,6 +131,59 @@ export async function snapshotWorkspace(
   return snaps
 }
 
+// ── Shadow-git: jalur utama bila cwd adalah repo git ──
+//
+// Menyimpan SHA tree alih-alih isi file. Biayanya O(delta) bukan
+// O(ukuran workspace), tanpa cap jumlah file, dan tidak menyentuh index/HEAD
+// user. Fallback ke snapshot manual di bawah tetap ada untuk non-repo.
+
+/**
+ * Ambil snapshot pre-turn. Return penanda mode yang dipakai supaya pemanggil
+ * tahu apakah perlu mengumpulkan snapshot file manual.
+ */
+export async function beginTurnSnapshot(
+  sessionId: string,
+  cwd: string = process.cwd(),
+): Promise<{ mode: "git"; tree: string } | { mode: "files"; snapshots: FileSnapshot[] }> {
+  const shadow = await snapshotTree(cwd, sessionId, "pre")
+  if (shadow) return { mode: "git", tree: shadow.tree }
+  return { mode: "files", snapshots: await snapshotWorkspace(cwd, LIMITS.WORKSPACE_SNAPSHOT_LIMIT) }
+}
+
+/** Rekam checkpoint dari tree git pre/post turn. */
+export async function recordCheckpointFromTrees(
+  sessionId: string,
+  turn: number,
+  treeBefore: string,
+  treeAfter: string | undefined,
+  description: string,
+  cwd: string = process.cwd(),
+): Promise<Checkpoint | null> {
+  // Tak ada perubahan → tak ada yang perlu di-undo. Ini juga mencegah manifest
+  // dipenuhi checkpoint kosong dari turn yang hanya membaca.
+  if (treeAfter && treeAfter === treeBefore) return null
+  const manifest = await loadCheckpointManifest(sessionId, cwd)
+  const cp: Checkpoint = {
+    id: `cp_${Date.now()}_${randomUUID().slice(0, 6)}`,
+    turn,
+    timestamp: new Date().toISOString(),
+    description,
+    snapshots: [],
+    treeBefore,
+    ...(treeAfter ? { treeAfter } : {}),
+  }
+  if (manifest.currentIndex < manifest.checkpoints.length - 1) {
+    manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1)
+  }
+  manifest.checkpoints.push(cp)
+  if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
+    manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS)
+  }
+  manifest.currentIndex = manifest.checkpoints.length - 1
+  await saveCheckpointManifest(manifest, cwd)
+  return cp
+}
+
 export async function recordCheckpoint(
   sessionId: string,
   turn: number,
@@ -201,6 +260,21 @@ async function applySnapshots(snapshots: FileSnapshot[], cwd: string): Promise<s
   return applied
 }
 
+/** Terapkan satu checkpoint: tree git bila ada, else snapshot file. */
+async function applyCheckpoint(
+  cp: Checkpoint,
+  direction: "undo" | "redo",
+  cwd: string,
+): Promise<string[]> {
+  const tree = direction === "undo" ? cp.treeBefore : (cp.treeAfter ?? cp.treeBefore)
+  if (tree) {
+    const res = await restoreTree(cwd, tree)
+    return [...res.applied, ...res.skipped.map((s) => `${s} (skipped)`)]
+  }
+  const snaps = direction === "undo" ? cp.snapshots : (cp.redoSnapshots ?? cp.snapshots)
+  return applySnapshots(snaps, cwd)
+}
+
 export async function undoLastCheckpoint(
   sessionId: string,
   cwd: string = process.cwd(),
@@ -211,7 +285,7 @@ export async function undoLastCheckpoint(
   }
 
   const targetCp = manifest.checkpoints[manifest.currentIndex]!
-  const restoredFiles = await applySnapshots(targetCp.snapshots, cwd)
+  const restoredFiles = await applyCheckpoint(targetCp, "undo", cwd)
 
   manifest.currentIndex -= 1
   await saveCheckpointManifest(manifest, cwd)
@@ -234,8 +308,7 @@ export async function redoLastCheckpoint(
 
   manifest.currentIndex += 1
   const targetCp = manifest.checkpoints[manifest.currentIndex]!
-  // redo memakai state post-edit bila tersedia; fallback ke pre-edit (backward compat)
-  const reappliedFiles = await applySnapshots(targetCp.redoSnapshots ?? targetCp.snapshots, cwd)
+  const reappliedFiles = await applyCheckpoint(targetCp, "redo", cwd)
 
   await saveCheckpointManifest(manifest, cwd)
 

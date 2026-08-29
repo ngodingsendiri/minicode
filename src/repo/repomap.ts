@@ -154,14 +154,35 @@ const PATTERNS: Record<string, LinePattern[]> = {
   ],
 }
 
-// Ekstrak simbol dengan tree-sitter wasm bila tersedia, fallback ke regex (Aider-like).
-// Tree-sitter memberikan akurasi AST vs regex — dimuat lazy via src/repo/tree-sitter.ts
+// Ekstraksi simbol berbasis regex per-bahasa.
+//
+// Keputusan Fase 3.2 (PLAN_V4): `src/repo/tree-sitter.ts` DIHAPUS, bukan
+// diimplementasikan. Alasannya diukur, bukan diasumsikan.
+//
+// Prototipe `web-tree-sitter` + `tree-sitter-typescript` berjalan dan cepat
+// (init 89 ms, load grammar 19 ms, parse 6 ms), tapi perbandingan pada 5 file
+// nyata di repo ini menunjukkan selisihnya kecil dan hampir seluruhnya berupa
+// **member kelas** (`constructor`, `append`, `execute`, `check`, `__setMode`)
+// dan variabel lokal — bukan simbol top-level yang berguna untuk orientasi:
+//
+//   file                      tree-sitter  regex  yang terlewat regex
+//   src/policy/bash-guard.ts       6         5    1 (helper lokal)
+//   src/session/shadow-git.ts     14        13    1 (helper lokal)
+//   src/tools/bash.ts             11         9    5 (method kelas)
+//   src/repo/repomap.ts           14        14    0
+//   src/policy/permission.ts      12         9    3 (method)
+//
+// Biayanya: dua dependensi (~1,4 MB wasm per bahasa, dikali jumlah bahasa yang
+// didukung), grammar terpisah untuk tiap bahasa dari sembilan yang ada, dan
+// jalur async baru. Sementara repo-map sudah **mencapai cap 2.500 char** pada
+// repo ini, jadi simbol tambahan tidak akan sampai ke prompt — ia justru
+// menggeser simbol top-level yang lebih penting.
+//
+// Menyimpan stub yang selalu `return null` lebih buruk daripada keduanya: ia
+// membuat pembaca (dan dokumen) percaya kemampuan yang tidak ada. Bila suatu
+// saat repo-map dipisah per-file atau cap dinaikkan, tree-sitter layak
+// dipertimbangkan ulang — dengan pengukuran baru, bukan asumsi.
 export async function extractSymbolsAsync(content: string, lang: string): Promise<string[]> {
-  try {
-    const { extractWithTreeSitter } = await import("./tree-sitter.ts")
-    const tsResult = await extractWithTreeSitter(content, lang)
-    if (tsResult?.length) return tsResult.slice(0, MAX_SYMBOLS_PER_FILE)
-  } catch {}
   return extractSymbols(content, lang)
 }
 

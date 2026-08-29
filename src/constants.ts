@@ -31,6 +31,10 @@ export const LIMITS = {
   VECTOR_KEYWORD_LIMIT: 200,
   WORKSPACE_SNAPSHOT_LIMIT: 200,
   CHECKPOINT_MAX_COUNT: 20,
+  /** Checkpoint shadow-git: operasi git punya deadline sendiri agar turn tak
+   * tergantung repo raksasa; batch path menghindari batas command-line Windows. */
+  SHADOW_GIT_TIMEOUT_MS: 20_000,
+  SHADOW_GIT_PATH_BATCH: 200,
   /** Executor & sub-agents — tuned for 4-core laptop (6/1) vs 8/2 server */
   DEFAULT_MAX_STEPS: 50,
   EXECUTOR_CONCURRENCY: 6,

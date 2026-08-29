@@ -87,21 +87,55 @@ export async function handleConfig(
       const id = args[3]
       const command = getArg("--command")
       const cmdArgsRaw = getArg("--args")
-      if (!id || !command || !cmdArgsRaw) {
+      const url = getArg("--url")
+      // Dua bentuk transport: stdio (--command) atau Streamable HTTP (--url).
+      if (!id || (!command && !url)) {
         console.error(
-          'usage: minicode config mcp add <id> --command <cmd> --args "<arg1,arg2>" [--env K=V] [--global|--local]',
+          'usage: minicode config mcp add <id> --command <cmd> --args "<a1,a2>" [--env K=V]\n' +
+            "       minicode config mcp add <id> --url <https://…> [--header K=V] [--allow-private]\n" +
+            "       [--global|--local]",
         )
         process.exit(1)
       }
-      const cmdArgs = cmdArgsRaw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
       const env: Record<string, string> = {}
       for (const kv of (getArg("--env") ?? "").split(",")) {
         const [k, ...rest] = kv.split("=")
         if (k && rest.length) env[k.trim()] = rest.join("=").trim()
       }
+
+      if (url) {
+        const headers: Record<string, string> = {}
+        for (const kv of (getArg("--header") ?? "").split(",")) {
+          const [k, ...rest] = kv.split("=")
+          if (k && rest.length) headers[k.trim()] = rest.join("=").trim()
+        }
+        try {
+          const parsed = new URL(url)
+          if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            console.error(`URL harus http/https, bukan ${parsed.protocol}`)
+            process.exit(1)
+          }
+        } catch {
+          console.error(`URL tidak valid: ${url}`)
+          process.exit(1)
+        }
+        await saveMcpServer(
+          {
+            id,
+            url,
+            ...(Object.keys(headers).length ? { headers } : {}),
+            ...(args.includes("--allow-private") ? { allowPrivateHost: true } : {}),
+          },
+          { global: !args.includes("--local") },
+        )
+        console.log(`${c.green(glyphs.check)} Saved MCP server "${c.bold(id)}" (http): ${url}`)
+        process.exit(0)
+      }
+
+      const cmdArgs = (cmdArgsRaw ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
       await saveMcpServer(
         { id, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) },
         { global: !args.includes("--local") },
@@ -115,10 +149,12 @@ export async function handleConfig(
       if (!cfg.mcpServers?.length)
         console.log(c.dim("(no MCP servers configured - add via minicode config mcp add)"))
       else {
+        // Server bisa stdio (command+args) atau HTTP (url). Tampilkan keduanya
+        // di kolom yang sama supaya tabel tetap ringkas.
         const tableData = cfg.mcpServers.map((m) => ({
           id: c.cyan(m.id),
-          command: m.command,
-          args: c.dim(m.args.join(" ")),
+          command: m.url ? c.dim("(http)") : (m.command ?? ""),
+          args: c.dim(m.url ?? (m.args ?? []).join(" ")),
         }))
         console.log(
           `\n${c.bold("Configured MCP Servers")}\n` +
@@ -126,7 +162,7 @@ export async function handleConfig(
               [
                 { header: "Server ID", key: "id", width: 14 },
                 { header: "Command", key: "command", width: 20 },
-                { header: "Arguments", key: "args", width: 36 },
+                { header: "Args / URL", key: "args", width: 36 },
               ],
               tableData,
             ) +
