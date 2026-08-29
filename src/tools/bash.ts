@@ -1,6 +1,6 @@
 ﻿import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import type { Tool, ToolContext } from "minicore"
+import type { Tool, ToolContext } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
 

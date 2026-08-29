@@ -1,4 +1,4 @@
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { appendMemory, readMemoryFile } from "../memory/files.ts"
 import { addMemory, deleteMemoryByQuery, searchHybrid } from "../memory/vector.ts"
 

@@ -12,7 +12,7 @@ import { join } from "node:path"
 // test/shadow-git.test.ts.
 setDefaultTimeout(60_000)
 
-import type { ToolContext } from "minicore"
+import type { ToolContext } from "#minicore"
 import { createPermissionHandler } from "../src/policy/permission.ts"
 import {
   BUILTIN_PRICING,

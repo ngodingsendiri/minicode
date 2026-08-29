@@ -1,6 +1,6 @@
 // Formatter pesan event yang dipakai renderer ANSI (simple + fullscreen),
 // agar "apa yang ditampilkan" konsisten antar dua backend (tidak dobel logika).
-import type { ToolCall } from "minicore/core/types.ts"
+import type { ToolCall } from "#minicore/core/types.ts"
 
 export function formatArgsPreview(args: unknown): string {
   try {

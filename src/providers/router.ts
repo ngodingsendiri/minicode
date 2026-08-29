@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer"
-import { ProviderError } from "minicore/core/errors.ts"
-import type { ModelProvider, ProviderEvent, StreamRequest } from "minicore/core/provider.ts"
+import { ProviderError } from "#minicore/core/errors.ts"
+import type { ModelProvider, ProviderEvent, StreamRequest } from "#minicore/core/provider.ts"
 import { LIMITS } from "../constants.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"
 

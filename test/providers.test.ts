@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { ProviderError } from "minicore/core/errors.ts"
+import { ProviderError } from "#minicore/core/errors.ts"
 import { createAnthropicProvider } from "../src/providers/anthropic.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
 

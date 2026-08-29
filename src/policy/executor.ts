@@ -1,8 +1,8 @@
 import { resolve } from "node:path"
-import { abortError } from "minicore/core/errors.ts"
-import { runCall } from "minicore/core/executor.ts"
-import type { ExecutorDeps, ToolExecutor } from "minicore/core/index.ts"
-import type { ToolCall, ToolResult } from "minicore/core/types.ts"
+import { abortError } from "#minicore/core/errors.ts"
+import { runCall } from "#minicore/core/executor.ts"
+import type { ExecutorDeps, ToolExecutor } from "#minicore/core/index.ts"
+import type { ToolCall, ToolResult } from "#minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
 
 // Tool yang mengubah file workspace — butuh write-slot DAN file-lock per path.

@@ -136,7 +136,7 @@ export class McpHttpTransport implements McpTransportLike {
       const ctype = (res.headers.get("content-type") ?? "").toLowerCase()
       const payload = ctype.includes("text/event-stream")
         ? await readSseResponse(res, id)
-        : await readJsonResponse(res)
+        : await readJsonResponse(res, id)
 
       if (!payload) throw new Error(`MCP http: ${method} tidak mengembalikan balasan`)
       if (payload.error) {
@@ -182,18 +182,35 @@ export class McpHttpTransport implements McpTransportLike {
   }
 }
 
-/** Baca body JSON dengan cap ukuran. Diekspor untuk test. */
-export async function readJsonResponse(res: Response): Promise<JsonRpcResponse | null> {
+/**
+ * Baca body JSON dengan cap ukuran, lalu cocokkan dengan `id` request.
+ *
+ * Pencocokan id penting: server yang membalas id lain (atau hanya mengirim
+ * notifikasi tanpa id) berarti request kita **tidak** terjawab. Tanpa cek ini,
+ * balasan untuk request orang lain — atau notifikasi kosong — akan diterima
+ * sebagai hasil, dan `result: undefined` menjalar ke pemanggil sebagai
+ * "sukses". Ditemukan oleh experiments/extreme-mcp-adversarial.ts.
+ *
+ * `expectId` opsional agar helper tetap bisa diuji tanpa konteks request.
+ * Diekspor untuk test.
+ */
+export async function readJsonResponse(
+  res: Response,
+  expectId?: string | number,
+): Promise<JsonRpcResponse | null> {
   const text = await readCapped(res)
   if (!text.trim()) return null
+  let parsed: JsonRpcResponse | JsonRpcResponse[]
   try {
-    const parsed = JSON.parse(text) as JsonRpcResponse | JsonRpcResponse[]
-    // Batch: ambil elemen pertama yang punya result/error.
-    if (Array.isArray(parsed)) return parsed.find((p) => p.result !== undefined || p.error) ?? null
-    return parsed
+    parsed = JSON.parse(text) as JsonRpcResponse | JsonRpcResponse[]
   } catch {
     throw new Error(`MCP http: balasan bukan JSON valid: ${text.slice(0, 200)}`)
   }
+  if (parsed === null) return null
+  if (expectId !== undefined) return matchResponse(parsed, expectId)
+  // Tanpa id yang diharapkan: ambil elemen pertama yang punya result/error.
+  if (Array.isArray(parsed)) return parsed.find((p) => p.result !== undefined || p.error) ?? null
+  return parsed
 }
 
 /**

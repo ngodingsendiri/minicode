@@ -6,7 +6,7 @@
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) tidak ditulis di dokumen ini. Jalankan `bun test`, `bun run gate:coverage`, atau:
 > `bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.length)"`.
-> Riwayat per versi: [CHANGELOG.md](../CHANGELOG.md). Roadmap aktif: [PLAN_V4.md](PLAN_V4.md).
+> Riwayat per versi: [CHANGELOG.md](../CHANGELOG.md). Roadmap: [PLAN_V4.md](PLAN_V4.md) · [PLAN_V5.md](PLAN_V5.md).
 
 ## Peta Pohon Komponen
 
@@ -49,7 +49,8 @@ minicode/
 │   ├── git.ts         git_status/diff/log (cwd jail) + git_commit (GATED; tanpa push/amend/reset)
 │   ├── memory.ts      read/write/forget → MEMORY.md(append atomic 200k guard) + vector hybrid cwd-aware + forget tx
 │   ├── task.ts        delegate_task (explore=5/plan=15, clamp 1..50, Pool(3), filter memory+todo_write+bash job, error→result)
-│   ├── mcp_call.ts    mcp_list / mcp_call + dynamic server.tool
+│   ├── mcp_call.ts    mcp_list (tools+resources+prompts) / mcp_call / mcp_read / mcp_prompt
+│   │                  + dynamic server.tool — semua nama bertitik & mcp_read/prompt di-gate
 │   └── lsp.ts         lsp_diagnostics/definition/references/hover/symbols/workspace_symbols (\b)
 │
 ├── vendor/minicore/ — KERNEL HASIL SYNC (jangan edit langsung)
@@ -105,8 +106,10 @@ minicode/
 ├── src/mcp/
 │   ├── transport.ts      JSON-RPC newline stdio, pending+timeout, killSignal on close only
 │   ├── http-transport.ts Streamable HTTP (spec 2025-03-26) + SSE — Mcp-Session-Id,
-│   │                     protocol negotiation, host privat ditolak, redirect tak diikuti, body cap
-│   ├── client.ts         pilih transport dari config (url→http, else stdio), tools/list, wrap "{server}.{tool}"
+│   │                     protocol negotiation, host privat ditolak, redirect tak diikuti,
+│   │                     body cap, balasan dicocokkan per request id (JSON & SSE)
+│   ├── client.ts         pilih transport dari config (url→http, else stdio); tools/list +
+│   │                     resources/list + prompts/list (dua terakhir opsional, gagal ≠ fatal)
 │   └── server.ts         curated tools + resources/prompts, permission aktif, isError, ping
 │
 ├── src/lsp/
@@ -123,15 +126,20 @@ minicode/
 │   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI (ANSI_PATTERN satu sumber)
 │
 ├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI, external tasks jail)
+├── experiments/ — harness adversarial: bash-bypass-probe (korpus manual) ·
+│                  extreme-bash-fuzz (mutasi kombinatorial, PRNG ber-seed) ·
+│                  extreme-shadow-git (skala/konkurensi/nama ekstrem) ·
+│                  extreme-mcp-adversarial (server jahat) · extreme-security
 ├── src/constants.ts — centralized LIMITS (file size, timeout, search limit, paging, todo, bg jobs)
 ├── src/app/ — provider-layer / rag-layer / tool-layer (setup orchestration)
-├── scripts/ — coverage-gate.ts (gate agregat) · vendor-minicore.ts (sync + --check) · telemetry-gate.ts
+├── scripts/ — coverage-gate · vendor-minicore (sync + --check) · pack-check (gate tarball) · telemetry-gate
 ├── test/ bun:test — hermetic/offline (live & docker di-skip otomatis)
 │
 ├── .minicode/ (gitignored) — sessions.db / vector.db / allowlist.json / skills / checkpoints / todos / repomap.json / traces.jsonl
 │
 └── vendor/minicore/ KERNEL BEKU (hasil sync, jangan edit)
     └── src/core/ STATE/MODEL/ACTION/LOOP + EventBus/ContextStore/budget/recovery/compaction + seam compactAsync & initialMessages
+        di-resolve lewat subpath imports `#minicore` (package.json `imports`), BUKAN dependency
 ```
 
 ## Alur Data
@@ -156,7 +164,11 @@ web_fetch: redirect manual ≤5 hop, isPrivateHost + DNS pinning (lookup+cache 3
 
 `read_file/write_file/edit` punya jail ganda: `permission.ts` (realpath-based) + di dalam tool sendiri. `bash` → `SIGTERM` lalu `SIGKILL` 2 detik. `grep` menerapkan jail di kedua engine: walker memakai `realpath` per file, jalur ripgrep memvalidasi tiap baris hasil di `normalizeRgLine` (`--no-follow` + glob exclude `.git`/`node_modules`/dotdir).
 
-**bash-guard: normalisasi sebelum pemeriksaan.** Denylist regex-atas-string-mentah trivially dilewati oleh hal yang shell anggap setara (`cat .e""nv`, `X=.env; cat $X`, `p=python3; $p -c 1`, `node --eval`). `bash-guard.ts` membuang quote pemisah kata dan menyubstitusi assignment variabel literal lebih dulu, lalu memeriksa bentuk ternormalisasi **dan** mentah. Postur diukur oleh `experiments/bash-bypass-probe.ts` (38 pola serangan + 15 perintah sah); saat ini 0 bypass / 0 over-block di mode `auto` dan `allowlist`. Batasnya jujur: ini analisis statis, jadi command substitution dinamis tetap butuh sandbox OS untuk ditahan.
+**bash-guard: normalisasi sebelum pemeriksaan.** Denylist regex-atas-string-mentah trivially dilewati oleh hal yang shell anggap setara (`cat .e""nv`, `X=.env; cat $X`, `p=python3; $p -c 1`, `node --eval`, `command env`, `rm --recursive /`). `bash-guard.ts` membuang quote pemisah kata, menyubstitusi assignment variabel literal, dan **membuang wrapper perintah** (`command`/`exec`/`nice`/`nohup`/`timeout N`/… hingga 4 lapis) lebih dulu, lalu memeriksa bentuk ternormalisasi **dan** mentah.
+
+Postur diukur dua lapis: `experiments/bash-bypass-probe.ts` (38 pola serangan + 15 perintah sah, korpus manual) dan `experiments/extreme-bash-fuzz.ts` (mutasi kombinatorial ber-seed, ~13.000 varian per run panjang). Keduanya 0 bypass / 0 over-block. Fuzz menemukan 3 kelas bypass yang korpus manual lewatkan — regresinya terkunci di `test/bash-fuzz-regression.test.ts`.
+
+Batasnya jujur: ini analisis statis, jadi command substitution dinamis tetap butuh sandbox OS untuk ditahan.
 
 ## Mode CLI
 
@@ -203,28 +215,31 @@ Mode permission bisa diganti saat runtime lewat Shift+Tab di TUI — handle-nya 
 * **Fase 2** — `bash-guard.ts` berbasis normalisasi (menutup kelas bypass quote-split/indirection/flag-panjang/env-dump/upload-exfil/process-sub/rm-destruktif), `sandbox-policy.ts` (OS sandbox otomatis, downgrade `allowlist` bila tak ada isolasi), `SECRET_ENV_RE` berbasis kata-kunci (berhenti memakan `GITHUB_WORKSPACE` dsb), allowlist diperluas ke perintah read/build yang sah
 * **Fase 3** — checkpoint `shadow-git.ts` (tree git, O(delta), tanpa cap file, `core.autocrlf=false` byte-preserving, HEAD/index user tak tersentuh), `tree-sitter.ts` **dihapus** setelah prototipe menunjukkan manfaat nol pada cap repo-map yang sudah penuh, MCP client `http-transport.ts` Streamable HTTP + SSE dengan penjaga SSRF
 * **Fase 4** — `oauth.ts` device-code (RFC 8628) + `auth-store.ts` terpisah dari config, `git_commit` di-gate (tanpa push/amend/reset; pesan lewat `-m` argumen sehingga `$()` tak dieksekusi), `pricing.ts` dengan overlay models.dev opt-in — sekalian mengoreksi harga `gpt-4o` yang 2× terlalu tinggi dan memilih median antar-provider alih-alih "yang pertama" yang bisa menghasilkan $0
+* **V5** — tiga harness adversarial (`extreme-bash-fuzz` / `extreme-shadow-git` / `extreme-mcp-adversarial`) menemukan 4 bug: wrapper perintah menyembunyikan env-dump, `rm --recursive` long-option, `rm -rf /;` tanpa whitespace, dan balasan MCP untuk request id lain diterima sebagai hasil. MCP client konsumsi `resources`/`prompts` (`mcp_read`/`mcp_prompt`, keduanya di-gate). Distribusi pindah ke subpath imports `#minicore` sehingga tarball npm bisa dipasang; `pack-check.ts` menjaga `files` tak tertinggal
 
 ## Test Suite
 
-`bun test` — offline/hermetic (fetch di-mock, DB di tmpdir, tanpa API key); live terpisah via `test:live`. Cakupan area: busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name) + WAL capped + busy-retry, invalid config, router all-fail/clone + model substitution + rate limiter + image bytes utk anthropic (magic-byte sniff), deny-bypass varian + auto-gate delegate/mcp/registered-MCP + sensitive path + wildcard MCP, executor order+cap+abort-no-leak+prompt-abort antrean, symlink escape (realpath di permission layer), glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize + buffer cap streaming, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub tanpa-whitelist + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme, env-strip, ssrf-guard, executor-abort, lib-fs (atomic write O_EXCL), jail-realpath, bash-cap, router-image, trace, **cli-regression (slash builtin overlay, EventBus wildcard, permission setMode)**, **phase1-tools (read_file paging, kesetaraan dua engine grep, todo, background job, permission tool baru)**, **phase2-security (normalisasi bash-guard, 33 kelas bypass, 25 pola lama, 32 perintah sah anti-over-block, resolusi sandbox 10 skenario, SECRET_ENV_RE 45 nama variabel)**, **shadow-git (index/HEAD user utuh, ref tak tampil di git log, tahan `gc --prune=now`, line-ending preserved, sessionId ilegal, 250 file tanpa cap)**, **mcp-http (server HTTP nyata: SSE terpotong antar chunk, CRLF, event non-JSON, sesi, redirect ditolak, host privat ditolak, body cap)**, **phase4 (device flow terhadap server OAuth lokal: pending/slow_down/denied/expired/clamp interval; `git_commit` shell-injection & flag-injection; pricing median antar-provider & anti-substring)**.
+`bun test` — offline/hermetic (fetch di-mock, DB di tmpdir, tanpa API key); live terpisah via `test:live`. Cakupan area: busy/abort/timeout/max_steps session + initialMessages seam, persistence incremental + binary placeholder + resume (toolCallId/name) + WAL capped + busy-retry, invalid config, router all-fail/clone + model substitution + rate limiter + image bytes utk anthropic (magic-byte sniff), deny-bypass varian + auto-gate delegate/mcp/registered-MCP + sensitive path + wildcard MCP, executor order+cap+abort-no-leak+prompt-abort antrean, symlink escape (realpath di permission layer), glob brace + cwd jail, grep include/null, bash cwd jail + env-sanitize + buffer cap streaming, vector roundtrip + SQL delete, pool cap/abort, LSP \b, allowlist merge, skills slug/$ARGUMENTS, formatError, usage double-count + cache cost, EventBus crash-isolation, compactAsync seam, verifier self-heal, repomap, scrub tanpa-whitelist + ratelimit, sandbox (skip tanpa docker), apply_patch, checkpoint undo/redo + jail, cli-args, markdown fence, tui-diff/table/theme, env-strip, ssrf-guard, executor-abort, lib-fs (atomic write O_EXCL), jail-realpath, bash-cap, router-image, trace, **cli-regression**, **phase1-tools**, **phase2-security**, **shadow-git**, **mcp-http**, **phase4 (device flow, git_commit shell/flag-injection, pricing median)**, **bash-fuzz-regression (wrapper perintah, rm long-option, chaining, fork-bomb varian)**, **mcp-resources-prompts (server HTTP nyata: discovery opsional, blob tak ditumpahkan, izin gated)**, **import-convention (spesifier `#minicore`, nama direktori vendor, U+FFFD, BOM)**.
 
-Gate CI: `bun run vendor:check`, `bun x tsc --noEmit` (mencakup `cli`/`scripts`/`experiments`), `bun run lint`, `bun test`, `bun run gate:coverage` (agregat baris "All files"), `bun test` dengan `MINICODE_GREP_ENGINE=js` (jalur fallback grep), `bun run gate:bash` untuk kedua mode (0 bypass / 0 over-block), `bench:smoke`, `gate:telemetry`.
+Gate CI (18 langkah): `vendor:check` · `tsc --noEmit` (termasuk `cli`/`scripts`/`experiments`) · `lint` · `test` · `gate:coverage` (agregat "All files") · `test` dengan `MINICODE_GREP_ENGINE=js` · `bash-bypass-probe` dua mode · `extreme-bash-fuzz` 5 seed · `extreme-shadow-git` 1500 file/8 sesi · `extreme-mcp-adversarial` · `gate:pack` (tarball npm) · docker sandbox (opsional) · `bench:smoke` · `gate:telemetry` · test kernel.
 
 ## Known Limitations
 
-Diperbarui setelah Fase 0–4 dari audit v0.7.0 — daftar ini disengaja jujur; kandidat perbaikan berikutnya ada di [PLAN_V4.md](PLAN_V4.md) bagian "Sisa yang belum dikerjakan".
+Diperbarui setelah V4 + V5 — daftar ini disengaja jujur; sisa yang belum dikerjakan tercatat di [PLAN_V5.md](PLAN_V5.md) bagian akhir.
 
 1. Butuh `bun` (`bun:sqlite` dipakai langsung). Symlink test skip di Windows tanpa privilege.
-2. **bash-guard adalah analisis statis.** Korpus 38 pola serangan kini 0 bypass, tapi command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Isolasi nyata datang dari sandbox OS/container, bukan dari guard.
-3. **Windows tidak punya OS sandbox.** bubblewrap/seatbelt hanya Linux/macOS, jadi di Windows default turun ke `allowlist` — lebih ketat, dan sebagian perintah tulis lewat shell ditolak. Pakai `--sandbox docker` atau `--allow-all` bila memang perlu.
-4. **`background:true` tidak bersandbox** — ditolak eksplisit saat `--sandbox` aktif, karena container/namespace ephemeral mati bersama call-nya.
-5. **Checkpoint menghormati `.gitignore`.** Mode shadow-git memakai `git add -A`, jadi file yang di-ignore tidak ter-snapshot dan perubahan padanya tidak bisa di-undo. Disengaja; repo non-git memakai fallback snapshot file dengan cap `WORKSPACE_SNAPSHOT_LIMIT`.
-6. **Endpoint OAuth provider belum dikonfirmasi lewat login sungguhan.** Mekanisme device flow diuji end-to-end terhadap server lokal (18 test mencakup seluruh cabang RFC 8628), tapi nilai `deviceUrl`/`tokenUrl`/`clientId` di `OAUTH_PROVIDERS` perlu diverifikasi saat pertama dipakai. Bila salah, `auth login` melaporkan error server apa adanya.
-7. **`git_commit` hanya commit.** `push`, `amend`, `reset`, `rebase`, `checkout`, `branch -D` sengaja tidak disediakan — sulit dibalikkan atau mempengaruhi remote.
-8. **Repo-map berbasis regex** dan sudah menyentuh cap `REPOMAP_MAX_CHARS`, sehingga simbol tambahan akan menggeser yang lebih penting. Tree-sitter sengaja tidak dipakai (alasan terukur di `extractSymbolsAsync`).
-9. **MCP: `resources`/`prompts` hanya di sisi server.** Client memakai `tools/list` + `tools/call`; transport HTTP sudah ada tapi client belum mengonsumsi resource/prompt dari server remote.
-10. **Harga model = estimasi.** Overlay models.dev memakai median antar-provider; biaya riil tergantung provider, paket, dan diskon. `pricing show <model>` menampilkan sumber angkanya.
-11. `vector.db` `LIMIT 500` — paging belum untuk memory >5k. `open()` SQLite masih sinkron per operasi (singleton pool = refactor berikutnya).
-12. **Resolve-rate live belum diukur ulang** setelah Fase 0–4; angka 0,59 dari audit sudah basi. `bench` butuh provider ber-API-key.
-13. `vendor/minicore` adalah salinan — mengeditnya langsung akan hilang saat `vendor:minicore`. Sumber kebenaran tetap repo `minicore`; publish ke npm masih opsi terbuka.
-14. Lisensi **MIT** (lihat `LICENSE`) — dokumen lama menyebut EULA/proprietary, itu sudah tidak berlaku.
+2. **bash-guard adalah analisis statis.** Korpus manual 38 pola dan fuzz ~13.000 varian kini 0 bypass, tapi command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Isolasi nyata datang dari sandbox OS/container.
+3. **Windows tidak punya OS sandbox.** bubblewrap/seatbelt hanya Linux/macOS, jadi di Windows default turun ke `allowlist`. Pakai `--sandbox docker` atau `--allow-all` bila perlu.
+4. **`background:true` tidak bersandbox** — ditolak eksplisit saat `--sandbox` aktif.
+5. **Checkpoint menghormati `.gitignore`.** File yang di-ignore tidak ter-snapshot dan tidak bisa di-undo. Repo non-git memakai fallback snapshot file dengan cap `WORKSPACE_SNAPSHOT_LIMIT`.
+6. **Endpoint OAuth belum dikonfirmasi lewat login sungguhan.** Mekanisme device flow diuji end-to-end terhadap server lokal (18 test mencakup seluruh cabang RFC 8628), tapi nilai `deviceUrl`/`tokenUrl`/`clientId` di `OAUTH_PROVIDERS` perlu diverifikasi saat pertama dipakai.
+7. **`git_commit` hanya commit.** `push`, `amend`, `reset`, `rebase`, `checkout`, `branch -D` sengaja tidak ada.
+8. **Repo-map berbasis regex** dan sudah menyentuh cap `REPOMAP_MAX_CHARS`. Tree-sitter sengaja tidak dipakai (alasan terukur di `extractSymbolsAsync`).
+9. **MCP client belum menerima notifikasi server** (`notifications/resources/list_changed` dsb) — discovery dilakukan sekali saat connect. `resources`/`prompts` sudah dikonsumsi lewat `mcp_read`/`mcp_prompt`.
+10. **Harga model = estimasi.** Overlay models.dev memakai median antar-provider; biaya riil tergantung provider, paket, dan diskon.
+11. `vector.db` `LIMIT 500` — paging belum untuk memory >5k. `open()` SQLite masih sinkron per operasi.
+12. **Resolve-rate live belum diukur ulang** setelah V4–V5; angka 0,59 dari audit sudah basi.
+13. **Coverage `cli/` masih ~49% lines.** Target ≥60% belum tercapai; `src/policy` 89%, `src/providers` 82%.
+14. **Belum publish ke npm.** Tarball terverifikasi bisa dipasang dan dijalankan (`gate:pack` + uji end-to-end), tapi `npm publish` belum dieksekusi.
+15. `vendor/minicore` adalah salinan — mengeditnya langsung akan hilang saat `vendor:minicore`. Di-resolve lewat subpath imports `#minicore`, bukan dependency.
+16. Lisensi **MIT** (lihat `LICENSE`).

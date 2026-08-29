@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process"
 import { readdir, readFile, realpath, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"

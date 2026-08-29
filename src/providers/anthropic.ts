@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer"
-import { ProviderError } from "minicore/core/errors.ts"
-import type { ModelProvider, ProviderEvent, StreamRequest } from "minicore/core/provider.ts"
-import type { ToolSchema } from "minicore/core/tool.ts"
-import type { Content, Message } from "minicore/core/types.ts"
+import { ProviderError } from "#minicore/core/errors.ts"
+import type { ModelProvider, ProviderEvent, StreamRequest } from "#minicore/core/provider.ts"
+import type { ToolSchema } from "#minicore/core/tool.ts"
+import type { Content, Message } from "#minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
 
 export interface AnthropicConfig {

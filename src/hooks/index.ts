@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
-import type { ToolCall } from "minicore/core/types.ts"
+import type { ToolCall } from "#minicore/core/types.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { c } from "../tui/theme.ts"
 

@@ -34,7 +34,7 @@ beforeAll(async () => {
     (p) => p.id === "openrouter" && p.models.includes("nvidia/nemotron-3-ultra-550b-a55b:free"),
   )
 
-  const { createOpenAICompatProvider } = await import("minicore/providers/openai-compat.ts")
+  const { createOpenAICompatProvider } = await import("#minicore/providers/openai-compat.ts")
   if (bai?.apiKey) {
     provider = createOpenAICompatProvider({
       baseUrl: bai.baseUrl,

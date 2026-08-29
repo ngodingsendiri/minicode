@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import { ContextStore } from "minicore/core/index.ts"
+import { ContextStore } from "#minicore/core/index.ts"
 import { Pool } from "../src/agents/pool.ts"
 import { loadAllowlist, matchAllowlist } from "../src/hooks/index.ts"
 import { compactWithLlm, createLlmCompaction } from "../src/policy/compaction.ts"

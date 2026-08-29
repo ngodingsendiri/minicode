@@ -1,6 +1,6 @@
 // Simple logger — pengganti renderer klasik (tanpa Ink, tanpa alternate-screen)
 // Untuk one-shot non-interaktif: streaming markdown per baris, wrap, diff ringkas
-import type { EventBus } from "minicore/core/index.ts"
+import type { EventBus } from "#minicore/core/index.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "../format.ts"
 import { decorateMarkdown } from "../markdown.ts"
 import { runWithoutStatus } from "../statusline.ts"

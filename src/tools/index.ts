@@ -1,4 +1,4 @@
-﻿export { bashKillTool, bashOutputTool, bashTool } from "./bash.ts"
+export { bashKillTool, bashOutputTool, bashTool } from "./bash.ts"
 export { editTool } from "./edit.ts"
 export { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from "./git.ts"
 export { globTool } from "./glob.ts"
@@ -11,7 +11,7 @@ export {
   lspSymbolsTool,
   lspWorkspaceSymbolsTool,
 } from "./lsp.ts"
-export { mcpCallTool, mcpListTool } from "./mcp_call.ts"
+export { mcpCallTool, mcpListTool, mcpPromptTool, mcpReadTool } from "./mcp_call.ts"
 export { forgetMemoryTool, readMemoryTool, writeMemoryTool } from "./memory.ts"
 export { applyPatchTool } from "./patch.ts"
 export { readFileTool } from "./read_file.ts"
@@ -20,7 +20,7 @@ export { todoReadTool, todoSession, todoWriteTool } from "./todo.ts"
 export { webFetchTool } from "./web_fetch.ts"
 export { writeFileTool } from "./write_file.ts"
 
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { bashKillTool, bashOutputTool, bashTool } from "./bash.ts"
 import { editTool } from "./edit.ts"
 import { gitCommitTool, gitDiffTool, gitLogTool, gitStatusTool } from "./git.ts"
@@ -34,7 +34,7 @@ import {
   lspSymbolsTool,
   lspWorkspaceSymbolsTool,
 } from "./lsp.ts"
-import { mcpCallTool, mcpListTool } from "./mcp_call.ts"
+import { mcpCallTool, mcpListTool, mcpPromptTool, mcpReadTool } from "./mcp_call.ts"
 import { forgetMemoryTool, readMemoryTool, writeMemoryTool } from "./memory.ts"
 import { applyPatchTool } from "./patch.ts"
 import { readFileTool } from "./read_file.ts"
@@ -68,6 +68,8 @@ export const allTools: Tool[] = [
   delegateTaskTool,
   mcpListTool,
   mcpCallTool,
+  mcpReadTool,
+  mcpPromptTool,
   lspDiagnosticsTool,
   lspDefinitionTool,
   lspReferencesTool,

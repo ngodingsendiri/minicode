@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { createEventBus } from "minicore/core/events.ts"
+import { createEventBus } from "#minicore/core/events.ts"
 import { friendlyError, friendlyFromCategory } from "../cli/errors.ts"
 import { costFor, createUsageCollector } from "../src/policy/usage.ts"
 

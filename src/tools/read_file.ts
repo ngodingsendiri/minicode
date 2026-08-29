@@ -1,6 +1,6 @@
 ﻿import { readFile, realpath, stat } from "node:fs/promises"
 import { isAbsolute, resolve } from "node:path"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"

@@ -6,25 +6,26 @@ MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satuny
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) **tidak ditulis di sini** — jalankan `bun test`, `bun run gate:coverage`, atau lihat CI. Riwayat perubahan per versi ada di [CHANGELOG.md](CHANGELOG.md).
 
-📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark) · [docs/PLAN_V4.md](docs/PLAN_V4.md) untuk roadmap aktif.
+📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark) · [docs/PLAN_V4.md](docs/PLAN_V4.md) & [docs/PLAN_V5.md](docs/PLAN_V5.md) untuk riwayat audit dan sisa pekerjaan.
 
 ## Hubungan
 ```
 vendor/minicore (zero-dep — inti di-freeze; hanya seam additif `compactAsync` + `initialMessages` yang dibuka)
-   ↑
-minicode (coding-agent, depends file:./vendor/minicore — self-contained, tanpa sibling clone)
+   ↑ di-resolve lewat subpath imports `#minicore` (bukan dependency)
+minicode (coding-agent — self-contained, tanpa sibling clone)
   ├─ src/tools/     → Tool fs/bash/git/memory/todo/task/mcp/lsp + symlink jail defense-in-depth
   ├─ src/agents/    → Pool concurrency 3 (sub-agent isolasi, abort-aware)
   ├─ src/hooks/     → allowlist merge global+local atomic chmod600 + promptAsk card [y/n/a]
-  ├─ src/policy/    → permission auto|ask|readonly|plan|allowlist|allow-all, executor order-preserving,
-  │                   compaction mechanical sync + LLM async (compactAsync seam kernel, fallback aman)
-  ├─ src/providers/ → openai-compat + anthropic + router fallback rate_limit/server/network
-  ├─ src/mcp/       → client stdio + Streamable HTTP/SSE (host privat ditolak) · server tools/resources/prompts
+  ├─ src/policy/    → permission auto|ask|readonly|plan|allowlist|allow-all, bash-guard ternormalisasi,
+  │                   sandbox-policy (OS-native otomatis), pricing, executor order-preserving
+  ├─ src/providers/ → openai-compat + anthropic + router fallback · OAuth device-code + auth-store
+  ├─ src/mcp/       → client stdio + Streamable HTTP/SSE (tools/resources/prompts) · server
   ├─ src/lsp/       → client diagnostics/definition/references/hover/symbols (didClose cleanup)
   ├─ src/session/   → persistence sqlite + checkpoint shadow-git (tree, O(delta), HEAD user utuh)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
   ├─ src/tui/       → minimal/simple+fullscreen (pure ANSI ?1049h) + theme/highlight/diff/spinner
-  ├─ docs/          → ARCHITECTURE.md · PLAN_V4.md
+  ├─ experiments/   → harness adversarial (fuzz bash, stress shadow-git, server MCP jahat)
+  ├─ docs/          → ARCHITECTURE.md · USAGE.md · PLAN_V4.md · PLAN_V5.md
   └─ cli/           → REPL (tab completion, multiline, history, slash commands), wizard, subcommands
 ```
 
@@ -63,13 +64,15 @@ bun experiments/bash-bypass-probe.ts    # ukur postur denylist bash (0 bypass = 
 ```
 
 ## Tools
-FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal; include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, **progres streaming**, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional) · git `git_status/diff/log`(cwd jail, timeout 8s paralel) **`git_commit`**(di-gate; tanpa push/amend/reset) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** (state per sesi di `.minicode/todos/`) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
+FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, progres streaming, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional) · git `git_status/diff/log`(cwd jail) **`git_commit`**(di-gate; tanpa push/amend/reset) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** · agents `delegate_task` (isolasi, pool 3) · MCP `mcp_list` `mcp_call` **`mcp_read`** **`mcp_prompt`** (+dynamic `serverid.toolname`) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
 
 Daftar pasti: `bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.map(t=>t.name))"`
 
 Catatan `grep`: `rg` dipakai otomatis bila ada di PATH. Paksa jalur fallback dengan `MINICODE_GREP_ENGINE=js`. Kedua jalur menerapkan jail + secret-scrub yang sama dan diuji memberi hasil identik.
 
 Catatan `git_commit`: di-gate seperti `delegate_task` (persetujuan sekali di TTY, tolak di non-TTY). `push`/`amend`/`reset`/`rebase`/`checkout` **sengaja tidak disediakan** — sulit dibalikkan atau mempengaruhi remote. Pesan commit diteruskan sebagai argumen `-m`, jadi `$()` dan backtick di dalamnya tidak dieksekusi.
+
+Catatan `mcp_read`/`mcp_prompt`: keduanya **di-gate** meski read-only, karena menarik konten dari server pihak ketiga langsung ke konteks model — itu jalur prompt-injection. Blob biner tidak ditumpahkan sebagai base64.
 
 ## Autentikasi
 
@@ -107,7 +110,16 @@ permission `auto|ask|readonly|plan|allowlist|allow-all` — bash guard **berbasi
 
 **Sandbox aktif otomatis.** Bila bubblewrap (Linux) atau seatbelt (macOS) tersedia, bash berjalan di dalamnya tanpa perlu flag. Bila tidak tersedia — termasuk **semua Windows** — permission default diturunkan ke `allowlist` dan alasannya dicetak sekali, karena lebih baik membatasi perintah daripada menjalankan apa pun sambil menampilkan label aman. Pilih sendiri dengan `--allow-all`/`--ask`, matikan dengan `--sandbox none`, atau pakai `--sandbox docker`.
 
-Postur keamanan bash terukur, bukan diklaim: `bun experiments/bash-bypass-probe.ts` menjalankan 38 pola serangan (indirection variabel, quote-splitting, flag panjang, env dump, exfiltrasi upload, download-then-run, process substitution, akses kredensial, container escape, `rm` destruktif) plus 15 perintah sah sebagai guard anti-over-block. Hasil saat ini **0 bypass / 0 over-block** di mode `auto` dan `allowlist`. Batasnya tetap jujur: ini analisis statis, jadi command substitution dinamis (`$(...)`) tak bisa diselesaikan tanpa mengeksekusi — untuk itulah sandbox OS ada.
+Postur keamanan bash terukur, bukan diklaim — **dua lapis**:
+
+```bash
+bun run gate:bash        # korpus manual: 38 pola serangan + 15 perintah sah
+bun run extreme:fuzz     # mutasi kombinatorial ber-seed, ~13.000 varian
+```
+
+Probe manual menguji serangan yang sudah dipikirkan; fuzz membangkitkan varian sendiri dari transformasi yang shell anggap setara (quote-split, indirection variabel, wrapper perintah, flag panjang, chaining) dan **menemukan 3 kelas bypass yang korpus manual lewatkan** — `command env`, `rm --recursive /`, dan `rm -rf /;`. Semuanya kini tertutup dan terkunci di `test/bash-fuzz-regression.test.ts`. Hasil saat ini **0 bypass / 0 over-block** di kedua lapis.
+
+Batasnya tetap jujur: ini analisis statis, jadi command substitution dinamis (`$(...)`) tak bisa diselesaikan tanpa mengeksekusi — untuk itulah sandbox OS ada.
 
 ## Security Layers
 ```
@@ -140,13 +152,22 @@ bun install                 # sekali (butuh bun >= 1.0; tanpa clone tambahan)
 bun test                    # offline/hermetic; live & docker di-skip otomatis
 bun test test/ssrf-guard.test.ts          # satu file spesifik
 bun run typecheck           # tsc --noEmit (strict) — mencakup src cli test bench scripts
-bun run lint                # biome check src cli test bench scripts
-bun run lint:fix            # auto-fix format/lint
+bun run lint                # biome check
 bun run gate:coverage       # gate coverage agregat (baris "All files")
+bun run gate:bash           # korpus serangan bash (0 bypass / 0 over-block)
+bun run gate:pack           # gate tarball npm (graf import, rahasia, ukuran)
 bun run vendor:check        # pastikan vendor/minicore sinkron dengan ../minicore
-bun run vendor:minicore     # sync ulang vendor (butuh clone sibling ../minicore)
+bun run extreme             # tiga harness adversarial sekaligus
 bun run bench:smoke         # benchmark fake (tanpa API key, CI-safe)
 MINICODE_GREP_ENGINE=js bun test test/phase1-tools.test.ts   # paksa jalur grep fallback
+```
+
+Eksperimen adversarial terpisah bila ingin fokus:
+
+```bash
+bun run extreme:fuzz        # fuzz bash-guard (--seed N untuk reproduksi)
+bun run extreme:git         # stress shadow-git (--files N --sessions N)
+bun run extreme:mcp         # server MCP jahat (hang, flood, redirect, SSRF)
 ```
 
 Test **live** (jaringan + provider ber-API-key):

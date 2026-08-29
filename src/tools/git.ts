@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
 

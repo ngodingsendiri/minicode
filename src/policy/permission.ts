@@ -1,6 +1,6 @@
 import { resolve } from "node:path"
 import { cwd } from "node:process"
-import type { PermissionHandler, ToolCall } from "minicore"
+import type { PermissionHandler, ToolCall } from "#minicore"
 import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hooks/index.ts"
 import { inspectBashCommand } from "./bash-guard.ts"
 import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
@@ -25,7 +25,6 @@ const READONLY_TOOLS = new Set([
   "lsp_symbols",
   "lsp_workspace_symbols",
 ])
-
 // Tool yang menulis state internal minicode (bukan file workspace) — aman
 // di semua mode kecuali readonly/plan. `bash_kill` menghentikan proses yang
 // dimulai agent sendiri, jadi tidak menambah permukaan serangan.
@@ -49,7 +48,12 @@ const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
 // `git_commit` ada di sini karena commit mengubah riwayat yang dibagikan —
 // bukan sekadar file kerja. Di mode `auto` ia meminta persetujuan sekali
 // (jawab `[a] Always` untuk persist), dan ditolak di readonly/plan/allowlist.
-const GATED_TOOLS = new Set(["delegate_task", "mcp_call", "git_commit"])
+//
+// `mcp_read`/`mcp_prompt` juga di-gate meski read-only: keduanya menarik konten
+// dari server pihak ketiga langsung ke konteks model, yang merupakan jalur
+// prompt-injection. `mcp_list` TIDAK di-gate karena hanya melaporkan metadata
+// server yang sudah user daftarkan sendiri.
+const GATED_TOOLS = new Set(["delegate_task", "mcp_call", "mcp_read", "mcp_prompt", "git_commit"])
 
 // Denylist bash kini di src/policy/bash-guard.ts — pemeriksaan dilakukan pada
 // bentuk TERNORMALISASI (quote dibuang, variabel sederhana disubstitusi), bukan

@@ -77,9 +77,32 @@ export function inlineSimpleVars(cmd: string): string {
   return out
 }
 
+/**
+ * Buang wrapper perintah yang tidak mengubah apa yang dijalankan.
+ *
+ * `command env`, `nice env`, `time env`, `exec env` semuanya menjalankan `env`,
+ * tapi wrapper-nya menggeser posisi kata sehingga pola yang ter-anchor ke awal
+ * perintah (mis. deteksi env-dump) tidak lagi cocok. Ditemukan oleh
+ * experiments/extreme-bash-fuzz.ts: `command env` lolos sementara `env` ditolak.
+ *
+ * Wrapper dibuang berulang karena bisa berlapis (`time nice env`).
+ * Diekspor untuk test.
+ */
+export function stripCommandWrappers(cmd: string): string {
+  const WRAPPER =
+    /(^|[;&|]\s*)(?:command|exec|builtin|eval|nice(?:\s+-n\s*-?\d+)?|nohup|time|timeout\s+[\d.]+[smhd]?|stdbuf(?:\s+-\S+)*|env(?=\s+[A-Za-z_][A-Za-z0-9_]*=)|setsid|ionice(?:\s+-\S+)*|xargs(?:\s+-\S+)*|sudo(?:\s+-\S+)*|doas)\s+/gi
+  let out = cmd
+  for (let pass = 0; pass < 4; pass++) {
+    const next = out.replace(WRAPPER, "$1")
+    if (next === out) break
+    out = next
+  }
+  return out
+}
+
 /** Bentuk kanonik untuk pemeriksaan: quote dibuang + variabel disubstitusi. */
 export function normalizeCommand(cmd: string): string {
-  return inlineSimpleVars(stripQuotes(cmd))
+  return stripCommandWrappers(inlineSimpleVars(stripQuotes(cmd)))
 }
 
 // ── Aturan ──
@@ -130,20 +153,30 @@ const CONTAINER_ESCAPE =
 const ROOT_SCAN = /\b(?:find|fd|ls|dir|du|tree|grep|rg)\b[^\n]*\s\/(?:\s|$)/i
 
 /**
- * `rm -rf` destruktif. Dipisah dari denylist lama yang menganggap SETIAP `/`
- * berbahaya — itu memblokir `rm -rf node_modules/.cache` yang sah.
- * Yang berbahaya: target root, home, parent traversal, atau wildcard telanjang.
+ * `rm` rekursif dengan target berbahaya.
+ *
+ * Dipisah dari denylist lama yang menganggap SETIAP `/` berbahaya — itu
+ * memblokir `rm -rf node_modules/.cache` yang sah. Yang berbahaya: target root,
+ * home, parent traversal, atau wildcard telanjang.
+ *
+ * Bentuk flag panjang (`--recursive`) ikut dikenali: fuzz menemukan
+ * `rm --recursive --force /` lolos karena pola lama hanya mencari `-[a-z]*r`.
  *
  * Traversal dicek di mana pun dalam argumen, bukan hanya di awal kata: target
  * bisa dibungkus command substitution (`rm -rf $(pwd)/../..`) yang tidak bisa
  * kita evaluasi, tapi `..` yang menaik tetap terlihat.
  */
-const RM_RECURSIVE = /\brm\b[^\n]*\s-[a-z]*[rR]/i
+const RM_RECURSIVE = /\brm\b[^\n]*(?:\s-[a-z]*[rR]|\s--recursive\b|\s--dir\b)/i
 const RM_DANGEROUS_TARGET =
-  /(?:\s\/(?:\s|$|\*)|\s~(?:[/\\]\s*)?(?:\s|$)|\$\{?HOME\}?|\.\.(?:[/\\]|\s|$)|\s\*\s*$|--no-preserve-root)/
+  /(?:\s\/(?:\s|$|\*|;|&)|\s~(?:[/\\]\s*)?(?:\s|$|;|&)|\$\{?HOME\}?|\.\.(?:[/\\]|\s|$|;|&)|\s\*\s*(?:$|;|&)|--no-preserve-root)/
 
 const STATIC_DENY: [RegExp, string][] = [
-  [/:\(\)\s*\{\s*:\|:&\s*\}\s*;/, "fork bomb"],
+  // Fork bomb: definisi fungsi rekursif yang memanggil dirinya lewat pipe.
+  // Pola longgar (bukan hanya `:(){ :|:& };:` literal) karena nama fungsi bisa
+  // apa saja dan spasi bebas — fuzz menemukan varian yang terpecah oleh
+  // substitusi variabel masih lolos bentuk ketat. `\}` opsional karena
+  // normalisasi bisa menghilangkan bagian setelah pipe.
+  [/(?:^|[;&|=]\s*)[\w:]+\s*\(\)\s*\{[^}]*\|[^}]*&/, "fork bomb"],
   [/\bmkfs\b/i, "format filesystem"],
   [/\bdd\s+if=/i, "raw disk write"],
   [/\bchmod\s+(-R\s+)?777\b/i, "permission 777"],

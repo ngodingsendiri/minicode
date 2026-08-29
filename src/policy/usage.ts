@@ -1,4 +1,4 @@
-import type { EventBus } from "minicore/core/index.ts"
+import type { EventBus } from "#minicore/core/index.ts"
 import { findPrice, loadPricingOverlay, type ModelPrice } from "./pricing.ts"
 
 export interface Usage {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { createEventBus } from "minicore/core/events.ts"
+import { createEventBus } from "#minicore/core/events.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 
 test("usage: tracks cache read and write tokens and reduces cost", () => {

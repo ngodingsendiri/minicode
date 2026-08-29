@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { createEventBus, createToolRegistry } from "minicore"
-import { allowAll } from "minicore/test/fakes.ts"
+import { createEventBus, createToolRegistry } from "#minicore"
+import { allowAll } from "#minicore/test/fakes.ts"
 import { parallelExecutor } from "../src/policy/executor.ts"
 
 const slowTool = (ms: number, name = "bash") => ({

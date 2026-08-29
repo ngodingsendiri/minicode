@@ -1,0 +1,133 @@
+// Regresi: konvensi import kernel harus konsisten dan tak bisa mundur.
+//
+// Migrasi dari `minicore` (dependency file:) ke `#minicore` (subpath imports)
+// dilakukan dengan penggantian teks massal di 51 file. Dua kelas kesalahan
+// muncul dan keduanya lolos typecheck:
+//
+//   1. `resolve(repoRoot, "..", "#minicore")` — nama DIREKTORI ikut terganti,
+//      sehingga vendor:check melapor "vendor kosong" padahal ada 20 file.
+//   2. File yang ditulis ulang lewat PowerShell kehilangan karakter non-ASCII
+//      (— … ─ menjadi U+FFFD), yang memecahkan satu assertion test.
+//
+// Test ini menjaga keduanya, plus memastikan tak ada sisa spesifier lama.
+import { describe, expect, test } from "bun:test"
+import { spawnSync } from "node:child_process"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+
+const repoRoot = process.cwd()
+
+/** Seluruh file terlacak git, di luar vendor (vendor adalah salinan). */
+function trackedFiles(pattern: RegExp): string[] {
+  const r = spawnSync("git", ["ls-files"], { cwd: repoRoot, encoding: "utf8", timeout: 30_000 })
+  if (r.status !== 0) return []
+  return r.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && pattern.test(s) && !s.startsWith("vendor/"))
+}
+
+const tsFiles = trackedFiles(/\.ts$/)
+const textFiles = trackedFiles(/\.(ts|md|json|yml|yaml)$/)
+
+describe("konvensi import kernel", () => {
+  test("ada file untuk diperiksa (sanity)", () => {
+    expect(tsFiles.length).toBeGreaterThan(50)
+  })
+
+  test('tidak ada spesifier lama `from "minicore"` yang tertinggal', () => {
+    const offenders: string[] = []
+    for (const f of tsFiles) {
+      const src = readFileSync(join(repoRoot, f), "utf8")
+      // Cari `from "minicore...` TANPA prefix #
+      if (/from\s+["']minicore(?:\/|["'])/.test(src)) offenders.push(f)
+      if (/import\(\s*["']minicore(?:\/|["'])/.test(src)) offenders.push(f)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  test("semua import kernel memakai prefix #minicore", () => {
+    let count = 0
+    for (const f of tsFiles) {
+      const src = readFileSync(join(repoRoot, f), "utf8")
+      count += (src.match(/["']#minicore/g) ?? []).length
+    }
+    // 70+ import site di seluruh repo; angka pastinya berubah, yang penting ada
+    expect(count).toBeGreaterThan(50)
+  })
+
+  test("package.json mendeklarasikan subpath imports yang cocok", () => {
+    const pkg = JSON.parse(
+      readFileSync(join(repoRoot, "package.json"), "utf8").replace(/^\uFEFF/, ""),
+    ) as {
+      imports?: Record<string, string>
+      dependencies?: Record<string, string>
+    }
+    expect(pkg.imports?.["#minicore"]).toBe("./vendor/minicore/src/core/index.ts")
+    expect(pkg.imports?.["#minicore/*"]).toBe("./vendor/minicore/src/*")
+    // Kernel bukan dependency lagi — ia subpath lokal. Dependency `file:`
+    // membuat tarball npm gagal resolve saat diinstal.
+    expect(pkg.dependencies?.minicore).toBeUndefined()
+  })
+
+  test("tsconfig paths sejalan dengan package.json imports", () => {
+    // tsconfig.json ditulis dengan BOM oleh sebagian editor Windows; JSON.parse
+    // menolaknya. Buang BOM sebelum parse alih-alih membiarkan test gagal
+    // karena alasan yang tak berhubungan dengan yang diuji.
+    const raw = readFileSync(join(repoRoot, "tsconfig.json"), "utf8").replace(/^\uFEFF/, "")
+    const cfg = JSON.parse(raw) as { compilerOptions?: { paths?: Record<string, string[]> } }
+    const paths = cfg.compilerOptions?.paths ?? {}
+    expect(paths["#minicore"]).toEqual(["./vendor/minicore/src/core/index.ts"])
+    expect(paths["#minicore/*"]).toEqual(["./vendor/minicore/src/*"])
+  })
+
+  test("nama direktori vendor TIDAK memakai prefix # (bukan spesifier)", () => {
+    // Regresi dari penggantian teks massal: `resolve(root, "..", "#minicore")`
+    // membuat vendor:check melapor vendor kosong padahal isinya lengkap.
+    const script = readFileSync(join(repoRoot, "scripts/vendor-minicore.ts"), "utf8")
+    expect(script).not.toContain('"..", "#minicore"')
+    expect(script).not.toContain('"vendor", "#minicore"')
+    expect(script).toContain('"..", "minicore"')
+    expect(script).toContain('"vendor", "minicore"')
+  })
+
+  test("vendor:check hijau (vendor terbaca & sinkron)", () => {
+    const r = spawnSync("bun", ["scripts/vendor-minicore.ts", "--check"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 60_000,
+    })
+    const out = `${r.stdout}${r.stderr}`
+    expect(out).not.toContain("vendor/minicore kosong")
+    // Tanpa sibling ../minicore script tetap lulus dengan pesan — keduanya sah.
+    expect(r.status).toBe(0)
+  })
+})
+
+describe("integritas encoding berkas", () => {
+  test("tidak ada U+FFFD (replacement char) di berkas terlacak", () => {
+    // Menulis ulang file lewat pipeline PowerShell tanpa encoding eksplisit
+    // mengubah karakter non-ASCII menjadi U+FFFD. Itu merusak string yang
+    // dibandingkan test dan pesan ke user, tapi lolos typecheck.
+    const broken: string[] = []
+    for (const f of textFiles) {
+      const src = readFileSync(join(repoRoot, f), "utf8")
+      const n = (src.match(/\uFFFD/g) ?? []).length
+      if (n > 0) broken.push(`${f} (${n})`)
+    }
+    expect(broken).toEqual([])
+  })
+
+  test("berkas konfigurasi tidak memakai BOM", () => {
+    // BOM membuat JSON.parse gagal ("Unrecognized token") — ditemukan saat
+    // test ini sendiri gagal membaca tsconfig.json. Editor Windows kadang
+    // menambahkannya tanpa diminta.
+    const configs = ["package.json", "tsconfig.json", "biome.json"]
+    const withBom: string[] = []
+    for (const f of configs) {
+      const buf = readFileSync(join(repoRoot, f))
+      if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) withBom.push(f)
+    }
+    expect(withBom).toEqual([])
+  })
+})

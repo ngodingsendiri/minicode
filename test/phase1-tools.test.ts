@@ -1,7 +1,7 @@
 // Fase 1 — tool fundamental: read_file paging, grep engine, todo, bash background.
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdir, rm, writeFile } from "node:fs/promises"
-import type { ToolContext } from "minicore"
+import type { ToolContext } from "#minicore"
 import { LIMITS } from "../src/constants.ts"
 import { createPermissionHandler } from "../src/policy/permission.ts"
 import {

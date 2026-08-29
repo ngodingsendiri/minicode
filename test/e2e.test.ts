@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { mkdir, readFile, rm } from "node:fs/promises"
-import { createSession } from "minicore/core/index.ts"
-import { allowAll, FakeProvider, finish, text, toolCall } from "minicore/test/fakes.ts"
+import { createSession } from "#minicore/core/index.ts"
+import { allowAll, FakeProvider, finish, text, toolCall } from "#minicore/test/fakes.ts"
 import { readFileTool } from "../src/tools/read_file.ts"
 import { writeFileTool } from "../src/tools/write_file.ts"
 

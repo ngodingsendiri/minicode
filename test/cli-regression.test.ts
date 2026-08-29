@@ -7,7 +7,7 @@
 //   B3 cli/fullscreen-driver.ts — session.config tidak ada di kernel, jadi
 //      Shift+Tab hanya mengubah label header sementara mode permission tetap.
 import { describe, expect, test } from "bun:test"
-import type { ModelProvider } from "minicore/core/provider.ts"
+import type { ModelProvider } from "#minicore/core/provider.ts"
 import { handleBuiltinCommand } from "../cli/commands.ts"
 import { captureOutput } from "../cli/panel.ts"
 import { createPermissionHandler, type PermissionMode } from "../src/policy/permission.ts"

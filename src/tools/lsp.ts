@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import {
   findSymbolPosition,
   getConfiguredExts,

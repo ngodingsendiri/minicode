@@ -2,7 +2,7 @@
 
 import { readFileSync } from "node:fs"
 import { resolve as resolvePath } from "node:path"
-import type { Message, Session, Tool } from "minicore"
+import type { Message, Session, Tool } from "#minicore"
 import { createProviderLayer } from "../src/app/provider-layer.ts"
 import { createRagLayer } from "../src/app/rag-layer.ts"
 import { setupToolLayer } from "../src/app/tool-layer.ts"

@@ -1,5 +1,5 @@
 import { lookup } from "node:dns/promises"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 

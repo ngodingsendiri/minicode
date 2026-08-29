@@ -1,4 +1,4 @@
-import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { runSetupWizard } from "../../cli/wizard.ts"
 import { loadConfig, type MinicodeConfig } from "../config.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"

@@ -81,6 +81,31 @@ jobs:
         working-directory: minicode
         run: bun experiments/bash-bypass-probe.ts --mode allowlist
 
+      # Eksperimen ekstrem: fuzz kombinatorial + stress + adversarial server.
+      # Probe di atas menguji korpus yang ditulis manusia; ini membangkitkan
+      # varian sendiri dan menemukan kelas bypass yang belum terpikirkan.
+      - name: Extreme — bash fuzz (multi-seed)
+        working-directory: minicode
+        run: |
+          for s in 1 42 999 123456 7777777; do
+            bun experiments/extreme-bash-fuzz.ts --seed $s --rounds 3
+          done
+
+      - name: Extreme — shadow-git stress
+        working-directory: minicode
+        run: bun experiments/extreme-shadow-git.ts --files 1500 --sessions 8
+
+      - name: Extreme — MCP adversarial
+        working-directory: minicode
+        run: bun experiments/extreme-mcp-adversarial.ts
+
+      # Gate distribusi: tarball harus memuat semua yang dibutuhkan runtime dan
+      # tidak memuat rahasia. Kegagalan `files` hanya terlihat setelah publish
+      # kalau tidak diperiksa di sini.
+      - name: Pack check (npm tarball)
+        working-directory: minicode
+        run: bun run gate:pack
+
       - name: Test with docker sandbox (experimental)
         working-directory: minicode
         continue-on-error: true

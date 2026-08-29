@@ -1,16 +1,50 @@
 {
   "name": "minicode",
   "version": "0.7.0",
-  "description": "Minicode: agencode/coding-agent built on frozen MiniCore runtime",
+  "description": "Coding agent CLI built on the frozen MiniCore runtime — tools, MCP, LSP, sandbox, shadow-git checkpoints",
   "type": "module",
   "private": false,
   "license": "MIT",
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "coding-agent",
+    "llm",
+    "mcp",
+    "lsp",
+    "bun"
+  ],
+  "homepage": "https://github.com/ngodingsendiri/minicode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ngodingsendiri/minicode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ngodingsendiri/minicode/issues"
+  },
   "bin": {
     "minicode": "./cli/index.ts"
+  },
+  "imports": {
+    "#minicore": "./vendor/minicore/src/core/index.ts",
+    "#minicore/*": "./vendor/minicore/src/*"
   },
   "engines": {
     "bun": ">=1.0.0"
   },
+  "files": [
+    "cli",
+    "src",
+    "vendor/minicore/src",
+    "vendor/minicore/package.json",
+    "vendor/minicore/VENDOR.md",
+    "docs/USAGE.md",
+    "docs/ARCHITECTURE.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "bun test",
     "test:live": "bun scripts/test-live.ts",
@@ -18,6 +52,11 @@
     "test:coverage": "bun test --coverage",
     "gate:coverage": "bun scripts/coverage-gate.ts",
     "gate:bash": "bun experiments/bash-bypass-probe.ts && bun experiments/bash-bypass-probe.ts --mode allowlist",
+    "gate:pack": "bun scripts/pack-check.ts",
+    "extreme": "bun experiments/extreme-bash-fuzz.ts && bun experiments/extreme-shadow-git.ts && bun experiments/extreme-mcp-adversarial.ts",
+    "extreme:fuzz": "bun experiments/extreme-bash-fuzz.ts --rounds 12",
+    "extreme:git": "bun experiments/extreme-shadow-git.ts",
+    "extreme:mcp": "bun experiments/extreme-mcp-adversarial.ts",
     "vendor:minicore": "bun scripts/vendor-minicore.ts",
     "vendor:check": "bun scripts/vendor-minicore.ts --check",
     "typecheck": "bun x tsc --noEmit",
@@ -30,9 +69,7 @@
     "bench:smoke": "bun bench/runner.ts --fake",
     "bench:runs": "bun bench/runner.ts --runs 2"
   },
-  "dependencies": {
-    "minicore": "file:./vendor/minicore"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
     "@types/bun": "^1.3.14",

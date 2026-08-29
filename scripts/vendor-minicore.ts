@@ -19,6 +19,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative, resolve } from "node:path"
 
 const repoRoot = resolve(import.meta.dir, "..")
+// Nama direktori, BUKAN spesifier import. Jangan pakai prefix "#" di sini —
+// itu hanya untuk subpath imports di package.json.
 const source = resolve(repoRoot, "..", "minicore")
 const target = resolve(repoRoot, "vendor", "minicore")
 const checkOnly = process.argv.includes("--check")

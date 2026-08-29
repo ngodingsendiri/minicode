@@ -1,6 +1,6 @@
 import { mkdir, readFile } from "node:fs/promises"
 import { resolve } from "node:path"
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 

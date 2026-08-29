@@ -347,6 +347,25 @@ describe("MCP http: helper parsing", () => {
     expect(await readJsonResponse(new Response(""))).toBeNull()
   })
 
+  test("readJsonResponse dengan expectId menolak id yang tidak cocok", async () => {
+    // Regresi dari experiments/extreme-mcp-adversarial.ts: tanpa cek id,
+    // balasan untuk request lain diterima sebagai hasil dan `result: undefined`
+    // menjalar ke pemanggil sebagai "sukses".
+    const wrongId = new Response(JSON.stringify({ jsonrpc: "2.0", id: 999, result: {} }))
+    expect(await readJsonResponse(wrongId, 1)).toBeNull()
+    const rightId = new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { ok: 1 } }))
+    expect((await readJsonResponse(rightId, 1))?.result).toEqual({ ok: 1 })
+  })
+
+  test("readJsonResponse dengan expectId menolak notifikasi tanpa id", async () => {
+    const notif = new Response(JSON.stringify({ jsonrpc: "2.0", method: "notifications/x" }))
+    expect(await readJsonResponse(notif, 1)).toBeNull()
+  })
+
+  test("readJsonResponse pada body 'null' → null, bukan crash", async () => {
+    expect(await readJsonResponse(new Response("null"), 1)).toBeNull()
+  })
+
   test("readSseResponse mengabaikan id yang tidak cocok", async () => {
     const res = new Response(`data: ${jsonRpc(99, { salah: true })}\n\n`)
     expect(await readSseResponse(res, 1)).toBeNull()
@@ -358,5 +377,31 @@ describe("MCP http: helper parsing", () => {
     const res = new Response(`data: ${payload.slice(0, half)}\ndata: ${payload.slice(half)}\n\n`)
     const parsed = await readSseResponse(res, 1)
     expect(parsed?.result).toEqual({ multiline: true })
+  })
+})
+
+describe("MCP http: balasan yang tak menjawab request", () => {
+  test("server membalas id lain → error, bukan sukses dengan result undefined", async () => {
+    const url = serve(
+      () =>
+        new Response(JSON.stringify({ jsonrpc: "2.0", id: 4242, result: { bukan: "punyamu" } }), {
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    const t = mk(url)
+    await t.connect()
+    await expect(t.request("ping")).rejects.toThrow(/tidak mengembalikan balasan/)
+  })
+
+  test("server hanya mengirim notifikasi → error", async () => {
+    const url = serve(
+      () =>
+        new Response(JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress" }), {
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    const t = mk(url)
+    await t.connect()
+    await expect(t.request("ping")).rejects.toThrow(/tidak mengembalikan balasan/)
   })
 })

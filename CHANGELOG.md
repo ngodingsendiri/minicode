@@ -1,8 +1,57 @@
 # Changelog
 
-## [Unreleased] — Audit V4 Fase 0–4
+## [Unreleased] — Audit V4 (Fase 0–4) + V5 (eksperimen ekstrem & distribusi)
 
-Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua angka di dokumen itu terverifikasi dengan eksekusi, bukan salinan klaim lama.
+Basis: audit menyeluruh v0.7.0 ([docs/PLAN_V4.md](docs/PLAN_V4.md)) dilanjutkan dengan tiga harness adversarial ([docs/PLAN_V5.md](docs/PLAN_V5.md)). Semua angka terverifikasi dengan eksekusi.
+
+### Security — V5: empat bug ditemukan oleh eksperimen adversarial
+
+Probe lama hanya membuktikan guard menahan serangan **yang sudah dipikirkan**. Tiga harness baru membangkitkan kasus sendiri dan menemukan hal yang terlewat.
+
+- **`experiments/extreme-bash-fuzz.ts`** — mutasi kombinatorial dari transformasi yang shell anggap setara (quote-split, indirection variabel untuk nama perintah maupun argumen, rantai dua tingkat, flag panjang, wrapper perintah, chaining), PRNG ber-`--seed` agar temuan bisa direproduksi. Run pertama: **101 bypass (52 unik)** dari 2.435 varian. Tiga kelas akar:
+
+  | Bypass | Kenapa lolos | Perbaikan |
+  |---|---|---|
+  | `command env`, `nice env`, `exec 'env'`, `time env` | Deteksi env-dump ter-anchor ke awal perintah; wrapper menggeser posisi kata | `stripCommandWrappers()` membuang 14 wrapper (`command`/`exec`/`nice`/`nohup`/`setsid`/`timeout N`/`stdbuf`/`sudo`/…) berulang hingga 4 lapis |
+  | `rm --recursive --force /` | Pola lama hanya mencari `-[a-z]*r` | `RM_RECURSIVE` menerima `--recursive`/`--dir` |
+  | `rm -rf /; :` | Pola target mensyaratkan whitespace/akhir-string; `;` menempel langsung | `RM_DANGEROUS_TARGET` menerima `;`/`&` sebagai pembatas |
+  | `b(){ b\|b& };b` dan varian terpecah variabel | Pola fork bomb literal `:(){ :\|:& };:` | Pola struktural: definisi fungsi apa pun dengan pipe + `&` |
+
+  Setelah perbaikan: **0 bypass** pada 6 seed dan pada run panjang (12.912 varian berbahaya + 2.400 varian sah). Regresi terkunci di `test/bash-fuzz-regression.test.ts` (44 test).
+
+  Catatan: dua "bypass" awal ternyata **palsu** — mutator kosmetik yang berjalan sebelum indirection menyisipkan tab di tengah kata, sehingga payload rusak di shell nyata (`C=find\t/` berarti "assign lalu jalankan `/`"). Harness diperbaiki (mutator dipisah struktural vs kosmetik), bukan guard-nya. Perilaku yang benar didokumentasikan sebagai test.
+
+- **`experiments/extreme-mcp-adversarial.ts`** — server yang sengaja jahat. Menemukan: **balasan untuk request id lain diterima sebagai hasil.** Server yang membalas `{"id": 4242, ...}` terhadap request `id: 1` — atau hanya mengirim notifikasi tanpa `id` — diterima sebagai sukses dan `result: undefined` menjalar ke pemanggil. Jalur SSE sudah mencocokkan id; jalur JSON tidak. `readJsonResponse` kini menerima `expectId`. Diverifikasi juga: heap tidak tumbuh saat server mengirim 512 MB, `Authorization` tidak muncul di pesan error, 13 pola host privat ditolak konsisten dengan `web_fetch`.
+
+- **`experiments/extreme-shadow-git.ts`** — 31 pemeriksaan, 0 gagal. Mengonfirmasi klaim O(delta) dengan pengukuran: snapshot 200/1.000/5.000 file = 282/604/522 ms, manifest **konstan 364 B**. Konkurensi 10 sesi paralel menghasilkan tree identik tanpa index yatim. Nama file unicode/emoji/spasi/120-karakter/diawali-`-` semuanya ter-undo.
+
+### Added — V5
+
+- **MCP client mengonsumsi `resources` & `prompts`.** Sisi server minicode sudah lama menyajikannya; client hanya memakai `tools`. `initialize` kini mendeklarasikan `{ tools, resources, prompts }` (sebelumnya hanya `tools`, sehingga server yang sopan tidak menawarkan sisanya). Tool baru **`mcp_read`** (`resources/read`) dan **`mcp_prompt`** (`prompts/get`); `mcp_list` menampilkan tiga kategori.
+
+  Keduanya **di-gate meski read-only** — menarik konten dari server pihak ketiga langsung ke konteks model adalah jalur prompt-injection, dan "read-only" tidak berarti "aman". `mcp_list` tidak di-gate karena hanya melaporkan metadata server yang user daftarkan sendiri. Discovery bersifat opsional: server yang membalas "Method not found" tetap terhubung. Blob biner tidak ditumpahkan sebagai base64.
+
+- **`scripts/pack-check.ts`** — gate distribusi. Menelusuri graf import dari `bin` (98 modul), memverifikasi setiap target ikut terkemas, memeriksa vendor lengkap untuk 12 spesifier, dan menolak 14 pola berkas rahasia/sampah. Field `files` mudah tertinggal, dan kegagalannya hanya muncul setelah publish.
+
+- **Perintah eksperimen**: `bun run extreme`, `extreme:fuzz`, `extreme:git`, `extreme:mcp`, `gate:pack`. CI naik dari 14 ke 18 langkah.
+
+### Changed — V5: distribusi npm
+
+- **Tarball npm sebelumnya gagal dipasang.** Dependency `minicore: file:./vendor/minicore` di-resolve relatif terhadap cache Bun, bukan terhadap paket terpasang: `Could not find package.json for "file:../../../../../.bun/install/cache/.../vendor/minicore"`. `bun install` lokal hijau, jadi masalah ini tak terlihat sampai tarball benar-benar diuji.
+
+  Diganti **subpath imports** (`package.json` `imports`), fitur yang justru dirancang untuk ini. 73 import site di 51 file dimigrasikan dari `minicore` ke `#minicore`; `dependencies` kini kosong. Terverifikasi end-to-end: `npm pack` → `bun install <tarball>` di proyek bersih → `minicode --help`, `pricing status`, `auth list` berjalan lewat `node_modules/.bin/minicode`. Tarball 222 KB, 124 file, 697 KB unpacked.
+
+- **`package.json`** dilengkapi `files`, `keywords`, `repository`, `homepage`, `bugs` untuk kesiapan publish.
+
+### Fixed — V5: dua bug dari migrasi itu sendiri
+
+Penggantian teks massal menghasilkan dua kesalahan yang **lolos typecheck**:
+
+- **Nama direktori ikut terganti.** `resolve(repoRoot, "..", "minicore")` menjadi `"..", "#minicore"`, sehingga `vendor:check` melapor "vendor kosong" padahal ada 20 file. `#` hanya bermakna untuk spesifier import, bukan path filesystem.
+- **Karakter non-ASCII rusak.** File yang ditulis ulang lewat pipeline PowerShell tanpa encoding eksplisit mengubah `—`, `…`, `─` menjadi U+FFFD di 2 file (9 dan 2 kemunculan), memecahkan satu assertion test. Dipulihkan dari `git show HEAD:<file>` lalu perubahan yang dimaksud diterapkan ulang.
+- Sekalian ditemukan: `tsconfig.json` punya BOM, yang membuat `JSON.parse` gagal dengan "Unrecognized token".
+
+`test/import-convention.test.ts` menjaga ketiganya plus konsistensi `package.json`/`tsconfig.json`.
 
 ### Added — Fase 4
 
@@ -104,7 +153,12 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 - `test/shadow-git.test.ts` — 22 test: index/HEAD user utuh, ref tak tampil di `git log`/`branch`, tahan `gc --prune=now`, line ending preserved (regresi `core.autocrlf`), `sessionId` ilegal (regresi path index Windows), `.gitignore` dihormati saat snapshot **dan** restore, undo/redo lintas tree, 250 file tanpa cap, manifest tetap kecil untuk file besar.
 - `test/mcp-http.test.ts` — 28 test terhadap **server HTTP nyata** (`Bun.serve`), bukan mock fetch, karena yang rawan justru perilaku di atas kabel: event SSE terpotong tepat di tengah payload JSON, pemisah CRLF, event non-JSON di antara balasan, notifikasi sebelum balasan, aliran berakhir tanpa balasan (harus error bukan hang), sesi & protocol header, redirect ditolak, host privat ditolak, body cap.
 - `test/phase4-auth-git-pricing.test.ts` — 49 test: device flow terhadap **server OAuth lokal** (pending, slow_down dengan kenaikan interval, access_denied, expired_token, clamp interval, balasan HTML dari captive portal, abort di tengah polling), `git_commit` (shell-injection lewat pesan, flag-injection lewat nama file, jail path & cwd, commit kosong, permission per mode), dan pricing (median antar-provider, entri $0 diabaikan, anti-substring, cache hanya field biaya).
-- `experiments/bash-bypass-probe.ts` — harness pengukuran postur denylist yang outputnya dipakai di dokumentasi. Exit 0 hanya bila 0 bypass **dan** 0 over-block, jadi bisa dijadikan gate CI (`bun run gate:bash`).
+- `test/bash-fuzz-regression.test.ts` — 44 test yang mengunci temuan fuzz: 14 wrapper perintah tak boleh menyembunyikan payload, `rm` long-option, chaining tanpa whitespace, varian fork bomb, dan batas normalisasi yang jujur (payload yang memang rusak tidak diklaim berbahaya).
+- `test/mcp-resources-prompts.test.ts` — 19 test terhadap server MCP HTTP nyata: discovery `resources`/`prompts`, server tools-only tetap terhubung, kapabilitas `initialize`, blob biner tak ditumpahkan, dan izin gated untuk `mcp_read`/`mcp_prompt`.
+- `test/import-convention.test.ts` — 9 test: tak ada spesifier `minicore` lama tertinggal, `package.json`/`tsconfig.json` sejalan, nama direktori vendor tanpa `#`, `vendor:check` hijau, tak ada U+FFFD, tak ada BOM di konfigurasi.
+- `experiments/bash-bypass-probe.ts` — korpus manual (38 serangan + 15 perintah sah). Exit 0 hanya bila 0 bypass **dan** 0 over-block (`bun run gate:bash`).
+- `experiments/extreme-bash-fuzz.ts` · `extreme-shadow-git.ts` · `extreme-mcp-adversarial.ts` — harness adversarial yang menemukan empat bug di atas (`bun run extreme`).
+- `scripts/pack-check.ts` — 22 pemeriksaan tarball npm (`bun run gate:pack`).
 
 ## [0.7.0] - 2026-08-29
 

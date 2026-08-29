@@ -1,4 +1,4 @@
-import type { EventBus } from "minicore/core/index.ts"
+import type { EventBus } from "#minicore/core/index.ts"
 import { registerStatusLine } from "./statusline.ts"
 
 // Turn status line — satu baris di stderr: `·· model` (dots + label saja).

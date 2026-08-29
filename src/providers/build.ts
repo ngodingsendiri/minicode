@@ -1,5 +1,5 @@
-import type { ModelProvider } from "minicore/core/provider.ts"
-import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import type { ModelProvider } from "#minicore/core/provider.ts"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import type { MinicodeConfig } from "../config.ts"
 import { createAnthropicProvider } from "./anthropic.ts"
 import { getValidAccessToken } from "./oauth.ts"

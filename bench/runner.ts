@@ -2,7 +2,7 @@
 // steps, token, durasi. `--fake` untuk smoke tanpa API key (dipakai CI).
 // `--runs <n>`: jumlah run per task (default 1; 2 = stabil/median).
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import type { ModelProvider } from "minicore"
+import type { ModelProvider } from "#minicore"
 import { loadConfig } from "../src/config.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { buildProviderList } from "../src/providers/build.ts"

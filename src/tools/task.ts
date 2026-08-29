@@ -1,5 +1,5 @@
-import type { Tool } from "minicore"
-import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import type { Tool } from "#minicore"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { Pool } from "../agents/pool.ts"
 import { loadConfig } from "../config.ts"
 import { LIMITS } from "../constants.ts"
@@ -97,7 +97,6 @@ export const delegateTaskTool: Tool = {
             ].includes(t.name),
           )
         : base
-
     return await pool.run(async () => {
       ctx.signal.throwIfAborted()
       let provider: Awaited<ReturnType<typeof getProvider>>

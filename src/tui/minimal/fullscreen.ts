@@ -1,6 +1,6 @@
 // Fullscreen minimal — alternate-screen REPL tanpa Ink/React, pure ANSI
 // Header 1 baris · transcript ring 200 · status dots · input + dropdown · footer
-import type { EventBus } from "minicore/core/index.ts"
+import type { EventBus } from "#minicore/core/index.ts"
 import { applyKey, decodeKeys, type PromptState } from "../../../cli/prompt-engine.ts"
 import { renderDiffCard } from "../diff.ts"
 import { decorateMarkdown } from "../markdown.ts"

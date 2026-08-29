@@ -1,8 +1,8 @@
-import type { CompactionStrategy } from "minicore/core/compact.ts"
-import { mechanicalCompaction } from "minicore/core/compact.ts"
-import type { ContextStore } from "minicore/core/history.ts"
-import type { ModelProvider } from "minicore/core/provider.ts"
-import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
+import type { CompactionStrategy } from "#minicore/core/compact.ts"
+import { mechanicalCompaction } from "#minicore/core/compact.ts"
+import type { ContextStore } from "#minicore/core/history.ts"
+import type { ModelProvider } from "#minicore/core/provider.ts"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { LIMITS } from "../constants.ts"
 
 export interface LlmCompactionOptions {
@@ -24,14 +24,14 @@ export function createLlmCompaction(opts: LlmCompactionOptions = {}): Compaction
     compact(
       store: ContextStore,
       cOpts: { keepRecentTurns: number },
-    ): readonly import("minicore/core/types.ts").Message[] {
+    ): readonly import("#minicore/core/types.ts").Message[] {
       return fallback.compact(store, cOpts)
     },
     async compactAsync(
       store: ContextStore,
       cOpts: { keepRecentTurns: number },
       signal: AbortSignal,
-    ): Promise<readonly import("minicore/core/types.ts").Message[]> {
+    ): Promise<readonly import("#minicore/core/types.ts").Message[]> {
       // cap 15s — jangan biarkan LLM summary memblokir loop terlalu lama;
       // kalau gagal/timeout, loop otomatis fallback ke compact() sinkron.
       const ac = new AbortController()
@@ -64,7 +64,7 @@ export function createLlmCompaction(opts: LlmCompactionOptions = {}): Compaction
 
 // shared kept calculation — mirrors mechanicalCompaction logic, single source for both sync/async
 function getKeptCount(
-  messages: readonly import("minicore/core/types.ts").Message[],
+  messages: readonly import("#minicore/core/types.ts").Message[],
   keepRecentTurns: number,
 ): number {
   let kept = 0,
@@ -103,7 +103,7 @@ export async function compactWithLlm(
   },
   signal?: AbortSignal,
   noFallback = false,
-): Promise<readonly import("minicore/core/types.ts").Message[]> {
+): Promise<readonly import("#minicore/core/types.ts").Message[]> {
   const keep = opts.keepRecentTurns
   const messages = store.messages
   const kept = getKeptCount(messages, keep)
@@ -128,10 +128,10 @@ export async function compactWithLlm(
   // use safe head like mechanical: content truncated, tool results included
   // seperlunya — hasil tool SUKSES adalah sumber fakta (isi file, output
   // grep/bash, verifikasi). Do not buang: head 300 chars per hasil.
-  const { contentToText } = await import("minicore/core/tokens.ts")
+  const { contentToText } = await import("#minicore/core/tokens.ts")
   const head = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n)}…`)
   // Tuned 250/300 for 30% cost save vs 400/300 — still factual
-  const lineFor = (m: import("minicore/core/types.ts").Message): string => {
+  const lineFor = (m: import("#minicore/core/types.ts").Message): string => {
     if (m.role === "user") return `- user: ${head(contentToText(m.content), 250)}`
     if (m.role === "assistant") {
       const calls = (m.toolCalls ?? [])

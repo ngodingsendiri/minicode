@@ -1,4 +1,4 @@
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import type { MinicodeConfig } from "../config.ts"
 import { configureServers as lspConfigure } from "../lsp/client.ts"
 import { connectAll as mcpConnectAll } from "../mcp/client.ts"

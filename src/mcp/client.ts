@@ -1,4 +1,4 @@
-import type { Tool, ToolContext } from "minicore"
+import type { Tool, ToolContext } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 import { McpHttpTransport, type McpTransportLike } from "./http-transport.ts"
@@ -22,6 +22,21 @@ interface McpToolDef {
   inputSchema?: Record<string, unknown>
 }
 
+/** Resource yang di-expose server (spec: `resources/list`). */
+export interface McpResourceDef {
+  uri: string
+  name?: string
+  description?: string
+  mimeType?: string
+}
+
+/** Prompt template yang di-expose server (spec: `prompts/list`). */
+export interface McpPromptDef {
+  name: string
+  description?: string
+  arguments?: { name: string; description?: string; required?: boolean }[]
+}
+
 const activeConnections = new Map<string, McpConnection>()
 
 class McpConnection {
@@ -30,6 +45,8 @@ class McpConnection {
   private readonly stdio: McpTransport | null
   transport: McpTransportLike
   tools: McpToolDef[] = []
+  resources: McpResourceDef[] = []
+  prompts: McpPromptDef[] = []
   ready = false
 
   constructor(public config: McpServerConfig) {
@@ -87,7 +104,11 @@ class McpConnection {
         "initialize",
         {
           protocolVersion: "2025-06-18",
-          capabilities: { tools: {} },
+          // Deklarasikan seluruh kapabilitas yang kita KONSUMSI. Server memakai
+          // ini untuk memutuskan apa yang layak diiklankan; sebelumnya kita
+          // hanya menyebut `tools` sehingga server yang sopan tidak menawarkan
+          // resources/prompts sama sekali.
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           clientInfo: { name: "minicode", version: "0.1.0" },
         },
         LIMITS.MCP_HANDSHAKE_TIMEOUT_MS,
@@ -100,7 +121,76 @@ class McpConnection {
 
     const result = (await this.transport.request("tools/list", {})) as Record<string, unknown>
     if (result && Array.isArray(result.tools)) this.tools = result.tools as McpToolDef[]
+
+    // Resources & prompts bersifat OPSIONAL di spec: banyak server tidak
+    // mengimplementasikannya dan membalas "method not found". Kegagalan di sini
+    // tidak boleh membatalkan koneksi yang tool-nya sudah berhasil dimuat.
+    this.resources = await this.listSafely<McpResourceDef>("resources/list", "resources")
+    this.prompts = await this.listSafely<McpPromptDef>("prompts/list", "prompts")
+
     this.ready = true
+  }
+
+  private async listSafely<T>(method: string, key: string): Promise<T[]> {
+    try {
+      const res = (await this.transport.request(method, {}, LIMITS.MCP_HANDSHAKE_TIMEOUT_MS)) as
+        | Record<string, unknown>
+        | undefined
+      const arr = res?.[key]
+      return Array.isArray(arr) ? (arr as T[]) : []
+    } catch {
+      return []
+    }
+  }
+
+  /** Baca satu resource. Return teks gabungan dari semua `contents`. */
+  async readResource(uri: string): Promise<string> {
+    const res = (await this.transport.request("resources/read", { uri })) as
+      | { contents?: unknown[] }
+      | undefined
+    const contents = Array.isArray(res?.contents) ? res.contents : []
+    if (contents.length === 0) return ""
+    const parts: string[] = []
+    for (const c of contents) {
+      const item = c as { text?: unknown; blob?: unknown; uri?: unknown; mimeType?: unknown }
+      if (typeof item.text === "string") {
+        parts.push(item.text)
+      } else if (typeof item.blob === "string") {
+        // Blob base64: jangan tumpahkan ribuan karakter base64 ke konteks model.
+        parts.push(
+          `[binary ${String(item.mimeType ?? "application/octet-stream")}, ${item.blob.length} char base64 — dilewati]`,
+        )
+      }
+    }
+    return parts.join("\n")
+  }
+
+  /** Ambil prompt template yang sudah di-render server. */
+  async getPrompt(name: string, args: Record<string, unknown>): Promise<string> {
+    const res = (await this.transport.request("prompts/get", {
+      name,
+      arguments: args,
+    })) as { messages?: unknown[]; description?: string } | undefined
+    const msgs = Array.isArray(res?.messages) ? res.messages : []
+    const lines: string[] = []
+    if (res?.description) lines.push(`# ${res.description}`)
+    for (const m of msgs) {
+      const msg = m as { role?: unknown; content?: unknown }
+      const role = typeof msg.role === "string" ? msg.role : "user"
+      // content bisa objek tunggal {type,text} atau array blok
+      const blocks = Array.isArray(msg.content) ? msg.content : [msg.content]
+      const text = blocks
+        .map((b) => {
+          const blk = b as { type?: unknown; text?: unknown }
+          if (typeof blk?.text === "string") return blk.text
+          if (typeof b === "string") return b
+          return ""
+        })
+        .filter(Boolean)
+        .join("\n")
+      if (text) lines.push(`[${role}] ${text}`)
+    }
+    return lines.join("\n")
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -171,7 +261,15 @@ export async function connectAll(configs: McpServerConfig[]): Promise<Tool[]> {
       const tools = conn.wrapTools(cfg.id)
       allTools.push(...tools)
       activeConnections.set(cfg.id, conn)
-      process.stderr.write(`[mcp] ${cfg.id} connected via ${conn.kind} (${tools.length} tools)\n`)
+      const extra = [
+        conn.resources.length ? `${conn.resources.length} resources` : "",
+        conn.prompts.length ? `${conn.prompts.length} prompts` : "",
+      ]
+        .filter(Boolean)
+        .join(", ")
+      process.stderr.write(
+        `[mcp] ${cfg.id} connected via ${conn.kind} (${tools.length} tools${extra ? `, ${extra}` : ""})\n`,
+      )
     } catch (e) {
       process.stderr.write(`[mcp] ${cfg.id} failed: ${(e as Error).message}\n`)
     }
@@ -194,6 +292,51 @@ export async function listMcpTools(serverId: string): Promise<McpToolDef[]> {
   const conn = activeConnections.get(serverId)
   if (!conn) throw new Error(`MCP server ${serverId} not connected`)
   return conn.tools
+}
+
+export function listMcpResources(serverId: string): McpResourceDef[] {
+  const conn = activeConnections.get(serverId)
+  if (!conn) throw new Error(`MCP server ${serverId} not connected`)
+  return conn.resources
+}
+
+export function listMcpPrompts(serverId: string): McpPromptDef[] {
+  const conn = activeConnections.get(serverId)
+  if (!conn) throw new Error(`MCP server ${serverId} not connected`)
+  return conn.prompts
+}
+
+export async function readMcpResource(serverId: string, uri: string): Promise<string> {
+  const conn = activeConnections.get(serverId)
+  if (!conn) throw new Error(`MCP server ${serverId} not connected`)
+  return conn.readResource(uri)
+}
+
+export async function getMcpPrompt(
+  serverId: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const conn = activeConnections.get(serverId)
+  if (!conn) throw new Error(`MCP server ${serverId} not connected`)
+  return conn.getPrompt(name, args)
+}
+
+/** Ringkasan seluruh kapabilitas server terhubung (dipakai `mcp_list`). */
+export function mcpInventory(): {
+  id: string
+  kind: "http" | "stdio"
+  tools: McpToolDef[]
+  resources: McpResourceDef[]
+  prompts: McpPromptDef[]
+}[] {
+  return [...activeConnections.entries()].map(([id, c]) => ({
+    id,
+    kind: c.kind,
+    tools: c.tools,
+    resources: c.resources,
+    prompts: c.prompts,
+  }))
 }
 
 export async function closeAll(): Promise<void> {

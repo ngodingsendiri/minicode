@@ -248,11 +248,24 @@ minicode config mcp add ctx7 --url https://mcp.example.com/mcp --header "authori
 minicode config mcp add lokal --url http://127.0.0.1:3000/mcp --allow-private
 ```
 
-Setelah terdaftar, `mcp_list`/`mcp_call` tersedia dan tool dinamis `serverId.toolName` otomatis muncul.
+Setelah terdaftar, `mcp_list` menampilkan **tools, resources, dan prompts** sekaligus, dan tersedia empat tool:
 
-**Keamanan transport HTTP:** host privat **ditolak** kecuali `--allow-private` — server MCP yang menunjuk `169.254.169.254` atau `localhost` adalah jalur SSRF, dan penjaganya sama dengan `web_fetch` (DNS pinning). Redirect tidak diikuti. Ukuran balasan dibatasi agar server nakal tak bisa memicu OOM. Header `Authorization` diteruskan tapi tidak pernah masuk log.
+| Tool | Spec | Catatan |
+|---|---|---|
+| `mcp_list` | `tools/list` + `resources/list` + `prompts/list` | read-only, tidak di-gate |
+| `mcp_call` | `tools/call` | di-gate |
+| `mcp_read` | `resources/read` | di-gate — lihat alasan di bawah |
+| `mcp_prompt` | `prompts/get` (server merender argumen) | di-gate |
+
+Tool dinamis `serverId.toolName` juga otomatis muncul.
+
+`resources` dan `prompts` bersifat **opsional di spec**: server yang membalas "Method not found" (mayoritas ekosistem) tetap terhubung dengan tool-nya utuh. Blob biner dari `resources/read` tidak ditumpahkan sebagai base64 — diganti penanda ukuran, karena 2.000 karakter base64 memakan konteks tanpa memberi informasi.
+
+**Keamanan transport HTTP:** host privat **ditolak** kecuali `--allow-private` — server MCP yang menunjuk `169.254.169.254` atau `localhost` adalah jalur SSRF, dan penjaganya sama dengan `web_fetch` (DNS pinning). Redirect tidak diikuti. Ukuran balasan dibatasi. Balasan dicocokkan per request id, jadi server yang membalas id lain tidak diterima sebagai hasil. Header `Authorization` diteruskan tapi tidak pernah masuk log.
 
 **Catatan izin:** semua tool MCP bertitik **selalu di-gate** — mode `auto` meminta konfirmasi sekali per tool (jawab `[a] Always` untuk persist ke allowlist); mode `readonly`/`plan`/`allowlist` menolaknya. Server terdaftar tidak mendapat wildcard auto-allow (proteksi supply-chain).
+
+`mcp_read` dan `mcp_prompt` di-gate **meski read-only**: keduanya menarik konten dari server pihak ketiga langsung ke konteks model, yang merupakan jalur prompt-injection. "Read-only" tidak berarti "aman". `mcp_list` tidak di-gate karena hanya melaporkan metadata server yang Anda daftarkan sendiri.
 
 **LSP:** `minicode config lsp add` untuk daftarkan language server. Setelah terdaftar: `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover`, `lsp_symbols`, `lsp_workspace_symbols`. LSP diagnostics juga otomatis di tool `edit`/`write_file` bila server terkonfigurasi.
 
@@ -300,12 +313,23 @@ Docker **tidak** dipakai otomatis meski tersedia — menarik image dan menjalank
 
 ### Mengukur, bukan mengklaim
 
+Dua lapis, keduanya bisa Anda jalankan sendiri:
+
 ```bash
-bun experiments/bash-bypass-probe.ts                  # mode auto
-bun experiments/bash-bypass-probe.ts --mode allowlist
+bun run gate:bash            # korpus manual: 38 pola serangan + 15 perintah sah
+bun run extreme:fuzz         # mutasi kombinatorial ber-seed (~13.000 varian)
+bun experiments/extreme-bash-fuzz.ts --seed 999 --rounds 3   # reproduksi spesifik
 ```
 
-38 pola serangan + 15 perintah sah (guard anti-over-block). Exit 0 hanya bila **0 bypass dan 0 over-block**. Angka saat ini: 0/38 bypass di kedua mode.
+Probe manual menguji serangan yang sudah dipikirkan. Fuzz membangkitkan varian sendiri dari transformasi yang shell anggap setara — quote-split, indirection variabel (nama perintah maupun argumen), rantai dua tingkat, flag panjang, wrapper perintah, chaining — dan **menemukan 3 kelas bypass yang korpus manual lewatkan**:
+
+| Yang lolos | Kenapa |
+|---|---|
+| `command env`, `nice env`, `exec 'env'` | Deteksi env-dump ter-anchor ke awal perintah; wrapper menggeser posisi kata |
+| `rm --recursive --force /` | Pola lama hanya mencari `-[a-z]*r` |
+| `rm -rf /; :` | Pola target mensyaratkan whitespace; `;` menempel langsung |
+
+Semuanya kini tertutup (`stripCommandWrappers` membuang 14 wrapper hingga 4 lapis) dan terkunci sebagai regresi. Exit 0 hanya bila **0 bypass dan 0 over-block** di kedua lapis.
 
 > **Batas yang tetap jujur.** bash-guard adalah analisis statis atas bahasa Turing-complete. Command substitution dinamis (`$(curl ...)`), aritmetika shell, dan indirection berlapis tidak bisa diselesaikan tanpa mengeksekusi. Guard menaikkan biaya serangan; **sandbox OS/container yang memberi isolasi**. Untuk task benar-benar tak terpercaya, jalankan di Linux/macOS (bwrap/seatbelt otomatis) atau `--sandbox docker`.
 
@@ -381,12 +405,25 @@ bun test               # offline/hermetic; live & docker di-skip otomatis
 bun x tsc --noEmit     # tsc strict, mencakup src cli test bench scripts
 bun run lint           # biome check
 bun run gate:coverage  # gate coverage agregat (baris "All files")
+bun run gate:bash      # korpus serangan bash
+bun run gate:pack      # gate tarball npm (graf import, rahasia, ukuran)
 bun run vendor:check   # vendor/minicore sinkron dengan ../minicore
+bun run extreme        # tiga harness adversarial (fuzz + stress + server jahat)
 bun run bench:smoke    # fake tasks, CI-safe
 bun run bench --runs 2 # median 2 runs
 minicode exec "prompt" --json       # headless CI (JSONL + summary di stdout)
 MINICODE_GREP_ENGINE=js bun test test/phase1-tools.test.ts   # jalur grep fallback
 MINICODE_LIVE=1 bun run test:live   # live E2E (butuh provider + API key)
+```
+
+Eksperimen adversarial terpisah:
+
+```bash
+bun run extreme:fuzz                                   # fuzz bash-guard
+bun experiments/extreme-bash-fuzz.ts --seed 42 --rounds 5
+bun run extreme:git                                    # stress shadow-git
+bun experiments/extreme-shadow-git.ts --files 5000 --sessions 10
+bun run extreme:mcp                                    # server MCP jahat
 ```
 
 Semua test hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan berulang tanpa jaringan. Jumlah test tidak dicantumkan di sini — jalankan `bun test` untuk angka terkini.

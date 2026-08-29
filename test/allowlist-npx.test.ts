@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { ToolCall } from "minicore"
+import type { ToolCall } from "#minicore"
 import { createPermissionHandler } from "../src/policy/permission.ts"
 
 function bash(cmd: string): ToolCall {

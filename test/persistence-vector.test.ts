@@ -205,8 +205,8 @@ test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", a
   expect(toolMsg.name).toBe("read_file")
   expect(toolMsg.content).toBe("a-content")
   // seed ke kernel (minicore createSession) — history penuh tersedia
-  const { createSession } = await import("minicore/core/index.ts")
-  const { FakeProvider, allowAll, text, finish } = await import("minicore/test/fakes.ts")
+  const { createSession } = await import("#minicore/core/index.ts")
+  const { FakeProvider, allowAll, text, finish } = await import("#minicore/test/fakes.ts")
   const p = new FakeProvider([{ events: [text("ok"), finish("stop")] }])
   const s = createSession({
     provider: p,

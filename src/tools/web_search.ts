@@ -1,4 +1,4 @@
-import type { Tool } from "minicore"
+import type { Tool } from "#minicore"
 import { scrubSecrets } from "../policy/scrub.ts"
 import { isPrivateHost } from "./web_fetch.ts"
 
