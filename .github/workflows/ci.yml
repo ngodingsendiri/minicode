@@ -14,9 +14,11 @@ jobs:
         with:
           path: minicode
 
-      # minicore = file:../minicore — DEPENDENSI. Harus ada sebagai sibling
-      # folder minicode/ supaya `bun install` resolvable.
+      # minicore di-vendor ke minicode/vendor/minicore (lihat scripts/vendor-minicore.ts),
+      # jadi `bun install` TIDAK lagi butuh sibling. Checkout ini hanya untuk
+      # memverifikasi vendor masih sinkron dengan sumbernya + menjalankan test kernel.
       - uses: actions/checkout@v4
+        continue-on-error: true
         with:
           repository: ngodingsendiri/minicore
           path: minicore
@@ -29,13 +31,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: minicode/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('minicode/bun.lock', 'minicore/bun.lock') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('minicode/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
 
       - name: Install dependencies
         working-directory: minicode
         run: bun install
+
+      # Gate distribusi: vendor tidak boleh tertinggal dari ../minicore.
+      # Bila checkout minicore gagal (repo privat), script lolos dengan pesan.
+      - name: Vendor sync check
+        working-directory: minicode
+        run: bun run vendor:check
 
       - name: Typecheck
         working-directory: minicode
@@ -45,13 +53,23 @@ jobs:
         working-directory: minicode
         run: bun run lint
 
-      - name: Test with coverage (threshold 80)
-        working-directory: minicode
-        run: bun test --coverage
-
       - name: Test
         working-directory: minicode
         run: bun test
+
+      # Gate agregat nyata. `bun test --coverage` sendirian selalu lulus —
+      # threshold Bun dievaluasi per-file sehingga tak bisa dipakai sebagai gate.
+      - name: Coverage gate (aggregate)
+        working-directory: minicode
+        run: bun run gate:coverage
+
+      # grep punya dua jalur (ripgrep + fallback walker). CI runner punya rg,
+      # jadi jalur fallback juga diuji eksplisit agar tak diam-diam rusak.
+      - name: Test with JS grep engine (fallback path)
+        working-directory: minicode
+        env:
+          MINICODE_GREP_ENGINE: js
+        run: bun test test/phase1-tools.test.ts test/tools.test.ts
 
       - name: Test with docker sandbox (experimental)
         working-directory: minicode
@@ -67,6 +85,7 @@ jobs:
         working-directory: minicode
         run: bun run gate:telemetry
 
-      - name: Typecheck minicore
+      - name: Test minicore
         working-directory: minicore
+        continue-on-error: true
         run: bun test

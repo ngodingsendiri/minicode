@@ -70,7 +70,7 @@ if (args.includes("-h") || args.includes("--help")) {
         usage: [
           "minicode",
           'minicode "prompt" [options]',
-          "minicode exec \"prompt\" [--json]",
+          'minicode exec "prompt" [--json]',
           "minicode providers|models|sync|config|mcp|skills|sessions",
         ],
         options: [
@@ -282,9 +282,14 @@ if (enterRepl) {
     rl.close()
     if (ans.trim().toLowerCase() === "y") {
       const { spawn } = await import("node:child_process")
+      const entry = process.argv[1]
+      if (!entry) {
+        process.stderr.write("[plan] cannot re-exec: argv[1] missing\n")
+        process.exit(1)
+      }
       const filtered = args.filter((a) => a !== "--plan")
-      const child = spawn(process.execPath, [process.argv[1], ...filtered], { stdio: "inherit" })
-      child.on("exit", (code) => process.exit(code ?? 0))
+      const child = spawn(process.execPath, [entry, ...filtered], { stdio: "inherit" })
+      child.on("exit", (code: number | null) => process.exit(code ?? 0))
       process.stdin.resume()
     } else {
       process.exit(0)

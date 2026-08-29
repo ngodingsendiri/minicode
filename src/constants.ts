@@ -3,9 +3,16 @@ export const LIMITS = {
   /** File size limits */
   READ_FILE_MAX_BYTES: 2_000_000,
   WRITE_FILE_MAX_CHARS: 5_000_000,
+  /** read_file paging — file besar dibaca per rentang baris, bukan sekaligus */
+  READ_FILE_DEFAULT_LINE_LIMIT: 2_000,
+  READ_FILE_MAX_LINE_LIMIT: 5_000,
+  READ_FILE_MAX_LINE_CHARS: 2_000,
   /** Tool output truncation */
   BASH_OUTPUT_MAX_CHARS: 20_000,
   BASH_DEFAULT_TIMEOUT_MS: 30_000,
+  /** bash background: proses hidup melewati batas turn, dipanggil via bash_output */
+  BASH_BACKGROUND_MAX_JOBS: 8,
+  BASH_BACKGROUND_MAX_LIFETIME_MS: 3_600_000,
   DOCKER_OUTPUT_MAX_CHARS: 100_000,
   MCP_OUTPUT_MAX_CHARS: 100_000,
   MCP_REQUEST_TIMEOUT_MS: 30_000,
@@ -47,6 +54,13 @@ export const LIMITS = {
   /** Glob/grep */
   SEARCH_DEFAULT_LIMIT: 100,
   SEARCH_MAX_LIMIT: 500,
+  /** grep: ripgrep dipakai bila ada di PATH; fallback walker JS */
+  GREP_RIPGREP_TIMEOUT_MS: 15_000,
+  GREP_MATCH_MAX_CHARS: 300,
+  GREP_FILE_MAX_BYTES: 1_000_000,
+  /** todo list per sesi */
+  TODO_MAX_ITEMS: 50,
+  TODO_CONTENT_MAX_CHARS: 200,
   /** SQLite */
   SQLITE_BUSY_TIMEOUT_MS: 3_000,
   SQLITE_WAL_SIZE_LIMIT_BYTES: 33_554_432,

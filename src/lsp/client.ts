@@ -121,8 +121,10 @@ class LspConnection {
   ): Promise<unknown> {
     const id = ++this.seq
     const msg = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id, method, params }), "utf8")
-    this.proc?.stdin!.write(`Content-Length: ${msg.length}\r\n\r\n`)
-    this.proc?.stdin!.write(msg)
+    const stdin = this.proc?.stdin
+    if (!stdin) throw new Error(`LSP ${method}: server stdin unavailable`)
+    stdin.write(`Content-Length: ${msg.length}\r\n\r\n`)
+    stdin.write(msg)
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)

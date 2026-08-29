@@ -7,7 +7,9 @@ git clone https://github.com/ngodingsendiri/minicode && cd minicode
 bun install && bun link
 ```
 
-**Prasyarat:** `bun >= 1.0`. Setup wizard otomatis saat pertama `minicode`.
+**Prasyarat:** `bun >= 1.0`. Tidak perlu clone repo lain — kernel MiniCore di-vendor ke `vendor/minicore`. Setup wizard otomatis saat pertama `minicode`.
+
+Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker internal dipakai dengan hasil identik.
 
 ## Mode CLI
 
@@ -16,6 +18,7 @@ bun install && bun link
 | `minicode` | Mode interaktif (REPL) + wizard bila belum ada provider |
 | `minicode "prompt"` | Sekali jalan (headless) |
 | `echo "prompt" \| minicode` | Via pipe |
+| `minicode exec "prompt" [--json]` | Headless CI — event JSONL + baris `{"type":"summary"}` di stdout |
 | `minicode --tui "prompt"` | TUI minimal alternate-screen pure ANSI (tanpa Ink) |
 | `minicode --provider <id> "prompt"` | Paksa provider agnostik tanpa ubah config (atau `provider::model`) |
 | `minicode config add --baseUrl <url> --apiKey <key>` | Tambah provider LLM |
@@ -31,17 +34,20 @@ bun install && bun link
 |---|---|
 | `--verify` | Auto-verify + self-heal (detect: typecheck → test → tsconfig) |
 | `--sandbox docker` | Eksekusi bash dalam container ephemeral (`--network none`) |
+| `--sandbox os` | Sandbox OS-native: bubblewrap (Linux) / seatbelt (macOS). Tidak tersedia di Windows |
 | `--ratelimit <rpm>` | Batas request LLM per menit (token bucket) |
 | `--budget <usd>` | Batas biaya sesi; warn 80%, exit/break bila lewat |
 | `--plan` | Read-only plan mode (tidak bisa edit file / bash) |
 | `--allowlist` | Bash hanya perintah aman (git/bun test/bun run/npm run) |
 | `--ask` | Tanya persetujuan setiap tool |
-| `--allow-all` | Nonaktifkan semua sandbox |
+| `--allow-all` | Nonaktifkan semua sandbox (path jail tetap aktif) |
 | `--model <name>` | Override model LLM (atau `providerId::model` paksa provider) |
 | `--provider <id>` | Paksa provider id agnostik (tanpa ubah config; filter single) |
 | `--resume <id>` | Lanjutkan sesi sebelumnya (full history, bukan teks dump) |
 | `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
 | `--interactive` | Paksa mode REPL |
+
+Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `allowlist`) dan benar-benar mengubah keputusan permission, bukan cuma label header.
 
 ## Environment Variables
 
@@ -49,9 +55,10 @@ bun install && bun link
 |---|---|
 | `MINICODE_VERIFY_CMD` | Custom verify command (ganti `detectVerifyCommand`) |
 | `MINICODE_BASH_ALLOWLIST` | Kustom allowlist bash (koma-pisah, ganti DEFAULT) |
-| `MINICODE_SANDBOX` | Sandbox mode: `docker` |
+| `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
+| `MINICODE_GREP_ENGINE` | `js` → paksa walker internal, jangan pakai ripgrep |
 | `MINICODE_TIMEOUT_MS` | Default timeout (ms) bila `--timeout` tidak diset; `0` = Infinity |
 | `MINICODE_REPOMAP` | `regex` → paksa repo-map regex (skip LSP) |
 | `MINICODE_PLAN` | `1` → mode plan (tanpa `--plan`) |
@@ -113,6 +120,52 @@ Review this diff: {{args}}
 
 Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
+## Tool Penting
+
+### `read_file` — paging bernomor
+
+Output selalu diberi nomor baris (`12: const x = 1`) supaya rujukan ke `edit`/`apply_patch` akurat.
+
+```
+read_file({ path: "src/big.ts" })                    # 2000 baris pertama
+read_file({ path: "src/big.ts", offset: 2001 })      # lanjutkan
+read_file({ path: "src/big.ts", offset: 500, limit: 50 })
+```
+
+File di atas `READ_FILE_MAX_BYTES` (2 MB) **hanya** bisa dibaca dengan `offset`/`limit` — tanpa itu tool menolak alih-alih diam-diam memotong konteks yang model kira utuh. Footer memberi `offset` berikutnya bila masih ada sisa.
+
+### `grep` — dua engine, hasil sama
+
+`rg` dipakai bila ada di PATH (`--vimgrep --no-follow`, exclude `.git`/`node_modules`/dotdir), jika tidak walker internal. Keduanya menerapkan jail path dan secret-scrub yang sama, dan diuji memberi hasil identik. Paksa fallback dengan `MINICODE_GREP_ENGINE=js` (dipakai CI untuk menguji jalur itu).
+
+Bila `rg` gagal (regex flavour beda, binary rusak), tool otomatis jatuh ke walker dan mencetak peringatan — bukan gagal total.
+
+### `todo_write` / `todo_read` — rencana per sesi
+
+Untuk task 3+ langkah. Kirim **seluruh daftar** setiap kali, bukan delta. Disimpan di `.minicode/todos/<sessionId>.json`.
+
+```
+todo_write({ todos: [
+  { content: "baca schema", status: "completed" },
+  { content: "tulis migrasi", status: "in_progress" },
+  { content: "jalankan test", status: "pending" }
+]})
+```
+
+Status: `pending` | `in_progress` | `completed` | `cancelled`. Hanya satu `in_progress` yang dipertahankan — sisanya dinormalisasi ke `pending` agar daftar punya satu fokus. Daftar dirender utuh di TUI dan output one-shot.
+
+### `bash` — streaming & background
+
+Foreground memancarkan progres inkremental (`provider:extension` kind `bash-output`), terlihat di `--verbose`. Untuk proses yang hidup melewati satu turn:
+
+```
+bash({ cmd: "bun run dev", background: true })   # → job id bg_xxxxxxxx
+bash_output({ id: "bg_xxxxxxxx" })               # output BARU sejak baca terakhir
+bash_kill({ id: "bg_xxxxxxxx" })                 # SIGTERM lalu SIGKILL
+```
+
+Batas: `BASH_BACKGROUND_MAX_JOBS` job hidup sekaligus; semua job dimatikan saat CLI keluar (tidak ada proses yatim). `background:true` **ditolak** saat `--sandbox` aktif — container/namespace ephemeral mati bersama call-nya, jadi janji isolasi tidak bisa dipenuhi untuk proses berumur panjang.
+
 ## MCP & LSP
 
 **MCP:** `minicode config mcp add` untuk daftarkan server, lalu `mcp_list`/`mcp_call` tersedia. Tool dinamis `serverId.toolName` otomatis terdaftar. **Catatan izin:** semua tool MCP bertitik **selalu di-gate** — mode `auto` akan meminta konfirmasi sekali per tool (jawab `[a] Always` untuk persist ke allowlist); mode `readonly`/`plan`/`allowlist` menolaknya. Server terdaftar tidak mendapat wildcard auto-allow (proteksi supply-chain).
@@ -125,15 +178,17 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 ## Sandbox
 
-- **Default:** regex denylist 27 + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber.
+- **Default:** regex denylist + env-strip (`sanitizeSpawnEnv` — secret tidak diwarisi proses/container) + secret scrubber. **Ini blocklist, bukan sandbox** — lihat peringatan di bawah.
 - **`--sandbox docker`:** bash dieksekusi di container ephemeral (`--network none`, 512m, 1 CPU, `node:22-alpine`). Image ditarik otomatis bila belum ada. Env container juga disanitasi dari hasil merge final.
-- **`--sandbox os` (baru, Codex-like):** tanpa Docker — `seatbelt` macOS / `bubblewrap` Linux (`--unshare-net --cap-drop ALL`). Fallback ke docker bila tersedia, else direct. `src/sandbox/os.ts`.
+- **`--sandbox os` (Codex-like):** tanpa Docker — `seatbelt` macOS / `bubblewrap` Linux (`--unshare-net --cap-drop ALL`). **Tidak tersedia di Windows**; bila tak tersedia, jatuh ke eksekusi langsung dengan peringatan. `src/sandbox/os.ts`.
 - **`--allowlist`:** bash hanya perintah dalam `DEFAULT_BASH_ALLOWLIST` (git, bun test, bun run, npm run, npm exec, npx, echo, ls, cat) atau `MINICODE_BASH_ALLOWLIST`. Untuk `npm exec`/`npx`, arg harus "known-good": tidak boleh ada ekspansi shell (`$`, backtick) atau redirection (`<`, `>`); chaining `;|&` sudah diblokir.
 - **web_fetch / web_search:** redirect manual 5 hop + DNS pinning 30s + body 2MB; `web_search` via Tavily (jika `TAVILY_API_KEY`) else DuckDuckGo. `src/tools/web_search.ts`.
 
+> **Batas nyata mode default.** Denylist regex bisa dilewati, dan ini terukur, bukan teoretis. Yang masih lolos di mode `auto`: indirection variabel (`X=.env; cat $X`), quote-splitting (`cat .e""nv`), interpreter via variabel (`p=python3; $p -c 1`), `node --eval` (`-e` diblok, `--eval` tidak), `env | grep KEY`, exfiltrasi langsung (`curl -d @.env`, `curl -F file=@$HOME/.ssh/id_rsa`), unduh-lalu-jalankan dua tahap, `bash <(curl ...)`, `cat ~/.aws/credentials`, `rm -rf ..`. Untuk pekerjaan tak terpercaya gunakan `--sandbox os` atau `--sandbox docker`, atau `--allowlist`. Path jail (termasuk saat `--allow-all`) dan secret-scrub tetap berlaku di semua mode.
+
 ## Plan Mode
 
-`--plan` → read-only. Agen bisa membaca, mencari, dan merencanakan, tapi tidak bisa menulis file, menjalankan bash, atau memanggil sub-agent. Berguna untuk review dan planning sebelum eksekusi.
+`--plan` → read-only. Agen bisa membaca, mencari, merencanakan (`todo_read` tetap boleh), tapi tidak bisa menulis file, menjalankan bash, `todo_write`, atau memanggil sub-agent. Berguna untuk review dan planning sebelum eksekusi. Di TUI, Shift+Tab bisa memutar ke mode ini saat sesi berjalan.
 
 ## Budget
 
@@ -141,7 +196,7 @@ Panggil: `/review src/a.ts` atau `minicode "/review src/a.ts"`.
 
 ## Checkpoint & Undo
 
-Setiap `edit`/`write_file` otomatis membuat checkpoint (pre-edit state, `atomicWriteText`). `/undo` mengembalikan file ke kondisi sebelum turn. `/redo` mengembalikan ke kondisi setelah turn. Checkpoint disimpan di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`).
+Setiap `edit`/`write_file` otomatis membuat checkpoint (pre-edit state, `atomicWriteText`). `/undo` mengembalikan file ke kondisi sebelum turn. `/redo` mengembalikan ke kondisi setelah turn. Checkpoint disimpan di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`). Snapshot dibatasi `WORKSPACE_SNAPSHOT_LIMIT` file — untuk repo sangat besar, shadow-git terjadwal di PLAN_V4 Fase 3.1.
 
 ## Sessions
 
@@ -149,7 +204,7 @@ Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk d
 
 ## Repo Intelligence
 
-System prompt otomatis memuat repo-map (regex 9 bahasa + LSP `workspace/symbol` fallback, tree-sitter wasm optional `src/repo/tree-sitter.ts`). Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` (OpenCode) deterministik.
+System prompt otomatis memuat repo-map. **Implementasi nyata berbasis regex** (9 bahasa) dengan fallback LSP `workspace/symbol`; `src/repo/tree-sitter.ts` masih stub yang selalu mengembalikan `null` (keputusan implementasi-atau-hapus ada di PLAN_V4 Fase 3.2). Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` deterministik.
 
 ## Benchmark
 
@@ -181,23 +236,29 @@ Format `tasks.json` (SWE-bench-format):
 ## Pengujian
 
 ```bash
-bun install            # sekali (butuh bun >=1.0 + sibling ../minicore)
-bun test               # offline: 257 test (249 pass + 8 skip) + minicore 154
-bun x tsc --noEmit     # tsc strict — 0 error (lint 27w sisa non-critical)
-bun run bench:smoke    # fake 10 tasks 1.0 resolve rate
+bun install            # sekali (butuh bun >=1.0; tanpa clone tambahan)
+bun test               # offline/hermetic; live & docker di-skip otomatis
+bun x tsc --noEmit     # tsc strict, mencakup src cli test bench scripts
+bun run lint           # biome check
+bun run gate:coverage  # gate coverage agregat (baris "All files")
+bun run vendor:check   # vendor/minicore sinkron dengan ../minicore
+bun run bench:smoke    # fake tasks, CI-safe
 bun run bench --runs 2 # median 2 runs
-minicode exec "prompt" --json # headless CI (Codex/Gemini-like)
+minicode exec "prompt" --json       # headless CI (JSONL + summary di stdout)
+MINICODE_GREP_ENGINE=js bun test test/phase1-tools.test.ts   # jalur grep fallback
 MINICODE_LIVE=1 bun run test:live   # live E2E (butuh provider + API key)
 ```
 
-Test penting pasca-hardening v0.5.1: `env-strip`, `ssrf-guard`, `executor-abort`,
-`lib-fs` (atomic write), `jail-realpath`, `bash-cap`, `router-image`, `trace`,
-`cli-args`. Semuanya hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan
-berulang tanpa jaringan.
+Semua test hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan berulang tanpa jaringan. Jumlah test tidak dicantumkan di sini — jalankan `bun test` untuk angka terkini.
 
 ## Troubleshooting
 
 - **LSP tidak jalan:** `minicode config lsp add .ts --command typescript-language-server --args --stdio`. Pastikan server terinstall.
 - **Docker sandbox:** `docker pull node:22-alpine`. Bila `dockerAvailable()` false, fallback ke bash langsung.
+- **`--sandbox os` tidak berefek:** bubblewrap/seatbelt tidak ada di Windows. Pakai `--sandbox docker` atau `--allowlist`.
+- **`grep` terasa lambat:** install `rg` (ripgrep). Cek jalur aktif dengan `MINICODE_GREP_ENGINE=js` untuk membandingkan.
+- **File besar tak bisa dibaca:** pakai `offset`/`limit` di `read_file` — file >2 MB memang ditolak tanpa itu.
+- **Background job tak jalan:** `background:true` ditolak saat `--sandbox` aktif; jalankan tanpa sandbox atau pakai foreground.
 - **Verify tidak jalan:** set `MINICODE_VERIFY_CMD` atau `verifyCommand` di config.
 - **Budget tidak akurat:** harga di `usage.ts` adalah estimasi rata-rata; biaya riil tergantung provider.
+- **`bun install` gagal cari minicore:** pastikan `vendor/minicore` ada (ikut repo). Untuk sync ulang dari sumber butuh clone `../minicore` lalu `bun run vendor:minicore`.

@@ -203,7 +203,13 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   const code = c.charCodeAt(0)
   if (code === 0x1b) {
     // Bracketed paste: ESC[200~ … ESC[201~ — emit satu char "paste" per segmen
-    if (s[i + 1] === "[" && s[i + 2] === "2" && s[i + 3] === "0" && s[i + 4] === "0" && s[i + 5] === "~") {
+    if (
+      s[i + 1] === "[" &&
+      s[i + 2] === "2" &&
+      s[i + 3] === "0" &&
+      s[i + 4] === "0" &&
+      s[i + 5] === "~"
+    ) {
       const endIdx = s.indexOf("\x1b[201~", i + 6)
       if (endIdx !== -1) {
         return { key: { type: "char", ch: s.slice(i + 6, endIdx) }, width: endIdx + 6 - i }

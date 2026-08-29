@@ -1,4 +1,4 @@
-﻿export { bashTool } from "./bash.ts"
+﻿export { bashKillTool, bashOutputTool, bashTool } from "./bash.ts"
 export { editTool } from "./edit.ts"
 export { gitDiffTool, gitLogTool, gitStatusTool } from "./git.ts"
 export { globTool } from "./glob.ts"
@@ -16,11 +16,12 @@ export { forgetMemoryTool, readMemoryTool, writeMemoryTool } from "./memory.ts"
 export { applyPatchTool } from "./patch.ts"
 export { readFileTool } from "./read_file.ts"
 export { delegateTaskTool } from "./task.ts"
+export { todoReadTool, todoSession, todoWriteTool } from "./todo.ts"
 export { webFetchTool } from "./web_fetch.ts"
 export { writeFileTool } from "./write_file.ts"
 
 import type { Tool } from "minicore"
-import { bashTool } from "./bash.ts"
+import { bashKillTool, bashOutputTool, bashTool } from "./bash.ts"
 import { editTool } from "./edit.ts"
 import { gitDiffTool, gitLogTool, gitStatusTool } from "./git.ts"
 import { globTool } from "./glob.ts"
@@ -38,6 +39,7 @@ import { forgetMemoryTool, readMemoryTool, writeMemoryTool } from "./memory.ts"
 import { applyPatchTool } from "./patch.ts"
 import { readFileTool } from "./read_file.ts"
 import { delegateTaskTool } from "./task.ts"
+import { todoReadTool, todoWriteTool } from "./todo.ts"
 import { webFetchTool } from "./web_fetch.ts"
 import { webSearchTool } from "./web_search.ts"
 import { writeFileTool } from "./write_file.ts"
@@ -50,6 +52,8 @@ export const allTools: Tool[] = [
   globTool,
   grepTool,
   bashTool,
+  bashOutputTool,
+  bashKillTool,
   gitStatusTool,
   gitDiffTool,
   gitLogTool,
@@ -58,6 +62,8 @@ export const allTools: Tool[] = [
   readMemoryTool,
   writeMemoryTool,
   forgetMemoryTool,
+  todoWriteTool,
+  todoReadTool,
   delegateTaskTool,
   mcpListTool,
   mcpCallTool,

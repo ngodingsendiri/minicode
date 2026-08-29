@@ -1,13 +1,14 @@
 // Driver fullscreen REPL — minimal pure ANSI (tanpa Ink)
 // Slash builtin → overlay; skill → renderSkill → LLM
-import { handleBuiltinCommand, BUILTIN_COMMANDS, type CommandContext } from "./commands.ts"
-import { renderSkill } from "../src/skills/loader.ts"
-import { appendHistory, loadHistory } from "./input.ts"
+
 import { listSessions } from "../src/session/persistence.ts"
+import { renderSkill } from "../src/skills/loader.ts"
 import { expandMentions } from "../src/tui/file-mention.ts"
+import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
+import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"
+import { appendHistory, loadHistory } from "./input.ts"
 import { captureOutput } from "./panel.ts"
 import type { CliSession } from "./setup.ts"
-import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
 
 const MODES = ["auto", "ask", "plan", "allowlist"] as const
 
@@ -20,6 +21,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     modelRef,
     effectiveTimeoutMs,
     permissionMode,
+    permissions,
     sessionTools,
     allLoadedSkills,
     usage,
@@ -29,13 +31,10 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     close,
   } = ctx
 
-  const perms = (
-    session as unknown as {
-      config?: { permissions?: { __setMode?(m: string): void; __getMode?(): string } }
-    }
-  ).config?.permissions
-  let mode: string =
-    perms?.__getMode?.() ?? permissionMode ?? "auto"
+  // Kernel tidak mengekspos `config`, jadi handle permission datang dari
+  // createMinicodeSession lewat CliSession. Tanpa ini Shift+Tab hanya mengubah
+  // label header sementara mode sebenarnya tidak berubah.
+  let mode: string = permissions?.getMode() ?? permissionMode ?? "auto"
 
   const commandCtx: CommandContext = {
     cwd,
@@ -61,10 +60,12 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
       ...BUILTIN_COMMANDS.map((b) => `/${b.name}`),
       ...allLoadedSkills.map((s) => `/${s.name}`),
     ]
-    return all.filter((t) => t.startsWith(line)).map((text) => ({
-      text,
-      group: BUILTIN_COMMANDS.some((b) => `/${b.name}` === text) ? "commands" : "skills",
-    }))
+    return all
+      .filter((t) => t.startsWith(line))
+      .map((text) => ({
+        text,
+        group: BUILTIN_COMMANDS.some((b) => `/${b.name}` === text) ? "commands" : "skills",
+      }))
   }
 
   const history = await loadHistory()
@@ -116,21 +117,29 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     return null
   }
 
-  const onOverlay = async (
-    q: string,
-  ): Promise<{ title: string; lines: string[] } | null> => {
+  const onOverlay = async (q: string): Promise<{ title: string; lines: string[] } | null> => {
+    const cmdName = q.slice(1).split(" ")[0]?.toLowerCase() ?? ""
+    // Builtin dicek lewat nilai kembalian `handled`, bukan lewat exception.
+    // Sebelumnya `catch { return null }` menelan ReferenceError sehingga SEMUA
+    // slash builtin gagal senyap dan jatuh ke "perintah tidak dikenal".
     try {
-      const { lines } = await captureOutput(() => handleBuiltinCommand(q, commandCtx))
+      const { lines, value } = await captureOutput(() => handleBuiltinCommand(q, commandCtx))
+      if (!value.handled) return null // bukan builtin -> lanjut sebagai skill/prompt
+      if (value.shouldExit) {
+        await close()
+        process.exit(0)
+      }
       return { title: cmdName, lines }
-    } catch {
-      return null // bukan builtin -> lanjut sebagai skill/prompt
+    } catch (e) {
+      // Builtin ada tapi meledak: tampilkan errornya, jangan sembunyikan.
+      return { title: cmdName, lines: [`error: ${(e as Error).message}`] }
     }
   }
 
   const onLine = async (
     q: string,
     signal: AbortSignal,
-  ): Promise<"handled" | "prompt"> => {
+  ): Promise<"handled" | "prompt" | { note: string }> => {
     let finalPrompt = q
     if (q.startsWith("/")) {
       const spaceIdx = q.indexOf(" ")
@@ -161,7 +170,8 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
   const onCycleMode = (): string => {
     const idx = MODES.indexOf(mode as (typeof MODES)[number])
     mode = MODES[(idx + 1) % MODES.length]!
-    perms?.__setMode?.(mode)
+    if (permissions) permissions.setMode(mode as (typeof MODES)[number])
+    else mode = permissionMode ?? mode // tak ada handle: jangan tampilkan label palsu
     return mode
   }
 

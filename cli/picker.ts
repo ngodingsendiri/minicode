@@ -28,7 +28,7 @@ const DIM = "\x1b[2m",
 export async function runPicker(opts: PickerOptions): Promise<void> {
   if (!process.stdin.isTTY) {
     console.log("\n" + opts.title)
-    opts.items.forEach((it, i) => console.log(`  [${i}] ${it.provider}::${it.name}`))
+    for (const [i, it] of opts.items.entries()) console.log(`  [${i}] ${it.provider}::${it.name}`)
     console.log("")
     return
   }
@@ -177,7 +177,8 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
             resolve()
             return
           }
-          case "esc":
+          case "esc": {
+            // Esc pertama membersihkan filter; Esc kedua (filter kosong) keluar.
             if (isFilterable && filter.length > 0) {
               filter = ""
               sel = 0
@@ -185,7 +186,11 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
               render()
               break
             }
-          // fallthrough
+            cleanup()
+            opts.onCancel()
+            resolve()
+            return
+          }
           case "ctrl-c":
           case "ctrl-d":
             cleanup()

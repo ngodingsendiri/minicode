@@ -1,0 +1,21 @@
+{
+  "name": "minicore",
+  "version": "0.1.0",
+  "description": "MiniCore: a minimal, reductionist AI Agent Runtime — provider/tool-agnostic model → tool → observation loop.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "exports": {
+    ".": "./src/core/index.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^26.2.0"
+  }
+}

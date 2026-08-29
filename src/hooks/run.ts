@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process"
 import { existsSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
-import { spawn } from "node:child_process"
 
 export interface RunHookCtx {
   phase: "pre" | "post"

@@ -16,6 +16,9 @@
     "test:live": "bun scripts/test-live.ts",
     "test:qa": "bun scripts/live-qa.ts",
     "test:coverage": "bun test --coverage",
+    "gate:coverage": "bun scripts/coverage-gate.ts",
+    "vendor:minicore": "bun scripts/vendor-minicore.ts",
+    "vendor:check": "bun scripts/vendor-minicore.ts --check",
     "typecheck": "bun x tsc --noEmit",
     "lint": "biome check src cli test bench scripts",
     "lint:fix": "biome check --write src cli test bench scripts",
@@ -26,9 +29,8 @@
     "bench:smoke": "bun bench/runner.ts --fake",
     "bench:runs": "bun bench/runner.ts --runs 2"
   },
-  "workspaces": ["../minicore"],
   "dependencies": {
-    "minicore": "workspace:*"
+    "minicore": "file:./vendor/minicore"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

@@ -45,6 +45,7 @@ export async function handleExec(
       "--allow-all",
       "--ask",
       "--plan",
+      "--allowlist",
       "--verify",
     ])
     const VALUE_FLAGS = new Set([
@@ -90,6 +91,7 @@ export async function handleExec(
     allowAll: args.includes("--allow-all"),
     ask: args.includes("--ask"),
     plan: args.includes("--plan"),
+    allowlist: args.includes("--allowlist"),
     useTui: false,
     verify: args.includes("--verify"),
     budget,
@@ -98,7 +100,10 @@ export async function handleExec(
   })
   const t0 = Date.now()
   const events: unknown[] = []
-  const unsub = ctx.session.events.on((ev: unknown) => {
+  // EventBus kernel butuh (type, handler). Memanggil on(handler) 1-argumen
+  // mendaftarkan listener di bawah key "function" → tidak pernah terpanggil,
+  // sehingga --json tidak pernah stream apa pun. "*" = semua event.
+  const unsub = ctx.session.events.on("*", (ev) => {
     events.push(ev)
     if (jsonMode) {
       // stream JSON lines like Codex/Gemini
@@ -110,6 +115,7 @@ export async function handleExec(
     const u = ctx.usage.get(ctx.modelRef.current)
     if (jsonMode) {
       const result = {
+        type: "summary" as const,
         ok: true,
         sessionId,
         model: ctx.modelRef.current,
@@ -118,11 +124,12 @@ export async function handleExec(
         steps: ctx.session.state.stepCount,
         turns: ctx.session.state.turnCount,
         usage: u,
-        events: events.slice(-20),
+        eventCount: events.length,
       }
-      // already streamed events; final summary
-      if (!events.length) process.stdout.write(`${JSON.stringify(result)}\n`)
-      else process.stderr.write(`${JSON.stringify({ summary: result })}\n`)
+      // Event sudah di-stream sebagai JSONL di stdout; summary jadi baris
+      // terakhir di stdout juga (bukan stderr) supaya pipeline CI bisa
+      // membaca satu stream saja.
+      process.stdout.write(`${JSON.stringify(result)}\n`)
     } else {
       process.stdout.write(
         `\n[exec] done model=${ctx.modelRef.current} steps=${ctx.session.state.stepCount} tokens=${u.totalTokens} ${Date.now() - t0}ms\n`,
@@ -134,7 +141,7 @@ export async function handleExec(
   } catch (e) {
     if (jsonMode)
       process.stdout.write(
-        `${JSON.stringify({ ok: false, error: formatError(e), prompt: effectivePrompt })}\n`,
+        `${JSON.stringify({ type: "summary", ok: false, error: formatError(e), prompt: effectivePrompt })}\n`,
       )
     else process.stderr.write(`\n${formatError(e)}\n`)
     unsub()

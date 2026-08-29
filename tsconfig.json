@@ -17,9 +17,10 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "paths": {
-      "minicore": ["../minicore/src/core/index.ts"],
-      "minicore/*": ["../minicore/src/*"]
+      "minicore": ["./vendor/minicore/src/core/index.ts"],
+      "minicore/test/*": ["./vendor/minicore/test/*"],
+      "minicore/*": ["./vendor/minicore/src/*"]
     }
   },
-  "include": ["src", "test", "bench"]
+  "include": ["src", "test", "bench", "cli", "scripts", "experiments"]
 }

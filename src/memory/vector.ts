@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite"
 import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
-import { resolveDbPath } from "../lib/db-path.ts"
 import { LIMITS } from "../constants.ts"
+import { resolveDbPath } from "../lib/db-path.ts"
 
 const dbPath = (cwd?: string) => resolveDbPath("vector.db", cwd)
 
@@ -98,9 +98,7 @@ async function embedTexts(
         if (json.data && Array.isArray(json.data)) return json.data.map((d) => d.embedding)
       } catch (e) {
         // fallback keyword-only tetap berjalan, tapi jangan senyap total
-        process.stderr.write(
-          `[warn] vector: embedding attempt failed: ${(e as Error).message}\n`,
-        )
+        process.stderr.write(`[warn] vector: embedding attempt failed: ${(e as Error).message}\n`)
       }
     }
   }

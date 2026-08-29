@@ -1,4 +1,4 @@
-import { type Theme, THEMES, resolveThemeName } from "./themes.ts"
+import { resolveThemeName, THEMES, type Theme } from "./themes.ts"
 export const themeState: { current: Theme } = { current: THEMES.dark }
 export function applyTheme(name?: string): ReturnType<typeof resolveThemeName> {
   const n = resolveThemeName(name)
@@ -115,6 +115,13 @@ export function getTerminalWidth(): number {
   return process.stdout.columns || 80
 }
 
+// Satu sumber pola ANSI. Dibangun via `new RegExp` dari String.fromCharCode(27)
+// alih-alih literal /\x1b…/ supaya tidak menyisipkan control character mentah ke
+// source (lint/suspicious/noControlCharactersInRegex) — perilaku identik.
+export const ESC = String.fromCharCode(27)
+export const ANSI_PATTERN = `${ESC}\\[[0-9;]*[a-zA-Z]`
+
 export function stripAnsi(str: string): string {
-  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+  // regex baru per panggilan: aman dari lastIndex bersama antar pemanggil
+  return str.replace(new RegExp(ANSI_PATTERN, "g"), "")
 }

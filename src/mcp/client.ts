@@ -121,7 +121,6 @@ export function extractMcpText(result: unknown): string {
     .join("\n")
 }
 
-
 export async function connectAll(configs: McpServerConfig[]): Promise<Tool[]> {
   const allTools: Tool[] = []
 

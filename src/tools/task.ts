@@ -1,8 +1,8 @@
 import type { Tool } from "minicore"
 import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
-import { LIMITS } from "../constants.ts"
 import { Pool } from "../agents/pool.ts"
 import { loadConfig } from "../config.ts"
+import { LIMITS } from "../constants.ts"
 import { buildProviderList } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
 import { createMinicodeSession } from "../session.ts"
@@ -61,8 +61,19 @@ export const delegateTaskTool: Tool = {
           : LIMITS.SUB_AGENT_BUDGET_PLAN
 
     const { allTools } = await import("./index.ts")
+    // Sub-agent tidak boleh menulis state milik parent: memory (persisten) dan
+    // todo (rencana parent). Juga tidak boleh bersarang (delegate_task).
+    // bash_output/bash_kill dibuang karena job id milik parent.
     const base = allTools.filter(
-      (t) => t.name !== "delegate_task" && t.name !== "write_memory" && t.name !== "forget_memory",
+      (t) =>
+        ![
+          "delegate_task",
+          "write_memory",
+          "forget_memory",
+          "todo_write",
+          "bash_output",
+          "bash_kill",
+        ].includes(t.name),
     )
     const subTools =
       m === "explore"
@@ -72,6 +83,7 @@ export const delegateTaskTool: Tool = {
               "glob",
               "grep",
               "read_memory",
+              "todo_read",
               "git_status",
               "git_log",
               "lsp_diagnostics",
@@ -85,7 +97,7 @@ export const delegateTaskTool: Tool = {
 
     return await pool.run(async () => {
       ctx.signal.throwIfAborted()
-      let provider
+      let provider: Awaited<ReturnType<typeof getProvider>>
       try {
         provider = await getProvider()
       } catch (e) {
@@ -101,7 +113,7 @@ export const delegateTaskTool: Tool = {
         permissionMode: "auto",
         maxSteps: cap,
         timeoutMs: LIMITS.SUB_AGENT_TIMEOUT_MS,
-        systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory or forget_memory (isolated). Parent task: ${String(prompt).slice(0, 200)}`,
+        systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory, forget_memory, or todo_write (isolated — those belong to the parent). Parent task: ${String(prompt).slice(0, 200)}`,
       })
 
       // forward sub-agent observability to parent (usage + progress) so cost tracking

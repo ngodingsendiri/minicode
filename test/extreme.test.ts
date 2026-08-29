@@ -4,18 +4,11 @@
 import { afterAll, expect, test } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
-import { mechanicalCompaction } from "../../minicore/src/core/compact.ts"
-import { AgentError, abortError, ProviderError } from "../../minicore/src/core/errors.ts"
-import { ContextStore } from "../../minicore/src/core/history.ts"
-import { createEventBus, createSession, createToolRegistry } from "../../minicore/src/core/index.ts"
-import {
-  allowAll,
-  echoTool,
-  FakeProvider,
-  finish,
-  text,
-  toolCall,
-} from "../../minicore/test/fakes.ts"
+import { mechanicalCompaction } from "minicore/core/compact.ts"
+import { AgentError, abortError, ProviderError } from "minicore/core/errors.ts"
+import { ContextStore } from "minicore/core/history.ts"
+import { createEventBus, createSession, createToolRegistry } from "minicore/core/index.ts"
+import { allowAll, echoTool, FakeProvider, finish, text, toolCall } from "minicore/test/fakes.ts"
 import { Pool } from "../src/agents/pool.ts"
 import { loadAllowlist, matchAllowlist, saveAllowlist } from "../src/hooks/index.ts"
 import { findSymbolPosition } from "../src/lsp/client.ts"
@@ -142,6 +135,7 @@ test("05 router fallback: all fail network → throws", async () => {
   const bad = {
     id: "a",
     models: ["m"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("network", "down")
     },
@@ -161,6 +155,7 @@ test("05 router clone retryAfter does not mutate original", async () => {
   const inner = {
     id: "in",
     models: ["m"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("rate_limit", "rl", 3600_000)
     },

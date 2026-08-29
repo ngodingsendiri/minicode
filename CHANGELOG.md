@@ -1,5 +1,47 @@
 # Changelog
 
+## [Unreleased] — Audit V4 Fase 0 & 1
+
+Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua angka di dokumen itu terverifikasi dengan eksekusi, bukan salinan klaim lama.
+
+### Fixed — tiga bug yang lolos CI karena `cli/` di luar `tsconfig` dan tanpa test
+
+- **Semua slash builtin mati di TUI.** `cli/fullscreen-driver.ts` memakai variabel `cmdName` yang tak pernah dideklarasikan; `ReferenceError`-nya ditelan `catch { return null }`, sehingga `/help`, `/cost`, `/status`, `/sessions`, `/undo`, `/redo`, `/init`, `/theme` gagal senyap dan user hanya melihat "perintah tidak dikenal". Deteksi builtin kini lewat nilai kembalian `handled`, bukan exception. `captureOutput` jadi generik dan meneruskan nilai `fn`. `shouldExit` untuk `/exit` yang sebelumnya diabaikan ikut ditangani.
+- **`exec --json` tidak pernah stream event.** `events.on(handler)` satu argumen mendaftarkan listener di bawah key `"function"` sehingga tak pernah terpanggil — mode headless untuk CI tidak berfungsi seperti didokumentasikan. Diganti `on("*", handler)`. Ringkasan pindah dari stderr ke stdout sebagai `{"type":"summary"}` supaya pipeline membaca satu stream. `--allowlist` yang bocor menjadi bagian prompt di subcommand `exec` juga diperbaiki.
+- **Shift+Tab cycle permission adalah placebo.** `__setMode`/`__getMode` di `src/policy/permission.ts` hanya ada di *type-cast* tanpa implementasi, dan `session.config` tidak diekspos kernel — header menampilkan "plan" sementara agent tetap bisa menulis file dan menjalankan bash. Kedua method diimplementasikan (plus invalidasi `allowlistCache`), dan seam `onPermissions` di `createMinicodeSession` menyerahkan handle ke `CliSession.permissions`. Kernel tidak disentuh.
+
+### Added — tool fundamental
+
+- **`read_file` paging bernomor.** Output diberi nomor baris (`12: const x = 1`) agar rujukan `edit`/`apply_patch` akurat. Param `offset` (1-indexed) + `limit` (default 2000, max 5000). File di atas 2 MB kini bisa dibaca per bagian; tanpa paging tetap ditolak — memotong konteks diam-diam lebih berbahaya daripada error eksplisit. Baris sangat panjang dipotong per baris, direktori ditolak dengan pesan spesifik.
+- **`grep` dua engine.** `rg` dipakai bila ada di PATH (`--vimgrep --no-follow`, exclude `.git`/`node_modules`/dotdir), fallback walker internal dipertahankan dan diuji memberi hasil identik. `MINICODE_GREP_ENGINE=js` memaksa fallback; CI menguji jalur itu eksplisit. Jail berlaku di keduanya — walker via `realpath`, ripgrep via validasi tiap baris hasil.
+- **`todo_write` / `todo_read`.** Rencana kerja per sesi di `.minicode/todos/<id>.json` (atomic). Kirim seluruh daftar, bukan delta. Hanya satu `in_progress` dipertahankan; sisanya dinormalisasi ke `pending`. File korup dianggap kosong. Dirender utuh di TUI (transcript kind `todo`) dan one-shot logger. `todo_read` masuk READONLY sehingga tetap boleh di mode `plan`.
+- **`bash` streaming + background.** Foreground memancarkan `provider:extension` kind `bash-output` inkremental (tampil di `--verbose`). `background:true` mengembalikan job id, lalu `bash_output(id)` (hanya output baru sejak baca terakhir) dan `bash_kill(id)`. Job di-cap, yang selesai di-reap, dan semua dimatikan saat CLI keluar. `background:true` **ditolak** saat `--sandbox` aktif: container/namespace ephemeral mati bersama call-nya, jadi janji isolasi tidak bisa dipenuhi untuk proses berumur panjang.
+
+### Changed — distribusi
+
+- **`bun install` tidak lagi butuh clone sibling.** Kernel MiniCore di-vendor ke `vendor/minicore` (19 file, ~72 KB); dependency jadi `file:./vendor/minicore`. Opsi publish ke npm ditinggalkan karena butuh kredensial dan tidak reversible. `scripts/vendor-minicore.ts` menyinkronkan dari `../minicore` dan `--check` mendeteksi drift lewat hash agregat (gate CI baru `vendor:check`). Tanpa sibling, script tetap lulus dengan pesan agar kontributor tidak diblokir. Terverifikasi: salin file tracked ke direktori kosong → install, typecheck, dan seluruh test hijau tanpa `../minicore`.
+- **Executor: `bash` bukan lagi "write".** `bash` dipindah ke `EXCLUSIVE_TOOLS` — sebelumnya ia mengambil write-slot tapi `getFilePath()` selalu `null` untuknya, sehingga dengan write-concurrency 1 dua bash read-only terserialisasi tanpa alasan.
+- **Coverage gate nyata.** Label CI "threshold 80" sebelumnya fiksi: `bun test --coverage` tanpa konfigurasi selalu lulus. `bunfig.toml` `coverageThreshold` juga tidak bisa dipakai karena Bun mengevaluasinya per-file (bahkan 0,01 gagal karena ada file 0% yang hanya jalan di Linux/macOS). Diganti `scripts/coverage-gate.ts` yang mem-parse baris "All files"; diuji dua arah.
+- **Typecheck mencakup seluruh repo.** `tsconfig.json` `include` kini memuat `cli`, `scripts`, `experiments` — 3.178 LOC entry point yang sebelumnya tak pernah diperiksa. 14 error yang muncul dibereskan.
+- **Lint bersih.** 68 error → 0. `noControlCharactersInRegex` diselesaikan dengan `ANSI_PATTERN` sebagai satu sumber di `src/tui/theme.ts`, dipakai ulang oleh `wrap`, `panel`, `commands`, `input`, `fullscreen`, dan `human-sim`.
+
+### Removed
+
+- `minicode-0.6.0.tgz` (183 KB artifact build ter-commit); `*.tgz` masuk `.gitignore`.
+
+### Docs
+
+- Angka yang bisa dihitung mesin (jumlah test, tool, coverage) dibuang dari README/ARCHITECTURE/CONTRIBUTING/USAGE. Repo sebelumnya memuat tiga angka test berbeda dan dua jumlah tool berbeda; klaim semacam itu membuat pembaca teknis mendiskon klaim lain yang benar.
+- `CONTRIBUTING.md` masih menyatakan "proprietary / closed source, tidak menerima PR" padahal `LICENSE` sudah MIT sejak 0.7.0 — diperbaiki.
+- Referensi Ink yang sudah dihapus dibersihkan dari README, ARCHITECTURE, dan `src/tui/format.ts`.
+- Known Limitations diperluas; tiap poin menunjuk fase PLAN_V4 yang menanganinya. Batas nyata denylist bash dinyatakan eksplisit **dengan contoh pola yang lolos**, bukan disembunyikan.
+- Koreksi pengukuran: audit melaporkan walker grep 3.550 ms; setelah diukur ulang di proses bersih angkanya ~110–160 ms — 3.550 ms termasuk cold start import, bukan biaya scan. Klaim "50× lebih lambat" di audit terlalu keras dan dikoreksi di PLAN_V4.
+
+### Tests
+
+- `test/cli-regression.test.ts` — 10 test untuk tiga bug di atas. B2 diuji dengan membandingkan `on("*")` versus `on(handler)` di run yang sama, jadi test itu mendokumentasikan kenapa pola lamanya salah.
+- `test/phase1-tools.test.ts` — 35 test: paging `read_file` (termasuk file >2 MB), kesetaraan dua engine grep, normalisasi/render/roundtrip todo, background job (output baru, cap, kill, penolakan saat sandbox), dan permission untuk tool baru di mode auto/plan/readonly.
+
 ## [0.7.0] - 2026-08-29
 
 ### TUI & UX Polish — "Production Ready"

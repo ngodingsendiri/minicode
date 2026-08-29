@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises"
-import { resolve, isAbsolute, relative } from "node:path"
+import { isAbsolute, relative, resolve } from "node:path"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 const MAX_INJECT = 2_000
@@ -20,7 +20,8 @@ export async function resolveMentionContent(
   cwd: string,
 ): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const abs = isAbsolute(raw) ? resolve(raw) : resolve(cwd, raw)
-  if (isPathOutsideRoot(abs, cwd) || isSensitive(abs)) return { ok: false, reason: "ditolak (jail)" }
+  if (isPathOutsideRoot(abs, cwd) || isSensitive(abs))
+    return { ok: false, reason: "ditolak (jail)" }
   try {
     const txt = await readFile(abs, "utf8")
     const rel = relative(cwd, abs).replace(/\\/g, "/")

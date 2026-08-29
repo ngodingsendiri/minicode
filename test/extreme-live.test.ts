@@ -34,9 +34,7 @@ beforeAll(async () => {
     (p) => p.id === "openrouter" && p.models.includes("nvidia/nemotron-3-ultra-550b-a55b:free"),
   )
 
-  const { createOpenAICompatProvider } = await import(
-    "../../minicore/src/providers/openai-compat.ts"
-  )
+  const { createOpenAICompatProvider } = await import("minicore/providers/openai-compat.ts")
   if (bai?.apiKey) {
     provider = createOpenAICompatProvider({
       baseUrl: bai.baseUrl,
@@ -149,8 +147,8 @@ it("E2E-5: Session persistence — save/load roundtrip", async () => {
   )
   const loaded = loadSession(id)
   expect(loaded).not.toBeNull()
-  expect(loaded?.messages[0]).toMatchObject({ role: "user", content: "hello e2e" })
-  expect((loaded?.messages[1] as { content?: string }).content).toBe("response")
+  expect(loaded!.messages[0]).toMatchObject({ role: "user", content: "hello e2e" })
+  expect((loaded!.messages[1] as { content?: string }).content).toBe("response")
   deleteSession(id)
   expect(loadSession(id)).toBeNull()
 })

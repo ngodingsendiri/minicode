@@ -3,6 +3,7 @@ import { loadConfig, refreshProviderModels } from "../src/config.ts"
 import type { Usage } from "../src/policy/usage.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import type { Skill } from "../src/skills/loader.ts"
+import { stripAnsi } from "../src/tui/theme.ts"
 
 // SEMUA output = PLAIN TEXT tanpa ANSI.
 // Readline + ANSI di Windows = karakter escape bocor jadi teks literal.
@@ -39,7 +40,7 @@ export const BUILTIN_COMMANDS = [
 ]
 
 function pad(text: string, width: number): string {
-  const clean = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+  const clean = stripAnsi(text)
   const diff = width - clean.length
   return diff > 0 ? text + " ".repeat(diff) : text
 }
@@ -95,7 +96,7 @@ export async function handleBuiltinCommand(
       const cur = process.env.MINICODE_THEME ?? ""
       const next =
         want === "next"
-          ? names[(names.indexOf(cur) + 1) % names.length] ?? "dark"
+          ? (names[(names.indexOf(cur) + 1) % names.length] ?? "dark")
           : names.includes(want)
             ? want
             : (console.log(`\ntheme: ${names.join(" / ")}\n`), "dark")

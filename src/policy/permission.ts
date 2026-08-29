@@ -15,6 +15,7 @@ const READONLY_TOOLS = new Set([
   "git_log",
   "web_fetch",
   "read_memory",
+  "todo_read",
   "mcp_list",
   "lsp_diagnostics",
   "lsp_definition",
@@ -23,6 +24,24 @@ const READONLY_TOOLS = new Set([
   "lsp_symbols",
   "lsp_workspace_symbols",
 ])
+
+// Tool yang menulis state internal minicode (bukan file workspace) — aman
+// di semua mode kecuali readonly/plan. `bash_kill` menghentikan proses yang
+// dimulai agent sendiri, jadi tidak menambah permukaan serangan.
+const INTERNAL_WRITE_TOOLS = new Set([
+  "write_memory",
+  "forget_memory",
+  "todo_write",
+  "bash_output",
+  "bash_kill",
+])
+
+const FILE_WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch"])
+
+// Subset INTERNAL_WRITE_TOOLS yang juga tidak perlu prompt di mode `ask`.
+// `write_memory`/`forget_memory` TIDAK termasuk: itu menulis MEMORY.md yang
+// persisten lintas sesi, jadi user berhak menyetujuinya.
+const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
 
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
 const GATED_TOOLS = new Set(["delegate_task", "mcp_call"])
@@ -160,13 +179,16 @@ export function createPermissionHandler(
         return "allow"
       }
       if (isGated(call.name)) return "deny"
-      if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch")
-        return "allow"
-      if (call.name === "write_memory" || call.name === "forget_memory") return "allow"
+      if (FILE_WRITE_TOOLS.has(call.name)) return "allow"
+      if (INTERNAL_WRITE_TOOLS.has(call.name)) return "allow"
       return READONLY_TOOLS.has(call.name) ? "allow" : "deny"
     },
     ask: async (call, args) => {
       if (READONLY_TOOLS.has(call.name)) return "allow"
+      // Bookkeeping internal tidak menyentuh workspace: todo list dan kontrol
+      // job yang izinnya sudah diberikan saat `bash` dijalankan. Meminta
+      // konfirmasi untuk ini hanya melelahkan tanpa menambah keamanan.
+      if (NO_PROMPT_TOOLS.has(call.name)) return "allow"
       const list = await getAllowlist()
       if (matchAllowlist(call, list)) return "allow"
       if (call.name === "bash") {
@@ -185,9 +207,8 @@ export function createPermissionHandler(
     auto: async (call, args) => {
       if (READONLY_TOOLS.has(call.name)) return "allow"
       if (isGated(call.name)) return await promptAskOr(call, () => "deny")
-      if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch")
-        return "allow"
-      if (call.name === "write_memory" || call.name === "forget_memory") return "allow"
+      if (FILE_WRITE_TOOLS.has(call.name)) return "allow"
+      if (INTERNAL_WRITE_TOOLS.has(call.name)) return "allow"
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? ""
         if (!cmd.trim() || bashDenied(cmd)) return "deny"
@@ -232,12 +253,21 @@ export function createPermissionHandler(
 
       return handlers[state.mode](call, earlyArgs)
     },
+    // Kontrol mode saat runtime (Shift+Tab di TUI). Sebelumnya kedua method ini
+    // hanya ada di type-cast tanpa implementasi, sehingga pemanggilnya no-op /
+    // TypeError dan mode permission tidak pernah benar-benar berubah.
+    __setMode(m: PermissionMode): void {
+      state.mode = m
+      allowlistCache = null
+    },
+    __getMode(): PermissionMode {
+      return state.mode
+    },
   }
-  const handle = returned as unknown as PermissionHandler & {
+  return returned as unknown as PermissionHandler & {
     __setMode(m: PermissionMode): void
     __getMode(): PermissionMode
   }
-  return handle
 
   async function promptAskOr(call: ToolCall, noTty: () => "deny"): Promise<"allow" | "deny"> {
     if (!process.stdin.isTTY) return noTty()

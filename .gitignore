@@ -35,3 +35,6 @@ bench/results.json
 
 # Local tool artifacts
 .freebuff/
+
+# npm pack artifacts
+*.tgz

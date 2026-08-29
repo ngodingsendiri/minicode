@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { ProviderError } from "../../minicore/src/core/errors.ts"
+import { ProviderError } from "minicore/core/errors.ts"
 import { createAnthropicProvider } from "../src/providers/anthropic.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
 
@@ -103,6 +103,7 @@ test("router fallback on rate_limit", async () => {
   const bad: any = {
     id: "bad",
     models: ["m1"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("rate_limit", "rl", 100)
     },
@@ -206,6 +207,7 @@ test("router fallback substitutes model not supported by target provider", async
   const bad: any = {
     id: "bad",
     models: ["gpt-4o"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("rate_limit", "rl", 100)
     },
@@ -236,6 +238,7 @@ test("router emits effective-model extension saat substitusi model fallback", as
   const bad: any = {
     id: "bad",
     models: ["m1"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("rate_limit", "rl", 100)
     },
@@ -264,6 +267,7 @@ test("router caps retryAfter 3600 -> 30s", async () => {
   const bad: any = {
     id: "bad",
     models: ["m"],
+    // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
       throw new ProviderError("rate_limit", "rl", 3600_000)
     },

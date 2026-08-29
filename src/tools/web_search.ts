@@ -76,8 +76,8 @@ export const webSearchTool: Tool = {
       // naive parse: extract result links
       const re = /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
       const results: { url: string; title: string }[] = []
-      let m: RegExpExecArray | null
-      while ((m = re.exec(scrubbed)) !== null && results.length < n) {
+      for (const m of scrubbed.matchAll(re)) {
+        if (results.length >= n) break
         results.push({ url: m[1] ?? "", title: (m[2] ?? "").trim() })
       }
       if (results.length) {

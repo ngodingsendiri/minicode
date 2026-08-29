@@ -5,17 +5,18 @@ import type { ExecutorDeps, ToolExecutor } from "minicore/core/index.ts"
 import type { ToolCall, ToolResult } from "minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
 
-const WRITE_TOOLS = new Set([
-  "write_file",
-  "edit",
-  "apply_patch",
-  "bash",
-  "write_memory",
-  "forget_memory",
-])
+// Tool yang mengubah file workspace — butuh write-slot DAN file-lock per path.
+const WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch"])
+
+// Tool yang harus eksklusif tapi tidak punya path tunggal untuk di-lock.
+// `bash` bisa menulis apa pun, jadi tidak boleh paralel dengan write lain;
+// tapi memasukkannya ke WRITE_TOOLS membuat dua bash read-only
+// (`bun test` + `git log`) ikut terserialisasi tanpa alasan karena
+// getFilePath() selalu null untuk bash. Dipisah supaya cap-nya sendiri.
+const EXCLUSIVE_TOOLS = new Set(["bash", "write_memory", "forget_memory", "todo_write"])
 
 function isWrite(call: ToolCall): boolean {
-  return WRITE_TOOLS.has(call.name)
+  return WRITE_TOOLS.has(call.name) || EXCLUSIVE_TOOLS.has(call.name)
 }
 
 // Antrean abort-aware: saat signal abort, entry dibuang dari antrean dan
@@ -92,18 +93,16 @@ export function parallelExecutor(
       const signal = deps.signal
 
       function getFilePath(call: ToolCall): string | null {
-        if (call.name === "write_file" || call.name === "edit" || call.name === "apply_patch") {
-          const p = (call.args as Record<string, unknown>)?.path
-          if (typeof p !== "string" || !p) return null
-          // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock
-          try {
-            const abs = resolve(p)
-            return process.platform === "win32" ? abs.toLowerCase() : abs
-          } catch {
-            return process.platform === "win32" ? p.toLowerCase() : p
-          }
+        if (!WRITE_TOOLS.has(call.name)) return null
+        const p = (call.args as Record<string, unknown>)?.path
+        if (typeof p !== "string" || !p) return null
+        // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock
+        try {
+          const abs = resolve(p)
+          return process.platform === "win32" ? abs.toLowerCase() : abs
+        } catch {
+          return process.platform === "win32" ? p.toLowerCase() : p
         }
-        return null
       }
 
       function acquireWrite(): Promise<void> {

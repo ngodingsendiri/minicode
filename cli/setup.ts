@@ -7,6 +7,7 @@ import { createProviderLayer } from "../src/app/provider-layer.ts"
 import { createRagLayer } from "../src/app/rag-layer.ts"
 import { setupToolLayer } from "../src/app/tool-layer.ts"
 import type { MinicodeConfig } from "../src/config.ts"
+import { runRunHooks } from "../src/hooks/run.ts"
 import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
 import { createLlmCompaction } from "../src/policy/compaction.ts"
@@ -15,10 +16,11 @@ import { createUsageCollector } from "../src/policy/usage.ts"
 import { detectVerifyCommand, runVerify, runWithSelfHeal } from "../src/policy/verifier.ts"
 import { recordCheckpointFromSnapshots, snapshotWorkspace } from "../src/session/checkpoint.ts"
 import { loadSession, saveSession } from "../src/session/persistence.ts"
-import { createMinicodeSession } from "../src/session.ts"
+import { createMinicodeSession, type PermissionControl } from "../src/session.ts"
 import type { Skill } from "../src/skills/loader.ts"
+import { killAllBackgroundJobs } from "../src/tools/bash.ts"
+import { todoSession } from "../src/tools/todo.ts"
 import { attachSimpleLogger } from "../src/tui/minimal/simple.ts"
-import { runRunHooks } from "../src/hooks/run.ts"
 import { c } from "../src/tui/theme.ts"
 
 export interface CliSessionOptions {
@@ -61,6 +63,8 @@ export interface CliSession {
   persistCurrent: (usageData: unknown) => Promise<void>
   useFullscreen: boolean
   runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
+  /** Kontrol mode permission saat runtime (Shift+Tab di TUI). */
+  permissions?: PermissionControl
   close: () => Promise<void>
 }
 
@@ -78,7 +82,6 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     ask,
     plan,
     allowlist,
-    useTui,
     verify,
     budget,
     maxSteps,
@@ -93,7 +96,13 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const effectiveTimeoutMs =
     timeoutMs ?? (envTimeout != null && envTimeout !== "" ? Number(envTimeout) : 900_000)
 
-  const { cfg, router } = await createProviderLayer({ cwd, prompt, enterRepl, rateLimiter, providerOverride })
+  const { cfg, router } = await createProviderLayer({
+    cwd,
+    prompt,
+    enterRepl,
+    rateLimiter,
+    providerOverride,
+  })
   const { systemExtra, skills: allLoadedSkills } = await createRagLayer({ cfg, prompt, cwd })
 
   // resume: load full history from DB -> seed into kernel ContextStore
@@ -120,6 +129,10 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   const { sessionTools } = await setupToolLayer(cfg)
 
+  // todo_write/todo_read menyimpan state per sesi di .minicode/todos/<id>.json
+  todoSession.id = sessionId
+  todoSession.cwd = cwd
+
   const permissionMode = allowAll
     ? "allow-all"
     : ask
@@ -130,6 +143,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
           ? "allowlist"
           : "auto"
 
+  let permissions: PermissionControl | undefined
   const session = await createMinicodeSession({
     provider: router,
     tools: sessionTools,
@@ -137,6 +151,9 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     permissionMode,
     systemExtra,
     model: modelRef.current,
+    onPermissions: (ctl) => {
+      permissions = ctl
+    },
     ...(initialMessages ? { initialMessages } : {}),
     ...(maxSteps ? { maxSteps } : {}),
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
@@ -196,7 +213,9 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       return
     }
     await runWithSelfHeal(p, {
-      run: (prompt) => session.run(prompt, { model: modelRef.current, signal }),
+      run: async (prompt) => {
+        await session.run(prompt, { model: modelRef.current, signal })
+      },
       verify: () => runVerify(verifyCommand, cwd ?? process.cwd()),
       onCycle: (cycle, max, v) => {
         if (cycle === max) {
@@ -224,10 +243,12 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
   // Turn status line — hanya untuk one-shot non-fullscreen
   const { attachTurnStatus } = await import("../src/tui/turn-status.ts")
-  const detachStatus = useFullscreen ? () => {} : attachTurnStatus(session.events, {
-    initialModel: effectiveInitialModel,
-    getModel: () => modelRef.current ?? effectiveInitialModel,
-  })
+  const detachStatus = useFullscreen
+    ? () => {}
+    : attachTurnStatus(session.events, {
+        initialModel: effectiveInitialModel,
+        getModel: () => modelRef.current ?? effectiveInitialModel,
+      })
 
   const usage = createUsageCollector(session.events, effectiveInitialModel)
 
@@ -241,6 +262,8 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   async function close(): Promise<void> {
     detachStatus()
     if (detachSimple) detachSimple()
+    // background job harus mati bersama CLI — jangan tinggalkan proses yatim
+    killAllBackgroundJobs()
     await mcpCloseAll()
     await lspCloseAll()
   }
@@ -262,6 +285,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     detachSimple,
     persistCurrent,
     runPromptWithVerify,
+    permissions,
     close,
   }
 }

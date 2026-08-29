@@ -1,0 +1,135 @@
+import { mkdir, readFile } from "node:fs/promises"
+import { resolve } from "node:path"
+import type { Tool } from "minicore"
+import { LIMITS } from "../constants.ts"
+import { atomicWriteText } from "../lib/atomic-write.ts"
+
+// Todo list per sesi — state eksplisit untuk task multi-langkah.
+// Tanpa ini agent tidak punya tempat menyimpan rencana antar step, sehingga
+// pada task panjang ia lupa langkah yang belum dikerjakan.
+
+export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled"
+
+export interface TodoItem {
+  content: string
+  status: TodoStatus
+}
+
+const STATUSES: TodoStatus[] = ["pending", "in_progress", "completed", "cancelled"]
+
+const GLYPH: Record<TodoStatus, string> = {
+  pending: "[ ]",
+  in_progress: "[~]",
+  completed: "[x]",
+  cancelled: "[-]",
+}
+
+function todoPath(sessionId: string, cwd: string): string {
+  return resolve(cwd, ".minicode", "todos", `${sessionId}.json`)
+}
+
+/** Sanitasi + batasi daftar. Diekspor untuk test. */
+export function normalizeTodos(input: unknown): TodoItem[] {
+  if (!Array.isArray(input)) throw new Error("todos harus array")
+  const out: TodoItem[] = []
+  for (const raw of input.slice(0, LIMITS.TODO_MAX_ITEMS)) {
+    if (!raw || typeof raw !== "object") continue
+    const r = raw as { content?: unknown; status?: unknown }
+    const content = String(r.content ?? "")
+      .trim()
+      .slice(0, LIMITS.TODO_CONTENT_MAX_CHARS)
+    if (!content) continue
+    const status = STATUSES.includes(r.status as TodoStatus) ? (r.status as TodoStatus) : "pending"
+    out.push({ content, status })
+  }
+  if (out.length === 0) throw new Error("todos kosong — beri minimal satu item dengan content")
+  // Satu in_progress saja: kalau model menandai beberapa, sisanya turun ke
+  // pending supaya daftar tetap punya satu fokus yang jelas.
+  let seenActive = false
+  for (const t of out) {
+    if (t.status !== "in_progress") continue
+    if (seenActive) t.status = "pending"
+    seenActive = true
+  }
+  return out
+}
+
+export function renderTodos(todos: TodoItem[]): string {
+  const done = todos.filter((t) => t.status === "completed").length
+  const active = todos.find((t) => t.status === "in_progress")
+  const head = `todos ${done}/${todos.length}${active ? ` · sekarang: ${active.content}` : ""}`
+  const body = todos.map((t) => `  ${GLYPH[t.status]} ${t.content}`).join("\n")
+  return `${head}\n${body}`
+}
+
+export async function loadTodos(sessionId: string, cwd = process.cwd()): Promise<TodoItem[]> {
+  try {
+    const raw = await readFile(todoPath(sessionId, cwd), "utf8")
+    const parsed = JSON.parse(raw) as { todos?: unknown }
+    return normalizeTodos(parsed.todos ?? [])
+  } catch {
+    return []
+  }
+}
+
+export async function saveTodos(
+  sessionId: string,
+  todos: TodoItem[],
+  cwd = process.cwd(),
+): Promise<void> {
+  const p = todoPath(sessionId, cwd)
+  await mkdir(resolve(cwd, ".minicode", "todos"), { recursive: true }).catch(() => {})
+  await atomicWriteText(p, JSON.stringify({ sessionId, updatedAt: Date.now(), todos }, null, 2))
+}
+
+/** Session id aktif — di-set CLI supaya todo tersimpan per sesi. */
+export const todoSession = { id: "default", cwd: undefined as string | undefined }
+
+export const todoWriteTool: Tool = {
+  name: "todo_write",
+  description:
+    "Tulis/ganti daftar todo untuk task ini. Kirim SELURUH daftar tiap kali (bukan delta). Pakai untuk task 3+ langkah: tandai satu item in_progress, tandai completed segera setelah selesai.",
+  parameters: {
+    type: "object",
+    properties: {
+      todos: {
+        type: "array",
+        description: "daftar lengkap todo",
+        items: {
+          type: "object",
+          properties: {
+            content: { type: "string", description: "deskripsi singkat & actionable" },
+            status: {
+              type: "string",
+              enum: ["pending", "in_progress", "completed", "cancelled"],
+            },
+          },
+          required: ["content", "status"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["todos"],
+    additionalProperties: false,
+  },
+  async execute({ todos }, ctx) {
+    ctx.signal.throwIfAborted()
+    const list = normalizeTodos(todos)
+    const cwd = todoSession.cwd ?? process.cwd()
+    await saveTodos(todoSession.id, list, cwd)
+    return renderTodos(list)
+  },
+}
+
+export const todoReadTool: Tool = {
+  name: "todo_read",
+  description: "Baca daftar todo task ini (status terakhir yang ditulis todo_write).",
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  async execute(_args, ctx) {
+    ctx.signal.throwIfAborted()
+    const cwd = todoSession.cwd ?? process.cwd()
+    const list = await loadTodos(todoSession.id, cwd)
+    if (list.length === 0) return "(belum ada todo — pakai todo_write untuk membuat)"
+    return renderTodos(list)
+  },
+}

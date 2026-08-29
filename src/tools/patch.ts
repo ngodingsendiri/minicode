@@ -49,8 +49,7 @@ export const applyPatchTool: Tool = {
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > LIMITS.READ_FILE_MAX_BYTES)
-      throw new Error(`file too large: ${p} (${st.size})`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
 
     let content = await readFile(realAbs, "utf8")
     const patchList = patches as { search: string; replace: string }[]

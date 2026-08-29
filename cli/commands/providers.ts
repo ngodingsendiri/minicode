@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { loadConfig, refreshProviderModels, type MinicodeConfig } from "../../src/config.ts"
+import { loadConfig, type MinicodeConfig, refreshProviderModels } from "../../src/config.ts"
 import { c } from "../../src/tui/theme.ts"
 
 interface TraceRow {
@@ -32,7 +32,10 @@ export function providerOfTrace(cfg: MinicodeConfig, t: TraceRow): string | unde
   return undefined
 }
 
-export function healthMap(cfg: MinicodeConfig, traces: TraceRow[]): Map<string, { ok: boolean; model: string; ts: string }> {
+export function healthMap(
+  cfg: MinicodeConfig,
+  traces: TraceRow[],
+): Map<string, { ok: boolean; model: string; ts: string }> {
   const out = new Map<string, { ok: boolean; model: string; ts: string }>()
   for (const t of traces) {
     const pid = providerOfTrace(cfg, t)
@@ -93,14 +96,14 @@ export async function handleProviders(
       }
       const list = p.models.filter(match)
       if (!list.length) console.log(`  (no match for "${filter}")`)
-      list.forEach((m, i) => console.log(`  [${i}] ${m}`))
+      for (const [i, m] of list.entries()) console.log(`  [${i}] ${m}`)
     } else {
       if (cfg.providers.length === 0) console.log("(no providers)")
       for (const p of cfg.providers) {
         const list = p.models.filter(match)
         console.log(`${p.id} (${p.baseUrl})${filter ? ` - match "${filter}"` : ""}`)
         if (!list.length) console.log("  (no match)")
-        list.slice(0, 10).forEach((m) => console.log(`  ${m}`))
+        for (const m of list.slice(0, 10)) console.log(`  ${m}`)
         if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`)
         if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} more`)
       }

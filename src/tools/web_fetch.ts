@@ -63,10 +63,7 @@ const MAX_REDIRECTS = LIMITS.WEB_FETCH_MAX_REDIRECTS
 // Hard-cap pembacaan body SEBELUM slicing — cegah OOM dari response raksasa.
 const BODY_HARD_CAP_CHARS = LIMITS.WEB_FETCH_BODY_HARD_CAP_CHARS
 
-async function readBodyCapped(
-  res: Response,
-  controller: AbortController,
-): Promise<string> {
+async function readBodyCapped(res: Response, controller: AbortController): Promise<string> {
   if (!res.body) return ""
   const reader = res.body.getReader()
   const decoder = new TextDecoder()

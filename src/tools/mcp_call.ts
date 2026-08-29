@@ -1,11 +1,6 @@
 import type { Tool } from "minicore"
 import { LIMITS } from "../constants.ts"
-import {
-  callMcpTool,
-  extractMcpText,
-  getMcpServerIds,
-  listMcpTools,
-} from "../mcp/client.ts"
+import { callMcpTool, extractMcpText, getMcpServerIds, listMcpTools } from "../mcp/client.ts"
 
 export const mcpListTool: Tool = {
   name: "mcp_list",

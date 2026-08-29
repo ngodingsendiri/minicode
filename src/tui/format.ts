@@ -1,4 +1,4 @@
-// Formatter pesan event yang dipakai BERSAMA oleh renderer ANSI & Ink TUI,
+// Formatter pesan event yang dipakai renderer ANSI (simple + fullscreen),
 // agar "apa yang ditampilkan" konsisten antar dua backend (tidak dobel logika).
 import type { ToolCall } from "minicore/core/types.ts"
 

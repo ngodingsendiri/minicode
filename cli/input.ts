@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
+import { stripAnsi } from "../src/tui/theme.ts"
 import { applyKey, buildRenderSpec, createState, decodeKeys } from "./prompt-engine.ts"
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
@@ -101,7 +102,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     // suffix (bukan wrap ke baris baru) supaya input tidak berantakan.
     const scrollableLine = (line: string): string => {
       const cols = process.stdout.columns || 80
-      const clean = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+      const clean = stripAnsi(line)
       if (clean.length <= cols - 1) return line
       const keep = Math.max(20, cols - 4)
       return c.dim("…") + line.slice(-keep)

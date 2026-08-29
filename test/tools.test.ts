@@ -14,11 +14,12 @@ test("write_file + read_file + edit", async () => {
   const p = `${tmp}/a.txt`
   const ctx: any = { signal: new AbortController().signal }
   await writeFileTool.execute({ path: p, content: "hello world" }, ctx)
+  // read_file kini memberi nomor baris (`1: `) supaya model bisa merujuk baris.
   const r = (await readFileTool.execute({ path: p }, ctx)) as string
-  expect(r).toBe("hello world")
+  expect(r).toBe("1: hello world")
   await editTool.execute({ path: p, oldString: "world", newString: "minicode" }, ctx)
   const r2 = (await readFileTool.execute({ path: p }, ctx)) as string
-  expect(r2).toBe("hello minicode")
+  expect(r2).toBe("1: hello minicode")
   await rm(tmp, { recursive: true, force: true })
 })
 

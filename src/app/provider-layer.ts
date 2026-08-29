@@ -19,21 +19,30 @@ export async function createProviderLayer(opts: {
 
   // Agnostik: --provider <id> paksa satu provider tanpa ubah config file
   if (opts.providerOverride) {
-    const filtered = providers.filter((p) => (p as unknown as { id: string }).id === opts.providerOverride)
+    const filtered = providers.filter(
+      (p) => (p as unknown as { id: string }).id === opts.providerOverride,
+    )
     if (filtered.length) {
       providers = filtered
     } else {
-      process.stderr.write(`[warn] --provider "${opts.providerOverride}" tidak ditemukan, pakai urutan default\n`)
+      process.stderr.write(
+        `[warn] --provider "${opts.providerOverride}" tidak ditemukan, pakai urutan default\n`,
+      )
     }
   } else if (process.env.MINICODE_PROVIDER_ORDER) {
     // MINICODE_PROVIDER_ORDER="openai,anthropic,deepseek" → reorder agnostik tanpa edit config
-    const order = process.env.MINICODE_PROVIDER_ORDER.split(",").map((s) => s.trim()).filter(Boolean)
+    const order = process.env.MINICODE_PROVIDER_ORDER.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
     if (order.length) {
       const byId = new Map(providers.map((p) => [(p as unknown as { id: string }).id, p] as const))
       const reordered: typeof providers = []
       for (const id of order) {
         const p = byId.get(id)
-        if (p) { reordered.push(p); byId.delete(id) }
+        if (p) {
+          reordered.push(p)
+          byId.delete(id)
+        }
       }
       for (const p of byId.values()) reordered.push(p)
       providers = reordered

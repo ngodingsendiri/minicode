@@ -205,13 +205,7 @@ function sniffImageMime(b: Uint8Array): string | null {
     return "image/png"
   if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg"
   if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif"
-  if (
-    b.length >= 12 &&
-    b[8] === 0x57 &&
-    b[9] === 0x45 &&
-    b[10] === 0x42 &&
-    b[11] === 0x50
-  )
+  if (b.length >= 12 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50)
     return "image/webp"
   return null
 }
@@ -348,8 +342,8 @@ async function* sseAnthropic(
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      let idx: number
-      while ((idx = buffer.indexOf("\n")) >= 0) {
+      let idx = buffer.indexOf("\n")
+      while (idx >= 0) {
         const line = buffer.slice(0, idx).replace(/\r$/, "")
         buffer = buffer.slice(idx + 1)
         if (line.startsWith("event:")) evt = line.slice(6).trim()
@@ -364,6 +358,7 @@ async function* sseAnthropic(
         } else if (line === "") {
           evt = ""
         }
+        idx = buffer.indexOf("\n")
       }
     }
   } finally {

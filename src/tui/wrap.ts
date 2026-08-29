@@ -1,8 +1,10 @@
 // Word-wrap + justify (rata kanan-kiri) - untuk output teks AI.
 // ANSI escape (warna/bold) tidak dihitung sebagai karakter lebar.
 
+import { ANSI_PATTERN } from "./theme.ts"
+
 export function stripAnsi(s: string): string {
-  return s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+  return s.replace(new RegExp(ANSI_PATTERN, "g"), "")
 }
 
 export function visibleLen(s: string): number {

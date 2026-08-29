@@ -1,5 +1,5 @@
 // Modal panel - VS Code palette
-import { c } from "../src/tui/theme.ts"
+import { c, stripAnsi } from "../src/tui/theme.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 
 export interface PanelOptions {
@@ -13,11 +13,10 @@ const DIM = "\x1b[2m",
   SYNC_START = "\x1b[?2026h",
   SYNC_END = "\x1b[?2026l"
 
-function stripAnsi(s: string): string {
-  return s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
-}
-
-export function captureOutput(fn: () => Promise<void>): Promise<{ lines: string[] }> {
+// Jalankan `fn` sambil menangkap stdout/console.log menjadi array baris.
+// Generic: nilai kembalian `fn` diteruskan lewat `value` agar caller bisa
+// memeriksa hasil (mis. flag `handled`) tanpa mengandalkan exception.
+export function captureOutput<T>(fn: () => Promise<T>): Promise<{ lines: string[]; value: T }> {
   return new Promise((resolve, reject) => {
     const lines: string[] = []
     const origWrite = process.stdout.write.bind(process.stdout)
@@ -34,10 +33,10 @@ export function captureOutput(fn: () => Promise<void>): Promise<{ lines: string[
       lines.push(stripAnsi(String(args.join(" ")).trim()))
     }
     fn().then(
-      () => {
+      (value) => {
         process.stdout.write = origWrite
         console.log = origLog
-        resolve({ lines })
+        resolve({ lines, value })
       },
       (e) => {
         process.stdout.write = origWrite

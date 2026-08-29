@@ -31,7 +31,7 @@ test("persistence roundtrip + delete", async () => {
   )
   const loaded = loadSession(id, tmp)
   expect(loaded?.messages.length).toBe(3)
-  expect((loaded?.messages[1] as { toolCalls?: unknown[] }).toolCalls?.length).toBe(1)
+  expect((loaded!.messages[1] as { toolCalls?: unknown[] }).toolCalls?.length).toBe(1)
   deleteSession(id, tmp)
   expect(loadSession(id, tmp)).toBeNull()
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
@@ -82,7 +82,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
   )
   const loaded = loadSession(id, tmp)
   expect(loaded?.messages.length).toBe(5)
-  expect((loaded?.messages[4] as { content: string }).content).toBe("u3")
+  expect((loaded!.messages[4] as { content: string }).content).toBe("u3")
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
 })
 
@@ -103,7 +103,7 @@ test("persistence Uint8Array content disimpan sebagai placeholder", async () => 
   const msg = loaded?.messages[0] as { content: string }
   expect(typeof msg.content).toBe("string")
   expect(msg.content).toMatch(/\[binary: 4 bytes\]/)
-  expect((loaded?.messages[1] as { content: string }).content).toBe("ok")
+  expect((loaded!.messages[1] as { content: string }).content).toBe("ok")
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
 })
 
@@ -140,7 +140,7 @@ test("persistence compaction (history menyusut) tulis ulang penuh", async () => 
   )
   const loaded = loadSession(id, tmp)
   expect(loaded?.messages.length).toBe(3)
-  expect((loaded?.messages[0] as { content: string }).content).toBe("summary")
+  expect((loaded!.messages[0] as { content: string }).content).toBe("summary")
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
 })
 
@@ -205,8 +205,8 @@ test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", a
   expect(toolMsg.name).toBe("read_file")
   expect(toolMsg.content).toBe("a-content")
   // seed ke kernel (minicore createSession) — history penuh tersedia
-  const { createSession } = await import("../../minicore/src/core/index.ts")
-  const { FakeProvider, allowAll, text, finish } = await import("../../minicore/test/fakes.ts")
+  const { createSession } = await import("minicore/core/index.ts")
+  const { FakeProvider, allowAll, text, finish } = await import("minicore/test/fakes.ts")
   const p = new FakeProvider([{ events: [text("ok"), finish("stop")] }])
   const s = createSession({
     provider: p,

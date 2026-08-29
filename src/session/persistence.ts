@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite"
-import { resolveDbPath } from "../lib/db-path.ts"
 import { LIMITS } from "../constants.ts"
+import { resolveDbPath } from "../lib/db-path.ts"
 
 const dbPath = (cwd?: string) => resolveDbPath("sessions.db", cwd)
 
@@ -31,7 +31,9 @@ function open(cwd?: string): Database {
     }
     db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC)`)
   } catch (e) {
-    process.stderr.write(`[warn] persistence: sessions migration skipped: ${(e as Error).message}\n`)
+    process.stderr.write(
+      `[warn] persistence: sessions migration skipped: ${(e as Error).message}\n`,
+    )
   }
   try {
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[]
