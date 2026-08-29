@@ -1,9 +1,17 @@
 // Fase 4 — OAuth device flow, git_commit, pricing models.dev.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+// Blok git_commit men-spawn git berkali-kali per test (init+config+add+commit
+// di beforeEach, lalu rev-parse+add+commit+log di dalam tool). Di Windows satu
+// spawn git bisa ~0,5–1,5 s, jadi 5 s default Bun terlalu ketat dan kegagalan
+// muncul sebagai timeout — bukan bug logika. Lihat komentar serupa di
+// test/shadow-git.test.ts.
+setDefaultTimeout(60_000)
+
 import type { ToolContext } from "minicore"
 import { createPermissionHandler } from "../src/policy/permission.ts"
 import {

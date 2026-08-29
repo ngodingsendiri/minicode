@@ -3,12 +3,20 @@
 // Yang diuji bukan hanya "undo bekerja", tapi juga jaminan yang membuat
 // pendekatan ini aman dipakai di repo orang: index/HEAD user tak tersentuh,
 // ref tidak muncul di git log, file di luar snapshot tidak dirusak.
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+// Setiap test di sini men-spawn git beberapa kali (init+config+add+commit di
+// beforeEach, lalu snapshot/restore). Terukur di Windows: satu `git init` ~1,5 s
+// dan `snapshotTree` ~3 s karena setiap invokasi adalah proses baru — jadi satu
+// test bisa melewati 5 s default Bun dan gagal sebagai *timeout*, bukan karena
+// logikanya salah. Batas dinaikkan agar kegagalan yang muncul selalu berarti.
+setDefaultTimeout(60_000)
+
 import {
   beginTurnSnapshot,
   loadCheckpointManifest,
