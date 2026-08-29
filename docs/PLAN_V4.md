@@ -1,16 +1,16 @@
 # PLAN V4 — Perbaikan Berdasarkan Audit 0.7.0
 
-**Status:** Fase 0 ✅ · Fase 1 ✅ · Fase 2 ✅ · Fase 3 ✅ · Fase 4 belum.
+**Status:** Fase 0 ✅ · Fase 1 ✅ · Fase 2 ✅ · Fase 3 ✅ · Fase 4 ✅
 
 **Basis audit:** commit `2cc335b` (v0.7.0). Semua angka di bawah **terverifikasi dengan eksekusi**, bukan salinan dari dokumen sebelumnya.
 
-| Metrik | Klaim dokumen lama | Hasil ukur saat audit | Setelah Fase 0–3 |
+| Metrik | Klaim dokumen lama | Hasil ukur saat audit | Setelah Fase 0–4 |
 |---|---|---|---|
-| Test | 243 / 189 / 243 (tiga angka berbeda) | 265 total, 257 pass, 8 skip | 520 total, 512 pass, 8 skip |
-| Coverage | "threshold 80" tanpa penegakan | 72,17% funcs / 76,34% lines | 73,73% / 77,97% + gate agregat nyata |
+| Test | 243 / 189 / 243 (tiga angka berbeda) | 265 total, 257 pass, 8 skip | 569 total, 561 pass, 8 skip |
+| Coverage | "threshold 80" tanpa penegakan | 72,17% funcs / 76,34% lines | 72,74% / 77,24% + gate agregat nyata |
 | Lint | implisit bersih | 68 error, 16 warning | **0 error** |
 | Typecheck | "0" | 0 tapi `cli/` diexclude → **14 error** saat disertakan | **0** dengan `cli`+`scripts`+`experiments` |
-| Tools | 23 | 24 | 28 |
+| Tools | 23 | 24 | 29 |
 | Grep | "ripgrep-like" | walker JS | ripgrep bila ada + fallback walker |
 | `bun install` tanpa sibling | — | **gagal** | **hijau** (vendor) |
 | Pola bypass bash | — | **33 lolos** (dari 38 diuji) | **0 lolos** |
@@ -18,6 +18,9 @@
 | Checkpoint | — | salin isi file, cap 200 | tree git, O(delta), tanpa cap |
 | MCP client | — | stdio saja | stdio + Streamable HTTP/SSE |
 | `tree-sitter.ts` | "optional wasm loader" | stub `return null` | **dihapus** (keputusan terukur) |
+| Auth | — | API key mentah saja | + OAuth device-code (RFC 8628) |
+| Git | — | read-only | + `git_commit` (di-gate) |
+| Harga model | 13 hardcode | 13 hardcode, `gpt-4o` **2× salah** | 17 bawaan + 3.162 dari models.dev (opt-in) |
 
 **Prinsip tetap:** kernel MiniCore beku. Hanya seam additif backward-compatible. Semua item di bawah adalah Tool / Policy / Provider / CLI.
 
@@ -196,20 +199,47 @@ Diuji terhadap **server HTTP nyata** (`Bun.serve` di localhost), bukan mock fetc
 
 ---
 
-## Fase 4 — Ekosistem & Akses (belum)
+## Fase 4 — Ekosistem & Akses ✅
 
-### 4.1 OAuth minimal satu provider (P1 untuk adopsi)
+### 4.1 OAuth device-code ✅
 
-Hanya API key mentah. Kompetitor: Claude Code (Pro/Max), Copilot CLI, Gemini CLI (login Google), Qwen Code (free tier). Untuk user yang sensitif biaya, ini penghalang adopsi terbesar setelah distribusi. Target realistis: satu jalur device-code ke provider dengan free tier. Token di `~/.minicode/auth.json`, `chmod 600` (pola `atomicWriteText` yang sudah ada).
+`src/providers/oauth.ts` mengimplementasikan Device Authorization Grant (RFC 8628). Dipilih di atas authorization-code+PKCE karena tidak butuh redirect URI, tidak membuka port lokal, dan bekerja lewat SSH — tiga hal yang semuanya relevan untuk agent terminal.
 
-### 4.2 Git write tools (P2)
+Penanganan yang sesuai spec dan diuji: `authorization_pending` (poll lagi), `slow_down` (naikkan interval minimal +5 s, §3.5), `access_denied`/`expired_token` (berhenti dengan pesan), interval liar di-clamp 1–60 s, dan error tak dikenal **berhenti** alih-alih polling sampai timeout.
 
-`src/tools/git.ts` hanya read. Tambah `git_commit` (di-gate seperti `delegate_task`), opsional auto-commit per turn ala Aider. Sinergis dengan 3.1.
+Kredensial disimpan di `~/.minicode/auth.json` — **terpisah dari `config.json`** karena config sering di-commit (`.minicode/config.json` lokal) sementara token adalah rahasia berumur pendek. Refresh token dipakai otomatis dengan margin 60 detik sebelum kedaluwarsa, jadi login sekali cukup.
 
-### 4.3 Provider modern (P2)
+`buildProviderListAsync` menukar `apiKey` dengan access token segar saat runtime. Provider OAuth yang belum login **dibuang dari daftar dengan peringatan** — lebih baik hilang daripada mengirim `Authorization: Bearer undefined` yang gagal dengan pesan membingungkan.
 
-- `usage.ts` `PRICING` hardcode 13 model → tarik dari `models.dev` dengan cache.
-- OpenAI Responses API, Gemini native API (sekarang lewat shim `/v1beta/openai`).
+Perintah: `minicode auth login|status|logout|list`.
+
+**Batas yang harus jujur:** nilai endpoint/clientId provider belum bisa saya verifikasi dengan login sungguhan dari lingkungan ini (butuh interaksi browser). **Mekanismenya** diuji end-to-end terhadap server device-flow lokal (`Bun.serve`) — 18 test mencakup seluruh cabang spec. Identitas provider perlu dikonfirmasi saat pertama dipakai; bila salah, `auth login` melaporkan error server apa adanya, bukan gagal senyap. Ini dicatat juga di komentar `OAUTH_PROVIDERS`.
+
+### 4.2 `git_commit` ✅
+
+Di-**gate** setara `delegate_task`/`mcp_call`: commit mengubah riwayat yang dibagikan, bukan sekadar file kerja. Mode `auto` meminta persetujuan sekali (TTY) / menolak (non-TTY); `readonly`/`plan`/`allowlist` menolak. Sub-agent tidak mendapat tool ini — commit adalah keputusan tingkat-task.
+
+Yang **sengaja tidak** disediakan: `push`, `reset --hard`, `rebase`, `checkout`, `branch -D`, `stash drop`, `amend`. Semuanya sulit dibalikkan atau mempengaruhi remote/repo orang lain. Agent tidak butuh itu untuk menyelesaikan task, dan menyediakannya memindahkan risiko besar ke tangan yang tak bisa menilai konteksnya.
+
+Keamanan yang diuji: pesan commit diteruskan sebagai satu argumen `-m` sehingga `$(touch pwned)` dan backtick **tidak** dieksekusi (dibuktikan: tak ada file baru setelah commit), `git add -- <paths>` memisahkan path dari opsi sehingga nama file `-weird.txt` tidak jadi flag, path dijail di permission layer **dan** di dalam tool, `cwd` dijail sama seperti bash/glob/grep, dan "tidak ada perubahan" mengembalikan pesan informatif alih-alih exception.
+
+Sekalian: `git_status`/`git_diff`/`git_log` kini juga menjail `cwd` — sebelumnya hanya permission layer yang memeriksanya.
+
+### 4.3 Pricing dari models.dev ✅ — dengan dua koreksi
+
+Tabel harga dipindah ke `src/policy/pricing.ts`: 17 entri bawaan (offline, selalu ada) + overlay 3.162 model dari models.dev.
+
+**Keputusan: tidak ada fetch otomatis.** Rencana menyebut "tarik dengan cache", tapi request ke pihak ketiga saat startup menambah latensi dan membocorkan pola pemakaian (IP + waktu) tanpa diminta. Sync hanya lewat `minicode pricing sync`; jalur run biasa **hanya membaca berkas cache**. Data kedaluwarsa tetap dipakai (dengan tanda) daripada jatuh ke "N/A".
+
+Dua temuan yang mengubah implementasi:
+
+**Harga `gpt-4o` di tabel lama 2× terlalu tinggi.** Tertulis $5/M input — itu harga peluncuran Mei 2024 yang dipotong separuh pada Agustus 2024 menjadi $2,50. Estimasi biaya dan `--budget` untuk model ini salah sejak lama. Test yang mengunci angka lama saya perbarui **dengan catatan alasannya**, bukan diam-diam.
+
+**Satu model id ditawarkan banyak provider dengan harga berbeda.** Terukur: `qwen3-coder-plus` muncul di 6 provider — dua di antaranya $0 (paket berlangganan), sisanya $1/M. Implementasi awal saya mengambil "yang pertama", dan hasilnya **$0** — artinya estimasi biaya nol dan `--budget` tak akan pernah memicu. Diganti: buang kandidat gratis bila ada yang berbayar, lalu ambil **median** (bukan min yang menyesatkan ke bawah, bukan max yang alarmis).
+
+Cache hanya menyimpan field biaya: payload 4,4 MB → 213 KB.
+
+Perintah: `minicode pricing status|sync|show <model>|clear`.
 
 ---
 
@@ -227,8 +257,8 @@ Sudah dikerjakan: angka test/tool/coverage dibuang dari README/ARCHITECTURE/CONT
 |---|---|---|---|
 | `bun x tsc --noEmit` (termasuk `cli`) | 0 | 14 error | ✅ 0 |
 | `bun run lint` | 0 error | 68 error | ✅ 0 |
-| `bun test` | pass, angka dari CI | 257 pass | ✅ 512 pass |
-| Coverage `src/policy` + `src/providers` | ≥90% | 72% global | ⏳ 73,73% global |
+| `bun test` | pass, angka dari CI | 257 pass | ✅ 561 pass |
+| Coverage `src/policy` + `src/providers` | ≥90% | 72% global | ⏳ 72,74% global |
 | Coverage `cli/` | ≥60% | ~0% | ⏳ sebagian |
 | `bun install` tanpa sibling | hijau | gagal | ✅ hijau |
 | `grep` repo ini | ≤200 ms | ~110–160 ms (walker) | ✅ terpenuhi kedua engine |
@@ -238,7 +268,18 @@ Sudah dikerjakan: angka test/tool/coverage dibuang dari README/ARCHITECTURE/CONT
 | Checkpoint tanpa cap file | ya | cap 200 | ✅ tree git |
 | MCP transport | stdio + HTTP | stdio saja | ✅ keduanya |
 | Stub yang menyesatkan | 0 | 1 (`tree-sitter.ts`) | ✅ 0 |
+| Jalur login tanpa API key | ada | tidak ada | ✅ OAuth device-code |
+| Harga model akurat | ya | `gpt-4o` 2× salah | ✅ dikoreksi + 3.162 model |
 | `bench --runs 2` resolveRate | ≥0,6 | 0,59 (live) | ⏳ belum diukur ulang |
+
+**Sisa yang belum dikerjakan** (di luar cakupan V4, kandidat V5):
+
+- Coverage `cli/` belum ≥60% dan `src/policy`/`src/providers` belum ≥90%.
+- Resolve-rate live belum diukur ulang setelah semua perubahan ini — angka 0,59 sudah basi.
+- OpenAI Responses API dan Gemini native API (masih lewat shim `/v1beta/openai`).
+- Publish ke npm / `npx minicode` — distribusi masih wajib clone + Bun.
+- Endpoint OAuth provider perlu konfirmasi lewat login sungguhan.
+- MCP client belum mengonsumsi `resources`/`prompts` dari server remote.
 
 ---
 
@@ -255,7 +296,12 @@ Sudah dikerjakan: angka test/tool/coverage dibuang dari README/ARCHITECTURE/CONT
 | Shadow-git mengubah line ending | `-c core.autocrlf=false` di setiap invokasi; diuji round-trip LF dan CRLF |
 | `.gitignore` membuat undo tak lengkap | Disengaja (tak ingin snapshot `node_modules`) dan didokumentasikan sebagai batas, bukan disembunyikan |
 | MCP HTTP jadi jalur SSRF | Host privat ditolak tanpa opt-in, redirect tidak diikuti, body dibatasi — memakai DNS-pinning yang sama dengan `web_fetch` |
-| Server MCP remote mengirim aliran raksasa | Cap ukuran pada JSON dan SSA; diuji dengan 256 MB stream |
+| Server MCP remote mengirim aliran raksasa | Cap ukuran pada JSON dan SSE; diuji dengan 256 MB stream |
+| Token OAuth ikut ter-commit | Disimpan di `~/.minicode/auth.json` (selalu global), bukan `config.json`; provider OAuth menyimpan `apiKey: ""` |
+| Endpoint OAuth provider salah | Error server dilaporkan apa adanya; dicatat di komentar spec bahwa nilainya perlu konfirmasi login pertama |
+| `git_commit` dipakai untuk operasi berbahaya | Hanya commit; push/amend/reset/rebase/checkout sengaja tidak ada. Pesan lewat `-m` argumen (bukan shell), path lewat `--` |
+| Harga models.dev berbeda antar provider | Buang kandidat $0 bila ada yang berbayar, ambil median — bukan "yang pertama" yang bergantung urutan iterasi |
+| Fetch pricing memperlambat startup / membocorkan pola pakai | Tidak ada fetch otomatis; hanya `pricing sync` eksplisit. Jalur run hanya baca cache lokal |
 | `rg` tidak ada / beda flavour regex | Fallback walker dipertahankan + auto-fallback saat rg error, dengan peringatan |
 | Background job jadi proses yatim | Cap job, reap, `killAllBackgroundJobs()` di `close()` CLI |
 

@@ -45,7 +45,11 @@ const FILE_WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch"])
 const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
 
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
-const GATED_TOOLS = new Set(["delegate_task", "mcp_call"])
+//
+// `git_commit` ada di sini karena commit mengubah riwayat yang dibagikan —
+// bukan sekadar file kerja. Di mode `auto` ia meminta persetujuan sekali
+// (jawab `[a] Always` untuk persist), dan ditolak di readonly/plan/allowlist.
+const GATED_TOOLS = new Set(["delegate_task", "mcp_call", "git_commit"])
 
 // Denylist bash kini di src/policy/bash-guard.ts — pemeriksaan dilakukan pada
 // bentuk TERNORMALISASI (quote dibuang, variabel sederhana disubstitusi), bukan
@@ -234,6 +238,13 @@ export function createPermissionHandler(
           call.name.startsWith("git_"))
       ) {
         if (isCwdOutsideRoot(cwdArg, root) || isRealPathOutsideRoot(cwdArg, root)) return "deny"
+      }
+      // git_commit: path yang di-stage juga dijail, bukan hanya cwd.
+      if (call.name === "git_commit" && Array.isArray(earlyArgs?.paths)) {
+        for (const p of earlyArgs.paths as unknown[]) {
+          if (typeof p !== "string") continue
+          if (isRealPathOutsideRoot(p, root) || isSensitive(p)) return "deny"
+        }
       }
 
       const mode = state.mode

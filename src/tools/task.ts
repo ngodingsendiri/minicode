@@ -3,7 +3,7 @@ import { createOpenAICompatProvider } from "minicore/providers/openai-compat.ts"
 import { Pool } from "../agents/pool.ts"
 import { loadConfig } from "../config.ts"
 import { LIMITS } from "../constants.ts"
-import { buildProviderList } from "../providers/build.ts"
+import { buildProviderListAsync } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
 import { createMinicodeSession } from "../session.ts"
 
@@ -11,7 +11,8 @@ const pool = new Pool(LIMITS.SUB_AGENT_POOL_SIZE)
 
 async function getProvider() {
   const cfg = await loadConfig()
-  const providers = buildProviderList(cfg)
+  // Async: sub-agent juga harus bisa memakai provider OAuth milik parent.
+  const providers = await buildProviderListAsync(cfg)
   if (providers.length === 0) {
     const baseUrl = process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1"
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.AGENT_API_KEY ?? ""
@@ -64,6 +65,7 @@ export const delegateTaskTool: Tool = {
     // Sub-agent tidak boleh menulis state milik parent: memory (persisten) dan
     // todo (rencana parent). Juga tidak boleh bersarang (delegate_task).
     // bash_output/bash_kill dibuang karena job id milik parent.
+    // git_commit dibuang: commit adalah keputusan tingkat-task, bukan sub-task.
     const base = allTools.filter(
       (t) =>
         ![
@@ -73,6 +75,7 @@ export const delegateTaskTool: Tool = {
           "todo_write",
           "bash_output",
           "bash_kill",
+          "git_commit",
         ].includes(t.name),
     )
     const subTools =

@@ -1,8 +1,31 @@
 # Changelog
 
-## [Unreleased] — Audit V4 Fase 0–3
+## [Unreleased] — Audit V4 Fase 0–4
 
 Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua angka di dokumen itu terverifikasi dengan eksekusi, bukan salinan klaim lama.
+
+### Added — Fase 4
+
+- **Login OAuth tanpa API key** (`src/providers/oauth.ts`). Device Authorization Grant (RFC 8628), dipilih di atas authorization-code+PKCE karena tidak butuh redirect URI, tidak membuka port lokal, dan bekerja lewat SSH. Penanganan sesuai spec: `authorization_pending`, `slow_down` (naikkan interval minimal +5 s per §3.5), `access_denied`/`expired_token` berhenti dengan pesan, interval liar di-clamp 1–60 s, dan error tak dikenal **berhenti** alih-alih polling sampai timeout.
+
+  Kredensial di `~/.minicode/auth.json` (chmod 600) — **terpisah dari `config.json`** karena config sering ikut ter-commit sementara token adalah rahasia berumur pendek. Refresh otomatis dengan margin 60 detik. `buildProviderListAsync` menukar `apiKey` dengan access token segar saat runtime; provider OAuth yang belum login **dibuang dengan peringatan** alih-alih mengirim `Authorization: Bearer undefined`.
+
+  Perintah: `minicode auth login|status|logout|list`.
+
+  Catatan jujur: mekanismenya diuji end-to-end terhadap server device-flow lokal (18 test mencakup seluruh cabang spec), tapi nilai endpoint/clientId provider belum dikonfirmasi lewat login sungguhan dari lingkungan pengembangan. Bila salah, `auth login` melaporkan error server apa adanya.
+
+- **`git_commit`** — tool git pertama yang menulis. Di-**gate** setara `delegate_task`: commit mengubah riwayat yang dibagikan, bukan sekadar file kerja. Sub-agent tidak mendapatkannya.
+
+  Yang **sengaja tidak** disediakan: `push`, `reset --hard`, `rebase`, `checkout`, `branch -D`, `stash drop`, `amend`. Semuanya sulit dibalikkan atau mempengaruhi remote/repo orang lain; agent tidak butuh itu untuk menyelesaikan task.
+
+  Keamanan yang diuji: pesan diteruskan sebagai satu argumen `-m` sehingga `$(touch pwned)` dan backtick **tidak dieksekusi** (dibuktikan: tak ada file baru setelah commit), `git add -- <paths>` memisahkan path dari opsi sehingga `-weird.txt` tidak jadi flag, path dijail di permission layer dan di dalam tool, dan "tidak ada perubahan" mengembalikan pesan informatif alih-alih exception. Sekalian: `git_status`/`git_diff`/`git_log` kini juga menjail `cwd`.
+
+- **Tabel harga dari models.dev** (`src/policy/pricing.ts`). 17 entri bawaan (offline) + overlay 3.162 model. **Tidak ada fetch otomatis** — rencana menyebut "tarik dengan cache", tapi request ke pihak ketiga saat startup menambah latensi dan membocorkan pola pemakaian tanpa diminta. Sync hanya lewat `minicode pricing sync`; jalur run biasa hanya membaca cache. Payload 4,4 MB → cache 213 KB karena hanya field biaya yang diambil. Perintah: `minicode pricing status|sync|show|clear`.
+
+### Fixed — Fase 4
+
+- **Harga `gpt-4o` 2× terlalu tinggi.** Tabel lama menulis $5/M input — itu harga peluncuran Mei 2024 yang dipotong separuh pada Agustus 2024 menjadi $2,50. Estimasi biaya dan `--budget` untuk model ini salah sejak lama. Test yang mengunci angka lama diperbarui **dengan catatan alasannya**, bukan diam-diam.
+- **Harga bisa jadi $0 karena urutan iterasi objek.** Satu model id sering ditawarkan beberapa provider dengan harga berbeda — terukur: `qwen3-coder-plus` muncul di 6 provider, dua di antaranya $0 (paket berlangganan). Implementasi awal mengambil "yang pertama" dan hasilnya **$0**, artinya estimasi biaya nol dan `--budget` tak akan pernah memicu. Diganti: buang kandidat gratis bila ada yang berbayar, lalu ambil **median** (bukan min yang menyesatkan ke bawah, bukan max yang alarmis).
 
 ### Changed — Fase 3
 
@@ -79,6 +102,7 @@ Basis: audit menyeluruh v0.7.0 (lihat [docs/PLAN_V4.md](docs/PLAN_V4.md)). Semua
 - `test/phase2-security.test.ts` — 160 test: normalisasi bash-guard, 33 kelas bypass yang dulu lolos, 25 pola lama yang harus tetap tertutup, 32 perintah sah sebagai guard anti-over-block, integrasi guard di tiap mode permission, 10 skenario resolusi sandbox, dan 45 nama variabel env.
 - `test/shadow-git.test.ts` — 22 test: index/HEAD user utuh, ref tak tampil di `git log`/`branch`, tahan `gc --prune=now`, line ending preserved (regresi `core.autocrlf`), `sessionId` ilegal (regresi path index Windows), `.gitignore` dihormati saat snapshot **dan** restore, undo/redo lintas tree, 250 file tanpa cap, manifest tetap kecil untuk file besar.
 - `test/mcp-http.test.ts` — 28 test terhadap **server HTTP nyata** (`Bun.serve`), bukan mock fetch, karena yang rawan justru perilaku di atas kabel: event SSE terpotong tepat di tengah payload JSON, pemisah CRLF, event non-JSON di antara balasan, notifikasi sebelum balasan, aliran berakhir tanpa balasan (harus error bukan hang), sesi & protocol header, redirect ditolak, host privat ditolak, body cap.
+- `test/phase4-auth-git-pricing.test.ts` — 49 test: device flow terhadap **server OAuth lokal** (pending, slow_down dengan kenaikan interval, access_denied, expired_token, clamp interval, balasan HTML dari captive portal, abort di tengah polling), `git_commit` (shell-injection lewat pesan, flag-injection lewat nama file, jail path & cwd, commit kosong, permission per mode), dan pricing (median antar-provider, entri $0 diabaikan, anti-substring, cache hanya field biaya).
 - `experiments/bash-bypass-probe.ts` — harness pengukuran postur denylist yang outputnya dipakai di dokumentasi. Exit 0 hanya bila 0 bypass **dan** 0 over-block, jadi bisa dijadikan gate CI (`bun run gate:bash`).
 
 ## [0.7.0] - 2026-08-29

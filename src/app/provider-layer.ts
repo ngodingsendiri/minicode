@@ -3,7 +3,7 @@ import { runSetupWizard } from "../../cli/wizard.ts"
 import { loadConfig, type MinicodeConfig } from "../config.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"
 import { createAnthropicProvider } from "../providers/anthropic.ts"
-import { buildProviderList } from "../providers/build.ts"
+import { buildProviderListAsync } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
 
 export async function createProviderLayer(opts: {
@@ -15,7 +15,7 @@ export async function createProviderLayer(opts: {
 }): Promise<{ cfg: MinicodeConfig; router: ReturnType<typeof createRouterProvider> }> {
   const cfg = await loadConfig(opts.cwd)
   type Provider = ReturnType<typeof createOpenAICompatProvider>
-  let providers = buildProviderList(cfg)
+  let providers = await buildProviderListAsync(cfg)
 
   // Agnostik: --provider <id> paksa satu provider tanpa ubah config file
   if (opts.providerOverride) {
@@ -74,7 +74,7 @@ export async function createProviderLayer(opts: {
     if (ok) {
       const cfg2 = await loadConfig(opts.cwd)
       cfg.providers = cfg2.providers
-      providers = buildProviderList(cfg2)
+      providers = await buildProviderListAsync(cfg2)
     }
   }
   if (providers.length === 0) {

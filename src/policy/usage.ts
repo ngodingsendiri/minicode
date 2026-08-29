@@ -1,4 +1,5 @@
 import type { EventBus } from "minicore/core/index.ts"
+import { findPrice, loadPricingOverlay, type ModelPrice } from "./pricing.ts"
 
 export interface Usage {
   inputTokens: number
@@ -9,32 +10,22 @@ export interface Usage {
   cost?: number
 }
 
-const PRICING: Record<
-  string,
-  { input: number; output: number; cacheRead?: number; cacheWrite?: number }
-> = {
-  "gpt-4o": { input: 5, output: 15, cacheRead: 2.5, cacheWrite: 5 },
-  "gpt-4o-mini": { input: 0.15, output: 0.6, cacheRead: 0.075, cacheWrite: 0.15 },
-  "gpt-4.1": { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 2 },
-  o1: { input: 15, output: 60, cacheRead: 7.5, cacheWrite: 15 },
-  o3: { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 2 },
-  "claude-sonnet-4": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "deepseek-chat": { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0.14 },
-  "deepseek-reasoner": { input: 0.55, output: 2.19, cacheRead: 0.14, cacheWrite: 0.55 },
-  // b.ai deepseek-v4-flash (berbeda keluarga deepseek-chat)
-  "deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.014, cacheWrite: 0.14 },
-  "gemini-2.0": { input: 1.25, output: 10, cacheRead: 0.31, cacheWrite: 1.25 },
-  "text-embedding-3-small": { input: 0.02, output: 0 },
+// Tabel harga pindah ke src/policy/pricing.ts: bawaan (offline) + overlay
+// opsional dari models.dev yang HANYA ditarik lewat `minicode pricing sync`.
+// Overlay dimuat sekali per proses; sebelum termuat, tabel bawaan tetap dipakai
+// sehingga cost tak pernah mendadak jadi undefined.
+let overlayLoaded = false
+export function primePricing(): Promise<unknown> {
+  if (overlayLoaded) return Promise.resolve()
+  overlayLoaded = true
+  return loadPricingOverlay().catch(() => ({}))
 }
 
 // cacheIncluded=true (Anthropic): input_tokens SUDAH termasuk cache_read+cache_write,
 // jadi normal input = input - cacheRead - cacheWrite (hindari double-count).
 // cacheIncluded=false (provider lain): input_tokens terpisah dari cache → jangan kurangi.
-// Match harga per-segment (pemisah "/" dan ":"): segmen harus sama persis
-// dengan key, atau diawali key + pemisah sufiks [._-] (menutup varian versi
-// seperti gpt-4o-2024). Menolak false-positive semacam "my-gpt-4o-wrapper"
-// dan "gpt-4o1" yang sebelumnya cocok via substring includes().
+// Pencocokan harga per-segmen ada di findPrice() (kunci terpanjang menang,
+// menolak false-positive seperti "my-gpt-4o-wrapper").
 // Diekspor untuk test.
 export function costFor(
   model: string,
@@ -44,23 +35,14 @@ export function costFor(
   cacheWrite = 0,
   cacheIncluded = true,
 ): number | undefined {
-  const m = model.toLowerCase()
-  const segments = m.split(/[/:]/)
-  // longest-key first: claude-sonnet-4-5 menang atas claude-sonnet-4
-  const sorted = Object.entries(PRICING).sort((a, b) => b[0].length - a[0].length)
-  for (const [k, p] of sorted) {
-    for (const s of segments) {
-      if (s === k || s.startsWith(`${k}.`) || s.startsWith(`${k}_`) || s.startsWith(`${k}-`)) {
-        const normalInput = cacheIncluded ? Math.max(0, input - cacheRead - cacheWrite) : input
-        const inputCost = (normalInput / 1_000_000) * p.input
-        const readCost = p.cacheRead ? (cacheRead / 1_000_000) * p.cacheRead : 0
-        const writeCost = p.cacheWrite ? (cacheWrite / 1_000_000) * p.cacheWrite : 0
-        const outputCost = (output / 1_000_000) * p.output
-        return inputCost + readCost + writeCost + outputCost
-      }
-    }
-  }
-  return undefined
+  const p: ModelPrice | undefined = findPrice(model)
+  if (!p) return undefined
+  const normalInput = cacheIncluded ? Math.max(0, input - cacheRead - cacheWrite) : input
+  const inputCost = (normalInput / 1_000_000) * p.input
+  const readCost = p.cacheRead ? (cacheRead / 1_000_000) * p.cacheRead : 0
+  const writeCost = p.cacheWrite ? (cacheWrite / 1_000_000) * p.cacheWrite : 0
+  const outputCost = (output / 1_000_000) * p.output
+  return inputCost + readCost + writeCost + outputCost
 }
 
 export function createUsageCollector(bus: EventBus, model?: string) {

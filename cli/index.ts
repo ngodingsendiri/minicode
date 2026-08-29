@@ -23,6 +23,8 @@ Usage:
   minicode config <add|list|remove|detect> [options]
   minicode config mcp <add|list|remove> [options]
   minicode config lsp <add|list|remove> [options]
+  minicode auth <login|status|logout|list>  # OAuth device-code (tanpa API key)
+  minicode pricing <status|sync|show>       # tabel harga (models.dev, opt-in)
   minicode mcp serve [--allow-all] [--all-tools]
   minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
   minicode sessions <list|export> [id]

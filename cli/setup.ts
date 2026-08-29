@@ -12,7 +12,7 @@ import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
 import { createLlmCompaction } from "../src/policy/compaction.ts"
 import type { RateLimiter } from "../src/policy/ratelimit.ts"
-import { createUsageCollector } from "../src/policy/usage.ts"
+import { createUsageCollector, primePricing } from "../src/policy/usage.ts"
 import { detectVerifyCommand, runVerify, runWithSelfHeal } from "../src/policy/verifier.ts"
 import {
   beginTurnSnapshot,
@@ -263,6 +263,9 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       })
 
   const usage = createUsageCollector(session.events, effectiveInitialModel)
+  // Muat overlay harga dari cache lokal (bila user pernah `pricing sync`).
+  // Tidak ada request jaringan di sini — hanya baca berkas.
+  void primePricing()
 
   async function persistCurrent(usageData: unknown) {
     try {

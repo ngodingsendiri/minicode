@@ -81,10 +81,9 @@ describe("MCP http: transport dasar", () => {
   })
 
   test("timeout dilaporkan sebagai timeout, bukan error jaringan generik", async () => {
-    const url = serve(async () => {
-      await Bun.sleep(2000)
-      return new Response("{}", { headers: { "content-type": "application/json" } })
-    })
+    // Server sengaja tak pernah membalas: request PASTI kena timeout klien,
+    // tanpa bergantung pada seberapa cepat mesin menjalankan sleep.
+    const url = serve(() => new Promise<Response>(() => {}))
     const t = mk(url)
     await t.connect()
     await expect(t.request("slow", {}, 150)).rejects.toThrow(/timeout 150ms/)
@@ -233,7 +232,11 @@ describe("MCP http: sesi & protokol", () => {
     const t = mk(url)
     await t.connect()
     t.notify("notifications/initialized")
-    await Bun.sleep(120)
+    // Poll dengan deadline, bukan sleep tetap: notify sengaja fire-and-forget,
+    // jadi kita menunggu server MENERIMA request — bukan menebak berapa lama
+    // event loop butuh. Sleep tetap membuat test flaky saat mesin sibuk.
+    const deadline = Date.now() + 5000
+    while (hit === 0 && Date.now() < deadline) await Bun.sleep(10)
     expect(hit).toBe(1)
   })
 

@@ -25,6 +25,9 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server stdio |
 | `minicode config mcp add <id> --url <https://…>` | Daftarkan MCP server HTTP (Streamable HTTP/SSE) |
 | `minicode config lsp add <ext> --command <cmd> --args "<a1,a2>"` | Daftarkan LSP server |
+| `minicode auth login [provider]` | Login OAuth device-code (tanpa API key) |
+| `minicode auth status\|logout\|list` | Kelola kredensial OAuth |
+| `minicode pricing status\|sync\|show <model>\|clear` | Tabel harga untuk estimasi biaya |
 | `minicode skills list` | Daftar skill terpasang |
 | `minicode sessions list` | Riwayat sesi |
 | `minicode mcp serve` | Ekspos minicode sebagai MCP server |
@@ -170,6 +173,65 @@ bash_kill({ id: "bg_xxxxxxxx" })                 # SIGTERM lalu SIGKILL
 ```
 
 Batas: `BASH_BACKGROUND_MAX_JOBS` job hidup sekaligus; semua job dimatikan saat CLI keluar (tidak ada proses yatim). `background:true` **ditolak** saat `--sandbox` aktif — container/namespace ephemeral mati bersama call-nya, jadi janji isolasi tidak bisa dipenuhi untuk proses berumur panjang.
+
+### `git_commit` — satu-satunya tool git yang menulis
+
+```
+git_commit({ message: "fix: null check", paths: ["src/a.ts"] })
+git_commit({ message: "wip", all: true })   # semua file yang SUDAH dilacak git
+```
+
+**Di-gate** seperti `delegate_task`: mode `auto` meminta persetujuan sekali (TTY) atau menolak (non-TTY); `readonly`/`plan`/`allowlist` menolak. Sub-agent tidak mendapatkannya — commit adalah keputusan tingkat-task.
+
+Yang **sengaja tidak** ada: `push`, `amend`, `reset`, `rebase`, `checkout`, `branch -D`, `stash drop`. Semuanya sulit dibalikkan atau mempengaruhi remote/repo orang lain.
+
+Keamanan: pesan diteruskan sebagai satu argumen `-m` sehingga `$(...)` dan backtick di dalamnya **tidak dieksekusi**; `git add -- <paths>` memisahkan path dari opsi sehingga file bernama `-weird.txt` tidak jadi flag; path dan `cwd` dijail seperti tool lain. Bila tak ada perubahan, hasilnya pesan informatif — bukan exception.
+
+## Autentikasi
+
+Dua jalur, bisa dipakai bersamaan:
+
+### API key
+
+```bash
+minicode config add --baseUrl https://api.openai.com/v1 --apiKey sk-…
+```
+
+### OAuth device-code (tanpa API key)
+
+```bash
+minicode auth list            # provider yang mendukung
+minicode auth login qwen      # tampilkan kode → buka URL → tunggu persetujuan
+minicode auth status          # kredensial + kapan kedaluwarsa
+minicode auth logout qwen
+```
+
+Alurnya RFC 8628: minicode menampilkan kode singkat dan URL, Anda menyetujui di browser, minicode menyelesaikan sisanya. Tidak butuh redirect URI dan tidak membuka port lokal, jadi berfungsi lewat SSH.
+
+**Di mana token disimpan:** `~/.minicode/auth.json` (chmod 600) — **bukan** `config.json`. Alasannya: `.minicode/config.json` lokal sering ikut ter-commit, sementara token adalah rahasia berumur pendek. Provider OAuth menyimpan `apiKey: ""` di config dan token diambil saat runtime.
+
+Refresh otomatis dengan margin 60 detik sebelum kedaluwarsa, jadi login sekali cukup. Bila provider OAuth belum login (atau refresh gagal), provider itu **dibuang dari daftar dengan peringatan** alih-alih mengirim header kosong yang gagal dengan pesan membingungkan.
+
+> **Catatan kejujuran:** mekanisme device flow diuji lengkap terhadap server OAuth lokal (18 test mencakup pending/slow_down/denied/expired/clamp), tapi nilai endpoint dan clientId provider belum dikonfirmasi lewat login sungguhan. Bila salah, `auth login` melaporkan error dari server apa adanya.
+
+## Biaya & harga model
+
+17 harga bawaan selalu tersedia offline. Untuk cakupan lebih luas:
+
+```bash
+minicode pricing sync                       # tarik models.dev (3.162 model, ~213 KB)
+minicode pricing status                     # sumber aktif + umur cache
+minicode pricing show claude-sonnet-4-5     # harga satu model + sumbernya
+minicode pricing clear                      # hapus cache, kembali ke bawaan
+```
+
+**Tidak ada fetch otomatis.** Jalur run biasa hanya membaca cache lokal; request ke pihak ketiga saat startup menambah latensi dan membocorkan pola pemakaian (IP + waktu) tanpa diminta. Cache kedaluwarsa tetap dipakai dengan tanda — harga lama lebih berguna daripada "N/A".
+
+Cara pencocokan: per-segmen (pemisah `/` dan `:`), kunci terpanjang menang. Jadi `deepseek/deepseek-chat:free` cocok, `claude-sonnet-4-5` menang atas `claude-sonnet-4`, dan `my-gpt-4o-wrapper` **tidak** cocok dengan `gpt-4o`.
+
+Satu model id sering ditawarkan beberapa provider dengan harga berbeda — `qwen3-coder-plus` ada di 6 provider, dua di antaranya $0 karena paket berlangganan. Overlay membuang kandidat gratis bila ada yang berbayar, lalu mengambil **median**, supaya `--budget` tidak diam-diam menganggap semuanya gratis.
+
+Semua angka tetap **estimasi**: biaya riil tergantung provider, paket, dan diskon.
 
 ## MCP & LSP
 
@@ -340,6 +402,10 @@ Semua test hermetic (fetch di-mock, DB tmpdir) dan aman dijalankan berulang tanp
 - **`/undo` tidak memulihkan file tertentu:** kemungkinan file itu ada di `.gitignore`. Mode shadow-git hanya men-snapshot yang dilacak git (disengaja, agar `node_modules` tak ikut).
 - **MCP HTTP ditolak "host privat":** server di localhost/LAN butuh `--allow-private` saat `config mcp add`. Ini penjaga SSRF, bukan bug.
 - **MCP HTTP gagal "redirect tidak diikuti":** URL server salah atau server mengarahkan ke host lain. Perbaiki URL-nya; redirect sengaja tidak diikuti.
+- **`auth login` gagal / kode tak diterima:** endpoint provider mungkin berubah. Pesan error dari server ditampilkan apa adanya — cek `minicode auth list` untuk spec yang dipakai.
+- **Provider OAuth hilang dari daftar:** belum login atau refresh gagal. `minicode auth status` menunjukkan mana yang kedaluwarsa; `minicode auth login <id>` untuk memulihkan.
+- **`git_commit` ditolak:** tool ini di-gate. Di non-TTY (CI) ia selalu ditolak — itu memang perilaku yang diinginkan. Pakai `--allow-all` bila commit otomatis benar-benar dibutuhkan.
+- **Biaya tampil N/A:** model tak ada di tabel. `minicode pricing sync` menambah 3.162 model; `pricing show <model>` memastikan apakah sudah dikenali.
 - **File besar tak bisa dibaca:** pakai `offset`/`limit` di `read_file` — file >2 MB memang ditolak tanpa itu.
 - **Background job tak jalan:** `background:true` ditolak saat `--sandbox` aktif; jalankan tanpa sandbox atau pakai foreground.
 - **Verify tidak jalan:** set `MINICODE_VERIFY_CMD` atau `verifyCommand` di config.

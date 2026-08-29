@@ -36,6 +36,16 @@ export async function dispatch(
     await handleProviders(args, getArg)
     return true
   }
+  if (cmd === "auth") {
+    const { handleAuth } = await import("./commands/auth.ts")
+    await handleAuth(args)
+    return true
+  }
+  if (cmd === "pricing") {
+    const { handlePricing } = await import("./commands/pricing.ts")
+    await handlePricing(args)
+    return true
+  }
   if (cmd === "exec") {
     const { handleExec } = await import("./commands/exec.ts")
     await handleExec(args, getArg)

@@ -85,11 +85,13 @@ test("usage: reset clears effective model", () => {
 // ── C18: pricing boundary matching ──────────────────────────────────────────
 
 test("pricing: exact and versioned model names match", () => {
-  // exact
-  expect(costFor("gpt-4o", 1_000_000, 0, 0, 0, false)).toBeCloseTo(5, 6)
+  // exact — gpt-4o $2,50/M input. Tabel lama menulis $5,00 (harga peluncuran
+  // Mei 2024, sudah dipotong separuh Agustus 2024), jadi estimasi biaya
+  // selama ini 2× terlalu tinggi untuk model ini. Dikoreksi di Fase 4.3.
+  expect(costFor("gpt-4o", 1_000_000, 0, 0, 0, false)).toBeCloseTo(2.5, 6)
   // sufiks versi (pemisah -)
-  expect(costFor("gpt-4o-2024-11-20", 1_000_000, 0, 0, 0, false)).toBeCloseTo(5, 6)
-  // prefix provider openrouter + sufikh :free
+  expect(costFor("gpt-4o-2024-11-20", 1_000_000, 0, 0, 0, false)).toBeCloseTo(2.5, 6)
+  // prefix provider openrouter + sufiks :free
   expect(costFor("deepseek/deepseek-chat:free", 1_000_000, 0, 0, 0, false)).toBeCloseTo(0.14, 6)
   // longest-key menang: claude-sonnet-4-5, bukan claude-sonnet-4
   expect(costFor("claude-sonnet-4-5", 1_000_000, 0, 0, 0, false)).toBeCloseTo(3, 6)

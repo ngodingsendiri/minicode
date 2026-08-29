@@ -37,6 +37,7 @@ bun install && bun link
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali
 minicode "buat http server" --verbose   # sekali jalan
+minicode auth login     # login OAuth device-code (tanpa API key)
 minicode providers      # daftar gateway (tanpa LLM)
 minicode models --match gemini  # cari model lintas provider
 minicode sync           # refresh model baru dari semua provider
@@ -62,11 +63,41 @@ bun experiments/bash-bypass-probe.ts    # ukur postur denylist bash (0 bypass = 
 ```
 
 ## Tools
-FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal; include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, **progres streaming**, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional) · git `git_status/diff/log`(timeout 8s paralel) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** (state per sesi di `.minicode/todos/`) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
+FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal; include filter, null-byte skip, scrub) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, **progres streaming**, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional) · git `git_status/diff/log`(cwd jail, timeout 8s paralel) **`git_commit`**(di-gate; tanpa push/amend/reset) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** (state per sesi di `.minicode/todos/`) · agents `delegate_task` (isolasi, pool 3, explore=readonly+lsp, event forward ke parent) · MCP `mcp_list` `mcp_call` (+dynamic `serverid.toolname`, hanya server terdaftar) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
 
 Daftar pasti: `bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.map(t=>t.name))"`
 
 Catatan `grep`: `rg` dipakai otomatis bila ada di PATH. Paksa jalur fallback dengan `MINICODE_GREP_ENGINE=js`. Kedua jalur menerapkan jail + secret-scrub yang sama dan diuji memberi hasil identik.
+
+Catatan `git_commit`: di-gate seperti `delegate_task` (persetujuan sekali di TTY, tolak di non-TTY). `push`/`amend`/`reset`/`rebase`/`checkout` **sengaja tidak disediakan** — sulit dibalikkan atau mempengaruhi remote. Pesan commit diteruskan sebagai argumen `-m`, jadi `$()` dan backtick di dalamnya tidak dieksekusi.
+
+## Autentikasi
+
+Dua jalur:
+
+```bash
+# 1. API key (seperti sebelumnya)
+minicode config add --baseUrl https://api.openai.com/v1 --apiKey sk-…
+
+# 2. OAuth device-code — tanpa API key, tanpa kartu kredit
+minicode auth login          # tampilkan kode, buka URL, tunggu persetujuan
+minicode auth status         # lihat kredensial + kapan kedaluwarsa
+minicode auth logout <id>
+```
+
+Token OAuth disimpan di `~/.minicode/auth.json` (chmod 600), **bukan** di `config.json` — config sering ikut ter-commit sementara token adalah rahasia berumur pendek. Refresh berjalan otomatis dengan margin 60 detik, jadi login sekali cukup. Provider OAuth yang belum login dibuang dari daftar dengan peringatan alih-alih mengirim header kosong.
+
+## Biaya & harga model
+
+17 harga bawaan tersedia offline. Untuk cakupan lebih luas, tarik sendiri:
+
+```bash
+minicode pricing sync                 # 3.162 model dari models.dev (~213 KB cache)
+minicode pricing status               # sumber yang aktif + umur cache
+minicode pricing show claude-sonnet-4-5
+```
+
+**Tidak ada fetch otomatis** — jalur run biasa hanya membaca cache lokal. Request ke pihak ketiga saat startup menambah latensi dan membocorkan pola pemakaian tanpa diminta. Satu model id sering ditawarkan beberapa provider dengan harga berbeda (`qwen3-coder-plus` ada di 6 provider, dua di antaranya $0 karena paket berlangganan); overlay memakai **median** setelah membuang kandidat gratis, supaya `--budget` tidak diam-diam menganggap semuanya gratis.
 
 ## Providers (hybrid x-api-key + Bearer)
 OpenAI-compat (OpenAI/OpenRouter/Ollama/vLLM/DeepSeek), Anthropic streaming tool_use cap 30s max_tokens configurable, Router fallback rate_limit/server/network clone-error + C4 base64 fix + P2 retryAfter cap. Detect `GET /models` timeout 4s. Config global+local merge (local prioritas) atomic write + chmod 600. Build provider terpusat di `src/providers/build.ts`.

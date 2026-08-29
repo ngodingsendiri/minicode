@@ -50,6 +50,11 @@ export const LIMITS = {
   DETECT_GLOBAL_TIMEOUT_MS: 6_000,
   DETECT_ATTEMPT_TIMEOUT_MS: 2_500,
   MCP_HANDSHAKE_TIMEOUT_MS: 3_000,
+  /** OAuth device flow: request pendek, tapi poll bisa berlangsung menit. */
+  OAUTH_REQUEST_TIMEOUT_MS: 15_000,
+  /** Pricing dari models.dev — cache agar tidak menembak jaringan tiap run. */
+  PRICING_FETCH_TIMEOUT_MS: 5_000,
+  PRICING_CACHE_TTL_MS: 86_400_000,
   LSP_DIAGNOSTICS_TIMEOUT_MS: 5_000,
   LSP_INIT_TIMEOUT_MS: 15_000,
   VERIFY_DEFAULT_TIMEOUT_MS: 30_000,

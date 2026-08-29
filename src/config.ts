@@ -8,9 +8,15 @@ import { GATEWAY_PRESETS } from "./providers/presets.ts"
 export interface ProviderEntry {
   id: string
   baseUrl: string
+  /** API key. Kosong bila provider memakai OAuth (`auth: "oauth"`). */
   apiKey: string
   models: string[]
   providerHint?: string
+  /**
+   * Sumber kredensial. `oauth` = ambil access token dari `~/.minicode/auth.json`
+   * saat runtime, jangan simpan di config (config bisa ikut ter-commit).
+   */
+  auth?: "apikey" | "oauth"
 }
 
 export interface McpServerEntry {
@@ -140,7 +146,9 @@ export async function saveProvider(
   entry: ProviderEntry,
   opts: { global?: boolean; cwd?: string } = {},
 ) {
-  if (!entry.id || !entry.baseUrl || !entry.apiKey)
+  // Provider OAuth sengaja TIDAK butuh apiKey: tokennya hidup di auth.json.
+  const needsKey = entry.auth !== "oauth"
+  if (!entry.id || !entry.baseUrl || (needsKey && !entry.apiKey))
     throw new Error("provider id/baseUrl/apiKey required")
   if (!entry.models || entry.models.length === 0) throw new Error("provider models required")
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
