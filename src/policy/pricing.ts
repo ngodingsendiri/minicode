@@ -250,6 +250,19 @@ export function findPrice(
   overlayMap: Record<string, ModelPrice> = overlay ?? {},
 ): ModelPrice | undefined {
   const m = model.toLowerCase()
+
+  // Varian gratis (`:free` di OpenRouter) benar-benar $0. Tanpa cek ini,
+  // pencocokan per-segmen mengabaikan sufiks dan memungut harga varian
+  // berbayarnya: `z-ai/glm-5.2:free` dilaporkan $1,25/M padahal OpenRouter
+  // menyatakan prompt=0 completion=0. Terverifikasi lewat /api/v1/models.
+  // Kunci eksplisit di overlay tetap didahulukan (bila models.dev punya entri
+  // untuk id ber-`:free`, itu lebih otoritatif).
+  if (m.endsWith(":free")) {
+    const explicit = overlayMap[m] ?? BUILTIN_PRICING[m]
+    if (explicit) return explicit
+    return { input: 0, output: 0 }
+  }
+
   const segments = m.split(/[/:]/)
 
   for (const table of [overlayMap, BUILTIN_PRICING]) {

@@ -26,7 +26,7 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
   },
   {
     id: "openrouter",
-    label: "OpenRouter (75+ models gateway)",
+    label: "OpenRouter (gateway 75+ model)",
     baseUrl: "https://openrouter.ai/api/v1",
     fallbackModels: [
       "meta-llama/llama-3.1-8b-instruct:free",
@@ -48,14 +48,14 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
   },
   {
     id: "google",
-    label: "Google Gemini (1M context)",
+    label: "Google Gemini (konteks 1M)",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     fallbackModels: ["gemini-2.0-flash", "gemini-2.5-pro"],
   },
   // Local & open-weight — OpenCode-style BYOK $0
   {
     id: "ollama",
-    label: "Ollama (local, free — BYOK $0)",
+    label: "Ollama (lokal, gratis - tanpa API key)",
     baseUrl: "http://localhost:11434/v1",
     fallbackModels: ["llama3.1", "qwen2.5-coder", "deepseek-coder"],
   },
@@ -67,13 +67,13 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
   },
   {
     id: "groq",
-    label: "Groq (ultra-fast inference)",
+    label: "Groq (inferensi sangat cepat)",
     baseUrl: "https://api.groq.com/openai/v1",
     fallbackModels: ["llama-3.1-70b-versatile", "mixtral-8x7b-32768"],
   },
   {
     id: "together",
-    label: "Together AI (open models)",
+    label: "Together AI (model terbuka)",
     baseUrl: "https://api.together.xyz/v1",
     fallbackModels: ["meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"],
   },
@@ -97,7 +97,7 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
   },
   {
     id: "generic",
-    label: "Generic OpenAI-Compatible (vLLM/LM Studio/Custom)",
+    label: "OpenAI-compatible umum (vLLM/LM Studio/lain)",
     baseUrl: "http://localhost:11434/v1",
     fallbackModels: ["llama3"],
   },

@@ -40,7 +40,11 @@ export function createLlmCompaction(opts: LlmCompactionOptions = {}): Compaction
         LIMITS.COMPACTION_LLM_TIMEOUT_MS,
       )
       const onAbort = () => ac.abort(signal.reason)
-      signal.addEventListener("abort", onAbort, { once: true })
+      // addEventListener TIDAK memicu untuk signal yang sudah abort, jadi
+      // pembatalan yang datang sebelum kompaksi dimulai akan terlewat dan
+      // request ringkasan tetap terkirim.
+      if (signal.aborted) onAbort()
+      else signal.addEventListener("abort", onAbort, { once: true })
       try {
         return await compactWithLlm(
           store,

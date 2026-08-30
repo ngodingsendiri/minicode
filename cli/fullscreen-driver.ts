@@ -1,6 +1,7 @@
 // Driver fullscreen REPL — minimal pure ANSI (tanpa Ink)
 // Slash builtin → overlay; skill → renderSkill → LLM
 
+import { resolve as resolvePath } from "node:path"
 import { listSessions } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { expandMentions } from "../src/tui/file-mention.ts"
@@ -111,10 +112,28 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
           label: `${s.id}  ${new Date(s.updated_at ?? s.created_at).toLocaleString()}`,
           value: s.id,
         })),
-        onPick: (id) => `keluar lalu jalankan: minicode --resume ${id}`,
+        // Jalur klasik me-respawn proses dengan --resume; TUI dulu hanya
+        // mencetak instruksi manual dan menyuruh user melakukannya sendiri.
+        onPick: (id) => {
+          void respawnWithResume(id)
+          return `melanjutkan sesi ${id}…`
+        },
       }
     }
     return null
+  }
+
+  /** Ganti proses dengan sesi yang dilanjutkan (sama seperti /resume klasik). */
+  async function respawnWithResume(id: string): Promise<void> {
+    await close()
+    const { spawn } = await import("node:child_process")
+    const entry = resolvePath(import.meta.dir, "index.ts")
+    const child = spawn(
+      process.execPath,
+      [entry, `--resume=${id}`, ...(cwd ? [`--cwd=${cwd}`] : [])],
+      { stdio: "inherit", env: { ...process.env, MINICODE_RESUME_NEW: "1" } },
+    )
+    child.on("exit", (code) => process.exit(code ?? 0))
   }
 
   const onOverlay = async (q: string): Promise<{ title: string; lines: string[] } | null> => {
@@ -179,8 +198,13 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     bus: session.events,
     model: () => modelRef.current ?? cfg.providers[0]?.models[0],
     cwdName: cwd ?? process.cwd(),
-    budget,
+    ...(budget != null ? { budget } : {}),
     initialMode: mode,
+    // Biaya dihitung di usage collector dari tabel harga — TIDAK dikirim
+    // provider lewat event. Pakai total SESI, bukan turn: turn di-reset setiap
+    // kali hasil disimpan, jadi header akan kembali $0.0000 dan --budget tidak
+    // pernah terpicu.
+    usage: () => usage.getSession(modelRef.current),
     onCycleMode,
     suggestions,
     history: () => history,
@@ -194,7 +218,6 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
   })
   void sessionId
   void effectiveTimeoutMs
-  void budget
   // keep handle alive — attachFullscreenMinimal menulis langsung ke stdout
   void shell
   return new Promise(() => {}) // app hidup sampai onExit

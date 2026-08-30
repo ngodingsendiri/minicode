@@ -6,11 +6,13 @@ import { handleBuiltinCommand } from "../cli/commands.ts"
 import { saveSession } from "../src/session/persistence.ts"
 
 function dummyCtx(extra: { setModelOverride?: (m: string) => void } = {}) {
+  const usage = { inputTokens: 10, outputTokens: 20, totalTokens: 30, cost: 0.001 }
   return {
     sessionId: "test-sess",
     currentModel: "gpt-4o",
     usage: {
-      get: () => ({ inputTokens: 10, outputTokens: 20, totalTokens: 30, cost: 0.001 }),
+      get: () => usage,
+      getSession: () => usage,
       reset: () => {},
       modelUsed: () => ({ effective: undefined, provider: undefined }),
     },

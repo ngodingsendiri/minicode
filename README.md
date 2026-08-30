@@ -49,7 +49,7 @@ Kernel MiniCore di-vendor ke `vendor/minicore` (19 file, ~72 KB) sehingga repo i
 Wizard & `/provider-add` menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google, Ollama, Qwen, Groq, dll), API Key ter-masking, auto-detect models.
 
 ```bash
-minicode --tui "refactor src/utils"     # TUI minimal alternate-screen (pure ANSI, tanpa Ink)
+minicode --interactive                  # REPL fullscreen (alternate-screen, pure ANSI)
 minicode --ask "deploy script"          # human-in-loop confirmation card
 minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah run
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral

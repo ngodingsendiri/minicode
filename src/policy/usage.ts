@@ -45,25 +45,44 @@ export function costFor(
   return inputCost + readCost + writeCost + outputCost
 }
 
+const emptyUsage = (): Usage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+})
+
 export function createUsageCollector(bus: EventBus, model?: string) {
-  let total: Usage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-  }
+  // DUA akumulator, bukan satu.
+  //
+  // `turn` di-reset setiap kali pemanggil menyimpan hasil satu turn
+  // (fullscreen-driver memanggil reset() setelah persistCurrent). `session`
+  // TIDAK pernah di-reset. Tanpa pemisahan ini, satu-satunya total yang ada
+  // ikut terhapus setiap turn, sehingga `/cost` yang berjudul "biaya sesi"
+  // selalu melaporkan 0 setelah turn pertama selesai, header REPL kembali ke
+  // $0.0000, dan `--budget` tidak akan pernah terpicu berapa pun yang dipakai.
+  // Terlihat pada uji live: 51.915 token nyata dilaporkan sebagai 0 token.
+  let turn: Usage = emptyUsage()
+  // Tidak pernah di-assign ulang: field-nya yang diakumulasi. `turn` sebaliknya
+  // diganti objek baru oleh reset() supaya pemanggil yang menyimpan hasil lama
+  // tidak ikut ternol.
+  const session: Usage = emptyUsage()
   let cacheIncluded = true
   // Cost attribution: kalau router fallback menyubstitusi model, harga harus
   // dihitung pakai model EFEKTIF yang benar-benar dipakai.
   let effectiveModel: string | undefined
   let effectiveProvider: string | undefined
+  // Model efektif terakhir yang dipakai dalam sesi — tetap dikenang setelah
+  // reset() supaya biaya sesi tidak kehilangan basis harganya.
+  let sessionModel: string | undefined
 
   bus.on("provider:extension", (e) => {
     if (e.kind === "effective-model") {
       const d = e.data as { requested?: string; effective?: string; provider?: string }
       effectiveModel = d.effective ?? effectiveModel
       effectiveProvider = d.provider ?? effectiveProvider
+      sessionModel = effectiveModel ?? sessionModel
       return
     }
     if (e.kind === "usage") {
@@ -81,42 +100,42 @@ export function createUsageCollector(bus: EventBus, model?: string) {
       const cWrite = d.cacheWriteTokens ?? 0
       if (typeof d.cacheIncluded === "boolean") cacheIncluded = d.cacheIncluded
 
-      total.inputTokens += input
-      total.outputTokens += output
-      total.totalTokens = total.inputTokens + total.outputTokens
-      total.cacheReadTokens = (total.cacheReadTokens ?? 0) + cRead
-      total.cacheWriteTokens = (total.cacheWriteTokens ?? 0) + cWrite
+      for (const acc of [turn, session]) {
+        acc.inputTokens += input
+        acc.outputTokens += output
+        acc.totalTokens = acc.inputTokens + acc.outputTokens
+        acc.cacheReadTokens = (acc.cacheReadTokens ?? 0) + cRead
+        acc.cacheWriteTokens = (acc.cacheWriteTokens ?? 0) + cWrite
+      }
     }
   })
 
+  const withCost = (base: Usage, priceModel?: string): Usage => {
+    if (!priceModel) return { ...base }
+    return {
+      ...base,
+      cost: costFor(
+        priceModel,
+        base.inputTokens,
+        base.outputTokens,
+        base.cacheReadTokens ?? 0,
+        base.cacheWriteTokens ?? 0,
+        cacheIncluded,
+      ),
+    }
+  }
+
   return {
-    get: (m?: string) => {
-      // prioritas: model efektif (dari fallback) > argumen > model default
-      const eff = effectiveModel ?? m ?? model
-      const base: Usage = { ...total }
-      return eff
-        ? {
-            ...base,
-            cost: costFor(
-              eff,
-              base.inputTokens,
-              base.outputTokens,
-              base.cacheReadTokens ?? 0,
-              base.cacheWriteTokens ?? 0,
-              cacheIncluded,
-            ),
-          }
-        : base
-    },
+    /** Pemakaian turn saat ini (di-reset oleh reset()). */
+    get: (m?: string) => withCost(turn, effectiveModel ?? m ?? model),
+    /**
+     * Pemakaian KUMULATIF seluruh sesi — dipakai `/cost`, header REPL, dan
+     * pemeriksaan `--budget`. Tidak terpengaruh reset().
+     */
+    getSession: (m?: string) => withCost(session, effectiveModel ?? sessionModel ?? m ?? model),
     modelUsed: () => ({ effective: effectiveModel, provider: effectiveProvider }),
     reset: () => {
-      total = {
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-      }
+      turn = emptyUsage()
       effectiveModel = undefined
       effectiveProvider = undefined
     },

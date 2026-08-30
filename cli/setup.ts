@@ -29,7 +29,6 @@ import { attachSimpleLogger } from "../src/tui/minimal/simple.ts"
 import { c } from "../src/tui/theme.ts"
 
 export interface CliSessionOptions {
-  ui?: "auto" | "full" | "classic"
   cwd?: string
   sessionId: string
   resumeId?: string
@@ -42,7 +41,6 @@ export interface CliSessionOptions {
   ask: boolean
   plan: boolean
   allowlist: boolean
-  useTui: boolean
   verify: boolean
   budget?: number
   maxSteps?: number

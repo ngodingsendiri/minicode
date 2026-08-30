@@ -1,15 +1,18 @@
 // Fullscreen minimal — alternate-screen REPL tanpa Ink/React, pure ANSI
 // Header 1 baris · transcript ring 200 · status dots · input + dropdown · footer
 import type { EventBus } from "#minicore/core/index.ts"
-import { applyKey, decodeKeys, type PromptState } from "../../../cli/prompt-engine.ts"
+import { applyKey, decodeKeys, type PromptState, pointLength } from "../../../cli/prompt-engine.ts"
 import { renderDiffCard } from "../diff.ts"
+import { formatProviderError } from "../format.ts"
 import { decorateMarkdown } from "../markdown.ts"
-import { c, stripAnsi } from "../theme.ts"
+import { formatUsd } from "../money.ts"
+import { reasoning, setReasoningVisible } from "../reasoning.ts"
+import { sanitizeAnsi, sanitizeAnsiLine } from "../sanitize.ts"
+import { c, glyphs, stripAnsi } from "../theme.ts"
+import { displayWidth, truncateToWidth } from "../width.ts"
 import {
   disableBracketedPaste,
-  disableMouse,
   enableBracketedPaste,
-  enableMouse,
   enterAlternate,
   exitAlternate,
   getSize,
@@ -17,14 +20,45 @@ import {
   onResize,
   showCursor,
 } from "./screen.ts"
+import { formatError } from "./simple.ts"
 
 const RING_MAX = 60
-const strip = stripAnsi
-const plain = (s: string, w: number) => {
-  const clean = strip(s)
-  return clean.length <= w ? s : s.slice(0, Math.max(0, w - 3)) + "..."
+// Glyph memakai fallback ASCII dari theme.ts: conhost Windows lama tanpa UTF-8
+// menampilkan "·" dan "›" sebagai kotak. glyphs sudah menyediakan "." dan ">".
+//
+// FUNGSI, bukan konstanta: `glyphs` adalah getter yang memeriksa dukungan UTF-8
+// saat dipakai. Menyimpannya ke `const` di module scope membekukan nilai pada
+// saat import — kesalahan yang sama seperti objek warna `c` dulu.
+const glyphDot = () => glyphs.dot
+const glyphArrow = () => glyphs.arrow
+const sep = () => ` ${glyphs.dot} `
+
+/**
+ * Potong ke lebar KOLOM terminal, pertahankan sekuens ANSI, tutup atribut.
+ *
+ * Delegasi ke src/tui/width.ts: CJK/emoji memakan dua kolom dan combining mark
+ * nol kolom. Versi sebelumnya menghitung code point, sehingga 38 karakter CJK
+ * dilaporkan "38 kolom" padahal menempati 73 — baris membungkus sendiri dan
+ * frame TUI (yang dihitung per baris) rusak.
+ */
+export function truncAnsi(s: string, width: number): string {
+  return truncateToWidth(s, width)
 }
-const trunc = plain
+
+/** Ringkasan token/biaya yang dibaca header — sumbernya usage collector. */
+export interface UsageSnapshot {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cost?: number
+}
+
+interface ExecutionCompletedEvent {
+  execution: {
+    call: { name: string; args?: unknown }
+    result: { isError?: boolean; content?: unknown }
+  }
+}
 
 export interface TranscriptItem {
   id: number
@@ -38,6 +72,13 @@ export interface FullscreenMinimalOpts {
   cwdName: string
   budget?: number
   initialMode: string
+  /**
+   * Snapshot usage terbaru. Cost TIDAK datang dari event provider — tidak ada
+   * provider yang mengirimnya; ia dihitung di usage collector dari tabel harga.
+   * Sebelumnya header menunggu `provider:extension usage.cost` yang tak pernah
+   * ada, jadi biaya tidak pernah muncul selama sesi interaktif.
+   */
+  usage(): UsageSnapshot
   onCycleMode(): string
   suggestions(line: string): { text: string; group?: string }[]
   history(): string[]
@@ -51,14 +92,17 @@ export interface FullscreenMinimalOpts {
   onExit(): Promise<void>
 }
 
-export const showThinking = { ref: false }
-
 export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach(): void } {
+  // Non-TTY (pipe, CI, wrapper): alternate-screen dan raw mode tidak tersedia.
+  // Sebelumnya setRawMode dipanggil tanpa cek dan `minicode --interactive` lewat
+  // pipe melempar "setRawMode is not a function" beserta stack trace mentah.
+  // Semua komponen lain (askLine/runPicker/runPanel) punya fallback ini.
+  if (!process.stdin.isTTY) return attachNonTty(opts)
+
   let exited = false
   enterAlternate()
   hideCursor()
   enableBracketedPaste()
-  enableMouse()
 
   let items: TranscriptItem[] = []
   let streamTail: string[] = []
@@ -66,16 +110,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   let mode = opts.initialMode
   let expanded = false
   let overlay: { title: string; lines: string[] } | null = null
+  let overlayScroll = 0
   let picker: {
     title: string
     items: { label: string; value: string }[]
     sel: number
     onPick: (v: string) => string | void
   } | null = null
-  let cost: number | undefined
   let effModel: string | undefined
   let effProvider: string | undefined
   let line = ""
+  let cursor = 0
   let sel = -1
   let menuOpen = false
   let idRef = 0
@@ -83,17 +128,35 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   let lastCtrlC = 0
   let histCache: string[] = opts.history()
   let histIdx = -1
+  let budgetWarned = false
 
   const add = (kind: TranscriptItem["kind"], text: string) => {
     items = [...items.slice(-(RING_MAX - 1)), { id: ++idRef, kind, text }]
     render()
   }
 
+  // Kegagalan async yang tak tertangkap dulu membuat layar diam tanpa pesan —
+  // user tidak punya cara tahu apa pun terjadi. Tampilkan sebagai baris error.
+  const onFailure = (e: unknown) => {
+    const err = e as { message?: string } | undefined
+    add("error", `kesalahan internal: ${err?.message ?? String(e)}`)
+    busy = false
+    abortRef = null
+  }
+  process.on("unhandledRejection", onFailure)
+  const offFailure = () => {
+    process.off("unhandledRejection", onFailure)
+  }
+
   // bus subscriptions
   const offs: (() => void)[] = []
   offs.push(
-    opts.bus.on("provider:text", (e: any) => {
-      streamTail = [...streamTail, ...e.text.split("\n")]
+    opts.bus.on("provider:text", (e: { text: string }) => {
+      // Teks model adalah masukan TIDAK TERPERCAYA. Tanpa sanitasi, ia bisa
+      // mengirim ESC[2J (bersihkan layar), ESC[?1049l (keluar dari alternate
+      // screen), ESC]0; (ubah judul jendela), atau gerakan kursor yang membuat
+      // frame tidak sinkron. Warna tetap lewat — hanya SGR yang diizinkan.
+      streamTail = [...streamTail, ...sanitizeAnsi(e.text).split("\n")]
       streamTail = streamTail.slice(-40)
       render()
     }),
@@ -105,11 +168,16 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     }),
   )
   offs.push(
-    opts.bus.on("provider:extension", (e: any) => {
+    opts.bus.on("provider:extension", (e: { kind: string; data: unknown }) => {
       if (e.kind === "usage") {
-        const d = e.data as { cost?: number }
-        if (d.cost != null) cost = d.cost
+        // Biaya TIDAK diambil dari sini — provider hanya mengirim token. Cukup
+        // render ulang; header membaca opts.usage() yang menghitung harga.
         render()
+      } else if (e.kind === "reasoning") {
+        // Konsumen nyata untuk /thinking: tanpa ini toggle tak berefek apa pun.
+        if (!reasoning.visible) return
+        const d = e.data as { text?: string }
+        if (d.text?.trim()) add("info", d.text.trim())
       } else if (e.kind === "effective-model") {
         // 5.2/5.4: router substitusi/fallback → tampilkan model & provider efektif
         const d = e.data as { effective?: string; provider?: string }
@@ -117,39 +185,44 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         effProvider = d.provider
         render()
       } else if (e.kind === "error") {
-        const d = e.data as { message?: string }
-        add("error", d.message ?? "unknown error")
+        // Lewat formatter yang sama dengan jalur one-shot: pesan ringkas +
+        // saran, bukan body JSON provider utuh di dalam frame 100 kolom.
+        const d = e.data as { message?: string; category?: string }
+        add("error", formatProviderError(d))
       }
     }),
   )
   offs.push(
-    opts.bus.on("execution:completed", (e: any) => {
+    opts.bus.on("execution:completed", (e: ExecutionCompletedEvent) => {
       const name = e.execution.call.name
       const args = (e.execution.call.args ?? {}) as Record<string, unknown>
       const isErr = e.execution.result.isError
-      const resTxt = String(e.execution.result.content ?? "").slice(0, 400)
-      const target =
+      // Hasil tool juga tidak terpercaya: isi berkas, keluaran bash, dan
+      // balasan server MCP semuanya bisa memuat sekuens kontrol.
+      const resTxt = sanitizeAnsi(String(e.execution.result.content ?? "")).slice(0, 400)
+      const target = sanitizeAnsiLine(
         typeof args.path === "string"
           ? (args.path as string)
           : typeof (args.cmd ?? args.command) === "string"
             ? String(args.cmd ?? args.command).slice(0, 50)
-            : ""
+            : "",
+      )
       if (isErr) {
         add("error", `${name} ${target}: ${resTxt.slice(0, 120)}`)
         return
       }
       if ((name === "edit" || name === "apply_patch") && typeof args.path === "string") {
-        const oldS = String(args.oldString ?? "")
-        const newS = String(args.newString ?? "")
-        // Use diff card (Ubuntu style) — limited 6 lines for TUI compactness
-        const diffCard = renderDiffCard(args.path as string, oldS, newS, { maxLines: 6 })
+        const oldS = sanitizeAnsi(String(args.oldString ?? ""))
+        const newS = sanitizeAnsi(String(args.newString ?? ""))
+        // Diff card berwarna; truncAnsi di render() menjaga warnanya tetap utuh.
+        const diffCard = renderDiffCard(target, oldS, newS, { maxLines: 6 })
         add("tool", diffCard)
         return
       }
       // Daftar todo dirender utuh sebagai panel sendiri — ini status rencana
       // kerja yang ingin dilihat user, bukan baris ringkasan satu tool.
       if (name === "todo_write" || name === "todo_read") {
-        add("todo", String(e.execution.result.content ?? ""))
+        add("todo", sanitizeAnsi(String(e.execution.result.content ?? "")))
         return
       }
       add("tool", `${name} ${target}`.trim())
@@ -162,9 +235,37 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       streamTail = []
       busy = false
       abortRef = null
+      checkBudget()
       render()
     }),
   )
+
+  /**
+   * Batas biaya sesi. Jalur one-shot sudah memperingatkan di 80% dan berhenti
+   * saat lewat; REPL sebelumnya tidak — `budget` diterima lalu di-void, jadi
+   * sesi interaktif bisa membakar biaya tanpa satu pun peringatan.
+   */
+  function overBudget(): boolean {
+    const b = opts.budget
+    const cost = opts.usage().cost
+    return b != null && cost != null && cost > b
+  }
+  function checkBudget() {
+    const b = opts.budget
+    const cost = opts.usage().cost
+    if (b == null || cost == null) return
+    if (cost > b) {
+      add(
+        "error",
+        `biaya sesi ${formatUsd(cost)} melewati batas ${formatUsd(b)} — prompt baru ditolak`,
+      )
+      return
+    }
+    if (!budgetWarned && cost > b * 0.8) {
+      budgetWarned = true
+      add("info", `biaya sesi ${formatUsd(cost)} sudah 80% dari batas ${formatUsd(b)}`)
+    }
+  }
 
   const matches = (): string[] =>
     menuOpen || line.startsWith("/")
@@ -188,6 +289,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   const submit = async (raw: string) => {
     const q = raw.trim()
     line = ""
+    cursor = 0
     sel = -1
     menuOpen = false
     if (!q) {
@@ -203,6 +305,12 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       render()
       return
     }
+    // Batas biaya berlaku juga di REPL: tolak prompt baru, jangan lanjut membakar.
+    if (overBudget() && !q.startsWith("/")) {
+      add("error", "batas biaya sesi terlampaui — mulai sesi baru atau naikkan --budget")
+      render()
+      return
+    }
     busy = true
     const ctl = new AbortController()
     abortRef = ctl
@@ -211,8 +319,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       if (q.startsWith("/")) {
         const cmd = q.slice(1).split(" ")[0]!.toLowerCase()
         if (cmd === "thinking") {
-          showThinking.ref = !showThinking.ref
-          add("info", `reasoning display: ${showThinking.ref ? "on" : "off"}`)
+          const next = setReasoningVisible()
+          add("info", `tampilan reasoning: ${next ? "aktif" : "nonaktif"}`)
+          return
+        }
+        // Validasi nama SEBELUM menjalankan apa pun. Sebelumnya perintah asing
+        // menempuh onPicker → onOverlay (yang mengeksekusi builtin dengan stdout
+        // dibajak) baru ditolak — kerja sia-sia untuk salah ketik.
+        const spaceIdx = q.indexOf(" ")
+        const name = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx)
+        if (opts.suggestions(`/${name}`).length === 0) {
+          add("info", `perintah tidak dikenal: ${cmd} - ketik /help`)
           return
         }
         const pk = await opts.onPicker(q)
@@ -223,32 +340,28 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         }
         const ov = await opts.onOverlay(q)
         if (ov) {
+          // Isi overlay dibersihkan dari ANSI (berasal dari captureOutput) lalu
+          // dipotong per lebar layar; scroll di-reset ke atas.
           overlay = {
             title: ov.title,
-            lines: ov.lines.map((l) => plain(strip(l), getSize().width - 4)),
+            lines: ov.lines.map((l) => stripAnsi(l)),
           }
+          overlayScroll = 0
           render()
           return
         }
-        const spaceIdx = q.indexOf(" ")
-        const skillName = spaceIdx === -1 ? q.slice(1) : q.slice(1, spaceIdx)
-        const known = opts.suggestions(`/${skillName}`).length > 0
-        if (!known) {
-          add("info", `perintah tidak dikenal: ${cmd} - ketik /help`)
-          return
-        }
         const skillArgs = spaceIdx === -1 ? "" : q.slice(spaceIdx + 1)
-        const res = await opts.onLine(
-          `/${skillName}${skillArgs ? " " + skillArgs : ""}`,
-          ctl.signal,
-        )
-        if (typeof res === "object" && (res as any).note) add("info", (res as any).note)
+        const res = await opts.onLine(`/${name}${skillArgs ? " " + skillArgs : ""}`, ctl.signal)
+        if (typeof res === "object" && res.note) add("info", res.note)
         return
       }
       const res = await opts.onLine(q, ctl.signal)
-      if (typeof res === "object" && (res as any).note) add("info", (res as any).note)
-    } catch (e: any) {
-      add("error", e.message)
+      if (typeof res === "object" && res.note) add("info", res.note)
+    } catch (e) {
+      // Lewat formatter yang sama: `session.run()` melempar ProviderError yang
+      // `message`-nya memuat body JSON provider utuh. Menampilkannya mentah
+      // menumpahkan 400+ karakter metadata ke frame TUI.
+      add("error", formatError(e))
     } finally {
       busy = false
       abortRef = null
@@ -260,9 +373,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   let spinnerIdx = 0
   let spinnerTimer: ReturnType<typeof setTimeout> | undefined
   let prevOut = ""
+  // Spinner: satu timer, di-set SEBELUM render.
+  //
+  // Versi sebelumnya memanggil tickSpinner() langsung dari startSpinner(), dan
+  // tickSpinner() memanggil render() yang memanggil startSpinner() lagi. Karena
+  // spinnerTimer baru terisi SETELAH render() selesai, guard `if (spinnerTimer)`
+  // selalu lolos → rekursi tak berbatas → RangeError. Efeknya di layar: REPL
+  // mati bisu pada prompt pertama, onLine tidak pernah terpanggil.
+  // Dijaga oleh test/tui-fullscreen.test.ts "Enter memanggil onLine tepat sekali".
   const startSpinner = () => {
     if (spinnerTimer) return
-    tickSpinner()
+    spinnerTimer = setTimeout(tickSpinner, 150)
   }
   const stopSpinner = () => {
     if (spinnerTimer) {
@@ -272,40 +393,53 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
   }
   const tickSpinner = () => {
     spinnerIdx++
+    spinnerTimer = undefined // biarkan startSpinner() menjadwalkan tick berikutnya
     render()
-    spinnerTimer = setTimeout(tickSpinner, 150)
   }
-  const glyphDot = "·"
 
   function render() {
     const { width: W, height: H } = getSize()
     if (busy) startSpinner()
     else stopSpinner()
     const m = matches()
+    const narrow = W < 80
+    // Header memakai 2 baris pada terminal sempit — harus ikut dihitung, kalau
+    // tidak frame melebihi tinggi layar dan baris teratas terguling keluar.
+    const headerRows = narrow ? 2 : 1
     const pickerLines = picker ? Math.min(picker.items.length, H - 5) : 0
     const menuLines = overlay || picker ? 0 : Math.min(m.length, Math.min(6, Math.floor(H * 0.3)))
-    const overlayLines = overlay ? Math.min(overlay.lines.length, H - 8) : 0
+    // Kapasitas overlay: total baris frame = header + judul + isi + hint +
+    // input + footer. Agar tidak melebihi H: isi <= H - header - 4.
+    const overlayCapacity = overlay ? Math.max(1, H - headerRows - 4) : 0
+    const overlayLines = overlay ? Math.min(overlay.lines.length, overlayCapacity) : 0
     const bodyH = Math.max(
-      3,
+      1,
       H -
-        1 -
+        headerRows -
         (overlay ? overlayLines + 2 : 0) -
         (picker ? pickerLines + 3 : 0) -
         menuLines -
-        2 -
+        2 - // input + footer
         (busy ? 1 : 0),
     )
 
+    // Transcript: warna DIPERTAHANKAN.
+    //
+    // Sebelumnya push() memanggil strip() pada semua isi, sehingga diff card
+    // kehilangan hijau/merah dan decorateMarkdown() di bawah ini sia-sia —
+    // bold/inline-code/syntax highlight dibuang tepat setelah dibuat.
+    // truncAnsi() memotong berdasarkan lebar tampak dan menutup atribut.
     const lines: { c: string; t: string }[] = []
-    const push = (c: string, raw: string) => {
-      for (const ln of raw.split("\n")) lines.push({ c, t: plain(strip(ln), W - 2) })
+    const push = (color: string, raw: string) => {
+      for (const ln of raw.split("\n")) lines.push({ c: color, t: truncAnsi(ln, W - 2) })
     }
     for (const it of items) {
-      if (it.kind === "user") push("white:bold", `> ${it.text}`)
-      else if (it.kind === "tool") push("gray", `  ${glyphDot} ${it.text}`)
-      else if (it.kind === "error") push("red", `  x ${it.text}`)
-      else if (it.kind === "info") push("magenta", `  ${it.text}`)
-      else if (it.kind === "todo") push("cyan", it.text)
+      if (it.kind === "user") push("user", `> ${it.text}`)
+      else if (it.kind === "tool")
+        push("tool", it.text.includes("\n") ? it.text : `  ${glyphDot()} ${it.text}`)
+      else if (it.kind === "error") push("error", `  x ${it.text}`)
+      else if (it.kind === "info") push("info", `  ${it.text}`)
+      else if (it.kind === "todo") push("todo", it.text)
       else push("", decorateMarkdown(it.text))
     }
     for (const ln of streamTail) push("", decorateMarkdown(ln))
@@ -319,13 +453,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       mode === "plan" ? c.warning(mode) : mode === "ask" ? c.info(mode) : c.success(mode)
     const dispModel = effModel ?? opts.model() ?? "-"
     const viaTag = effProvider ? ` ${c.muted(`(via ${effProvider})`)}` : ""
-    const narrow = W < 80
     out += `\x1b[H\x1b[2J`
-    const headerModel = `${c.yellow(trunc(dispModel, narrow ? W - 8 : Math.max(20, W - 40)))}${viaTag}`
+    const headerModel = `${c.yellow(truncAnsi(dispModel, narrow ? Math.max(4, W - 8) : Math.max(20, W - 40)))}${viaTag}`
     const header = narrow
-      ? `${c.cyan("minicode")} ${c.muted("-")} ${modeColored}${cost != null ? ` ${c.muted(`$${cost.toFixed(4)}`)}` : ""}${expanded ? " " + c.muted("- DETAIL") : ""}\n ${headerModel}\n`
-      : `${c.cyan("minicode")} ${c.muted("-")} ${headerModel} ${c.muted("-")} ${modeColored}${cost != null ? ` ${c.muted(`$${cost.toFixed(4)}`)}` : ""}${expanded ? " " + c.muted("- DETAIL") : ""}\n`
+      ? `${c.cyan("minicode")} ${c.muted("-")} ${modeColored}${costTag()}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n ${headerModel}\n`
+      : `${c.cyan("minicode")} ${c.muted("-")} ${headerModel} ${c.muted("-")} ${modeColored}${costTag()}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n`
+    // Header dibangun dari beberapa bagian; potong per baris supaya terminal
+    // sangat sempit (mis. 10 kolom) tidak membuatnya membungkus.
     out += header
+      .split("\n")
+      .map((l) => truncAnsi(l, W))
+      .join("\n")
 
     if (picker) {
       out += `${c.cyan(`- ${picker.title} -`)}\n`
@@ -337,34 +475,75 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         const isSel = idx === picker.sel
         out +=
           (isSel
-            ? `${c.cyan("> ")}${c.cyan(trunc(it.label, W - 6))}`
-            : `  ${trunc(it.label, W - 6)}`) + "\n"
+            ? `${c.accent(`${glyphArrow()} `)}${c.accent(c.bold(truncAnsi(it.label, W - 6)))}`
+            : `  ${truncAnsi(it.label, W - 6)}`) + "\n"
       }
-      out += `${c.muted("[up/down] pilih · [enter] ok · [esc] batal")}\n`
+      out += `${c.muted(`[atas/bawah] pilih${sep()}[enter] ok${sep()}[esc] batal`)}\n`
     } else if (overlay) {
+      // Overlay di-SLICE ke kapasitas layar dan bisa di-scroll.
+      // Sebelumnya seluruh overlay.lines dicetak apa pun tingginya, sehingga
+      // overlay 30 baris di terminal 20 baris menggulingkan judul keluar layar
+      // dan tidak ada cara melihat sisanya.
+      const maxScroll = Math.max(0, overlay.lines.length - overlayCapacity)
+      if (overlayScroll > maxScroll) overlayScroll = maxScroll
+      if (overlayScroll < 0) overlayScroll = 0
+      const vis = overlay.lines.slice(overlayScroll, overlayScroll + overlayCapacity)
       out += `${c.cyan(`- ${overlay.title} -`)}\n`
-      for (const l of overlay.lines) out += `${l}\n`
-      out += `${c.muted("[esc] tutup")}\n`
+      for (const l of vis) out += `${truncAnsi(l, W - 1)}\n`
+      const pos =
+        maxScroll > 0
+          ? `${c.accent(String(overlayScroll + 1))}-${Math.min(
+              overlay.lines.length,
+              overlayScroll + overlayCapacity,
+            )}/${overlay.lines.length}${sep()}[atas/bawah] geser${sep()}`
+          : ""
+      out += `${c.muted(`${pos}[esc] tutup`)}\n`
     } else {
       for (const l of tail) {
-        if (l.c === "white:bold") out += `${c.bold(l.t)}\n`
-        else if (l.c === "gray") out += `${c.muted(l.t)}\n`
-        else if (l.c === "red") out += `${c.error(l.t)}\n`
-        else if (l.c === "magenta") out += `${c.warning(l.t)}\n`
-        else if (l.c === "cyan") out += `${c.info(l.t)}\n`
+        if (l.c === "user") out += `${c.bold(l.t)}\n`
+        else if (l.c === "tool") out += `${c.muted(l.t)}\n`
+        else if (l.c === "error") out += `${c.error(l.t)}\n`
+        else if (l.c === "info") out += `${c.warning(l.t)}\n`
+        else if (l.c === "todo") out += `${c.info(l.t)}\n`
         else out += `${l.t}\n`
       }
-      if (busy) out += `${c.muted(["·", "··", "···"][spinnerIdx % 3]!)}\n`
+      if (busy)
+        out += `${c.muted(glyphs.spinnerFrames[spinnerIdx % glyphs.spinnerFrames.length]!)}\n`
       if (menuLines > 0) {
         for (let i = 0; i < Math.min(m.length, menuLines); i++) {
           const t = m[i]!
           const isSel = i === sel
-          out += (isSel ? `  ${c.cyan("›")} ${c.cyan(t)}` : `    ${c.muted(t)}`) + "\n"
+          out +=
+            (isSel ? `  ${c.accent(glyphArrow())} ${c.accent(c.bold(t))}` : `    ${c.muted(t)}`) +
+            "\n"
         }
       }
     }
-    // input
-    out += `${c.cyan("> ")}${line}${c.muted("_")}\n`
+    // input — kursor sungguhan diposisikan setelah frame ditulis, bukan "_" palsu.
+    //
+    // Semua perhitungan di sini memakai KOLOM, bukan jumlah karakter: satu
+    // karakter CJK/emoji memakan dua kolom, jadi jendela geser dan posisi kursor
+    // harus menghitungnya. Versi sebelumnya memakai jumlah code point, sehingga
+    // prompt berisi CJK menggeser kursor terminal ke tempat yang salah.
+    const promptGlyph = "> "
+    const promptCols = displayWidth(promptGlyph)
+    const avail = Math.max(8, W - promptCols)
+    const pts = Array.from(line)
+    // Lebar kumulatif tiap posisi kursor (0..len) dalam kolom.
+    const colAt: number[] = [0]
+    for (const ch of pts) colAt.push(colAt[colAt.length - 1]! + displayWidth(ch))
+    const totalCols = colAt[colAt.length - 1]!
+
+    let start = 0
+    if (totalCols > avail) {
+      // Geser jendela sampai kursor masuk: cari `start` terkecil yang membuat
+      // kolom kursor berada dalam `avail`.
+      const cursorCols = colAt[Math.min(cursor, pts.length)]!
+      while (start < pts.length && cursorCols - colAt[start]! >= avail) start++
+    }
+    const visibleLine = pts.slice(start, pts.length).join("")
+    out += `${c.cyan(promptGlyph)}${truncateToWidth(visibleLine, avail, "")}\n`
+
     const footerHints = [
       "ctrl+c stop/keluar",
       "esc stop",
@@ -372,17 +551,74 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       "shift+tab mode",
       "/help",
     ]
-    if (cost != null && cost > 0) footerHints.unshift(`$${cost.toFixed(4)}`)
-    out += `${c.muted(footerHints.join(" · "))}`
+    const u = opts.usage()
+    if (u.cost != null && u.cost > 0) {
+      footerHints.unshift(
+        opts.budget != null ? `${formatUsd(u.cost)}/${formatUsd(opts.budget)}` : formatUsd(u.cost),
+      )
+    }
+    // Terminal sempit: buang hint dari ekor sampai muat, jangan biarkan wrap.
+    let footer = footerHints.join(sep())
+    while (displayWidth(footer) > W && footerHints.length > 1) {
+      footerHints.pop()
+      footer = footerHints.join(sep())
+    }
+    out += `${c.muted(truncAnsi(footer, W))}`
+
+    // Posisikan kursor pada baris input, kolom sesuai state kursor.
+    const frameRows = out.split("\n").length
+    const inputRow = frameRows - 1 // 1-based: baris terakhir adalah footer
+    const cursorCol =
+      promptCols + (colAt[Math.min(cursor, pts.length)]! - colAt[Math.min(start, pts.length)]!)
+    out += `\x1b[${Math.max(1, inputRow)};${Math.max(1, cursorCol + 1)}H`
+
     if (out !== prevOut) {
       process.stdout.write(out)
       prevOut = out
     }
   }
 
-  // input handling — unified via prompt-engine decodeKeys + applyKey (single source)
+  /** Tag biaya di header; kosong bila belum ada biaya. */
+  function costTag(): string {
+    const u = opts.usage()
+    if (u.cost == null) return ""
+    const base = formatUsd(u.cost)
+    if (opts.budget == null) return ` ${c.muted(base)}`
+    const ratio = u.cost / opts.budget
+    const text = `${base}/${formatUsd(opts.budget)}`
+    return ` ${ratio >= 1 ? c.error(text) : ratio >= 0.8 ? c.warning(text) : c.muted(text)}`
+  }
+
+  // input handling — satu sumber: prompt-engine decodeKeys + applyKey.
   process.stdin.setRawMode(true)
   process.stdin.resume()
+
+  /** Terapkan satu key ke state baris lewat prompt-engine (termasuk kursor). */
+  const editLine = (key: Parameters<typeof applyKey>[1], hintRows?: string[]) => {
+    const ps: PromptState = { line, cursor, sel, menuOpen }
+    const hintsFn = hintRows
+      ? () => hintRows
+      : (l: string) => opts.suggestions(l).map((s) => s.text)
+    const res = applyKey(ps, key, hintsFn)
+    line = res.state.line
+    cursor = res.state.cursor
+    sel = res.state.sel
+    menuOpen = res.state.menuOpen
+    // matches() memfilter case-insensitive, jadi indeks seleksi harus dijepit
+    // ulang terhadap daftar yang benar-benar ditampilkan.
+    const m = matches()
+    if (sel >= m.length) sel = m.length - 1
+    render()
+  }
+
+  /** Ganti isi baris (history / pilih dari picker) dan taruh kursor di ujung. */
+  const setLine = (text: string) => {
+    line = text
+    cursor = pointLength(text)
+    menuOpen = false
+    sel = -1
+  }
+
   const onData = (chunk: Buffer) => {
     const raw = chunk.toString("utf8")
     // shift+tab raw early (before decode)
@@ -393,6 +629,9 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     }
     const keys = decodeKeys(chunk)
     for (const { key } of keys) {
+      // Byte mouse dsb. — dibuang sebelum apa pun menyentuh baris.
+      if (key.type === "ignore") continue
+
       // Ctrl+C
       if (key.type === "ctrl-c") {
         if (busy) {
@@ -413,6 +652,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         }
         if (overlay) {
           overlay = null
+          overlayScroll = 0
           render()
           continue
         }
@@ -444,9 +684,33 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         }
         continue
       }
+      // overlay mode — panah/PgUp/PgDn menggeser, Enter/q/Esc menutup
       if (overlay) {
+        if (key.type === "up") {
+          overlayScroll = Math.max(0, overlayScroll - 1)
+          render()
+          continue
+        }
+        if (key.type === "down") {
+          overlayScroll += 1
+          render()
+          continue
+        }
+        if (key.type === "home") {
+          overlayScroll = 0
+          render()
+          continue
+        }
+        if (key.type === "end") {
+          const { width: w, height: hgt } = getSize()
+          const cap = Math.max(1, hgt - (w < 80 ? 2 : 1) - 4)
+          overlayScroll = Math.max(0, overlay.lines.length - cap)
+          render()
+          continue
+        }
         if (key.type === "enter" || (key.type === "char" && key.ch === "q")) {
           overlay = null
+          overlayScroll = 0
           render()
           continue
         }
@@ -467,70 +731,45 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
           items: h.slice(0, 30).map((t) => ({ label: t.slice(0, 80), value: t })),
           sel: 0,
           onPick: (v) => {
-            line = v
+            setLine(v)
             return "history dimuat"
           },
         }
         render()
         continue
       }
-      // up/down: history when not in menu, else via prompt-engine
+      // up/down: navigasi dropdown bila terbuka, kalau tidak jelajahi history.
+      // History MENGGANTI baris (tidak menggabungkan) — sama seperti shell.
       if (key.type === "up" || key.type === "down") {
         const m = matches()
         if (menuOpen && m.length) {
-          // delegate to prompt-engine for sel navigation
-          const ps: PromptState = { line, sel, menuOpen }
-          const res = applyKey(ps, key, (_l: string) => m)
-          line = res.state.line
-          sel = res.state.sel
-          menuOpen = res.state.menuOpen
-          render()
+          editLine(key, m)
           continue
         }
-        // history navigation
         if (key.type === "up") {
           if (histCache.length) {
             histIdx = Math.min(histIdx + 1, histCache.length - 1)
-            line = histCache[histCache.length - 1 - histIdx] ?? ""
-            menuOpen = false
-            sel = -1
+            setLine(histCache[histCache.length - 1 - histIdx] ?? "")
             render()
           }
           continue
         }
-        if (key.type === "down") {
-          const m2 = matches()
-          if (menuOpen && m2.length) {
-            const ps: PromptState = { line, sel, menuOpen }
-            const res = applyKey(ps, key, (_l: string) => m2)
-            line = res.state.line
-            sel = res.state.sel
-            menuOpen = res.state.menuOpen
-            render()
-            continue
-          }
-          if (histIdx > 0) {
-            histIdx--
-            line = histCache[histCache.length - 1 - histIdx] ?? ""
-            render()
-            continue
-          }
-          if (histIdx === 0) {
-            histIdx = -1
-            line = ""
-            render()
-            continue
-          }
-          continue
+        if (histIdx > 0) {
+          histIdx--
+          setLine(histCache[histCache.length - 1 - histIdx] ?? "")
+          render()
+        } else if (histIdx === 0) {
+          histIdx = -1
+          setLine("")
+          render()
         }
+        continue
       }
-      // enter — pick selected suggestion if valid, else submit raw line
+      // enter — pilih saran bila ada seleksi, kalau tidak kirim baris
       if (key.type === "enter") {
         const m = matches()
         if (menuOpen && sel >= 0 && sel < m.length) {
-          line = m[sel]!
-          menuOpen = false
-          sel = -1
+          setLine(m[sel]!)
           render()
           continue
         }
@@ -539,39 +778,17 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         void submit(toSend)
         continue
       }
-      // tab — complete to current selection, or first match when no selection
+      // tab — lengkapi ke seleksi, atau ke kecocokan pertama bila belum memilih
       if (key.type === "tab") {
         const m = matches()
         if (m.length) {
-          line = m[sel >= 0 && sel < m.length ? sel : 0]!
-          menuOpen = false
-          sel = -1
+          setLine(m[sel >= 0 && sel < m.length ? sel : 0]!)
           render()
         }
         continue
       }
-      // delegate line editing to prompt-engine (char/backspace/ctrl-u/ctrl-w/left/right)
-      if (
-        key.type === "char" ||
-        key.type === "backspace" ||
-        key.type === "ctrl-u" ||
-        key.type === "ctrl-w" ||
-        key.type === "left" ||
-        key.type === "right"
-      ) {
-        const ps: PromptState = { line, sel, menuOpen }
-        const hintsFn = (l: string) => opts.suggestions(l).map((s) => s.text)
-        const res = applyKey(ps, key, hintsFn)
-        // applyKey doesn't know about case-insensitive filter — keep fullscreen matches() for sel, but line comes from prompt-engine
-        line = res.state.line
-        sel = res.state.sel
-        menuOpen = res.state.menuOpen
-        // sync sel to fullscreen matches indices (prompt-engine sel is hint-index, but fullscreen matches is filtered)
-        // Recompute sel to stay in range
-        const m = matches()
-        if (sel >= m.length) sel = m.length - 1
-        render()
-      }
+      // sisanya = editing baris: char/backspace/delete/home/end/left/right/ctrl-u/ctrl-w
+      editLine(key)
     }
   }
   process.stdin.on("data", onData)
@@ -583,6 +800,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       if (exited) return
       exited = true
       stopSpinner()
+      offFailure()
       for (const off of offs) off()
       process.stdin.off("data", onData)
       offResize()
@@ -590,8 +808,38 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       process.stdin.pause()
       showCursor()
       disableBracketedPaste()
-      disableMouse()
       exitAlternate()
+    },
+  }
+}
+
+// Fallback non-TTY: tanpa alternate screen, tanpa raw mode, tanpa dropdown.
+// Event tetap dilaporkan sebagai baris polos supaya `--interactive` lewat pipe
+// tidak crash dan tetap memberi keluaran yang berguna.
+function attachNonTty(opts: FullscreenMinimalOpts): { detach(): void } {
+  const offs: (() => void)[] = []
+  offs.push(
+    opts.bus.on("provider:text", (e: { text: string }) => {
+      process.stdout.write(e.text)
+    }),
+  )
+  offs.push(
+    opts.bus.on("execution:completed", (e: ExecutionCompletedEvent) => {
+      const name = e.execution.call.name
+      const isErr = e.execution.result.isError
+      process.stderr.write(`  ${isErr ? "x" : glyphDot()} ${name}\n`)
+    }),
+  )
+  offs.push(
+    opts.bus.on("provider:extension", (e: { kind: string; data: unknown }) => {
+      if (e.kind !== "error") return
+      const d = e.data as { message?: string }
+      process.stderr.write(`  x ${d.message ?? "unknown error"}\n`)
+    }),
+  )
+  return {
+    detach() {
+      for (const off of offs) off()
     },
   }
 }

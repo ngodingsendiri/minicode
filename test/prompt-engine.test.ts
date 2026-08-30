@@ -5,6 +5,7 @@ import {
   createState,
   decodeKeys,
   MAX_VISIBLE,
+  type PromptKey,
 } from "../cli/prompt-engine.ts"
 
 const cmds = [
@@ -24,7 +25,7 @@ const hints = (l: string): string[] =>
 
 test("createState: empty defaults", () => {
   const s = createState()
-  expect(s).toEqual({ line: "", sel: -1, menuOpen: false })
+  expect(s).toEqual({ line: "", cursor: 0, sel: -1, menuOpen: false })
 })
 
 test("char '/' opens menu, other chars don't", () => {
@@ -135,7 +136,7 @@ test("char on empty line keeps menu closed for normal text", () => {
 })
 
 test("buildRenderSpec: cap at MAX_VISIBLE with moreCount", () => {
-  const s = { line: "/", sel: -1, menuOpen: true }
+  const s = { line: "/", cursor: 1, sel: -1, menuOpen: true }
   const spec = buildRenderSpec(s, "minicode❯ ", hints("/"))
   expect(spec.rows.length).toBeLessThanOrEqual(MAX_VISIBLE)
   expect(spec.moreCount).toBe(
@@ -146,7 +147,7 @@ test("buildRenderSpec: cap at MAX_VISIBLE with moreCount", () => {
 
 test("buildRenderSpec: more hint list than visible → moreCount > 0", () => {
   const many = new Array(25).fill("/cmd").map((_, i) => `/cmd${i}`)
-  const s = { line: "/", sel: -1, menuOpen: true }
+  const s = { line: "/", cursor: 1, sel: -1, menuOpen: true }
   const spec = buildRenderSpec(s, "p", many)
   expect(spec.rows.length).toBe(MAX_VISIBLE)
   expect(spec.moreCount).toBe(15)
@@ -154,7 +155,7 @@ test("buildRenderSpec: more hint list than visible → moreCount > 0", () => {
 })
 
 test("buildRenderSpec: selection row marked picked", () => {
-  const s = { line: "/", sel: 3, menuOpen: true }
+  const s = { line: "/", cursor: 1, sel: 3, menuOpen: true }
   const spec = buildRenderSpec(s, "p", cmds)
   const picked = spec.rows.filter((r) => r.picked)
   expect(picked.length).toBe(1)
@@ -162,7 +163,7 @@ test("buildRenderSpec: selection row marked picked", () => {
 })
 
 test("buildRenderSpec: grouped hints → header rows dinamis", () => {
-  const s = { line: "/", sel: 0, menuOpen: true }
+  const s = { line: "/", cursor: 1, sel: 0, menuOpen: true }
   const spec = buildRenderSpec(s, "p", ["/help", "/my-skill"], (t) =>
     t.startsWith("/help") ? "commands" : "skills",
   )
@@ -231,6 +232,294 @@ test("applyKey: backspace removes full surrogate pair", () => {
 })
 
 test("applyKey: emoji in non-slash line does not open menu", () => {
-  const s = applyKey(createState(), { type: "char", ch: "😀" }, hints)
+  const s = applyKey(createState(), { type: "char", ch: "\u{1F600}" }, hints)
   expect(s.state.menuOpen).toBe(false)
+})
+
+// -- Kursor --
+// Sebelumnya left/right no-op dan PromptState tidak punya posisi kursor, jadi
+// tidak ada editing di tengah baris sama sekali: untuk memperbaiki satu kata
+// user harus menghapus seluruh sisa prompt.
+
+function typeAll(text: string, start = createState()) {
+  let s = start
+  for (const ch of Array.from(text)) s = applyKey(s, { type: "char", ch }, hints).state
+  return s
+}
+
+test("kursor: mengetik memajukan kursor", () => {
+  const s = typeAll("abc")
+  expect(s.line).toBe("abc")
+  expect(s.cursor).toBe(3)
+})
+
+test("kursor: left/right bergerak dan dijepit di batas", () => {
+  let s = typeAll("abc")
+  s = applyKey(s, { type: "left" }, hints).state
+  expect(s.cursor).toBe(2)
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "left" }, hints).state
+  expect(s.cursor).toBe(0)
+  const atStart = applyKey(s, { type: "left" }, hints)
+  expect(atStart.action).toBe("none")
+  expect(atStart.state.cursor).toBe(0)
+
+  s = applyKey(s, { type: "right" }, hints).state
+  expect(s.cursor).toBe(1)
+  s = applyKey(s, { type: "end" }, hints).state
+  const atEnd = applyKey(s, { type: "right" }, hints)
+  expect(atEnd.action).toBe("none")
+  expect(atEnd.state.cursor).toBe(3)
+})
+
+test("kursor: karakter disisipkan di posisi kursor", () => {
+  let s = typeAll("abcdef")
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "char", ch: "X" }, hints).state
+  expect(s.line).toBe("abcXdef")
+  expect(s.cursor).toBe(4)
+})
+
+test("kursor: home/end", () => {
+  let s = typeAll("dunia")
+  s = applyKey(s, { type: "home" }, hints).state
+  expect(s.cursor).toBe(0)
+  s = typeAll("halo ", s)
+  expect(s.line).toBe("halo dunia")
+  expect(s.cursor).toBe(5)
+  s = applyKey(s, { type: "end" }, hints).state
+  expect(s.cursor).toBe(10)
+})
+
+test("kursor: backspace menghapus sebelum kursor, bukan di ujung", () => {
+  let s = typeAll("abcd")
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe("abd")
+  expect(s.cursor).toBe(2)
+})
+
+test("kursor: backspace di posisi 0 = no-op", () => {
+  let s = typeAll("abc")
+  s = applyKey(s, { type: "home" }, hints).state
+  const r = applyKey(s, { type: "backspace" }, hints)
+  expect(r.action).toBe("none")
+  expect(r.state.line).toBe("abc")
+})
+
+test("kursor: delete menghapus karakter DI kursor", () => {
+  let s = typeAll("abc")
+  s = applyKey(s, { type: "home" }, hints).state
+  s = applyKey(s, { type: "delete" }, hints).state
+  expect(s.line).toBe("bc")
+  expect(s.cursor).toBe(0)
+  s = applyKey(s, { type: "end" }, hints).state
+  expect(applyKey(s, { type: "delete" }, hints).action).toBe("none")
+})
+
+test("kursor: emoji tidak terbelah oleh gerakan maupun hapus", () => {
+  let s = typeAll("a\u{1F600}b")
+  expect(s.cursor).toBe(3) // 3 code point, bukan 4 unit UTF-16
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe("ab")
+  const back = decodeKeys(new TextEncoder().encode(s.line))
+  expect(back.length).toBe(2)
+})
+
+test("kursor: emoji disisipkan di tengah tetap utuh", () => {
+  let s = typeAll("ab")
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "char", ch: "\u{1F600}" }, hints).state
+  expect(s.line).toBe("a\u{1F600}b")
+  expect(s.cursor).toBe(2)
+})
+
+test("kursor: ctrl-w menghapus kata sebelum kursor, sisa kanan utuh", () => {
+  let s = typeAll("satu dua tiga")
+  for (let i = 0; i < 5; i++) s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "ctrl-w" }, hints).state
+  // Sejajar bash unix-word-rubout: kata dibuang, spasi pemisah kiri tetap.
+  expect(s.line).toBe("satu  tiga")
+  expect(s.cursor).toBe(5)
+})
+
+test("kursor: ctrl-u mengosongkan baris dan kursor", () => {
+  let s = typeAll("teks panjang")
+  s = applyKey(s, { type: "ctrl-u" }, hints).state
+  expect(s.line).toBe("")
+  expect(s.cursor).toBe(0)
+  expect(s.menuOpen).toBe(false)
+})
+
+test("kursor: tab melengkapi lalu memindah kursor ke ujung", () => {
+  let s = createState()
+  s = applyKey(s, { type: "char", ch: "/" }, hints).state
+  s = applyKey(s, { type: "char", ch: "m" }, hints).state
+  const tabbed = applyKey(s, { type: "tab" }, hints)
+  expect(tabbed.state.line).toBe("/models")
+  expect(tabbed.state.cursor).toBe("/models".length)
+})
+
+test("tab menghormati seleksi, bukan selalu item pertama", () => {
+  let s = createState()
+  s = applyKey(s, { type: "char", ch: "/" }, hints).state
+  s = applyKey(s, { type: "char", ch: "m" }, hints).state
+  s = applyKey(s, { type: "down" }, hints).state // sel=0 -> /models
+  s = applyKey(s, { type: "down" }, hints).state // sel=1 -> /model
+  const r = applyKey(s, { type: "tab" }, hints)
+  expect(r.state.line).toBe("/model")
+})
+
+test("decodeKey: home/end/delete dalam bentuk CSI dan VT", () => {
+  const seqs: [string, PromptKey["type"]][] = [
+    ["\x1b[H", "home"],
+    ["\x1b[F", "end"],
+    ["\x1b[1~", "home"],
+    ["\x1b[7~", "home"],
+    ["\x1b[4~", "end"],
+    ["\x1b[8~", "end"],
+    ["\x1b[3~", "delete"],
+    ["\x01", "home"],
+    ["\x05", "end"],
+  ]
+  for (const [seq, type] of seqs) {
+    const keys = decodeKeys(new TextEncoder().encode(seq))
+    expect(keys.length).toBe(1)
+    expect(keys[0]?.key.type).toBe(type)
+  }
+})
+
+test("decodeKey: byte mouse dibuang, tidak jadi teks", () => {
+  // X10: ESC [ M + 3 byte. Tanpa penanganan, "00" bocor sebagai karakter biasa.
+  const x10 = decodeKeys(new TextEncoder().encode("\x1b[M\x20\x30\x30"))
+  expect(x10.map((k) => k.key.type)).toEqual(["ignore"])
+
+  const sgr = decodeKeys(new TextEncoder().encode("\x1b[<0;12;34M"))
+  expect(sgr.map((k) => k.key.type)).toEqual(["ignore"])
+
+  const mixed = decodeKeys(new TextEncoder().encode("ab\x1b[M\x20\x30\x30cd"))
+  const chars = mixed.map((k) => (k.key.type === "char" ? k.key.ch : "")).join("")
+  expect(chars).toBe("abcd")
+})
+
+test("applyKey: ignore tidak mengubah state", () => {
+  const s = typeAll("teks")
+  const r = applyKey(s, { type: "ignore" }, hints)
+  expect(r.action).toBe("none")
+  expect(r.state).toEqual(s)
+})
+
+// ── Temuan bug-hunter UI: byte kontrol & newline dari paste ─────────────────
+
+// Ctrl+L/K/T/Z dulu jatuh ke cabang "char" dan masuk baris input sebagai byte
+// tak tampak — "teks" + tiga tombol itu mengirim "teks\f\u000b\u0014" ke model.
+test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
+  const kontrol: [number, string][] = [
+    [0x0c, "ctrl+l"],
+    [0x0b, "ctrl+k"],
+    [0x14, "ctrl+t"],
+    [0x1a, "ctrl+z"],
+    [0x02, "ctrl+b"],
+    [0x06, "ctrl+f"],
+    [0x10, "ctrl+p"],
+    [0x0e, "ctrl+n"],
+  ]
+  for (const [code, nama] of kontrol) {
+    const keys = decodeKeys(new Uint8Array([code]))
+    expect(keys.length, nama).toBe(1)
+    expect(keys[0]?.key.type, nama).toBe("ignore")
+  }
+})
+
+test("decodeKey: kontrol yang PUNYA arti tetap dipetakan", () => {
+  const dikenal: [number, PromptKey["type"]][] = [
+    [0x01, "home"],
+    [0x03, "ctrl-c"],
+    [0x04, "ctrl-d"],
+    [0x05, "end"],
+    [0x08, "backspace"],
+    [0x09, "tab"],
+    [0x0a, "enter"],
+    [0x0d, "enter"],
+    [0x0f, "ctrl-o"],
+    [0x12, "ctrl-r"],
+    [0x15, "ctrl-u"],
+    [0x17, "ctrl-w"],
+    [0x7f, "backspace"],
+  ]
+  for (const [code, type] of dikenal) {
+    const keys = decodeKeys(new Uint8Array([code]))
+    expect(keys[0]?.key.type, `0x${code.toString(16)}`).toBe(type)
+  }
+})
+
+test("byte kontrol tidak sampai ke baris input", () => {
+  let s = typeAll("teks")
+  for (const code of [0x0c, 0x0b, 0x14]) {
+    const key = decodeKeys(new Uint8Array([code]))[0]!.key
+    s = applyKey(s, key, hints).state
+  }
+  expect(s.line).toBe("teks")
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: memastikan tidak ada byte kontrol
+  expect(/[\u0000-\u001f\u007f]/.test(s.line)).toBe(false)
+})
+
+// Baris input adalah SATU baris. Newline di dalamnya membuat renderer menulis
+// lebih banyak baris daripada yang dihitung — frame melebihi tinggi terminal.
+test("paste multi-baris: newline jadi spasi, bukan masuk apa adanya", () => {
+  const s = applyKey(createState(), { type: "char", ch: "baris1\nbaris2\r\nbaris3" }, hints).state
+  expect(s.line).toBe("baris1 baris2 baris3")
+  expect(s.line).not.toContain("\n")
+  expect(s.cursor).toBe(s.line.length)
+})
+
+test("paste dengan tab jadi spasi, byte kontrol lain dibuang", () => {
+  const s = applyKey(createState(), { type: "char", ch: "a\tb\u0007c\u001bd" }, hints).state
+  expect(s.line).toBe("a bcd")
+})
+
+test("paste yang isinya HANYA kontrol tidak mengubah state", () => {
+  const before = typeAll("tetap")
+  const r = applyKey(before, { type: "char", ch: "\u0000\u0007\u001f" }, hints)
+  expect(r.action).toBe("none")
+  expect(r.state.line).toBe("tetap")
+})
+
+test("paste multi-baris menyisip di posisi kursor", () => {
+  let s = typeAll("ab")
+  s = applyKey(s, { type: "left" }, hints).state
+  s = applyKey(s, { type: "char", ch: "X\nY" }, hints).state
+  expect(s.line).toBe("aX Yb")
+})
+
+test("buildRenderSpec: cursorCol memperhitungkan lebar prompt", () => {
+  let s = typeAll("abc")
+  s = applyKey(s, { type: "left" }, hints).state
+  const spec = buildRenderSpec(s, "> ", [])
+  expect(spec.cursorCol).toBe(2 + 2)
+})
+
+// Kursor diukur dalam KOLOM terminal, bukan jumlah karakter: emoji dan CJK
+// memakan dua kolom. Menghitung per code point membuat kursor terminal salah
+// posisi begitu baris memuat karakter lebar.
+test("buildRenderSpec: cursorCol untuk emoji dihitung per kolom (2)", () => {
+  const s = typeAll("a\u{1F600}")
+  const spec = buildRenderSpec(s, "> ", [])
+  expect(spec.cursorCol).toBe(2 + 1 + 2) // prompt + "a" + emoji 2 kolom
+})
+
+test("buildRenderSpec: cursorCol untuk CJK dihitung per kolom", () => {
+  const s = typeAll("字字")
+  const spec = buildRenderSpec(s, "> ", [])
+  expect(spec.cursorCol).toBe(2 + 4)
+})
+
+test("buildRenderSpec: sekuens ANSI pada prompt tidak menambah kolom", () => {
+  const s = typeAll("abc")
+  const plain = buildRenderSpec(s, "> ", [])
+  const colored = buildRenderSpec(s, "\x1b[36m> \x1b[39m", [])
+  expect(colored.cursorCol).toBe(plain.cursorCol)
 })

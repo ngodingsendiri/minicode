@@ -5,9 +5,9 @@ const BOOLEAN_FLAGS = new Set([
   "--ask",
   "--plan",
   "--interactive",
-  "--tui",
   "--verify",
   "--allowlist",
+  "--json", // dipakai `exec --json` dan `--help --json`
 ])
 const VALUE_FLAGS = new Set([
   "--cwd",
@@ -21,10 +21,11 @@ const VALUE_FLAGS = new Set([
   "--sandbox",
   "--ratelimit",
   "--budget",
-  "--ui",
   "--theme",
+  "--output-format", // `exec --output-format=json`
+  "--prompt",
 ])
-const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help"])
+const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help", "-v", "--version"])
 
 /** `--flag` atau `--flag=value` -> normalisasi ke nama flag murni. */
 function flagNameOf(token: string): string | null {

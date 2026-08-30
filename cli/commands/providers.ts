@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { loadConfig, type MinicodeConfig, refreshProviderModels } from "../../src/config.ts"
-import { c } from "../../src/tui/theme.ts"
+import { renderTable } from "../../src/tui/table.ts"
+import { c, glyphs } from "../../src/tui/theme.ts"
 
 interface TraceRow {
   model?: string
@@ -60,27 +61,43 @@ export async function handleProviders(
   if (firstArg === "providers") {
     if (cfg.providers.length === 0) {
       console.log(
-        "(no providers configured - run `minicode --interactive` then /provider-add, or `minicode config add --baseUrl <url> --apiKey <key>`)",
+        "(belum ada provider - jalankan `minicode` untuk wizard, atau `minicode config add --baseUrl <url> --apiKey <key>`)",
       )
-    } else {
-      const health = healthMap(cfg, readTraces(cwdArg))
-      console.log("")
-      for (const p of cfg.providers) {
-        console.log(`  ${p.id.padEnd(16)} ${String(p.models.length).padStart(3)} models`)
-        console.log(`  ${" ".repeat(16)} ${p.baseUrl}`)
-        const h = health.get(p.id)
-        if (h) {
-          const tag = h.ok ? c.green("ok ") : c.red("ERR")
-          const when = h.ts ? new Date(h.ts).toISOString().slice(0, 10) : "-"
-          console.log(`  ${" ".repeat(16)} ${tag} last: ${h.model} @ ${when}`)
-        } else {
-          console.log(`  ${" ".repeat(16)} ${c.dim("never used")}`)
-        }
-      }
-      console.log(
-        "\n  options: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>",
-      )
+      process.exit(0)
     }
+    // renderTable menjaga kolom tetap berbaris untuk id sepanjang apa pun;
+    // padEnd(16) manual sebelumnya rusak begitu id lebih dari 16 karakter.
+    const health = healthMap(cfg, readTraces(cwdArg))
+    const rows = cfg.providers.map((p) => {
+      const h = health.get(p.id)
+      const status = !h
+        ? c.dim("belum dipakai")
+        : `${h.ok ? c.green("ok") : c.red("ERR")} ${c.dim(
+            h.ts ? new Date(h.ts).toISOString().slice(0, 10) : "-",
+          )}`
+      return {
+        id: c.cyan(p.id),
+        models: String(p.models.length),
+        url: p.baseUrl,
+        status,
+      }
+    })
+    console.log(
+      `\n${c.bold("Provider LLM")}\n` +
+        renderTable(
+          [
+            { header: "ID", key: "id", width: 24 },
+            { header: "Model", key: "models", width: 6, align: "right" },
+            { header: "Base URL", key: "url", width: 34 },
+            { header: "Status", key: "status", width: 18 },
+          ],
+          rows,
+        ) +
+        "\n",
+    )
+    console.log(
+      `  ${c.dim("lanjut: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>")}\n`,
+    )
     process.exit(0)
   }
   if (firstArg === "models") {
@@ -91,30 +108,32 @@ export async function handleProviders(
     if (pid) {
       const p = cfg.providers.find((x) => x.id === pid)
       if (!p) {
-        console.error(`provider "${pid}" not found - minicode providers`)
+        console.error(`provider "${pid}" tidak ditemukan - lihat: minicode providers`)
         process.exit(1)
       }
       const list = p.models.filter(match)
-      if (!list.length) console.log(`  (no match for "${filter}")`)
+      if (!list.length) console.log(`  (tidak ada yang cocok dengan "${filter}")`)
       for (const [i, m] of list.entries()) console.log(`  [${i}] ${m}`)
     } else {
-      if (cfg.providers.length === 0) console.log("(no providers)")
+      if (cfg.providers.length === 0) console.log("(belum ada provider)")
       for (const p of cfg.providers) {
         const list = p.models.filter(match)
-        console.log(`${p.id} (${p.baseUrl})${filter ? ` - match "${filter}"` : ""}`)
-        if (!list.length) console.log("  (no match)")
+        console.log(`${p.id} (${p.baseUrl})${filter ? ` - cocok "${filter}"` : ""}`)
+        if (!list.length) console.log("  (tidak ada yang cocok)")
         for (const m of list.slice(0, 10)) console.log(`  ${m}`)
-        if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`)
-        if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} more`)
+        if (filter && list.length > 10) console.log(`  … +${list.length - 10} lagi`)
+        if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} lagi`)
       }
     }
     process.exit(0)
   }
   if (firstArg === "sync") {
-    console.log("Syncing models from providers...")
+    console.log("Menyinkronkan daftar model dari provider…")
     const results = await refreshProviderModels({ cwd: cwdArg })
-    for (const r of results) console.log(`  [OK] ${r.id}: ${r.from} -> ${r.to} models`)
-    if (!results.length) console.log("  (no provider found - use `minicode config add` first)")
+    for (const r of results)
+      console.log(`  ${c.green(glyphs.check)} ${r.id}: ${r.from} -> ${r.to} model`)
+    if (!results.length)
+      console.log("  (belum ada provider - jalankan `minicode config add` lebih dulu)")
     process.exit(0)
   }
   process.exit(0)

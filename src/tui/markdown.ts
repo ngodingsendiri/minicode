@@ -41,9 +41,14 @@ export function decorateMarkdown(text: string): string {
       continue
     }
 
-    // Inside code fence -> indentasi + syntax highlight
-    if (inFence && fenceLang) {
-      out.push("  " + highlightCode(line, fenceLang))
+    // Di DALAM fence: isi kode tidak boleh disentuh markdown.
+    //
+    // Sebelumnya hanya fence BERBAHASA yang dilindungi (`if (inFence && fenceLang)`),
+    // sehingga fence tanpa bahasa jatuh ke renderInline di bawah dan
+    // `npm run build -- --flag=*value*` kehilangan bintangnya karena dianggap
+    // italic. Fence tanpa bahasa justru bentuk paling umum untuk perintah shell.
+    if (inFence) {
+      out.push(`  ${fenceLang ? highlightCode(line, fenceLang) : line}`)
       continue
     }
 
@@ -56,7 +61,7 @@ export function decorateMarkdown(text: string): string {
 
     // Bullet list -> indentasi
     if (/^\s*[-*]\s/.test(line)) {
-      out.push("  " + renderInline(line.trimStart()))
+      out.push(`  ${renderInline(line.trimStart())}`)
       continue
     }
 

@@ -1,6 +1,183 @@
 # Changelog
 
-## [Unreleased] — Audit V4 (Fase 0–4) + V5 (eksperimen ekstrem & distribusi)
+## [Unreleased] — Audit UI/UX (V6) + uji live multi-provider (V7) + bug hunter UI (V8)
+
+### V8 — bug hunter UI/UX: 31 temuan dari tiga ronde
+
+Metode: harness adversarial per lapisan render, lalu **verifikasi dampak** dengan menggerakkan TUI sungguhan. Pemisahan itu penting — 5 dari 12 temuan ronde 1 ternyata tidak berdampak (simple logger tidak merender diff card; tidak ada sumber nyata untuk newline di tabel), dan tidak diperbaiki.
+
+| Metrik | Sebelum V8 | Sesudah |
+|---|---|---|
+| Test | 913 pass | **1064 pass** |
+| Coverage | 80,52% / 83,10% | **81,46% funcs / 83,03% lines** |
+| Temuan hunter tersisa | — | **0** (tiga harness) |
+
+**Lebar karakter salah di seluruh lapisan** — akar, bukan gejala. Semua kode menganggap 1 karakter = 1 kolom. Bukti: 38 code point CJK menempati **73 kolom** di terminal 40 kolom; baris membungkus sendiri dan frame TUI (dihitung per baris) rusak. Ditambah `src/tui/width.ts` (tabel EastAsianWidth UAX #11): CJK/Hangul/kana/emoji 2 kolom, combining mark & ANSI 0 kolom. Seluruh pemanggil dialihkan: `truncAnsi`, `renderTable`, `wordWrap`, `justifyLine`, `renderDiffCard`, kursor fullscreen, `scrollableLine`, `padToWidth`.
+
+**Teks model bisa mengendalikan terminal.** Terverifikasi sampai ke terminal: `provider:text` berisi `aman\x1b[2J\x1b[H\x1b[?1049hJAHAT\x1b]0;bajak\x07` benar-benar membersihkan layar, keluar dari alternate screen, dan mengubah judul jendela. Model, server MCP, atau isi berkas bisa memanipulasi tampilan. Ditambah `src/tui/sanitize.ts`: **hanya SGR** (`ESC[…m`) yang lewat; CSI non-SGR, OSC, DCS, dan C0 selain tab/newline dibuang. Diterapkan ke `provider:text`, hasil tool, argumen tool, dan isi todo — warna diff card tetap utuh.
+
+**Fence markdown tanpa bahasa didekorasi sebagai markdown.** `npm run build -- --flag=*value*` kehilangan bintangnya karena dianggap italic. Hanya fence *berbahasa* yang dilindungi sebelumnya; fence tanpa bahasa justru bentuk paling umum untuk perintah shell.
+
+**Byte kontrol masuk prompt.** Ctrl+L/K/T/Z jatuh ke cabang `char`: `"teks"` + tiga tombol itu mengirim `"teks\f\u000b\u0014"` ke model — tak terlihat di layar, tapi ikut terkirim. Kini semua C0 tak dikenal dibuang. Paste multi-baris juga: newline masuk baris input dan membuat frame 26 baris di terminal 24; kini newline/tab jadi spasi.
+
+**Semua overlay mengabaikan terminal kecil.** `picker` dan `panel` punya lantai minimum (`Math.max(44, …)`, `Math.max(40, …)`, `Math.max(5, …)`) yang memaksa ukuran lebih besar dari terminal: label 55 kolom digambar di terminal 40 kolom, 6 baris dicetak di terminal 3 baris. Lantai dihapus.
+
+**Wizard setup adalah titik terlemah** — ironis karena ia hal pertama yang dilihat pengguna baru. Memakai `readline` dengan `"Choice [1-15]"` sementara REPL punya `runPicker` (panah + filter), dan **nomor di luar rentang diam-diam jatuh ke pilihan pertama** sehingga mengetik `99` memilih OpenAI tanpa memberi tahu. Ditulis ulang memakai picker; 11 test baru (sebelumnya nol).
+
+**`provider-manager` menulis config dengan konfirmasi paling minim.** `Delete "x"? [y/N]` tidak menyebut berapa model ikut hilang maupun bahwa provider itu sedang aktif. Kini menyebut jumlah model, memperingatkan bila aktif, dan menandai `(aktif)` di daftar.
+
+**Lima perintah berfungsi tapi tidak bisa ditemukan.** `/clear`, `/exit`, `/quit`, `/compact`, `/history` ditangani tapi tidak terdaftar — tidak muncul di `/help` **dan** tidak bisa dilengkapi Tab. Kini 21 entri, dengan `hidden: true` untuk alias. `/help` juga dipecah: 29 → 18 baris (muat di overlay 24 baris), pintasan lengkap ke `/help tombol`.
+
+**Alternate screen ditulis tanpa memeriksa dukungan terminal.** `isTTY` tidak menjamin VT — `TERM=dumb`, Emacs shell, conhost lama menampilkan `ESC[?1049h` sebagai sampah. Ditambah `supportsVt()` dan `MINICODE_NO_ALT=1`.
+
+**Pola beku, kali ketiga.** Setelah objek warna `c` (V6) dan palet tema (V6), kini `glyphs` (`supportsUtf8` dievaluasi saat import) dan `const OK = glyphs.check` di `commands.ts`. Semuanya jadi getter/fungsi. Tiga kali bug yang sama menandakan kecenderungan struktural — ditangani sebagai item rencana, bukan tambalan.
+
+Lainnya: `renderTable` melempar pada `width` negatif; nilai bernewline memecah baris tabel; kata/URL/CJK tanpa spasi tidak di-wrap (kini dipecah per kolom); `renderDiffCard` tidak membatasi panjang baris; penanda hasil aksi bercampur (`[OK]`/`[FAIL]` vs kalimat vs tanpa penanda); bahasa campur Inggris–Indonesia di wizard, provider-manager, dan pesan slash command.
+
+### V8 — test baru (+151)
+
+`width.test.ts` (34) · `sanitize.test.ts` (26) · `tui-overlay.test.ts` (18) · `wizard.test.ts` (11) · `cli-help-language.test.ts` (29) · plus tambahan di `tui-diff`, `tui-table`, `tui-format`, `prompt-engine`.
+
+### V7 — empat bug yang hanya muncul dengan provider sungguhan
+
+Diuji dengan dua gateway nyata: `gorouter.app` (4 model Claude) dan OpenRouter (**18 model gratis**, matriks penuh). Yang diukur bukan kualitas model, tapi apakah lapisan minicode bertahan di bawah token nyata, rate-limit mendadak, endpoint hilang, dan harga yang tidak ada di tabel.
+
+| Metrik | Sebelum V7 | Sesudah |
+|---|---|---|
+| Test | 876 pass | 913 pass |
+| Model gratis OpenRouter berhasil tool-call | — | 12/18 (6 sisanya ditolak provider: 429/403/404) |
+| Resolve-rate terukur | 0,00 (5 trace provider maintenance) | **1,00** (5/5 tugas berpemeriksa objektif) |
+
+**`/cost` dan `--budget` selalu 0 setelah turn pertama** (`src/policy/usage.ts`). `fullscreen-driver` memanggil `usage.reset()` setiap turn, dan `reset()` menghapus satu-satunya akumulator yang ada. Bukti live: 51.915 token nyata dilaporkan sebagai **0 token, $0.0000**. Konsekuensinya berantai — `/cost` yang berjudul "biaya sesi" selalu nol, header REPL kembali `$0.0000` setelah setiap jawaban, dan `--budget` **tidak akan pernah terpicu** berapa pun yang dibakar. Kini ada dua akumulator: `get()` per-turn dan `getSession()` kumulatif. Setelah perbaikan 74.354 token / $0.3745 terlaporkan benar, dan `--budget 0.05` benar-benar menolak prompt berikutnya.
+
+**`cli/errors.ts` punya 10 test tapi tidak dipanggil dari mana pun.** Renderer memakai `formatProviderError()` yang mencetak `[kategori] <pesan mentah>`, sehingga body JSON provider tumpah utuh. Satu 429 OpenRouter menghasilkan 400+ karakter berisi `metadata`, `provider_error_code`, `limit_source`, dan URL dokumentasi — di dalam frame TUI selebar 100 kolom. Kini semua jalur error (`formatProviderError`, `formatError`, event `provider:extension`, dan `catch` di `submit()`) melewati satu formatter. Ditambah `extractProviderDetail()` yang tahu bentuk-bentuk nyata: OpenRouter menyembunyikan alasan sebenarnya di `metadata.raw` sementara `message` hanya berbunyi "Provider returned error"; Cloudflare mengirim HTML dengan `<title>`; body streaming bisa terpotong di tengah JSON.
+
+Hasilnya: `z-ai/glm-5.2:free is temporarily rate-limited upstream.` + saran dari `remedy_hint` provider, bukan dump JSON.
+
+**Model gratis dihargai seperti varian berbayarnya** (`src/policy/pricing.ts`). Pencocokan per-segmen mengabaikan sufiks `:free`, jadi `z-ai/glm-5.2:free` dilaporkan $1,25/M padahal OpenRouter menyatakan `prompt=0 completion=0` (diverifikasi lewat `/api/v1/models`). Dampaknya bukan kosmetik: `--budget` bisa memutus sesi yang sebenarnya tidak berbiaya sepeser pun. Kini `:free` selalu $0, kecuali overlay punya entri eksplisit untuk id ber-`:free`.
+
+**`exec` mengirim nilai flag ke model sebagai bagian prompt** (`cli/commands/exec.ts`). Filternya `a !== getArg("--model") && a !== getArg("--cwd")` hanya membuang nilai dua flag. Terverifikasi: `exec "ulangi: MARKER" --provider gorouter --session uji --timeout 120000` mengirim `"MARKER gorouter uji 120000"`. Pada satu run model benar-benar tersesat — 38.072 token ($0,19) dipakai menebak apakah "gorouter" itu proyek Cloud Foundry dan apakah "60000" itu port atau timeout. Kini memakai `promptFromArgs()`, implementasi yang sama dengan jalur non-exec.
+
+### V7 — perbaikan pendukung
+
+- **`--budget 0.001` tampil sebagai `$0.00`** → pesan pemutusnya berbunyi `$0.0601 > $0.00`, user membaca batas nol. `src/tui/money.ts` baru: di bawah $1 pakai 4 desimal.
+- **Model tidak tahu direktori kerjanya.** System prompt tidak menyebut cwd, jadi model menebak — pada uji `--plan` ia menyimpulkan *"cwd saat ini adalah /, yang tidak writable"* padahal berjalan di workspace Windows normal. Ditambah bagian `# Environment` (cwd + platform).
+- **Trace bermodel kosong** saat user tidak memberi `--model`, sehingga tidak bisa diatribusikan ke provider dan kolom Status di `minicode providers` selalu "belum dipakai" meski sudah dipakai. Kini memakai model efektif hasil substitusi router.
+- **Kompaksi LLM mengabaikan signal yang sudah abort** (`addEventListener` tidak memicu untuk signal ter-abort), jadi request ringkasan tetap terkirim setelah user membatalkan.
+
+### V7 — test baru (+37)
+
+- `test/usage-session.test.ts` (8) — pemisahan turn vs sesi, akumulasi lintas turn, basis harga setelah reset.
+- `test/money.test.ts` (6) — nilai kecil, batas $1, negatif, NaN/Infinity.
+- `test/errors-usage.test.ts` (+13) — bentuk error nyata: 429 OpenRouter dengan `metadata.raw`, 403 agentic-harness, 404 no-tool-support, 502 HTML Cloudflare, body JSON terpotong.
+- `test/providers-build.test.ts` (9) — id provider diteruskan (tanpa ini router memetakan semua ke satu kunci generik), hybrid Anthropic/OpenAI, provider OAuth tanpa login dibuang bukan dikirim dengan token undefined.
+- `test/compaction.test.ts` (14) — ringkasan menggantikan prefix, hasil tool sukses ikut sebagai fakta, error ditandai, fallback saat provider gagal/kosong, abort diteruskan.
+- `test/phase4-auth-git-pricing.test.ts` (+2) — `:free` tidak mewarisi harga.
+
+### V7 — yang diverifikasi aman
+
+- **API key tidak bocor**: 0 temuan pada seluruh berkas repo, tidak ada di `traces.jsonl`, tidak ada di output UI; `scrubSecrets` meredaksi di pesan error.
+- Streaming 40 baris tidak melebihi tinggi terminal, tidak ada baris lewat lebar kolom, tidak ada sekuens ANSI tergantung.
+- Tool call berantai (`write_file` → `bash` → `bash`) dengan berkas nyata di disk dan `bun test` lolos 6/6.
+- Ctrl+C dan Esc menghentikan run tanpa keluar; REPL menerima prompt lagi sesudahnya.
+- `--plan` benar-benar menolak `write_file`.
+- Rangkaian 429 → 404 → 403 → model sehat: REPL pulih tanpa satu pun `unhandledRejection`.
+- Gate lain tetap hijau: bash-fuzz 0 bypass, shadow-git 31/31, MCP adversarial 67/67, pack-check 22/22, vendor sinkron.
+
+### V7 — masalah diketahui yang TIDAK diperbaiki
+
+**`--cwd` diabaikan oleh semua tool file.** Berkas yang diminta di `--cwd <dir>` muncul di direktori proses. `write_file.ts:24` memakai `process.cwd()` sebagai root — begitu juga `read_file`, `edit`, `patch`, `glob`, `grep`. Sudah didokumentasikan sebelumnya di `scripts/human-sim.ts` ("kernel ToolContext tak punya cwd"). Tidak disentuh karena memperbaikinya berarti mengubah kontrak `ToolContext` di kernel yang dibekukan — keputusan arsitektur, bukan perbaikan UI. Konsekuensinya nyata: `--cwd` menyesatkan, dan jail keamanan ter-anchor ke direktori yang salah.
+
+**Overhead gateway di luar kendali minicode.** Diukur langsung: request kosong ke gorouter sudah memakan 6.847 prompt token ($0,034) sebelum minicode mengirim apa pun. Kontribusi minicode sendiri ~4.455 token (system prompt 1.405 + skema 31 tool 3.050). Gateway juga menimpa identitas — ditanya namanya, model menjawab nama agent lain. Perilaku provider, tapi perlu diketahui saat menilai biaya.
+
+---
+
+## Audit UI/UX (V6)
+
+Basis: audit UI/UX menyeluruh ([docs/PLAN_UIUX_V6.md](docs/PLAN_UIUX_V6.md)) — 24 temuan, diverifikasi dengan menjalankan tiap subcommand, mengemudikan TUI lewat harness keystroke sintetis, dan memanggil `handleBuiltinCommand` langsung.
+
+| Metrik | Sebelum | Sesudah |
+|---|---|---|
+| REPL menerima prompt | **tidak** (mati bisu) | ya |
+| Test | 747 pass | **859 pass** |
+| Berkas UI tanpa cakupan test | 19 | 6 (jalur yang butuh proses nyata) |
+| Coverage agregat | 71,95% funcs / 76,76% lines | **79,33% / 82,15%** |
+| Gate coverage | min 69 / 74 | min 77 / 80 |
+
+### Fixed — blocker
+
+- **REPL mati bisu pada prompt pertama.** `render()` memanggil `startSpinner()`, yang memanggil `tickSpinner()` → `render()` lagi. Karena `spinnerTimer` baru terisi *setelah* `render()` selesai, guard `if (spinnerTimer) return` selalu lolos: rekursi tak berbatas → `RangeError: Maximum call stack size exceeded`. `onLine` **tidak pernah** terpanggil, layar berhenti pada prompt user tanpa spinner, tanpa jawaban, tanpa pesan error. Bug masuk pada `a4fcfa9` ("spinner coalesce") dan tidak tertangkap satu test pun — lapisan interaktif punya nol cakupan.
+
+  Perbaikan: `startSpinner` men-set timer sebelum render. Dijaga oleh test `"Enter memanggil onLine tepat sekali"`, yang **gagal** pada commit sebelum perbaikan.
+
+- **`--interactive` crash di luar TTY.** `setRawMode is not a function` beserta stack trace mentah, karena `setRawMode` dipanggil tanpa cek `isTTY` — semua komponen lain (`askLine`/`runPicker`/`runPanel`) punya fallback ini. Kini ada `attachNonTty()`: event dilaporkan sebagai baris polos.
+
+- **Kegagalan async tak lagi bisu.** `unhandledRejection` ditampilkan sebagai baris transcript, bukan membuat layar diam.
+
+### Fixed — tema & warna
+
+- **`/theme` dan `--theme` tidak berefek apa pun.** Objek `c` di `src/tui/theme.ts` mengevaluasi token tema **saat import** (`success: trueWrap(tk("success"))` di module scope), jadi `applyTheme()` mengganti state tapi closure warna sudah beku. `/theme light` melapor `Theme: light` dengan gembira sambil tetap mencetak warna dark. `test/theme.test.ts` hanya memeriksa nilai kembalian `applyTheme`, itu sebabnya lolos.
+
+  Setiap slot kini getter yang membaca `themeState`, dengan palet per-tema di-cache. 181 call-site di 22 berkas tidak perlu diubah. Alias legacy (`c.red`…`c.brightCyan`) dipetakan ke token tema alih-alih hex hardcoded — inilah yang membuat `mono` benar-benar monokrom, jalur aksesibilitasnya.
+
+- **Transcript TUI membuang seluruh warna dan format.** `push()` men-`strip()` semua isi, sehingga diff card kehilangan hijau/merah dan `decorateMarkdown()` yang dipanggil satu baris di atasnya sia-sia — bold, inline code, dan syntax highlight dibuang tepat setelah dibuat. Kini `truncAnsi()` memotong berdasarkan lebar **tampak**, menutup atribut yang terbuka, dan tidak pernah membelah sekuens di tengah maupun memotong emoji separuh.
+
+- **`stripAnsi` tidak menangkap sekuens private-mode.** `ESC[?25l`, `ESC[?2026h`, `ESC[?1049h` lolos utuh — dan `captureOutput()` memakainya untuk membersihkan isi overlay, jadi kode kontrol bisa masuk ke teks. Pola diperluas (termasuk OSC); implementasi duplikat di `wrap.ts` diganti re-export.
+
+### Fixed — biaya & anggaran di REPL
+
+- **Biaya tidak pernah muncul selama sesi interaktif.** Header menunggu `provider:extension { kind:"usage", data.cost }` yang **tidak dikirim provider mana pun** — `openai-compat.ts` dan `anthropic.ts` hanya mengirim token. Biaya dihitung di `createUsageCollector.get()` dari tabel harga, dan TUI tidak pernah membacanya. `FullscreenMinimalOpts` kini menerima `usage()`.
+
+- **`--budget` diabaikan di REPL.** Nilainya diteruskan lalu di-`void` (`fullscreen-driver.ts:197`): tidak ada peringatan 80%, tidak ada penghentian saat lewat batas — padahal jalur one-shot punya keduanya. Kini header menampilkan `$0.85/$1.00` berwarna sesuai rasio, dan prompt baru ditolak setelah batas terlampaui.
+
+### Fixed — input & kursor
+
+- **Tidak ada editing di tengah baris.** `left`/`right` mengembalikan `none` dan `PromptState` tidak punya posisi kursor: `abcdef` + panah kiri ×3 + `X` menghasilkan `abcdefX`. Untuk memperbaiki satu kata di prompt panjang, user harus menghapus seluruh sisanya. Footer bahkan mencetak `_` sebagai kursor palsu di ujung baris.
+
+  `PromptState` kini punya `cursor` (indeks **code point**, bukan unit UTF-16, jadi emoji tak pernah terbelah). Ditambahkan Home/End/Delete/Ctrl+A/Ctrl+E; `backspace`, `ctrl-w`, dan penyisipan karakter menghormati kursor. Renderer memposisikan kursor terminal sungguhan; `_` palsu dihapus. Baris panjang digeser horizontal mengikuti kursor, bukan hanya ujung.
+
+- **Tab mengabaikan seleksi.** `askLine` selalu melengkapi item pertama meski user sudah menekan panah bawah; jalur fullscreen sudah benar. Dua jalur beda perilaku untuk tombol yang sama.
+
+- **Byte mouse bocor jadi teks.** `enableMouse()` mengaktifkan mode `?1000h` tapi `decodeKey` tidak mengenali `ESC[M` + 3 byte koordinat, jadi klik mengubah `teks` menjadi `teks 00`. Mouse tracking dimatikan (tidak ada konsumennya) dan laporan X10 maupun SGR kini dikenali lalu **dibuang**.
+
+- **Panah atas menggabungkan history ke teks yang sedang ditulis** (`halo` → `halo <entri history>`), menghancurkan prompt yang sedang disusun. Kini mengganti baris seperti shell, dengan baris kerja disimpan dan kembali saat turun melewati entri terbaru.
+
+### Fixed — overlay & dispatch
+
+- **Overlay meluber melewati tinggi terminal dan tidak bisa di-scroll.** Kapasitas dihitung (`H - 8`) tapi loop render mengiterasi seluruh `overlay.lines`: overlay 30 baris di terminal 20 baris merender 35 baris, judul terguling keluar layar, dan panah tidak melakukan apa pun. Kini di-slice, bisa di-scroll (panah/Home/End), dengan indikator `13-30/40`.
+
+- **Setiap slash command menempuh tiga jalur.** `/status` memanggil `onPicker` → `onOverlay` → mungkin `onLine`; untuk salah ketik, `onOverlay` bahkan mengeksekusi builtin dengan stdout dibajak sebelum ditolak. Nama kini divalidasi lebih dulu.
+
+- **`/resume` di TUI hanya mencetak instruksi manual** (`keluar lalu jalankan: minicode --resume <id>`) padahal jalur klasik me-respawn proses otomatis. Kini keduanya sama.
+
+### Fixed — konsistensi CLI
+
+- **`--version` / `-v`** — sebelumnya diperlakukan sebagai prompt dan dikirim ke LLM. Versi dibaca dari `package.json`, bukan di-hardcode.
+- **Help kontekstual.** `config`, `config mcp`, `config lsp`, `mcp` tanpa argumen mencetak HELP global 45 baris lalu exit 0 — bukan error, bukan petunjuk. Kini help spesifik per subcommand; subcommand asing exit **1** supaya skrip bisa mendeteksi (`sessions`, `skills`, `pricing`, `auth` diseragamkan).
+- **`renderTable`: `width` jadi batas keras.** Sebelumnya minimum, sehingga satu nilai panjang melebarkan kolom dan header berhenti berbaris dengan body — nyata di `config list` dengan id provider 23 karakter. `providers` juga beralih ke `renderTable` dari `padEnd(16)` manual yang rusak untuk id panjang.
+- **`stats --json`** diterima tanpa keluhan lalu diabaikan; kini menghasilkan JSON.
+- **Notice `[sandbox]`** muncul di stderr untuk **setiap** invokasi di Windows, termasuk yang tidak menyentuh tool. Kini hanya bila sesi berpotensi menjalankan perintah.
+- **Satu bahasa** untuk seluruh keluaran (Indonesia); `usage:` tetap Inggris mengikuti konvensi CLI. Sebelumnya `providers`/`config`/`skills`/`sessions` Inggris sementara `auth`/`pricing`/TUI Indonesia — user melihat keduanya dalam satu sesi.
+- **`/help` mendokumentasikan 13 pintasan papan tombol.** Ctrl+O, Ctrl+R, Shift+Tab, Ctrl+U, Ctrl+W, Esc, dan `\` continuation sebelumnya hanya bisa ditemukan dengan membaca kode; footer menyebut empat.
+
+### Fixed — kebersihan
+
+- **`/thinking` punya dua state dan nol konsumen.** `cli/commands.ts` menulis `process.env.MINICODE_SHOW_THINKING`, `fullscreen.ts` menulis `showThinking.ref`; tak ada yang membaca yang lain, dan tak ada renderer yang membaca keduanya. Toggle melaporkan sukses tanpa efek. Kini satu state (`src/tui/reasoning.ts`) dengan konsumen nyata di kedua renderer.
+- **Justify meratakan baris terakhir paragraf**, menghasilkan "sungai" spasi (`dengan      lebar      tertentu`). Baris akhir paragraf kini rata kiri; `MINICODE_JUSTIFY=0` mematikan sepenuhnya.
+- **`--ui` dan `--tui` dihapus** — keduanya diparse dan diteruskan tapi tidak pernah dibaca.
+- **`test/import-convention.test.ts`** menuduh dirinya sendiri (berkasnya memuat pola yang dicari sebagai literal regex).
+
+### Added — test lapisan interaktif
+
+Sebelumnya `fullscreen.ts`, `input.ts`, `picker.ts`, `panel.ts`, `provider-manager.ts` semuanya nol cakupan — permukaan utama produk tidak diuji sama sekali.
+
+- **`test/helpers/tui-harness.ts`** — fake TTY: stdin injektabel, stdout/stderr tertangkap sebagai frame, ukuran terminal dapat diatur, `ready()` menunggu listener terpasang (komponen melakukan `await` sebelum memasang listener, jadi keystroke lebih awal hilang tanpa jejak), dan pelacak `unhandledRejection`.
+- **`test/tui-fullscreen.test.ts`** (44) — submit prompt, dropdown, Tab, overlay + scroll, picker, streaming, diff berwarna, cost/budget, history, kursor, mode, resize, interupsi, mouse, non-TTY, pembersihan terminal saat detach.
+- **`test/tui-classic.test.ts`** (36) — `askLine`, `runPicker`, `runPanel`, `runProviderManager`, `captureOutput`.
+- **`test/tui-format.test.ts`** (42) — `wrap`, `format`, `reasoning`, `statusline`, simple logger.
+- **`test/cli-handlers.test.ts`** (45) + **`test/cli-subcommands.test.ts`** (25) — handler in-process dan biner sungguhan (exit code, aliran stdout/stderr).
+
+## [Sebelumnya] — Audit V4 (Fase 0–4) + V5 (eksperimen ekstrem & distribusi)
 
 Basis: audit menyeluruh v0.7.0 ([docs/PLAN_V4.md](docs/PLAN_V4.md)) dilanjutkan dengan tiga harness adversarial ([docs/PLAN_V5.md](docs/PLAN_V5.md)). Semua angka terverifikasi dengan eksekusi.
 

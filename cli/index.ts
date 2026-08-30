@@ -1,15 +1,27 @@
 #!/usr/bin/env bun
 import { randomUUID } from "node:crypto"
+import { readFileSync } from "node:fs"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { formatError } from "../src/tui/minimal/simple.ts"
+import { formatUsd } from "../src/tui/money.ts"
 import { c, glyphs } from "../src/tui/theme.ts"
 import { promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
+
+/** Versi dibaca dari package.json — satu sumber, tidak di-hardcode dua tempat. */
+function readVersion(): string {
+  try {
+    const pkgPath = resolvePath(import.meta.dir, "..", "package.json")
+    return (JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string }).version ?? "0.0.0"
+  } catch {
+    return "0.0.0"
+  }
+}
 
 const HELP = `Minicode - coding agent on frozen MiniCore
 Usage:
@@ -27,10 +39,12 @@ Usage:
   minicode pricing <status|sync|show>       # tabel harga (models.dev, opt-in)
   minicode mcp serve [--allow-all] [--all-tools]
   minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
-  minicode sessions <list|export> [id]
+  minicode sessions <list|export|purge> [id]
+  minicode stats [--json]         # ringkasan dari .minicode/traces.jsonl
 
 Options:
   -h, --help          show help
+  -v, --version       show version
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
   --resume <id>       resume session id
@@ -44,15 +58,21 @@ Options:
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
-  --interactive       REPL loop
-  --tui               TUI minimal alternate-screen (pure ANSI)
+  --interactive       REPL loop (fullscreen)
+  --theme <name>      dark | dim | light | mono
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
   --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
   --budget <usd>      session cost limit (USD); warn at 80%, stop when exceeded
 
 Commands in REPL:
-  /help /clear /model /models /providers /provider-add /sync /cost /sessions /resume /status /history /exit
+  /help /clear /model /provider /sync /cost /sessions /resume /status /thinking /init /theme /exit
+
+Keyboard in REPL:
+  enter kirim · shift+tab ganti mode · ctrl+o detail · ctrl+r cari history
+  tab lengkapi · up/down history · ctrl+a/ctrl+e awal/akhir baris
+  ctrl+w hapus kata · ctrl+u kosongkan baris · esc hentikan · ctrl+c x2 keluar
+  akhiri baris dengan \\ untuk menyambung
 `
 
 const args = process.argv.slice(2)
@@ -63,20 +83,26 @@ function getArg(name: string): string | undefined {
 // dispatch subcommands via registry (handlers call process.exit internally)
 await dispatch(args, getArg, HELP)
 
+if (args.includes("-v") || args.includes("--version")) {
+  console.log(readVersion())
+  process.exit(0)
+}
+
 if (args.includes("-h") || args.includes("--help")) {
   if (args.includes("--json")) {
-    // machine-readable help for CI (minicode exec --help --json)
+    // machine-readable help for CI (minicode --help --json)
     console.log(
       JSON.stringify({
         name: "minicode",
-        version: "0.7.0",
+        version: readVersion(),
         usage: [
           "minicode",
           'minicode "prompt" [options]',
           'minicode exec "prompt" [--json]',
-          "minicode providers|models|sync|config|mcp|skills|sessions",
+          "minicode providers|models|sync|config|mcp|skills|sessions|stats",
         ],
         options: [
+          { flag: "--version", desc: "show version" },
           { flag: "--verbose", desc: "show reasoning & usage" },
           { flag: "--cwd <dir>", desc: "workspace root" },
           { flag: "--resume <id>", desc: "resume session id" },
@@ -88,7 +114,7 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--allowlist", desc: "bash allowlist only" },
           { flag: "--max-steps <n>", desc: "max tool steps (default 50)" },
           { flag: "--timeout <ms>", desc: "hard deadline per run" },
-          { flag: "--tui", desc: "fullscreen TUI (pure ANSI)" },
+          { flag: "--theme <name>", desc: "dark|dim|light|mono" },
           { flag: "--verify", desc: "auto-verify + self-heal" },
           { flag: "--sandbox <docker|os>", desc: "bash sandbox" },
           { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
@@ -102,12 +128,11 @@ if (args.includes("-h") || args.includes("--help")) {
   process.exit(0)
 }
 
-// â”€â”€ flag parsing â”€â”€
+// -- flag parsing --
 const verbose = args.includes("--verbose")
 const allowAll = args.includes("--allow-all")
 const ask = args.includes("--ask")
 const interactive = args.includes("--interactive")
-const useTui = args.includes("--tui")
 const plan = args.includes("--plan") || process.env.MINICODE_PLAN === "1"
 const allowlist = args.includes("--allowlist") || process.env.MINICODE_PERMISSION === "allowlist"
 const verify = args.includes("--verify")
@@ -135,7 +160,11 @@ const sandbox = resolveSandbox(
 )
 if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
 else process.env.MINICODE_SANDBOX = sandbox.mode
-if (sandbox.notice) process.stderr.write(`${sandbox.notice}\n`)
+// Notice sandbox hanya relevan bila sesi ini berpotensi menjalankan perintah.
+// Sebelumnya ia dicetak untuk SETIAP invokasi di Windows, termasuk yang tidak
+// menyentuh tool sama sekali — kebisingan di setiap baris perintah.
+const willRunTools = !args.includes("--plan")
+if (sandbox.notice && willRunTools) process.stderr.write(`${sandbox.notice}\n`)
 const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
 const budget = budgetRaw ? Number(budgetRaw) : undefined
@@ -143,10 +172,9 @@ if (budgetRaw && !Number.isFinite(budget))
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
-const uiRaw = getArg("--ui") ?? "auto"
-const uiRaw2 = getArg("--theme") ?? ""
-const themeName = ["dark", "dim", "light", "mono"].includes(uiRaw2)
-  ? uiRaw2
+const themeArg = getArg("--theme") ?? ""
+const themeName = ["dark", "dim", "light", "mono"].includes(themeArg)
+  ? themeArg
   : (process.env.MINICODE_THEME ?? "")
 const { applyTheme } = await import("../src/tui/theme.ts")
 applyTheme(themeName)
@@ -158,7 +186,7 @@ if (!prompt && !enterRepl) {
   process.exit(1)
 }
 
-// â”€â”€ skills: expand /name args â”€â”€
+// -- skills: expand /name args --
 let effectivePrompt = prompt
 try {
   if (prompt.startsWith("/")) {
@@ -173,7 +201,7 @@ try {
   }
 } catch {}
 
-// â”€â”€ build session â”€â”€
+// -- build session --
 const ctx = await createCliSession({
   cwd,
   sessionId,
@@ -187,14 +215,12 @@ const ctx = await createCliSession({
   ask,
   plan,
   allowlist: effectiveAllowlist,
-  useTui,
   verify,
   budget,
   maxSteps,
   contextWindowTokens,
   timeoutMs,
   rateLimiter,
-  ui: uiRaw as "auto" | "full" | "classic",
 })
 
 if (enterRepl) {
@@ -215,17 +241,19 @@ if (enterRepl) {
   const t0 = Date.now()
   try {
     await runPromptWithVerify(effectivePrompt)
-    const u = usage.get(modelRef.current)
+    // Total SESI, bukan turn: satu one-shot hanya punya satu turn, tapi
+    // --verify/self-heal bisa menjalankan beberapa dan reset() di antaranya.
+    const u = usage.getSession(modelRef.current)
     let overBudget = false
     if (b != null && u.cost != null) {
       if (u.cost > b) {
         process.stderr.write(
-          c.red(`[budget] $${u.cost.toFixed(4)} > $${b.toFixed(2)} - over budget, exiting.\n`),
+          c.red(`[budget] ${formatUsd(u.cost)} > ${formatUsd(b)} - lewat batas, berhenti.\n`),
         )
         overBudget = true
       } else if (u.cost > b * 0.8)
         process.stderr.write(
-          c.yellow(`[budget] $${u.cost.toFixed(4)} / $${b.toFixed(2)} (80% used)\n`),
+          c.yellow(`[budget] ${formatUsd(u.cost)} / ${formatUsd(b)} (80% terpakai)\n`),
         )
     }
     await persistCurrent(u)
@@ -234,7 +262,7 @@ if (enterRepl) {
       process.exit(1)
     }
     const statusLine = c.muted(
-      `\n  ${u.totalTokens.toLocaleString()} tokens${u.cost != null ? ` · $${u.cost.toFixed(4)}` : ""} · ${session.state.stepCount} steps · ${Math.round((Date.now() - t0) / 1000)}s`,
+      `\n  ${u.totalTokens.toLocaleString()} token${u.cost != null ? ` · ${formatUsd(u.cost)}` : ""} · ${session.state.stepCount} langkah · ${Math.round((Date.now() - t0) / 1000)}s`,
     )
     process.stderr.write(`${statusLine}`)
     const mUsed = usage.modelUsed()
@@ -246,6 +274,11 @@ if (enterRepl) {
       )
     }
     process.stderr.write("\n")
+    // Model untuk trace: `modelRef.current` kosong bila user tidak memberi
+    // --model, dan trace bermodel kosong tidak bisa diatribusikan ke provider —
+    // kolom Status di `minicode providers` jadi selalu "belum dipakai" meski
+    // sudah dipakai. Pakai model efektif (hasil substitusi router) bila ada.
+    const traceModel = mUsed.effective ?? modelRef.current ?? ctx.effectiveInitialModel
     await writeTrace(wcwd, {
       sessionId: sid,
       timestamp: new Date().toISOString(),
@@ -256,11 +289,12 @@ if (enterRepl) {
       inputTokens: u.inputTokens,
       outputTokens: u.outputTokens,
       cost: u.cost,
-      model: modelRef.current,
+      model: traceModel,
       ok: true,
     })
   } catch (e) {
     process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`)
+    const uErr = usage.getSession(modelRef.current)
     await writeTrace(wcwd, {
       sessionId: sid,
       timestamp: new Date().toISOString(),
@@ -268,9 +302,9 @@ if (enterRepl) {
       durationMs: Date.now() - t0,
       steps: session.state.stepCount,
       turns: session.state.turnCount,
-      inputTokens: usage.get(modelRef.current).inputTokens,
-      outputTokens: usage.get(modelRef.current).outputTokens,
-      model: modelRef.current,
+      inputTokens: uErr.inputTokens,
+      outputTokens: uErr.outputTokens,
+      model: usage.modelUsed().effective ?? modelRef.current ?? ctx.effectiveInitialModel,
       ok: false,
       error: formatError(e),
     })

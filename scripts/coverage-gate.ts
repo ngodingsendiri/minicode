@@ -21,10 +21,12 @@ function getArg(name: string, fallback: number): number {
   return Number.isFinite(v) ? v : fallback
 }
 
-// Baseline terukur 0.7.0: 71,95% funcs / 76,76% lines. Ambil sedikit di bawah
-// supaya CI tidak flaky, lalu naikkan bertahap (target PLAN_V4: cli/ ≥60%).
-const MIN_LINES = getArg("--lines", 74)
-const MIN_FUNCS = getArg("--funcs", 69)
+// Baseline terukur setelah penambahan test lapisan UI (harness fake-TTY untuk
+// fullscreen/askLine/picker/panel + handler subcommand): 79,26% funcs /
+// 82,13% lines. Ambil sedikit di bawah supaya CI tidak flaky, lalu naikkan
+// bertahap. Riwayat: 0.7.0 = 71,95%/76,76%.
+const MIN_LINES = getArg("--lines", 80)
+const MIN_FUNCS = getArg("--funcs", 77)
 
 const res = spawnSync("bun", ["test", "--coverage"], {
   encoding: "utf8",

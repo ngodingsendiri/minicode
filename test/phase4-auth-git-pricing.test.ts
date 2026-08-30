@@ -528,8 +528,31 @@ describe("pricing: pencocokan nama model", () => {
     expect(findPrice("claude-sonnet-4-5", overlay)).toEqual({ input: 2, output: 2 })
   })
 
-  test("prefix provider dan sufiks :free dipisah per segmen", () => {
-    expect(findPrice("deepseek/deepseek-chat:free", {})).toEqual(BUILTIN_PRICING["deepseek-chat"])
+  test("prefix provider dipisah per segmen", () => {
+    expect(findPrice("deepseek/deepseek-chat", {})).toEqual(BUILTIN_PRICING["deepseek-chat"])
+  })
+
+  // Varian `:free` OpenRouter benar-benar $0 (terverifikasi lewat
+  // /api/v1/models: prompt=0 completion=0). Sebelumnya pencocokan per-segmen
+  // mengabaikan sufiks dan memungut harga varian berbayarnya, sehingga
+  // `z-ai/glm-5.2:free` dilaporkan $1,25/M dan `--budget` bisa memutus sesi
+  // yang sebenarnya tidak berbiaya sepeser pun.
+  test(":free selalu gratis, bukan mewarisi harga varian berbayar", () => {
+    expect(findPrice("z-ai/glm-5.2:free", { "glm-5.2": { input: 1.25, output: 4.2 } })).toEqual({
+      input: 0,
+      output: 0,
+    })
+    expect(findPrice("deepseek/deepseek-chat:free", {})).toEqual({ input: 0, output: 0 })
+    // Varian berbayar dengan nama sama tetap berharga.
+    expect(findPrice("z-ai/glm-5.2", { "glm-5.2": { input: 1.25, output: 4.2 } })).toEqual({
+      input: 1.25,
+      output: 4.2,
+    })
+  })
+
+  test(":free dengan entri eksplisit di overlay memakai entri itu", () => {
+    const overlay = { "vendor/model:free": { input: 0.01, output: 0.02 } }
+    expect(findPrice("vendor/model:free", overlay)).toEqual({ input: 0.01, output: 0.02 })
   })
 
   test("nama wrapper TIDAK cocok (bukan substring)", () => {

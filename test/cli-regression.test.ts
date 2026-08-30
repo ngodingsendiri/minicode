@@ -28,6 +28,7 @@ const commandCtx = {
   currentModel: "m",
   usage: {
     get: () => ({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }),
+    getSession: () => ({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }),
     reset() {},
     modelUsed: () => ({}),
   },

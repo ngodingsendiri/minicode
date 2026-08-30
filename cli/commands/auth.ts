@@ -8,7 +8,7 @@ import {
 } from "../../src/providers/oauth.ts"
 import { c, glyphs } from "../../src/tui/theme.ts"
 
-function usage(): never {
+function usage(code = 0): never {
   console.log(`minicode auth — login OAuth (tanpa API key)
 
   minicode auth login [provider]   masuk via device code
@@ -17,7 +17,7 @@ function usage(): never {
   minicode auth list               provider yang mendukung OAuth
 
 Token disimpan di ${authFilePath()} (chmod 600), TIDAK di config.json.`)
-  process.exit(0)
+  process.exit(code)
 }
 
 export async function handleAuth(args: string[]): Promise<never> {
@@ -71,8 +71,9 @@ export async function handleAuth(args: string[]): Promise<never> {
   }
 
   if (sub !== "login") {
-    console.error(`subcommand tidak dikenal: ${sub}`)
-    usage()
+    // Subcommand asing = salah pakai, bukan permintaan bantuan: exit 1.
+    console.error(`subcommand auth tidak dikenal: ${sub}`)
+    usage(1)
   }
 
   // ── login ──

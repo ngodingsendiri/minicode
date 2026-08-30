@@ -38,6 +38,9 @@ describe("konvensi import kernel", () => {
   test('tidak ada spesifier lama `from "minicore"` yang tertinggal', () => {
     const offenders: string[] = []
     for (const f of tsFiles) {
+      // Berkas ini MEMUAT pola itu sebagai literal regex — memeriksanya berarti
+      // ia selalu menuduh dirinya sendiri (false positive).
+      if (f === "test/import-convention.test.ts") continue
       const src = readFileSync(join(repoRoot, f), "utf8")
       // Cari `from "minicore...` TANPA prefix #
       if (/from\s+["']minicore(?:\/|["'])/.test(src)) offenders.push(f)

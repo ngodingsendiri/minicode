@@ -1,8 +1,10 @@
 // Simple logger — pengganti renderer klasik (tanpa Ink, tanpa alternate-screen)
 // Untuk one-shot non-interaktif: streaming markdown per baris, wrap, diff ringkas
 import type { EventBus } from "#minicore/core/index.ts"
+import { formatFriendly, friendlyError, friendlyFromCategory } from "../../../cli/errors.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "../format.ts"
 import { decorateMarkdown } from "../markdown.ts"
+import { reasoning } from "../reasoning.ts"
 import { runWithoutStatus } from "../statusline.ts"
 import { c } from "../theme.ts"
 import { formatWrapped } from "../wrap.ts"
@@ -57,7 +59,10 @@ export function attachSimpleLogger(bus: EventBus, opts: SimpleOptions = {}): () 
   )
   offs.push(
     bus.on("provider:extension", (e) => {
-      if (e.kind === "reasoning" && opts.verbose) {
+      if (e.kind === "reasoning") {
+        // Tampilkan bila --verbose ATAU user mengaktifkan lewat /thinking.
+        // Sebelumnya /thinking tidak punya konsumen sama sekali.
+        if (!opts.verbose && !reasoning.visible) return
         const d = e.data as { text?: string }
         if (d.text) wErr(c.muted(`\n${d.text}\n`))
       } else if (e.kind === "usage") {
@@ -145,11 +150,22 @@ export function attachSimpleLogger(bus: EventBus, opts: SimpleOptions = {}): () 
   }
 }
 
+/**
+ * Error apa pun → satu pesan siap tampil.
+ *
+ * Sebelumnya mengembalikan `${kind}: ${message}` mentah, sehingga baris terakhir
+ * yang dilihat user setelah run gagal adalah dump JSON provider — pada uji live
+ * OpenRouter: `provider: rate limited (429): {"error":{...400 karakter...}}`.
+ * Kini kategori dipetakan lewat cli/errors.ts, sama seperti event error.
+ */
 export function formatError(e: unknown): string {
-  if (e && typeof e === "object" && "kind" in (e as Record<string, unknown>)) {
-    const ae = e as { kind: string; message?: string }
-    return `${ae.kind}: ${ae.message ?? ""}`
+  const obj = e as { kind?: string; category?: string; message?: string } | undefined
+  // ProviderError punya `category`; AgentError punya `kind`.
+  if (obj?.category) return formatFriendly(friendlyFromCategory(obj.category, obj.message ?? ""))
+  if (obj?.kind) {
+    const friendly = friendlyError(`${obj.kind}: ${obj.message ?? ""}`)
+    return formatFriendly(friendly)
   }
-  if (e instanceof Error) return e.message
+  if (e instanceof Error) return formatFriendly(friendlyError(e.message))
   return String(e)
 }

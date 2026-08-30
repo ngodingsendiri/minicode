@@ -6,14 +6,14 @@
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) tidak ditulis di dokumen ini. Jalankan `bun test`, `bun run gate:coverage`, atau:
 > `bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.length)"`.
-> Riwayat per versi: [CHANGELOG.md](../CHANGELOG.md). Roadmap: [PLAN_V4.md](PLAN_V4.md) · [PLAN_V5.md](PLAN_V5.md).
+> Riwayat per versi: [CHANGELOG.md](../CHANGELOG.md). Roadmap: [PLAN.md](../PLAN.md) (aktif) · arsip: [PLAN_V4.md](PLAN_V4.md) · [PLAN_V5.md](PLAN_V5.md) · [PLAN_UIUX_V6.md](PLAN_UIUX_V6.md).
 
 ## Peta Pohon Komponen
 
 ```
 minicode/
 │
-├── cli/index.ts — ENTRY POINT (headless / interactive / --tui)
+├── cli/index.ts — ENTRY POINT (headless / interactive)
 │   ├── cli/args.ts                    # pure arg-parsing (getArg/promptFromArgs/readPrompt) — testable
 │   ├── minicode "<prompt>"            → loadConfig → Router → RAG → MCP/LSP → createMinicodeSession → EventBus → persist
 │   ├── config add|list|remove|detect       # provider OpenAI/Anthropic hybrid Bearer+x-api-key
@@ -122,8 +122,13 @@ minicode/
 ├── src/tui/
 │   ├── minimal/simple.ts      — one-shot logger (streaming markdown per-line; todo & bash-output aware)
 │   ├── minimal/fullscreen.ts  — REPL alternate-screen pure ANSI (header·transcript·input·dropdown, kind "todo")
-│   ├── minimal/screen.ts      — ?1049h enter/exit + resize + cursor
-│   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI (ANSI_PATTERN satu sumber)
+│   ├── minimal/screen.ts      — ?1049h enter/exit + resize + cursor; supportsVt() gate (TERM=dumb → no-op)
+│   ├── width.ts               — lebar KOLOM terminal: CJK/emoji 2, combining mark 0, ANSI 0 (UAX #11)
+│   ├── sanitize.ts            — buang sekuens kontrol dari teks model/tool; HANYA SGR (warna) yang lewat
+│   ├── money.ts               — formatUsd: <$1 pakai 4 desimal supaya --budget kecil tidak jadi "$0.00"
+│   ├── reasoning.ts           — satu state /thinking (env + in-memory), dibaca kedua renderer
+│   └── theme/diff/highlight/spinner/table/markdown — primitives ANSI
+│       (ANSI_PATTERN satu sumber; `c` dan `glyphs` = getter, JANGAN di-cache ke const)
 │
 ├── bench/ — tasks.ts + runner.ts (resolve rate, steps, token, cost; --fake untuk CI, external tasks jail)
 ├── experiments/ — harness adversarial: bash-bypass-probe (korpus manual) ·
@@ -174,7 +179,7 @@ Batasnya jujur: ini analisis statis, jadi command substitution dinamis tetap but
 
 | Perintah | Fungsi |
 |---|---|
-| `minicode "prompt" [--tui] [--interactive] [--ask] [--allow-all]` | Jalankan agent |
+| `minicode "prompt" [--interactive] [--ask] [--allow-all]` | Jalankan agent |
 | `minicode exec "prompt" [--json]` | Headless CI — JSONL event stream + baris `{"type":"summary"}` di stdout |
 | `minicode config add --baseUrl --apiKey [--id]` | Tambah provider (auto detect `GET /models`) |
 | `minicode config mcp add <id> --command --args` | Daftarkan MCP lokal |

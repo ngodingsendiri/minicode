@@ -534,9 +534,14 @@ test("19 skills frontmatter quotes + slug + $ARGUMENTS + recursive", async () =>
 })
 
 // ── 21 TUI ───────────────────────────────────────────────────────────────────
-test("21 formatError handles AgentError kind", () => {
+test("21 formatError memetakan AgentError ke pesan yang bisa ditindaklanjuti", () => {
+  // Sebelumnya mengembalikan "budget_exceeded: context too big" mentah —
+  // nama kode internal, bukan sesuatu yang berguna bagi user.
   const e = new AgentError("budget_exceeded", "context too big")
-  expect(formatError(e)).toContain("budget_exceeded")
+  const out = formatError(e)
+  expect(out.toLowerCase()).toContain("biaya")
+  expect(out).toContain("--budget") // saran tindakan disertakan
+  expect(out).not.toContain("budget_exceeded") // nama kode tidak dibocorkan
   expect(formatError(undefined as unknown)).toBe("undefined")
 })
 

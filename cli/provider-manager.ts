@@ -2,7 +2,8 @@
 
 import { detectAndSave, loadConfig, removeProvider } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
-import { c } from "../src/tui/theme.ts"
+import { c, glyphs } from "../src/tui/theme.ts"
+import { padToWidth, truncateToWidth } from "../src/tui/width.ts"
 import { askLine, askSecret } from "./input.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 
@@ -54,40 +55,50 @@ export async function runProviderManager(opts: {
   await reload()
 
   return new Promise<void>((resolve) => {
-    const visibleRows = () => Math.max(4, Math.min(process.stdout.rows - 8 || 10, 14))
-    const width = () => Math.max(50, Math.min(process.stdout.columns - 4 || 78, 100))
+    // Ukuran mengikuti terminal SUNGGUHAN (lihat picker.ts untuk alasan sama).
+    const visibleRows = () => Math.max(1, Math.min((process.stdout.rows || 24) - 4, 14))
+    const width = () => Math.max(12, (process.stdout.columns || 80) - 2)
 
     const buildLines = (): string[] => {
       const v = visibleRows()
       if (sel < scroll) scroll = sel
       if (sel >= scroll + v) scroll = sel - v + 1
       const w = width()
+      const cut = (s: string) => truncateToWidth(s, w)
       const rows = providers.slice(scroll, scroll + v)
       const lines: string[] = []
       lines.push(
-        `${DIM}─ ${c.accent(c.bold("Providers"))}${providers.length ? ` ${DIM}(${providers.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
+        cut(
+          `${DIM}─ ${c.accent(c.bold("Provider"))}${providers.length ? ` ${DIM}(${providers.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
+        ),
       )
       if (providers.length === 0) {
-        lines.push(`${DIM}  (no providers - press a to add)${RESTORE}`)
+        lines.push(cut(`${DIM}  (belum ada provider - tekan a untuk menambah)${RESTORE}`))
       } else {
         for (let i = 0; i < rows.length; i++) {
           const it = rows[i]!
           const picked = i === sel - scroll
-          const label =
-            `${it.id.padEnd(18)} ${String(c.accent(String(it.models))).padStart(3)} models  ${it.baseUrl}`.slice(
-              0,
-              w - 4,
-            )
+          // Tandai provider yang sedang aktif supaya user tahu apa yang akan
+          // hilang bila ia menekan d.
+          const aktif = opts.currentModel?.startsWith(`${it.id}::`) ? " (aktif)" : ""
+          const label = truncateToWidth(
+            `${padToWidth(it.id, 18)} ${padToWidth(String(it.models), 3, "right")} model  ${it.baseUrl}${aktif}`,
+            w - 4,
+          )
           if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
           else lines.push(`   ${DIM}${label}${RESTORE}`)
         }
         if (providers.length > scroll + v) {
-          lines.push(`${DIM}… ${c.accent(String(providers.length - scroll - v))} more${RESTORE}`)
+          lines.push(
+            cut(`${DIM}… ${c.accent(String(providers.length - scroll - v))} lagi${RESTORE}`),
+          )
         }
       }
       lines.push("")
       lines.push(
-        `${DIM}Enter:${RESTORE}${c.accent("set active")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}e:${RESTORE}${c.accent("edit")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
+        cut(
+          `${DIM}Enter:${RESTORE}${c.accent("jadikan aktif")}  ${DIM}a:${RESTORE}${c.accent("tambah")}  ${DIM}d:${RESTORE}${c.accent("hapus")}  ${DIM}e:${RESTORE}${c.accent("ubah")}  ${DIM}Esc:${RESTORE}${c.accent("tutup")}${RESTORE}`,
+        ),
       )
       return lines
     }
@@ -161,16 +172,16 @@ export async function runProviderManager(opts: {
       if (busy) return
       busy = true
       suspend()
-      console.log("\nAdd New Provider\n")
+      console.log("\nTambah provider\n")
       GATEWAY_PRESETS.forEach((p, i) => {
         console.log(`  [${i}] ${p.label}`)
         console.log(`      ${p.baseUrl}`)
       })
       const customIdx = GATEWAY_PRESETS.length
-      console.log(`  [${customIdx}] Custom baseUrl\n`)
-      const selStr = await askLine({ prompt: "select gateway # > " })
+      console.log(`  [${customIdx}] Base URL kustom\n`)
+      const selStr = await askLine({ prompt: "nomor gateway > " })
       if (selStr == null) {
-        console.log("canceled")
+        console.log("dibatalkan")
         busy = false
         await reload()
         resume()
@@ -189,7 +200,7 @@ export async function runProviderManager(opts: {
       } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
         const url = await askLine({ prompt: "Base URL > " })
         if (!url || !url.trim()) {
-          console.log("Base URL required.")
+          console.log("Base URL wajib diisi.")
           busy = false
           await reload()
           resume()
@@ -197,15 +208,15 @@ export async function runProviderManager(opts: {
         }
         baseUrl = url.trim()
       } else {
-        console.log("[FAIL] Unknown selection")
+        console.log(`${glyphs.cross} Pilihan tidak dikenal`)
         busy = false
         await reload()
         resume()
         return
       }
-      const apiKey = await askSecret("API Key (masked): ")
+      const apiKey = await askSecret("API Key (tersembunyi): ")
       if (!apiKey) {
-        console.log("API Key required.")
+        console.log("API Key wajib diisi.")
         busy = false
         await reload()
         resume()
@@ -213,19 +224,21 @@ export async function runProviderManager(opts: {
       }
       let scope: "global" | "local" = "global"
       if (opts.cwd) {
-        const ans = await askLine({ prompt: "Save globally to ~/.minicode? [Y/n] " })
+        const ans = await askLine({ prompt: "Simpan global ke ~/.minicode? [Y/n] " })
         scope = ans?.trim().toLowerCase() === "n" ? "local" : "global"
       }
-      console.log("Detecting models...")
+      console.log("Mendeteksi model…")
       try {
         const entry = await detectAndSave(baseUrl, apiKey, hintId, {
           global: scope === "global",
           cwd: opts.cwd,
           fallbackModels,
         })
-        console.log(`[OK] Provider "${entry.id}" saved (${entry.models.length} models, ${scope}).`)
+        console.log(
+          `${glyphs.check} Provider "${entry.id}" tersimpan (${entry.models.length} model, ${scope}).`,
+        )
       } catch (e) {
-        console.log(`[FAIL] Detection failed: ${(e as Error).message.slice(0, 80)}`)
+        console.log(`${glyphs.cross} Deteksi model gagal: ${(e as Error).message.slice(0, 80)}`)
       }
       busy = false
       await reload()
@@ -238,10 +251,26 @@ export async function runProviderManager(opts: {
       if (!target) return
       busy = true
       suspend()
-      const ans = await askLine({ prompt: `Delete "${target.id}"? [y/N] > ` })
+      // Konfirmasi menyebut DAMPAK, bukan hanya nama: berapa model ikut hilang,
+      // dan apakah provider ini yang sedang dipakai. Tanpa itu user menekan "y"
+      // tanpa tahu prompt berikutnya akan gagal.
+      const aktif = opts.currentModel?.startsWith(`${target.id}::`)
+      console.log(
+        `\nHapus provider "${target.id}" — ${target.models} model ikut hilang dari daftar.`,
+      )
+      if (aktif) {
+        console.log(
+          `${glyphs.cross} Provider ini SEDANG AKTIF (${opts.currentModel}). Setelah dihapus, pilih model lain lewat /model sebelum mengirim prompt.`,
+        )
+      }
+      console.log("API key di config akan dihapus; berkas proyek tidak tersentuh.")
+      const ans = await askLine({ prompt: "Lanjut hapus? [y/N] > " })
       if (ans?.trim().toLowerCase() === "y") {
         await removeProvider(target.id, { global: true })
         if (opts.cwd) await removeProvider(target.id, { global: false, cwd: opts.cwd })
+        console.log(`${glyphs.check} Provider "${target.id}" dihapus.`)
+      } else {
+        console.log("dibatalkan")
       }
       busy = false
       await reload()
@@ -257,21 +286,21 @@ export async function runProviderManager(opts: {
       const cfg = await loadConfig(opts.cwd)
       const cur = cfg.providers.find((p) => p.id === target.id)
       if (!cur) {
-        console.log("Provider not found")
+        console.log("Provider tidak ditemukan")
         busy = false
         await reload()
         resume()
         return
       }
-      console.log(`\nEdit provider "${target.id}" (leave blank to keep)\n`)
+      console.log(`\nUbah provider "${target.id}" (kosongkan untuk mempertahankan)\n`)
       const newUrl = await askLine({ prompt: `Base URL [${cur.baseUrl}]: ` })
-      const newKey = await askSecret(`API Key [****]: `)
+      const newKey = await askSecret("API Key [****]: ")
       const baseUrl = newUrl && newUrl.trim() ? newUrl.trim() : cur.baseUrl
       const apiKey = newKey && newKey.trim() ? newKey.trim() : cur.apiKey
       if (baseUrl === cur.baseUrl && apiKey === cur.apiKey) {
-        console.log("No changes.")
+        console.log("Tidak ada perubahan.")
       } else {
-        console.log("Detecting models...")
+        console.log("Mendeteksi model…")
         try {
           await removeProvider(target.id, { global: true })
           if (opts.cwd) await removeProvider(target.id, { global: false, cwd: opts.cwd })
@@ -280,9 +309,11 @@ export async function runProviderManager(opts: {
             cwd: opts.cwd,
             fallbackModels: cur.models,
           })
-          console.log(`[OK] Updated "${entry.id}" (${entry.models.length} models)`)
+          console.log(
+            `${glyphs.check} Provider "${entry.id}" diperbarui (${entry.models.length} model)`,
+          )
         } catch (e) {
-          console.log(`[FAIL] ${(e as Error).message.slice(0, 80)}`)
+          console.log(`${glyphs.cross} ${(e as Error).message.slice(0, 80)}`)
           await detectAndSave(cur.baseUrl, cur.apiKey, cur.id, {
             global: true,
             cwd: opts.cwd,

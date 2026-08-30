@@ -9,8 +9,20 @@ import {
 } from "../../src/policy/pricing.ts"
 import { c, glyphs } from "../../src/tui/theme.ts"
 
+const PRICING_HELP = `minicode pricing — tabel harga untuk estimasi biaya
+
+  minicode pricing status        sumber harga yang aktif (default)
+  minicode pricing sync          tarik dari models.dev (eksplisit, tidak otomatis)
+  minicode pricing show <model>  harga satu model
+  minicode pricing clear         hapus cache, kembali ke bawaan`
+
 export async function handlePricing(args: string[]): Promise<never> {
-  const sub = (args[1] ?? "status").toLowerCase()
+  const raw = args[1]
+  if (raw === "--help" || raw === "-h") {
+    console.log(PRICING_HELP)
+    process.exit(0)
+  }
+  const sub = (raw ?? "status").toLowerCase()
 
   if (sub === "sync") {
     process.stderr.write("menarik harga dari models.dev…\n")
@@ -79,11 +91,8 @@ export async function handlePricing(args: string[]): Promise<never> {
     process.exit(0)
   }
 
-  console.log(`minicode pricing — tabel harga untuk estimasi biaya
-
-  minicode pricing status        sumber harga yang aktif
-  minicode pricing sync          tarik dari models.dev (eksplisit, tidak otomatis)
-  minicode pricing show <model>  harga satu model
-  minicode pricing clear         hapus cache, kembali ke bawaan`)
-  process.exit(0)
+  // Subcommand asing = salah pakai: exit 1 supaya skrip bisa mendeteksinya.
+  console.error(`subcommand pricing tidak dikenal: ${sub}\n`)
+  console.log(PRICING_HELP)
+  process.exit(1)
 }

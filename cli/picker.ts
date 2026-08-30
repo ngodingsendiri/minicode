@@ -1,5 +1,6 @@
 // Modal picker - searchable, VS Code palette
 import { c } from "../src/tui/theme.ts"
+import { truncateToWidth } from "../src/tui/width.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 
 export interface PickerItem {
@@ -48,8 +49,19 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       )
     }
 
-    const visibleRows = () => Math.max(4, Math.min(process.stdout.rows - 6 || 10, 12))
-    const width = () => Math.max(44, Math.min(process.stdout.columns - 2 || 78, 120))
+    // Lebar/tinggi mengikuti terminal SUNGGUHAN.
+    //
+    // Sebelumnya keduanya punya lantai minimum (`Math.max(44, …)` dan
+    // `Math.max(4, …)`) yang MENGABAIKAN terminal lebih kecil: pada 40 kolom
+    // label 55 kolom tetap digambar, dan pada rows=3 overlay 6 baris tetap
+    // dicetak — keduanya membungkus dan merusak tampilan.
+    const visibleRows = () => {
+      const rows = process.stdout.rows || 24
+      // Sisakan ruang untuk judul, baris filter, dan baris hint/sisa.
+      const chrome = isFilterable ? 3 : 2
+      return Math.max(1, Math.min(rows - chrome, 12))
+    }
+    const width = () => Math.max(8, (process.stdout.columns || 80) - 2)
 
     const buildLines = (): string[] => {
       const items = filteredItems()
@@ -60,30 +72,32 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       if (items.length === 0) scroll = 0
       const rows = items.slice(scroll, scroll + v)
       const w = width()
+      const cut = (s: string) => truncateToWidth(s, w)
       const lines: string[] = []
-      lines.push(`${DIM}─ ${ACC(opts.title)} ${DIM}─${RESTORE}`)
+      lines.push(cut(`${DIM}─ ${ACC(opts.title)} ${DIM}─${RESTORE}`))
       if (isFilterable) {
-        const placeholderText = opts.placeholder ?? "type to filter"
+        const placeholderText = opts.placeholder ?? "ketik untuk memfilter"
         const display = filter ? c.brightCyan(filter) : DIM + placeholderText + RESTORE
-        const label = filter ? ACC_DIM("Search:") : `${DIM}Search:${RESTORE}`
-        lines.push(`${label} ${display}`)
+        const label = filter ? ACC_DIM("Cari:") : `${DIM}Cari:${RESTORE}`
+        lines.push(cut(`${label} ${display}`))
       }
       if (items.length === 0) {
-        lines.push(`${DIM}  (no match for "${filter}")${RESTORE}`)
+        lines.push(cut(`${DIM}  (tidak ada yang cocok dengan "${filter}")${RESTORE}`))
         return lines
       }
       for (let i = 0; i < rows.length; i++) {
         const it = rows[i]!
         const picked = i === sel - scroll
-        const label = `${it.provider ? it.provider + " › " : ""}${it.name}`.slice(0, w - 4)
+        // Potong label ke KOLOM (CJK 2 kolom), sisakan ruang untuk penanda "› ".
+        const label = truncateToWidth(`${it.provider ? `${it.provider} › ` : ""}${it.name}`, w - 4)
         if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
         else lines.push(`   ${DIM}${label}${RESTORE}`)
       }
       if (items.length > scroll + v) {
-        lines.push(`${DIM}… ${c.accent(String(items.length - scroll - v))} more${RESTORE}`)
+        lines.push(cut(`${DIM}… ${c.accent(String(items.length - scroll - v))} lagi${RESTORE}`))
       } else if (isFilterable && filter) {
         lines.push(
-          `${DIM}  ${c.accent(String(items.length))}/${opts.items.length} matches${RESTORE}`,
+          cut(`${DIM}  ${c.accent(String(items.length))}/${opts.items.length} cocok${RESTORE}`),
         )
       }
       return lines

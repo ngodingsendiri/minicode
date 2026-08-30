@@ -1,39 +1,64 @@
 // Word-wrap + justify (rata kanan-kiri) - untuk output teks AI.
-// ANSI escape (warna/bold) tidak dihitung sebagai karakter lebar.
+//
+// Semua pengukuran memakai KOLOM terminal (src/tui/width.ts), bukan jumlah
+// karakter: CJK/emoji memakan dua kolom, combining mark nol, dan sekuens ANSI
+// tidak menempati kolom sama sekali.
+//
+// stripAnsi di-re-export dari theme.ts: dulu ada dua implementasi terpisah, dan
+// yang di sini tidak ikut diperbaiki saat pola ANSI diperluas untuk sekuens
+// private-mode (ESC[?25l dsb.).
 
-import { ANSI_PATTERN } from "./theme.ts"
+import { stripAnsi } from "./theme.ts"
+import { chunkByWidth, displayWidth } from "./width.ts"
 
-export function stripAnsi(s: string): string {
-  return s.replace(new RegExp(ANSI_PATTERN, "g"), "")
-}
+export { stripAnsi }
 
+/** Lebar tampil dalam kolom terminal. */
 export function visibleLen(s: string): number {
-  return stripAnsi(s).length
+  return displayWidth(s)
 }
 
-// Wrap teks ke baris-baris ≤ `width` dengan potongan di batas spasi.
-// Baris dalam code fence (```) tidak di-justify - hanya wrapped.
+/**
+ * Wrap teks ke baris-baris <= `width` KOLOM, dipotong di batas spasi.
+ *
+ * Kata yang sendirian sudah lebih lebar dari `width` (URL panjang, hash, atau
+ * teks CJK yang memang tidak punya spasi) dipecah per kolom — sebelumnya
+ * dibiarkan utuh sehingga baris membungkus sendiri di terminal dan merusak
+ * frame TUI yang menghitung tinggi per baris.
+ */
 export function wordWrap(text: string, width: number): string {
   if (width <= 0) return text
-  const lines = text.split("\n")
   const out: string[] = []
-  for (const line of lines) {
-    if (visibleLen(line) <= width) {
+  for (const line of text.split("\n")) {
+    if (displayWidth(line) <= width) {
       out.push(line)
       continue
     }
-    const words = line.split(" ")
     let current = ""
-    for (const word of words) {
+    const flush = () => {
+      if (current !== "") {
+        out.push(current)
+        current = ""
+      }
+    }
+    for (const word of line.split(" ")) {
+      // Kata tunggal lebih lebar dari baris: pecah paksa per kolom.
+      if (displayWidth(word) > width) {
+        flush()
+        const pieces = chunkByWidth(word, width)
+        for (let i = 0; i < pieces.length - 1; i++) out.push(pieces[i]!)
+        current = pieces[pieces.length - 1] ?? ""
+        continue
+      }
       const candidate = current ? `${current} ${word}` : word
-      if (visibleLen(candidate) > width && current) {
+      if (displayWidth(candidate) > width && current) {
         out.push(current)
         current = word
       } else {
         current = candidate
       }
     }
-    if (current) out.push(current)
+    flush()
   }
   return out.join("\n")
 }
@@ -41,7 +66,7 @@ export function wordWrap(text: string, width: number): string {
 // Justify satu baris: distribusi spasi ekstra supaya ujung kiri & kanan rata.
 // Baris kosong / <2 kata / baris yang sudah penuh dibiarkan.
 export function justifyLine(line: string, width: number): string {
-  const clean = visibleLen(line)
+  const clean = displayWidth(line)
   if (clean >= width || width <= 0) return line
   const words = line.split(" ")
   if (words.length < 2) return line
@@ -59,13 +84,20 @@ export function justifyLine(line: string, width: number): string {
 }
 
 // Wrap + justify: untuk output streaming per paragraf.
+//
+// Baris TERAKHIR paragraf tidak dijustify — menjustifikasinya menghasilkan
+// "sungai" spasi seperti `dengan      lebar      tertentu`, kesalahan tipografi
+// klasik. MINICODE_JUSTIFY=0 mematikan justify sepenuhnya.
 export function formatWrapped(text: string, width: number, justify = true): string {
   const wrapped = wordWrap(text, width)
-  if (!justify) return wrapped
-  return wrapped
-    .split("\n")
-    .map((line) => {
+  if (!justify || process.env.MINICODE_JUSTIFY === "0") return wrapped
+  const lines = wrapped.split("\n")
+  return lines
+    .map((line, i) => {
       if (/^\s*(```|#|[-*] |>\s)/.test(line) || /^\s*$/.test(line)) return line
+      // Baris terakhir, atau baris tepat sebelum baris kosong (= akhir paragraf).
+      const isParagraphEnd = i === lines.length - 1 || /^\s*$/.test(lines[i + 1] ?? "")
+      if (isParagraphEnd) return line
       return justifyLine(line, width)
     })
     .join("\n")

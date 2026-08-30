@@ -3,7 +3,8 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { stripAnsi } from "../src/tui/theme.ts"
-import { applyKey, buildRenderSpec, createState, decodeKeys } from "./prompt-engine.ts"
+import { displayWidth, truncateToWidth } from "../src/tui/width.ts"
+import { applyKey, buildRenderSpec, createState, decodeKeys, pointLength } from "./prompt-engine.ts"
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
 const MAX_HISTORY = 1000
@@ -98,20 +99,43 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     const matches = (): string[] => hints(state.line)
 
     // ── render ANSI: dropdown floating di bawah prompt ──
-    // Horizontal scroll: bila line lebih panjang dari lebar terminal, tampilkan
-    // suffix (bukan wrap ke baris baru) supaya input tidak berantakan.
-    const scrollableLine = (line: string): string => {
+    // Horizontal scroll mengikuti KURSOR, bukan hanya ujung baris: saat user
+    // menyunting di tengah prompt panjang, bagian yang sedang diedit harus
+    // terlihat. Semua ukuran dalam KOLOM terminal — CJK/emoji dua kolom.
+    // Sebelumnya memakai `.length` (karakter), sehingga baris CJK 53 kolom
+    // dianggap "muat" di terminal 30 kolom lalu membungkus sendiri.
+    const scrollableLine = (line: string, cursorCol: number): { text: string; col: number } => {
       const cols = process.stdout.columns || 80
+      if (displayWidth(line) <= cols - 1) return { text: line, col: cursorCol }
+      // Bekerja pada teks bersih: potongan tengah tidak bisa mempertahankan
+      // sekuens ANSI dengan benar tanpa melacak state warna.
       const clean = stripAnsi(line)
-      if (clean.length <= cols - 1) return line
-      const keep = Math.max(20, cols - 4)
-      return c.dim("…") + line.slice(-keep)
+      const pts = Array.from(clean)
+      // Lebar kumulatif per posisi karakter.
+      const colAt: number[] = [0]
+      for (const ch of pts) colAt.push(colAt[colAt.length - 1]! + displayWidth(ch))
+      const keep = Math.max(8, cols - 4)
+      // Cari indeks awal terkecil yang membuat kursor masuk jendela `keep`.
+      let start = 0
+      while (start < pts.length && cursorCol - colAt[start]! >= keep) start++
+      const ell = start > 0 ? "…" : ""
+      const body = truncateToWidth(pts.slice(start).join(""), keep - displayWidth(ell), "")
+      return {
+        text: (start > 0 ? c.dim(ell) : "") + body,
+        col: displayWidth(ell) + (cursorCol - colAt[start]!),
+      }
+    }
+
+    /** Pindahkan kursor terminal ke kolom logis (1-based di ANSI). */
+    const placeCursor = (col: number) => {
+      process.stdout.write(`\x1b[${Math.max(1, col + 1)}G`)
     }
 
     const renderAnsi = () => {
       const spec = buildRenderSpec(state, prompt, matches(), opts.groupOf)
       const maxRows = Math.max(prevRows, spec.totalRows)
-      const inputLine = scrollableLine(spec.inputLine)
+      const view = scrollableLine(spec.inputLine, spec.cursorCol)
+      const inputLine = view.text
 
       process.stdout.write("\r" + CLEAR + inputLine)
 
@@ -126,15 +150,20 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       }
 
       if (spec.rows.length > 0) {
+        const cols = process.stdout.columns || 80
         process.stdout.write("\r\n")
         for (let i = 0; i < spec.rows.length; i++) {
           const row = spec.rows[i]!
           if (row.kind === "header") {
-            process.stdout.write(CLEAR + c.accent(c.bold(row.text)) + RESTORE)
+            process.stdout.write(
+              CLEAR + c.accent(c.bold(truncateToWidth(row.text, cols))) + RESTORE,
+            )
           } else {
             const isPicked = row.picked
             const prefix = isPicked ? `  ${c.accent("›")} ` : "    "
-            const text = isPicked ? c.accent(c.bold(row.text)) : row.text
+            // Item dropdown juga dipotong ke lebar terminal.
+            const label = truncateToWidth(row.text, Math.max(4, cols - 4))
+            const text = isPicked ? c.accent(c.bold(label)) : label
             if (isPicked) {
               process.stdout.write(CLEAR + prefix + text + RESTORE)
             } else {
@@ -145,12 +174,14 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         }
         if (spec.moreCount > 0) {
           process.stdout.write("\r\n")
-          process.stdout.write(CLEAR + DIM + `    … ${spec.moreCount} more` + RESTORE)
+          process.stdout.write(`${CLEAR + DIM}    … ${spec.moreCount} lagi${RESTORE}`)
         }
         process.stdout.write(`\x1b[${spec.totalRows}A`)
         process.stdout.write("\r" + inputLine)
       }
 
+      // Kursor sungguhan di posisi logis — bukan selalu di ujung baris.
+      placeCursor(view.col)
       prevRows = spec.totalRows
     }
 
@@ -188,40 +219,35 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     const onData = (chunk: Buffer) => {
       for (const d of decodeKeys(chunk)) {
-        // History navigation when dropdown not open (Up/Down -> browse history with append)
+        // Navigasi history saat dropdown tertutup.
+        //
+        // Sebelumnya entri history DIGABUNGKAN ke teks yang sedang ditulis
+        // ("halo" + panah atas -> "halo <entri>"), yang menghancurkan prompt
+        // yang sedang disusun. Semua shell mengganti baris; kita ikut. Baris
+        // yang sedang ditulis disimpan dan kembali saat user turun melewati
+        // entri terbaru.
         if ((d.key.type === "up" || d.key.type === "down") && !state.menuOpen) {
+          const setLine = (line: string) => {
+            state = { ...state, line, cursor: pointLength(line), sel: -1, menuOpen: false }
+            render()
+          }
           if (d.key.type === "up") {
             if (historyIdx < historyCache.length - 1) {
               if (historyIdx === -1) savedLine = state.line
               historyIdx++
-              const hist = historyCache[historyCache.length - 1 - historyIdx] ?? ""
-              if (savedLine.trim()) {
-                state = { ...state, line: `${savedLine} ${hist}` }
-              } else {
-                state = { ...state, line: hist }
-              }
-              render()
+              setLine(historyCache[historyCache.length - 1 - historyIdx] ?? "")
             }
-          } else {
-            if (historyIdx > 0) {
-              historyIdx--
-              const hist = historyCache[historyCache.length - 1 - historyIdx] ?? ""
-              if (savedLine.trim()) {
-                state = { ...state, line: `${savedLine} ${hist}` }
-              } else {
-                state = { ...state, line: hist }
-              }
-              render()
-            } else if (historyIdx === 0) {
-              historyIdx = -1
-              state = { ...state, line: savedLine }
-              render()
-            }
+          } else if (historyIdx > 0) {
+            historyIdx--
+            setLine(historyCache[historyCache.length - 1 - historyIdx] ?? "")
+          } else if (historyIdx === 0) {
+            historyIdx = -1
+            setLine(savedLine)
           }
           continue
         }
-        // typing after history navigation resets savedLine/historyIdx
-        if (d.key.type === "char" || d.key.type === "backspace") {
+        // Mengetik/menghapus setelah menjelajah history mengunci baris saat ini.
+        if (d.key.type === "char" || d.key.type === "backspace" || d.key.type === "delete") {
           historyIdx = -1
           savedLine = ""
         }
@@ -232,7 +258,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           // Empty Enter = "" (not null) - REPL continues; null = cancel (break)
           if (ansi) {
             clearOverlay()
-            const shown = scrollableLine(`${prompt}${state.line}`)
+            const shown = scrollableLine(`${prompt}${state.line}`, 0).text
             process.stdout.write("\r" + CLEAR + shown + "\r\n")
           } else {
             process.stdout.write("\r" + CLEAR + `${prompt}${state.line}` + "\r\n")

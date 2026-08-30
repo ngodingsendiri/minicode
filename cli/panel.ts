@@ -1,5 +1,6 @@
 // Modal panel - VS Code palette
 import { c, stripAnsi } from "../src/tui/theme.ts"
+import { truncateToWidth } from "../src/tui/width.ts"
 import { decodeKeys } from "./prompt-engine.ts"
 
 export interface PanelOptions {
@@ -57,9 +58,12 @@ export async function runPanel(opts: PanelOptions): Promise<void> {
   return new Promise<void>((resolve) => {
     let scroll = 0
     let prevRows = 0
-    const wrapWidth = () => Math.max(40, Math.min(process.stdout.columns - 4 || 76, 120))
+    // Lebar/tinggi mengikuti terminal SUNGGUHAN. Lantai minimum sebelumnya
+    // (`Math.max(40, …)` / `Math.max(5, …)`) mengabaikan terminal lebih kecil,
+    // sehingga baris 75 kolom tetap digambar di terminal 40 kolom.
+    const wrapWidth = () => Math.max(8, (process.stdout.columns || 80) - 4)
     const totalLines = Math.max(1, opts.lines.length + 2)
-    const viewHeight = () => Math.max(5, Math.min(process.stdout.rows - 4 || 14, 20))
+    const viewHeight = () => Math.max(3, Math.min((process.stdout.rows || 24) - 2, 20))
 
     const buildLines = (): string[] => {
       const v = viewHeight()
@@ -68,16 +72,17 @@ export async function runPanel(opts: PanelOptions): Promise<void> {
       const w = wrapWidth()
       const vis = opts.lines.slice(scroll, scroll + v - 2)
       const lines: string[] = []
-      lines.push(`${DIM}─ ${c.accent(c.bold(opts.title))} ${DIM}─${RESTORE}`)
+      lines.push(truncateToWidth(`${DIM}─ ${c.accent(c.bold(opts.title))} ${DIM}─${RESTORE}`, w))
       for (let i = 0; i < v - 2; i++) {
         const text = vis[i] ?? ""
-        lines.push(`   ${text.slice(0, w - 4)}`)
+        // Potong per KOLOM: CJK dua kolom, ANSI nol.
+        lines.push(`   ${truncateToWidth(text, w - 4)}`)
       }
       const hint =
         maxScroll > 0
-          ? `↑/↓ scroll · ${c.accent(String(scroll + 1))}/${totalLines}`
-          : `Enter/Esc close`
-      lines.push(`${DIM}${hint}${RESTORE}`)
+          ? `↑/↓ geser · ${c.accent(String(scroll + 1))}/${totalLines}`
+          : "Enter/Esc tutup"
+      lines.push(truncateToWidth(`${DIM}${hint}${RESTORE}`, w))
       return lines
     }
 

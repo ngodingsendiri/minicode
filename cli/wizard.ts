@@ -2,70 +2,104 @@ import { createInterface } from "node:readline"
 import { detectAndSave } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
 import { formatError } from "../src/tui/minimal/simple.ts"
+import { c, glyphs } from "../src/tui/theme.ts"
+import { displayWidth } from "../src/tui/width.ts"
 import { askSecret } from "./input.ts"
+import { runPicker } from "./picker.ts"
 
+/**
+ * Wizard setup pertama — hal PERTAMA yang dilihat pengguna baru.
+ *
+ * Memakai `runPicker` (panah + filter), bukan "Choice [1-15]" lewat readline.
+ * Dua alasan: (1) REPL sudah punya picker untuk tugas yang sama — memilih dari
+ * daftar — jadi dua UX berbeda untuk satu konsep membingungkan; (2) nomor manual
+ * membuat pilihan di luar rentang diam-diam jatuh ke item pertama, sehingga user
+ * mengira memilih sesuatu yang lain.
+ *
+ * Fallback readline tetap ada untuk terminal tanpa raw mode.
+ */
 export async function runSetupWizard(): Promise<boolean> {
   if (!process.stdin.isTTY) return false
 
+  // Sapaan: pada terminal sempit, petunjuk batal pindah ke baris sendiri
+  // supaya tidak membungkus.
+  const cols = process.stdout.columns || 80
+  const sapaan = "Hubungkan provider AI pertama Anda."
+  const petunjuk = "(Ctrl+C untuk batal)"
+  process.stdout.write(`\n${c.bold("Setup minicode")}\n`)
+  process.stdout.write(
+    displayWidth(`${sapaan} ${petunjuk}`) <= cols
+      ? `${sapaan} ${c.dim(petunjuk)}\n`
+      : `${sapaan}\n${c.dim(petunjuk)}\n`,
+  )
+
+  const CUSTOM = "\u0000custom"
+  const items = [
+    ...GATEWAY_PRESETS.map((p) => ({ name: p.label, provider: "", value: p.baseUrl })),
+    { name: "URL kustom (endpoint OpenAI-compatible apa pun)", provider: "", value: CUSTOM },
+  ]
+
+  let picked: string | null = null
+  await runPicker({
+    title: "Pilih gateway",
+    items,
+    filterable: true,
+    placeholder: "ketik untuk memfilter",
+    onPick: (v) => {
+      picked = v
+    },
+    onCancel: () => {
+      picked = null
+    },
+  })
+  if (picked === null) {
+    process.stdout.write("Setup dibatalkan.\n")
+    return false
+  }
+
+  // readline dipakai HANYA untuk isian teks bebas (URL), bukan untuk memilih.
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())))
 
-  const fakeKey = "ollama"
-
-  process.stdout.write("\nMinicode Setup\n")
-  process.stdout.write("Connect your first AI provider.\n\n")
-
-  const options = [
-    ...GATEWAY_PRESETS.map((p) => ({ name: p.label, url: p.baseUrl, hint: "" })),
-    { name: "Custom URL", url: "", hint: "Any OpenAI-compatible endpoint" },
-  ]
-  options.forEach((p, idx) => {
-    process.stdout.write(`  ${idx + 1}. ${p.name}${p.hint ? ` (${p.hint})` : ""}\n`)
-  })
-  process.stdout.write("\n")
-
-  const choice = await ask(`Choice [1-${options.length}, default 1]: `)
-  const choiceNum = parseInt(choice, 10)
-  const selected =
-    choiceNum >= 1 && choiceNum <= options.length ? options[choiceNum - 1]! : options[0]!
-
-  let targetUrl = selected.url
-  if (!targetUrl) {
-    targetUrl = await ask("Base URL: ")
-  } else {
-    const custom = await ask(`Base URL [${targetUrl}]: `)
-    if (custom) targetUrl = custom
+  let targetUrl: string
+  try {
+    if (picked === CUSTOM) {
+      targetUrl = await ask("Base URL: ")
+    } else {
+      const custom = await ask(`Base URL [${picked}]: `)
+      targetUrl = custom || (picked as string)
+    }
+  } finally {
+    rl.close()
   }
+
   if (!targetUrl) {
-    process.stdout.write("Setup canceled.\n")
+    process.stdout.write("Setup dibatalkan.\n")
     return false
   }
-  // URL validate (instant feedback)
+  // Validasi URL — umpan balik langsung, bukan gagal saat detect.
   try {
     const u = new URL(targetUrl)
     if (!["http:", "https:"].includes(u.protocol)) throw new Error("protocol")
   } catch {
-    process.stdout.write(`[FAIL] Invalid URL: ${targetUrl}\n`)
-    rl.close()
+    process.stdout.write(`${c.red(glyphs.cross)} URL tidak valid: ${targetUrl}\n`)
     return false
   }
 
-  rl.close()
-
-  let apiKey = ""
-  if (/^(https?:\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/.test(targetUrl)) {
-    apiKey = fakeKey
-  } else {
-    apiKey = await askSecret("API Key (masked): ")
-  }
+  // Endpoint lokal (Ollama/LM Studio) tidak butuh API key; kirim placeholder
+  // agar header Authorization tetap terbentuk.
+  const lokal = /^(https?:\/\/)(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(targetUrl)
+  const apiKey = lokal ? "ollama" : await askSecret("API Key (tersembunyi): ")
 
   if (!apiKey) {
-    process.stdout.write("Setup canceled. Set OPENAI_API_KEY later.\n")
+    process.stdout.write(
+      `Setup dibatalkan. Anda bisa memakai variabel lingkungan OPENAI_API_KEY nanti.\n`,
+    )
     return false
   }
 
   const { createSpinner } = await import("../src/tui/spinner.ts")
-  const spin = createSpinner("Detecting models...")
+  const spin = createSpinner("Mendeteksi model…")
   try {
     const preset = GATEWAY_PRESETS.find(
       (p) => p.baseUrl.replace(/\/+$/, "") === targetUrl.replace(/\/+$/, ""),
@@ -74,11 +108,11 @@ export async function runSetupWizard(): Promise<boolean> {
       preset?.fallbackModels ??
       (targetUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"])
     const entry = await detectAndSave(targetUrl, apiKey, undefined, { fallbackModels })
-    spin.success(`Provider "${entry.id}" saved — ${entry.models.length} models`)
-    process.stdout.write("Setup complete.\n\n")
+    spin.success(`Provider "${entry.id}" tersimpan — ${entry.models.length} model`)
+    process.stdout.write(`Setup selesai. ${c.dim("Ketik /help untuk daftar perintah.")}\n\n`)
     return true
   } catch (e) {
-    spin.error(`Detection failed: ${formatError(e)}`)
+    spin.error(`Deteksi model gagal: ${formatError(e)}`)
     return false
   }
 }

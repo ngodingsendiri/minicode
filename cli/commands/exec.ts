@@ -3,7 +3,7 @@ import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
 import { formatError } from "../../src/tui/minimal/simple.ts"
-import { getArg as rawGetArg } from "../args.ts"
+import { promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
 
 export async function handleExec(
@@ -11,12 +11,14 @@ export async function handleExec(
   getArg: (name: string) => string | undefined,
 ): Promise<never> {
   // minicode exec "prompt" [--json] [--cwd <dir>] [--model <m>] [--sandbox docker|os] ...
-  const prompt =
-    args
-      .slice(1)
-      .filter((a) => !a.startsWith("-") && a !== getArg("--model") && a !== getArg("--cwd"))
-      .join(" ")
-      .trim() || rawGetArg(args, "--prompt") // fallback
+  //
+  // Prompt diambil lewat promptFromArgs() — satu implementasi yang sama dengan
+  // jalur non-exec. Versi sebelumnya menyaring dengan `a !== getArg("--model")`,
+  // yang hanya membuang NILAI dari dua flag (`--model`, `--cwd`); nilai flag lain
+  // ikut masuk ke prompt. `exec "tes" --provider gorouter --timeout 60000` benar-
+  // benar mengirim "tes gorouter 60000" ke model, dan model membalas dengan
+  // menebak-nebak soal "gorouter" dan "60000".
+  const prompt = promptFromArgs(args.slice(1)) || (rawGetArg(args, "--prompt") ?? "")
   const jsonMode = args.includes("--json") || args.includes("--output-format=json")
   const cwdRaw = getArg("--cwd")
   const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
@@ -43,44 +45,7 @@ export async function handleExec(
   const ratelimitRaw = getArg("--ratelimit")
   const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 
-  // collect prompt from args tail if not flagged
-  let effectivePrompt = prompt
-  if (!effectivePrompt) {
-    // try promptFromArgs-like: join remaining non-flag tokens
-    const BOOLEAN_FLAGS = new Set([
-      "--json",
-      "--verbose",
-      "--allow-all",
-      "--ask",
-      "--plan",
-      "--allowlist",
-      "--verify",
-    ])
-    const VALUE_FLAGS = new Set([
-      "--cwd",
-      "--model",
-      "--provider",
-      "--session",
-      "--sandbox",
-      "--budget",
-      "--ratelimit",
-      "--max-steps",
-      "--timeout",
-    ])
-    const out: string[] = []
-    for (let i = 1; i < args.length; i++) {
-      const a = args[i] as string
-      if (BOOLEAN_FLAGS.has(a)) continue
-      if (VALUE_FLAGS.has(a)) {
-        i++
-        continue
-      }
-      if (a.includes("=") && VALUE_FLAGS.has(a.split("=")[0]!)) continue
-      if (a.startsWith("-")) continue
-      out.push(a)
-    }
-    effectivePrompt = out.join(" ")
-  }
+  const effectivePrompt = prompt.trim()
   if (!effectivePrompt) {
     console.error(
       'usage: minicode exec "prompt" [--json] [--cwd <dir>] [--model <m>] [--sandbox docker|os]',
@@ -100,11 +65,9 @@ export async function handleExec(
     ask,
     plan,
     allowlist,
-    useTui: false,
     verify: args.includes("--verify"),
     budget,
     rateLimiter,
-    ui: "auto" as const,
   })
   const t0 = Date.now()
   const events: unknown[] = []

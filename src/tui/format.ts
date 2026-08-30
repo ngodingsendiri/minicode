@@ -1,6 +1,7 @@
 // Formatter pesan event yang dipakai renderer ANSI (simple + fullscreen),
 // agar "apa yang ditampilkan" konsisten antar dua backend (tidak dobel logika).
 import type { ToolCall } from "#minicore/core/types.ts"
+import { formatFriendly, friendlyFromCategory } from "../../cli/errors.ts"
 
 export function formatArgsPreview(args: unknown): string {
   try {
@@ -32,8 +33,17 @@ export function formatUsage(parts: {
   return p.join(" ")
 }
 
+/**
+ * Error provider siap tampil: kategori formal dipetakan ke pesan yang bisa
+ * ditindaklanjuti, detail provider diringkas ke satu kalimat.
+ *
+ * Sebelumnya fungsi ini mencetak `[kategori] <pesan mentah>` — body JSON
+ * provider tumpah utuh ke layar. Satu 429 dari OpenRouter menghasilkan 400+
+ * karakter berisi `metadata`, `provider_error_code`, dan URL dokumentasi.
+ */
 export function formatProviderError(e: { category?: string; message?: string }): string {
-  return `[${e.category ?? "unknown"}] ${e.message ?? ""}`
+  const friendly = friendlyFromCategory(e.category ?? "unknown", e.message ?? "")
+  return formatFriendly(friendly)
 }
 
 export function formatCost(cost?: number): string {

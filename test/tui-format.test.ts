@@ -1,0 +1,469 @@
+// Test helper format/wrap/reasoning/statusline + simple logger.
+// Semua ini sebelumnya 0% tercakup padahal murni fungsi data->data (kecuali
+// simple logger, yang cukup diuji lewat EventBus tiruan).
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import type { EventBus } from "#minicore/core/index.ts"
+import {
+  formatArgsPreview,
+  formatCost,
+  formatProviderError,
+  formatStepCalls,
+  formatUsage,
+} from "../src/tui/format.ts"
+import { decorateMarkdown, renderInline } from "../src/tui/markdown.ts"
+import { attachSimpleLogger, formatError } from "../src/tui/minimal/simple.ts"
+import { reasoning, setReasoningVisible } from "../src/tui/reasoning.ts"
+import { registerStatusLine, runWithoutStatus } from "../src/tui/statusline.ts"
+import { applyTheme, stripAnsi } from "../src/tui/theme.ts"
+import { formatWrapped, justifyLine, visibleLen, wordWrap } from "../src/tui/wrap.ts"
+import { createFakeBus, type FakeTty, installFakeTty } from "./helpers/tui-harness.ts"
+
+describe("wrap: wordWrap", () => {
+  test("baris pendek dibiarkan apa adanya", () => {
+    expect(wordWrap("halo dunia", 40)).toBe("halo dunia")
+  })
+
+  test("memotong di batas spasi, bukan di tengah kata", () => {
+    const out = wordWrap("satu dua tiga empat lima", 10).split("\n")
+    for (const l of out) expect(l.length).toBeLessThanOrEqual(10)
+    expect(out.join(" ")).toBe("satu dua tiga empat lima")
+  })
+
+  test("kata lebih panjang dari width dipecah, tidak hilang", () => {
+    // Sebelumnya kata semacam ini dibiarkan utuh sehingga baris membungkus
+    // sendiri di terminal dan merusak frame TUI yang menghitung tinggi per baris.
+    const out = wordWrap("pendek katayangsangatpanjangsekali", 8)
+    expect(out.replace(/\n/g, "")).toBe("pendekkatayangsangatpanjangsekali")
+    for (const line of out.split("\n")) expect(visibleLen(line)).toBeLessThanOrEqual(8)
+  })
+
+  test("URL panjang dipecah per kolom", () => {
+    const url = `https://contoh.example.com/${"a".repeat(120)}`
+    const out = wordWrap(url, 40)
+    expect(out.split("\n").length).toBeGreaterThan(3)
+    for (const line of out.split("\n")) expect(visibleLen(line)).toBeLessThanOrEqual(40)
+    expect(out.replace(/\n/g, "")).toBe(url)
+  })
+
+  test("CJK tanpa spasi dipecah per kolom terminal", () => {
+    const cjk = "这是中文".repeat(10) // 40 char = 80 kolom
+    const out = wordWrap(cjk, 20)
+    expect(out.split("\n").length).toBeGreaterThan(1)
+    for (const line of out.split("\n")) expect(visibleLen(line)).toBeLessThanOrEqual(20)
+    expect(out.replace(/\n/g, "")).toBe(cjk)
+  })
+
+  test("ANSI tidak dihitung sebagai lebar", () => {
+    const colored = "\x1b[36mabcd\x1b[39m \x1b[36mefgh\x1b[39m"
+    // Lebar tampak 9; dengan width 12 seharusnya tetap satu baris.
+    expect(wordWrap(colored, 12).split("\n").length).toBe(1)
+  })
+
+  test("width <= 0 mengembalikan teks apa adanya", () => {
+    expect(wordWrap("apa saja", 0)).toBe("apa saja")
+  })
+
+  test("newline yang ada dipertahankan", () => {
+    expect(wordWrap("a\nb", 40)).toBe("a\nb")
+  })
+})
+
+describe("wrap: visibleLen & justifyLine", () => {
+  test("visibleLen mengabaikan ANSI termasuk private-mode", () => {
+    expect(visibleLen("\x1b[36mabc\x1b[39m")).toBe(3)
+    expect(visibleLen("\x1b[?25labc\x1b[?25h")).toBe(3)
+  })
+
+  test("visibleLen menghitung CJK dua kolom", () => {
+    expect(visibleLen("这是中文")).toBe(8)
+    expect(visibleLen("ab字")).toBe(4)
+  })
+
+  test("justifyLine meratakan ke lebar target", () => {
+    const out = justifyLine("a b c", 11)
+    expect(out.length).toBe(11)
+    expect(out.replace(/\s+/g, " ")).toBe("a b c")
+  })
+
+  test("justifyLine dengan CJK memakai lebar kolom", () => {
+    const out = justifyLine("字 字", 10)
+    expect(visibleLen(out)).toBe(10)
+  })
+
+  test("baris dengan satu kata tidak dijustify", () => {
+    expect(justifyLine("tunggal", 40)).toBe("tunggal")
+  })
+
+  test("baris yang sudah penuh dibiarkan", () => {
+    expect(justifyLine("abcde", 5)).toBe("abcde")
+    expect(justifyLine("abcdef", 5)).toBe("abcdef")
+  })
+})
+
+describe("wrap: formatWrapped", () => {
+  const origJustify = process.env.MINICODE_JUSTIFY
+  afterEach(() => {
+    if (origJustify == null) delete process.env.MINICODE_JUSTIFY
+    else process.env.MINICODE_JUSTIFY = origJustify
+  })
+
+  // Regresi: baris terakhir paragraf dulu ikut dijustify, menghasilkan "sungai"
+  // spasi seperti `dengan      lebar      tertentu`.
+  test("baris terakhir paragraf TIDAK dijustify", () => {
+    const text = "satu dua tiga empat lima enam tujuh delapan sembilan sepuluh sebelas dua belas"
+    const lines = formatWrapped(text, 30).split("\n")
+    expect(lines.length).toBeGreaterThan(1)
+    const last = lines[lines.length - 1]!
+    expect(last).not.toMatch(/\s{2,}/)
+  })
+
+  test("baris tengah dijustify sampai lebar penuh", () => {
+    const text = "satu dua tiga empat lima enam tujuh delapan sembilan sepuluh sebelas dua belas"
+    const lines = formatWrapped(text, 30).split("\n")
+    expect(lines[0]!.length).toBe(30)
+  })
+
+  test("baris sebelum baris kosong dianggap akhir paragraf", () => {
+    const text = `${"satu dua tiga empat lima enam tujuh"}\n\nparagraf kedua`
+    const lines = formatWrapped(text, 20).split("\n")
+    const emptyIdx = lines.findIndex((l) => l.trim() === "")
+    expect(emptyIdx).toBeGreaterThan(0)
+    expect(lines[emptyIdx - 1]!).not.toMatch(/\s{2,}/)
+  })
+
+  test("MINICODE_JUSTIFY=0 mematikan justify", () => {
+    process.env.MINICODE_JUSTIFY = "0"
+    const text = "satu dua tiga empat lima enam tujuh delapan sembilan sepuluh"
+    for (const line of formatWrapped(text, 25).split("\n")) {
+      expect(line).not.toMatch(/\s{2,}/)
+    }
+  })
+
+  test("heading, bullet, code fence tidak dijustify", () => {
+    for (const raw of ["# Judul yang cukup panjang", "- butir daftar di sini", "```ts"]) {
+      expect(formatWrapped(raw, 60)).toBe(raw)
+    }
+  })
+
+  test("justify=false melewati justify", () => {
+    const text = "satu dua tiga empat lima enam tujuh delapan"
+    for (const line of formatWrapped(text, 20, false).split("\n")) {
+      expect(line).not.toMatch(/\s{2,}/)
+    }
+  })
+})
+
+describe("markdown: fence & inline", () => {
+  // Warna butuh dukungan terminal; test lain di berkas ini memakai fake TTY
+  // untuk itu. Di sini cukup paksa lewat env.
+  const origColorterm = process.env.COLORTERM
+  beforeEach(() => {
+    process.env.COLORTERM = "truecolor"
+    applyTheme("dark")
+  })
+  afterEach(() => {
+    if (origColorterm == null) delete process.env.COLORTERM
+    else process.env.COLORTERM = origColorterm
+  })
+
+  // Fence TANPA bahasa adalah bentuk paling umum untuk perintah shell, dan dulu
+  // jatuh ke renderInline sehingga `--flag=*value*` kehilangan bintangnya.
+  test("fence tanpa bahasa: isi kode tidak didekorasi markdown", () => {
+    const src = "```\nnpm run build -- --flag=*value*\n```"
+    const out = decorateMarkdown(src)
+    expect(out).toBe(stripAnsi(out)) // tidak ada ANSI = tidak didekorasi
+    expect(out).toContain("*value*")
+  })
+
+  test("fence tanpa bahasa: underscore dan backtick tetap literal", () => {
+    const src = "```\na_b_c dan `tick`\n```"
+    expect(stripAnsi(decorateMarkdown(src))).toContain("a_b_c dan `tick`")
+  })
+
+  test("fence berbahasa tetap di-highlight", () => {
+    const out = decorateMarkdown("```ts\nconst x = 1\n```")
+    expect(out).not.toBe(stripAnsi(out)) // ada warna syntax
+    expect(stripAnsi(out)).toContain("const x = 1")
+  })
+
+  test("fence tak tertutup tidak menghilangkan isi", () => {
+    const out = stripAnsi(decorateMarkdown("teks\n```ts\nconst x = 1"))
+    expect(out).toContain("const x = 1")
+  })
+
+  test("teks di luar fence tetap didekorasi", () => {
+    const out = decorateMarkdown("**tebal**\n```\nkode\n```\n*miring*")
+    expect(out).toContain("\x1b[1m") // bold
+    expect(stripAnsi(out)).toContain("kode")
+  })
+
+  test("renderInline tidak mengubah teks yang bukan markdown", () => {
+    for (const src of ["2 * 3 * 4", "a_b_c_d", "path/to/*.ts", "**belum ditutup"]) {
+      expect(stripAnsi(renderInline(src)), src).toBe(src)
+    }
+  })
+})
+
+describe("format: preview argumen tool", () => {
+  test("mengutamakan path, lalu command, query, prompt", () => {
+    expect(formatArgsPreview({ path: "src/a.ts" })).toBe("src/a.ts")
+    expect(formatArgsPreview({ command: "bun test" })).toBe("bun test")
+    expect(formatArgsPreview({ query: "cari ini" })).toBe("cari ini")
+    expect(formatArgsPreview({ prompt: "tolong" })).toBe("tolong")
+  })
+
+  test("fallback ke JSON terpotong", () => {
+    expect(formatArgsPreview({ lain: 1 })).toBe('{"lain":1}')
+  })
+
+  test("command panjang dipotong", () => {
+    expect(formatArgsPreview({ command: "x".repeat(200) }).length).toBeLessThanOrEqual(60)
+  })
+
+  test("nilai tak bisa di-serialize tidak melempar", () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    expect(formatArgsPreview(circular)).toBe("[args]")
+  })
+})
+
+describe("format: usage, cost, error, step", () => {
+  test("formatUsage hanya menampilkan field yang ada", () => {
+    expect(formatUsage({ inputTokens: 10 })).toBe("in:10")
+    expect(formatUsage({ inputTokens: 1, outputTokens: 2, totalTokens: 3 })).toBe(
+      "in:1 out:2 total:3",
+    )
+    expect(formatUsage({})).toBe("")
+  })
+
+  test("formatCost memberi N/A bila tidak diketahui", () => {
+    expect(formatCost(0.1234)).toBe("$0.1234")
+    expect(formatCost(undefined)).toBe("N/A")
+  })
+
+  test("formatProviderError memetakan kategori ke pesan + saran", () => {
+    const out = formatProviderError({ category: "auth", message: "401" })
+    expect(out).toContain("autentikasi")
+    expect(out).toContain("→") // saran tindakan
+    // Kategori mentah dan kode HTTP tidak dibocorkan ke layar.
+    expect(out).not.toContain("[auth]")
+    expect(formatProviderError({})).toBeTypeOf("string")
+  })
+
+  test("formatProviderError meringkas body JSON provider", () => {
+    const or429 =
+      'rate limited (429): {"error":{"message":"Provider returned error","metadata":{"raw":"model X is temporarily rate-limited upstream.","remedy_hint":"Retry shortly."}}}'
+    const out = formatProviderError({ category: "rate_limit", message: or429 })
+    expect(out).toContain("rate-limited upstream")
+    expect(out).not.toContain("metadata")
+    expect(out.length).toBeLessThanOrEqual(220)
+  })
+
+  test("formatStepCalls meringkas nama + argumen", () => {
+    const out = formatStepCalls([
+      { id: "1", name: "bash", args: { cmd: "ls" } },
+      { id: "2", name: "read_file", args: { path: "a.ts" } },
+    ] as never)
+    expect(out).toContain("bash(")
+    expect(out).toContain("read_file(")
+  })
+})
+
+describe("format: formatError", () => {
+  test("AgentError (punya kind) dipetakan ke pesan yang bisa ditindaklanjuti", () => {
+    const out = formatError({ kind: "timeout", message: "lewat batas" })
+    expect(out.toLowerCase()).toContain("batas waktu")
+    expect(out).not.toContain("timeout:") // nama kode tidak dibocorkan
+  })
+
+  test("ProviderError (punya category) memakai pemetaan kategori", () => {
+    const out = formatError({ category: "rate_limit", message: "429" })
+    expect(out).toContain("membatasi laju")
+  })
+
+  test("Error biasa tetap memakai message-nya", () => {
+    expect(formatError(new Error("meledak"))).toBe("meledak")
+  })
+
+  test("nilai lain di-stringify", () => {
+    expect(formatError("teks")).toBe("teks")
+    expect(formatError(42)).toBe("42")
+  })
+})
+
+describe("reasoning: satu state untuk /thinking", () => {
+  const orig = reasoning.visible
+  afterEach(() => {
+    setReasoningVisible(orig)
+  })
+
+  test("toggle tanpa argumen membalik nilai", () => {
+    setReasoningVisible(false)
+    expect(setReasoningVisible()).toBe(true)
+    expect(setReasoningVisible()).toBe(false)
+  })
+
+  test("set eksplisit menang", () => {
+    expect(setReasoningVisible(true)).toBe(true)
+    expect(reasoning.visible).toBe(true)
+    expect(setReasoningVisible(false)).toBe(false)
+  })
+
+  test("env disinkronkan supaya sub-proses mewarisi pilihan", () => {
+    setReasoningVisible(true)
+    expect(process.env.MINICODE_SHOW_THINKING).toBe("1")
+    setReasoningVisible(false)
+    expect(process.env.MINICODE_SHOW_THINKING).toBe("0")
+  })
+})
+
+describe("statusline: koordinasi suspend/resume", () => {
+  afterEach(() => {
+    registerStatusLine(null)
+  })
+
+  test("tanpa handle terdaftar, fn tetap dijalankan", () => {
+    expect(runWithoutStatus(() => 7)).toBe(7)
+  })
+
+  test("handle di-suspend sebelum dan di-resume sesudah", () => {
+    const calls: string[] = []
+    registerStatusLine({
+      suspend: () => calls.push("suspend"),
+      resume: () => calls.push("resume"),
+    })
+    const out = runWithoutStatus(() => {
+      calls.push("tulis")
+      return "ok"
+    })
+    expect(out).toBe("ok")
+    expect(calls).toEqual(["suspend", "tulis", "resume"])
+  })
+
+  test("resume tetap jalan meski fn melempar", () => {
+    const calls: string[] = []
+    registerStatusLine({
+      suspend: () => calls.push("suspend"),
+      resume: () => calls.push("resume"),
+    })
+    expect(() =>
+      runWithoutStatus(() => {
+        throw new Error("boom")
+      }),
+    ).toThrow("boom")
+    expect(calls).toEqual(["suspend", "resume"])
+  })
+})
+
+describe("simple logger (one-shot)", () => {
+  let tty: FakeTty | undefined
+  afterEach(() => {
+    tty?.restore()
+    tty = undefined
+    applyTheme("dark")
+  })
+
+  const attach = (verbose = false) => {
+    tty = installFakeTty({ columns: 80, rows: 24 })
+    const bus = createFakeBus()
+    const detach = attachSimpleLogger(bus as unknown as EventBus, { verbose })
+    // Renderer memisahkan aliran: teks model ke stdout, ringkasan tool/error ke
+    // stderr. Assertion memakai gabungan keduanya.
+    return { bus, detach, out: () => stripAnsi(tty!.combined()) }
+  }
+
+  test("provider:text distream per baris", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("provider:text", { text: "baris satu\nbaris dua\n" })
+    detach()
+    expect(out()).toContain("baris satu")
+    expect(out()).toContain("baris dua")
+  })
+
+  test("sisa buffer di-flush saat turn selesai", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("provider:text", { text: "tanpa newline" })
+    bus.emit("turn:completed", { result: { usage: { turns: 1 } } })
+    detach()
+    expect(out()).toContain("tanpa newline")
+  })
+
+  test("write_file/edit dilaporkan dengan path", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "write_file", args: { path: "a.ts" } },
+        result: { isError: false, content: "xyz" },
+      },
+    })
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "edit", args: { path: "b.ts" } },
+        result: { isError: false, content: "" },
+      },
+    })
+    detach()
+    expect(out()).toContain("write_file a.ts")
+    expect(out()).toContain("edit b.ts")
+  })
+
+  test("bash menampilkan perintah + potongan keluaran", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "bash", args: { cmd: "bun test" } },
+        result: { isError: false, content: "l1\nl2\nl3\nl4\nl5" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("bun test")
+    expect(o).toContain("l1")
+    expect(o).toContain("more")
+  })
+
+  test("tool error ditandai", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "bash", args: { cmd: "x" } },
+        result: { isError: true, content: "gagal" },
+      },
+    })
+    detach()
+    expect(out()).toContain("gagal")
+  })
+
+  test("provider error diformat lewat kategori, bukan dump mentah", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("provider:extension", { kind: "error", data: { category: "auth", message: "401" } })
+    detach()
+    expect(out()).toContain("autentikasi")
+    expect(out()).not.toContain("[auth]")
+  })
+
+  test("reasoning tampil bila /thinking aktif walau tanpa --verbose", () => {
+    setReasoningVisible(true)
+    const { bus, detach, out } = attach(false)
+    bus.emit("provider:extension", { kind: "reasoning", data: { text: "isi pemikiran" } })
+    detach()
+    setReasoningVisible(false)
+    expect(out()).toContain("isi pemikiran")
+  })
+
+  test("reasoning disembunyikan bila /thinking nonaktif dan bukan verbose", () => {
+    setReasoningVisible(false)
+    const { bus, detach, out } = attach(false)
+    bus.emit("provider:extension", { kind: "reasoning", data: { text: "rahasia" } })
+    detach()
+    expect(out()).not.toContain("rahasia")
+  })
+
+  test("detach melepas listener", () => {
+    const { bus, detach, out } = attach()
+    detach()
+    bus.emit("provider:text", { text: "setelah detach" })
+    expect(out()).not.toContain("setelah detach")
+  })
+})

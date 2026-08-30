@@ -19,7 +19,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode "prompt"` | Sekali jalan (headless) |
 | `echo "prompt" \| minicode` | Via pipe |
 | `minicode exec "prompt" [--json]` | Headless CI — event JSONL + baris `{"type":"summary"}` di stdout |
-| `minicode --tui "prompt"` | TUI minimal alternate-screen pure ANSI (tanpa Ink) |
+| `minicode --interactive` | REPL fullscreen alternate-screen pure ANSI |
 | `minicode --provider <id> "prompt"` | Paksa provider agnostik tanpa ubah config (atau `provider::model`) |
 | `minicode config add --baseUrl <url> --apiKey <key>` | Tambah provider LLM |
 | `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server stdio |
@@ -72,6 +72,12 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
 | `MINICODE_PROVIDER_ORDER` | Urutkan provider agnostik tanpa edit config: `openai,anthropic,deepseek` |
 | `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
+| `MINICODE_THEME` | Tema aktif: `dark` \| `dim` \| `light` \| `mono` (juga lewat `--theme`) |
+| `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna (mengalahkan tema) |
+| `MINICODE_ASCII` | `1` → paksa glyph ASCII (`[OK]`, `>`, `.`) untuk konsol tanpa UTF-8 |
+| `MINICODE_NO_ALT` | `1` → jangan pakai alternate screen; berguna bila deteksi VT salah |
+| `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
+| `MINICODE_DROPDOWN` | `0` → matikan floating dropdown, pakai hint inline (konsol legacy) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` | Fallback API key |
 
 ## Config `.minicode/config.json`
@@ -97,22 +103,43 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 
 | Command | Fungsi |
 |---|---|
-| `/help` | Daftar command + skill |
-| `/providers` | Daftar provider + active model |
-| `/provider-add` | Tambah provider — pilih preset (OpenAI/Anthropic/OpenRouter/DeepSeek/OpenCode Zen/Google/**Generic Ollama**) atau custom URL, auto-detect models |
-| `/provider-remove <id>` | Hapus provider |
-| `/models [id] [keyword]` | List model per provider; keyword = filter substring (case-insensitive) |
-| `/model [name]` | Picker interaktif semua provider·model. Format `providerId::modelName` paksa provider. E.g. `/model bai::deepseek-v4-flash` |
-| `/undo` | Batalkan perubahan file terakhir (pre-edit state) |
-| `/redo` | Terapkan ulang perubahan yang di-undo (post-edit state) |
-| `/cost` | Lihat token & biaya sesi; tampilkan model efektif bila router substitusi (fallback) |
-| `/sync` | Auto-refresh daftar model dari semua provider (model baru tersinkron) |
-| `/sessions` | Daftar sesi terbaru (nomor = resume) |
-| `/resume [id]` | Lanjutkan sesi (picker interaktif tanpa arg; respawn via `--resume`) |
-| `/status` | Info runtime (model, provider, tools, skills) |
-| `/history` | Riwayat prompt |
-| `/clear` | Bersihkan terminal |
+| `/help` | Daftar perintah + skill + tombol penting |
+| `/help tombol` | Daftar pintasan papan tombol lengkap |
+| `/provider` | Kelola provider: tambah (`a`), hapus (`d`), ubah (`e`). Provider aktif ditandai `(aktif)`; konfirmasi hapus menyebut jumlah model yang ikut hilang |
+| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider |
+| `/sync` | Segarkan daftar model dari semua provider |
+| `/undo` | Batalkan perubahan berkas dari turn terakhir |
+| `/redo` | Terapkan ulang perubahan yang dibatalkan |
+| `/cost` | Pemakaian token & biaya **kumulatif sesi** (bukan turn terakhir); menampilkan model efektif bila router menyubstitusi |
+| `/sessions` | Daftar sesi terbaru |
+| `/resume [id]` | Lanjutkan sesi (picker tanpa argumen; respawn via `--resume`) |
+| `/status` | Info runtime (ID sesi, model, provider, tool aktif, skill) |
+| `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model |
+| `/init` | Buat `AGENTS.md` untuk proyek ini |
+| `/theme [nama]` | Ganti tema: `dark` \| `dim` \| `light` \| `mono` |
+| `/clear` | Bersihkan transkrip di layar |
 | `/exit` | Keluar |
+
+Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/usage`, `/quit`, `/compact`, `/history`.
+
+### Papan tombol (REPL)
+
+| Tombol | Fungsi |
+|---|---|
+| `enter` | Kirim prompt |
+| `shift+tab` | Putar mode permission (`auto` → `ask` → `plan` → `allowlist`) |
+| `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih) |
+| `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
+| `ctrl+r` | Cari history |
+| `ctrl+o` | Buka/tutup tampilan detail |
+| `←` / `→` | Geser kursor (editing di tengah baris) |
+| `ctrl+a` / `ctrl+e` | Ke awal / akhir baris |
+| `home` / `end` / `del` | Sama seperti di editor |
+| `ctrl+w` | Hapus satu kata sebelum kursor |
+| `ctrl+u` | Kosongkan baris |
+| `esc` | Hentikan proses berjalan / tutup panel |
+| `ctrl+c` 2× | Keluar |
+| `\` di akhir baris | Sambung ke baris berikutnya |
 
 ## Skills
 
