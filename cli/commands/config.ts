@@ -1,12 +1,11 @@
 import {
-  detectAndSave,
   loadConfig,
   removeLspServer,
   removeMcpServer,
-  removeProvider,
   saveLspServer,
   saveMcpServer,
 } from "../../src/config.ts"
+import { detectAndSave, removeProvider } from "../../src/providers/provision.ts"
 import { renderTable } from "../../src/ui/render/table.ts"
 import { c, glyphs } from "../../src/ui/render/theme.ts"
 

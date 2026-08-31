@@ -1,4 +1,4 @@
-import { loadConfig, saveProvider } from "../../src/config.ts"
+import { loadConfig } from "../../src/config.ts"
 import { authFilePath, listAuth, removeAuth } from "../../src/providers/auth-store.ts"
 import { detectModels } from "../../src/providers/detect.ts"
 import {
@@ -6,6 +6,7 @@ import {
   loginWithDeviceFlow,
   OAUTH_PROVIDERS,
 } from "../../src/providers/oauth.ts"
+import { saveProvider } from "../../src/providers/provision.ts"
 import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 function usage(code = 0): never {

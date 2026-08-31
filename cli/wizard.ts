@@ -1,7 +1,7 @@
 // Controller wizard setup — pegang data preset & penyimpanan config;
 // tampilannya di src/ui/screens/wizard.ts.
-import { detectAndSave } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
+import { detectAndSave } from "../src/providers/provision.ts"
 import { runSetupWizardView } from "../src/ui/screens/wizard.ts"
 
 export async function runSetupWizard(): Promise<boolean> {

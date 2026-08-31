@@ -1,8 +1,9 @@
 // Controller provider manager — CRUD config + deteksi model; tampilannya di
 // src/ui/screens/provider-manager.ts.
 
-import { detectAndSave, loadConfig, type MinicodeConfig, removeProvider } from "../src/config.ts"
+import { loadConfig, type MinicodeConfig } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
+import { detectAndSave, removeProvider } from "../src/providers/provision.ts"
 import {
   type ProviderActionResult,
   type ProviderRow,

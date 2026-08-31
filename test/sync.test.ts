@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { refreshProviderModels } from "../src/config.ts"
+import { refreshProviderModels } from "../src/providers/provision.ts"
 
 const globalPath = join(homedir(), ".minicode", "config.json")
 const globalBak = `${globalPath}.bak-sync-test`

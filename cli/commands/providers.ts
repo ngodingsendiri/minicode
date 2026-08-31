@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { loadConfig, type MinicodeConfig, refreshProviderModels } from "../../src/config.ts"
+import { loadConfig, type MinicodeConfig } from "../../src/config.ts"
+import { refreshProviderModels } from "../../src/providers/provision.ts"
 import { renderTable } from "../../src/ui/render/table.ts"
 import { c, glyphs } from "../../src/ui/render/theme.ts"
 

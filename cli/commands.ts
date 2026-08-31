@@ -1,6 +1,6 @@
 import { resolve as resolvePath } from "node:path"
-import { refreshProviderModels } from "../src/config.ts"
 import type { Usage } from "../src/policy/usage.ts"
+import { refreshProviderModels } from "../src/providers/provision.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import type { Skill } from "../src/skills/loader.ts"
 import { formatUsd } from "../src/ui/render/money.ts"

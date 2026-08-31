@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { deriveProviderId } from "../src/config.ts"
+import { deriveProviderId } from "../src/providers/provision.ts"
 
 describe("deriveProviderId (5.1 friendly id)", () => {
   test("preset baseUrl → ramah id (no hash)", () => {

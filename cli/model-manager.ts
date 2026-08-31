@@ -1,6 +1,7 @@
 // Controller model registry — CRUD config; tampilannya di
 // src/ui/screens/model-manager.ts.
-import { loadConfig, type ProviderEntry, saveProvider } from "../src/config.ts"
+import { loadConfig, type ProviderEntry } from "../src/config.ts"
+import { saveProvider } from "../src/providers/provision.ts"
 import { type ModelRow, runModelManagerView } from "../src/ui/screens/model-manager.ts"
 
 /** Minimal model registry: list, select, add, and remove. */

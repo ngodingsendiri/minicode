@@ -3,7 +3,8 @@
 
 import { resolve as resolvePath } from "node:path"
 import { expandMentions } from "../src/app/mentions.ts"
-import { detectAndSave, loadConfig, removeProvider, saveProvider } from "../src/config.ts"
+import { loadConfig } from "../src/config.ts"
+import { detectAndSave, removeProvider, saveProvider } from "../src/providers/provision.ts"
 import { listSessions } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { attachFullscreenMinimal } from "../src/ui/assistant/fullscreen.ts"
