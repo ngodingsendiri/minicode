@@ -3,14 +3,14 @@ import { ProviderError } from "#minicore/core/errors.ts"
 import type { Session, SessionConfig } from "#minicore/core/index.ts"
 import { createSession as createCoreSession } from "#minicore/core/index.ts"
 import { defaultRecoveryPolicy } from "#minicore/core/recovery.ts"
-import { LIMITS } from "./constants.ts"
-import { buildSystemPrompt, minicodeEstimator } from "./policy/context.ts"
-import { parallelExecutor } from "./policy/executor.ts"
+import { LIMITS } from "../constants.ts"
+import { buildSystemPrompt, minicodeEstimator } from "../policy/context.ts"
+import { parallelExecutor } from "../policy/executor.ts"
 import {
   createPermissionHandler,
   type PermissionAsk,
   type PermissionMode,
-} from "./policy/permission.ts"
+} from "../policy/permission.ts"
 
 // P2 cap wrapper: limit retryAfter to 30s without mutating original error
 const cappedRecovery = {

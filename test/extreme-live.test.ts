@@ -58,7 +58,7 @@ beforeAll(async () => {
     return
   }
 
-  const { createMinicodeSession } = await import("../src/session.ts")
+  const { createMinicodeSession } = await import("../src/app/session.ts")
   const { allTools } = await import("../src/tools/index.ts")
 
   session = await createMinicodeSession({

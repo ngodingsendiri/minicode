@@ -5,11 +5,11 @@
 import { appendFileSync, mkdirSync } from "node:fs"
 import { resolve } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
+import { createMinicodeSession } from "../src/app/session.ts"
 import { loadConfig } from "../src/config.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { buildProviderList } from "../src/providers/build.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
-import { createMinicodeSession } from "../src/session.ts"
 import { allTools } from "../src/tools/index.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
 

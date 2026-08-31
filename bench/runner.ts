@@ -3,11 +3,11 @@
 // `--runs <n>`: jumlah run per task (default 1; 2 = stabil/median).
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import type { ModelProvider } from "#minicore"
+import { createMinicodeSession } from "../src/app/session.ts"
 import { loadConfig } from "../src/config.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { buildProviderList } from "../src/providers/build.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
-import { createMinicodeSession } from "../src/session.ts"
 import { allTools } from "../src/tools/index.ts"
 import { BENCH_TASKS, loadExternalTasks } from "./tasks.ts"
 

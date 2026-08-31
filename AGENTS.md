@@ -11,20 +11,23 @@ src/config.ts:
   interface McpServerEntry
   interface LspServerEntry
   interface MinicodeConfig
+  const GLOBAL
+  const LOCAL
   function normalizeConfig(...)
   function writeConfigAtomic(...)
   function loadConfig(...)
   function mergeByKey(...)
-  function saveProvider(...)
-  function deriveProviderId(...)
-  function detectAndSave(...)
-  function removeProvider(...)
-  function refreshProviderModels(...)
   function saveMcpServer(...)
   function removeMcpServer(...)
   function normalizeExt(...)
   function saveLspServer(...)
   function removeLspServer(...)
+src/providers/provision.ts:
+  function saveProvider(...)
+  function deriveProviderId(...)
+  function detectAndSave(...)
+  function removeProvider(...)
+  function refreshProviderModels(...)
 src/constants.ts:
   const LIMITS
 cli/commands/providers.ts:
@@ -35,7 +38,7 @@ cli/commands/providers.ts:
   function handleProviders(...)
 cli/index.ts:
   function getArg(...)
-src/hooks/index.ts:
+src/policy/allowlist.ts:
   interface Allowlist
   function loadAllowlist(...)
   function saveAllowlist(...)
@@ -86,6 +89,18 @@ cli/args.ts:
   function readPrompt(...)
 src/lib/atomic-write.ts:
   function atomicWriteText(...)
+src/lib/net.ts:
+  function isPrivateHost(...)
+  function isPrivateHostWithDns(...)
+src/app/session.ts:
+  type PermissionControl
+  function createMinicodeSession(...)
+src/tools/task.ts:
+  interface SubAgentSpec
+  interface SubAgentSession
+  type SubAgentSessionFactory
+  function setSubAgentSessionFactory(...)
+  const delegateTaskTool
 src/lsp/client.ts:
   interface LspServerEntry
   function languageIdFor(...)
@@ -139,8 +154,14 @@ src/app/mentions.ts:
   non-ui DILARANG mengimpor `src/ui/`; `src/ui/` DILARANG mengimpor `cli/`,
   `src/` non-ui, atau `#minicore`. UI adalah presentation layer mandiri —
   komunikasi lewat kontrak (`src/ui/contract.ts`) dan callback yang
-  di-inject dari `cli/` (composition root: `cli/setup.ts`). Penjaganya:
-  `test/ui-boundary.test.ts`.
+  di-inject dari `cli/` (composition root: `cli/index.ts` & `cli/setup.ts`).
+  Penjaganya: `test/ui-boundary.test.ts`.
+- **DI lintas lapisan**: kebutuhan lintas-lapisan disuntikkan dari composition
+  root, bukan diimpor langsung — `ask` (approval), `setupWhenEmpty` (wizard),
+  `setSubAgentSessionFactory` (delegate_task; `src/tools/` tidak boleh
+  mengimpor lapisan app/sesi). Tanpa injeksi default selalu aman (deny /
+  fail-closed). Arah `providers → config` satu arah: provisioning provider
+  hidup di `src/providers/provision.ts`, `src/config.ts` murni IO config.
 - **Setiap agent yang menambah, menghapus, memindah modul/berkas, atau mengubah
   lapisan/ketergantungan antarlapisan WAJIB memperbarui `docs/ARCHITECTURE.html`
   dalam perubahan yang sama.** File itu peta struktur hidup repo ini dan harus

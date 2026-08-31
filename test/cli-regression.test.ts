@@ -9,8 +9,8 @@
 import { describe, expect, test } from "bun:test"
 import type { ModelProvider } from "#minicore/core/provider.ts"
 import { handleBuiltinCommand } from "../cli/commands.ts"
+import { createMinicodeSession, type PermissionControl } from "../src/app/session.ts"
 import { createPermissionHandler, type PermissionMode } from "../src/policy/permission.ts"
-import { createMinicodeSession, type PermissionControl } from "../src/session.ts"
 import { captureOutput } from "../src/ui/screens/panel.ts"
 
 const fakeProvider: ModelProvider = {
