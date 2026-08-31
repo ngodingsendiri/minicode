@@ -19,7 +19,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode "prompt"` | Sekali jalan (headless) |
 | `echo "prompt" \| minicode` | Via pipe |
 | `minicode exec "prompt" [--json]` | Headless CI — event JSONL + baris `{"type":"summary"}` di stdout |
-| `minicode --interactive` | REPL fullscreen alternate-screen pure ANSI |
+| `minicode --interactive` | REPL linier — agentic Unix shell, output mengalir ke scrollback |
 | `minicode --provider <id> "prompt"` | Paksa provider agnostik tanpa ubah config (atau `provider::model`) |
 | `minicode config add --baseUrl <url> --apiKey <key>` | Tambah provider LLM |
 | `minicode config mcp add <id> --command <cmd> --args "<a1,a2>"` | Daftarkan MCP server stdio |
@@ -75,7 +75,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_THEME` | Tema aktif: `dark` \| `dim` \| `light` \| `mono` (juga lewat `--theme`) |
 | `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna (mengalahkan tema) |
 | `MINICODE_ASCII` | `1` → paksa glyph ASCII (`[OK]`, `>`, `.`) untuk konsol tanpa UTF-8 |
-| `MINICODE_NO_ALT` | `1` → jangan pakai alternate screen; berguna bila deteksi VT salah |
+| `MINICODE_COMPACT` | `1` → tool call satu baris ringkas (default: expanded; juga `/compact`, Ctrl+O) |
 | `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
 | `MINICODE_DROPDOWN` | `0` → matikan floating dropdown, pakai hint inline (konsol legacy) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` | Fallback API key |
@@ -130,15 +130,15 @@ Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/u
 | `shift+tab` | Putar mode permission (`auto` → `ask` → `plan` → `allowlist`) |
 | `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih) |
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
-| `ctrl+r` | Cari history |
-| `ctrl+o` | Buka/tutup tampilan detail |
+| `ctrl+t` | Tampilkan/sembunyikan reasoning model |
+| `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |
 | `←` / `→` | Geser kursor (editing di tengah baris) |
 | `ctrl+a` / `ctrl+e` | Ke awal / akhir baris |
 | `home` / `end` / `del` | Sama seperti di editor |
 | `ctrl+w` | Hapus satu kata sebelum kursor |
 | `ctrl+u` | Kosongkan baris |
-| `esc` | Hentikan proses berjalan / tutup panel |
-| `ctrl+c` 2× | Keluar |
+| `esc` | Tutup dropdown / picker / manager |
+| `ctrl+c` | Saat busy: hentikan turn; saat idle dua kali beruntun: keluar |
 | `\` di akhir baris | Sambung ke baris berikutnya |
 
 ## Skills

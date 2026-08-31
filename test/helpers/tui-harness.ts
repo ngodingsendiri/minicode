@@ -409,6 +409,7 @@ export const KEY = {
   ctrlE: "\x05",
   ctrlO: "\x0f",
   ctrlR: "\x12",
+  ctrlT: "\x14",
   ctrlU: "\x15",
   ctrlW: "\x17",
   /** Klik mouse mode X10: ESC [ M + tombol + kolom + baris. */

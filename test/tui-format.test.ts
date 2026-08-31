@@ -614,4 +614,79 @@ describe("simple logger (one-shot)", () => {
     bus.emit("provider:text", { text: "setelah detach" })
     expect(out()).not.toContain("setelah detach")
   })
+
+  test("verbose: header turn + step + usage + bash-output tercetak", () => {
+    const { bus, detach, out } = attach(true)
+    bus.emit("turn:started", { turn: 3 })
+    bus.emit("step:started", {
+      step: { index: 2, toolCalls: [{ name: "bash", args: { cmd: "ls" } }] },
+    })
+    bus.emit("provider:extension", { kind: "usage", data: { inputTokens: 10, outputTokens: 5 } })
+    bus.emit("provider:extension", { kind: "bash-output", data: { text: "progres build\n" } })
+    bus.emit("turn:completed", {})
+    detach()
+    const o = out()
+    expect(o).toContain("Turn 3")
+    expect(o).toContain("Step 2")
+    expect(o).toContain("bash")
+    expect(o).toContain("progres build")
+  })
+
+  test("verbose: usage diringkas lewat formatUsage", () => {
+    const { bus, detach, out } = attach(true)
+    bus.emit("provider:extension", { kind: "usage", data: { inputTokens: 1234, outputTokens: 56 } })
+    detach()
+    expect(out()).toMatch(/\d/)
+  })
+
+  test("verbose tanpa usage tidak mencetak apa pun", () => {
+    const { bus, detach, out } = attach(true)
+    bus.emit("provider:extension", { kind: "usage", data: {} })
+    detach()
+    expect(out()).not.toContain("tok")
+  })
+
+  test("content_filter diblokir dilaporkan", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("provider:extension", { kind: "content_filter", data: {} })
+    detach()
+    expect(out()).toContain("Content filter")
+  })
+
+  test("todo_write menampilkan daftar todo utuh", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "todo_write", args: {} },
+        result: { isError: false, content: "1. satu\n2. dua" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("todo_write")
+    expect(o).toContain("1. satu")
+    expect(o).toContain("2. dua")
+  })
+
+  test("compact: execution:started mencetak running (verbose)", () => {
+    setCompactMode(true)
+    const { bus, detach, out } = attach(true)
+    bus.emit("execution:started", { execution: { call: { name: "grep", args: {} } } })
+    detach()
+    expect(out()).toContain("running grep")
+  })
+
+  test("expanded: write_file menampilkan ukuran hasil", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "write_file", args: { path: "baru.ts", content: "xyz" } },
+        result: { isError: false, content: "3 chars" },
+      },
+    })
+    detach()
+    expect(out()).toContain("write_file baru.ts")
+    // size = panjang string hasil, bukan isi args
+    expect(out()).toMatch(/\(\d+ chars\)/)
+  })
 })

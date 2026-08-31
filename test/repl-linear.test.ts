@@ -4,9 +4,13 @@
 // di-assert tanpa mematikan runner.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { runRepl } from "../cli/repl.ts"
 import type { CliSession } from "../cli/setup.ts"
 import { setCompactMode } from "../src/ui/render/detail.ts"
+import { setReasoningVisible } from "../src/ui/render/reasoning.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
 import { createFakeBus, type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
@@ -33,6 +37,7 @@ afterEach(() => {
   tty?.restore()
   tty = undefined
   setCompactMode(false)
+  setReasoningVisible(false)
 })
 
 interface Harness {
@@ -42,7 +47,13 @@ interface Harness {
   mode: string // mode terakhir yang diterima permissions.setMode
 }
 
-function makeHarness(opts: { budget?: number; cost?: number } = {}): Harness {
+function makeHarness(
+  opts: {
+    budget?: number
+    cost?: number
+    skills?: { name: string; description: string; body: string }[]
+  } = {},
+): Harness {
   const h: Harness = { ctx: undefined as unknown as CliSession, ran: [], closed: false, mode: "" }
   const usageRow = {
     inputTokens: 0,
@@ -50,6 +61,12 @@ function makeHarness(opts: { budget?: number; cost?: number } = {}): Harness {
     totalTokens: 0,
     cost: opts.cost ?? 0,
   }
+  const skills = (opts.skills ?? []).map((s) => ({
+    name: s.name,
+    description: s.description,
+    body: s.body,
+    path: `virtual:${s.name}.md`,
+  }))
   const ctx = {
     session: { events: createFakeBus(), state: { history: [], turnCount: 0, stepCount: 0 } },
     cfg: { providers: [{ id: "prov", providerHint: "openai", models: ["m1"] }] },
@@ -60,7 +77,7 @@ function makeHarness(opts: { budget?: number; cost?: number } = {}): Harness {
     effectiveTimeoutMs: 1000,
     permissionMode: "auto",
     sessionTools: [],
-    allLoadedSkills: [],
+    allLoadedSkills: skills,
     usage: {
       get: () => usageRow,
       getSession: () => usageRow,
@@ -181,6 +198,38 @@ describe("REPL linier: siklus dasar", () => {
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
+
+  test("dropdown '/' menawarkan builtin + perintah driver", async () => {
+    tty = installFakeTty()
+    const h = makeHarness({ skills: [{ name: "revu", description: "d", body: "b" }] })
+    const p = start(h)
+    await waitForPrompt()
+    tty.clear()
+    await tty.send("/", 25)
+    let out = visible(tty)
+    expect(out).toContain("/help")
+    expect(out).toContain("/mode")
+    expect(out).toContain("/compact")
+    // Setelah mengetik lebih jauh, skill ikut tampil di grup sendiri.
+    await tty.send("revu", 25)
+    out = visible(tty)
+    expect(out).toContain("/revu")
+    // Kosongkan baris (ctrl+u) sebelum /exit — karakter yang dikirim via
+    // tty.send APPEND ke baris yang sedang diedit.
+    await tty.send(KEY.ctrlU, 25)
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("skill /nama menjalankan render hasilnya sebagai turn", async () => {
+    tty = installFakeTty()
+    const h = makeHarness({ skills: [{ name: "revu", description: "d", body: "isi {{args}}" }] })
+    const p = start(h)
+    await typeLine("/revu review")
+    expect(h.ran).toEqual(["isi review"])
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
 })
 
 describe("REPL linier: interupsi busy", () => {
@@ -258,6 +307,55 @@ describe("REPL linier: mode & toggle", () => {
     expect(visible(tty)).toContain("expanded")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("Ctrl+T toggle reasoning lewat onKey", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await waitForPrompt()
+    await tty.send(KEY.ctrlT, 25)
+    expect(visible(tty)).toContain("reasoning: on")
+    await waitForPrompt()
+    await tty.send(KEY.ctrlT, 25)
+    expect(visible(tty)).toContain("reasoning: off")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("Ctrl+O toggle compact lewat onKey", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await waitForPrompt()
+    await tty.send(KEY.ctrlO, 25)
+    expect(visible(tty)).toContain("tool call: compact")
+    await waitForPrompt()
+    await tty.send(KEY.ctrlO, 25)
+    expect(visible(tty)).toContain("tool call: expanded")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("/sessions tanpa sesi terdaftar tidak menanyakan pilihan", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    // cwd diarahkan ke workspace dgn .minicode lokal — DB lokal kosong,
+    // terlepas dari isi ~/.minicode/sessions.sqlite di mesin test.
+    const ws = mkdtempSync(join(tmpdir(), "minicode-repl-nosess-"))
+    mkdirSync(join(ws, ".minicode"), { recursive: true })
+    ;(h.ctx as { cwd: string }).cwd = ws
+    const p = start(h)
+    await typeLine("/sessions")
+    // listSessions tidak menemukan sesi → tidak ada prompt resume menggantung.
+    const out = visible(tty)
+    expect(out).toContain("No sessions")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+    // DB sqlite lokal masih terbuka di Windows (EBUSY) — biarkan OS membersihkan tmp.
+    try {
+      rmSync(ws, { recursive: true, force: true })
+    } catch {}
   })
 })
 

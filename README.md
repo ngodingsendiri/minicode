@@ -2,7 +2,7 @@
 
 Coding agent built on **MiniCore** (kernel di-vendor ke `vendor/minicore`, seam additif `compactAsync` + `initialMessages`).
 
-MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode: tools FS/bash/git/memory/todo/MCP/LSP, sub-agents, skills, hooks ask, TUI minimal pure ANSI (alternate-screen, tanpa Ink/React), memory hybrid RAG, sessions sqlite, repo-map, verifier.
+MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode: tools FS/bash/git/memory/todo/MCP/LSP, sub-agents, skills, hooks ask, CLI shell-first pure ANSI (output linier di scrollback, tanpa Ink/React), memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) **tidak ditulis di sini** — jalankan `bun test`, `bun run gate:coverage`, atau lihat CI. Riwayat perubahan per versi ada di [CHANGELOG.md](CHANGELOG.md).
 
@@ -24,8 +24,8 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
   ├─ src/session/   → persistence sqlite + checkpoint shadow-git (tree, O(delta), HEAD user utuh)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
   ├─ src/ui/        → presentation layer mandiri: render (theme/markdown/highlight/diff/width),
-  │                   input, assistant view simple+fullscreen (pure ANSI ?1049h), approval prompt,
-  │                   screens (picker/wizard/managers) — tanpa impor core/#minicore
+  │                   input (askLine + prompt-engine), printer linier (tool call expanded),
+  │                   approval prompt, screens (picker/wizard/managers) — tanpa impor core/#minicore
   ├─ experiments/   → harness adversarial (fuzz bash, stress shadow-git, server MCP jahat)
   ├─ docs/          → ARCHITECTURE.html (peta struktur hidup) · USAGE.md
   └─ cli/           → REPL (tab completion, multiline, history, slash commands) + controller tipis
@@ -52,7 +52,7 @@ Kernel MiniCore di-vendor ke `vendor/minicore` (19 file, ~72 KB) sehingga repo i
 Wizard & `/provider-add` menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google, Ollama, Qwen, Groq, dll), API Key ter-masking, auto-detect models.
 
 ```bash
-minicode --interactive                  # REPL fullscreen (alternate-screen, pure ANSI)
+minicode --interactive                  # REPL linier (agentic Unix shell, output di scrollback)
 minicode --ask "deploy script"          # human-in-loop confirmation card
 minicode --verify "fix bugs lalu typecheck"  # auto-verify + self-heal setelah run
 minicode --sandbox docker "task"        # eksekusi bash dalam container ephemeral

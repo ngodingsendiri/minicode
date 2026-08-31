@@ -38,6 +38,8 @@ cli/commands/providers.ts:
   function handleProviders(...)
 cli/index.ts:
   function getArg(...)
+cli/repl.ts:
+  function runRepl(...)
 src/policy/allowlist.ts:
   interface Allowlist
   function loadAllowlist(...)
@@ -128,23 +130,20 @@ src/ui/render/errors.ts:
   function formatFriendly(...)
 src/ui/screens/picker.ts:
   function runPicker(...)
-src/ui/screens/panel.ts:
-  function captureOutput(...)
-  function runPanel(...)
 src/ui/screens/wizard.ts:
   function runSetupWizardView(...)
 src/ui/screens/model-manager.ts:
   function runModelManagerView(...)
 src/ui/screens/provider-manager.ts:
   function runProviderManagerView(...)
-src/ui/assistant/fullscreen.ts:
-  function attachFullscreenMinimal(...)
 src/ui/assistant/simple.ts:
   function attachSimpleLogger(...)
 src/app/mentions.ts:
   function parseMentions(...)
   function resolveMentionContent(...)
   function expandMentions(...)
+test/helpers/capture.ts:
+  function captureOutput(...)
 ```
 
 ## Konvensi
@@ -162,6 +161,13 @@ src/app/mentions.ts:
   mengimpor lapisan app/sesi). Tanpa injeksi default selalu aman (deny /
   fail-closed). Arah `providers → config` satu arah: provisioning provider
   hidup di `src/providers/provision.ts`, `src/config.ts` murni IO config.
+- **Output shell-first**: tidak ada alternate screen (?1049h), redraw penuh,
+  atau modal overlay — output mengalir append-only ke scrollback dan scrollback
+  adalah satu-satunya transcript (REPL: `cli/repl.ts` loop `askLine` + printer
+  `src/ui/assistant/simple.ts`). Tool call inline & expanded by default;
+  compact = opt-in (`MINICODE_COMPACT=1`, `/compact`, Ctrl+O). Layar
+  interaktif (manager/wizard/picker) transient — menghapus diri sendiri,
+  tidak menyentuh scrollback.
 - **Setiap agent yang menambah, menghapus, memindah modul/berkas, atau mengubah
   lapisan/ketergantungan antarlapisan WAJIB memperbarui `docs/ARCHITECTURE.html`
   dalam perubahan yang sama.** File itu peta struktur hidup repo ini dan harus

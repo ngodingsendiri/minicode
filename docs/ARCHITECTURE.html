@@ -334,7 +334,7 @@
     <span class="badge blue">entry: cli/index.ts</span>
     <span class="badge">31 tool bawaan</span>
     <span class="badge">kernel pin 1eceea9e</span>
-    <span class="badge dim">sinkron HEAD 18ccf5b</span>
+    <span class="badge dim">sinkron HEAD cf44c8e</span>
   </div>
 
   <div class="diagram" style="margin-top:24px">
@@ -538,8 +538,8 @@
       </div></div>
     <div class="step"><div class="rail"><div class="dot">6</div><div class="line"></div></div>
       <div class="card"><b>Rendering output</b>
-        <span class="where">src/ui/render/{sanitize,markdown,highlight,wrap,width}.ts → src/ui/assistant/fullscreen.ts</span>
-        <span class="what">Teks tidak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu digambar. Assistant hanya mengonsumsi event UiBus — tidak memanggil agen langsung.</span>
+        <span class="where">src/ui/render/{sanitize,markdown,highlight,wrap,width}.ts → src/ui/assistant/simple.ts</span>
+        <span class="what">Teks tidak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu mengalir append-only ke scrollback (printer linier, tanpa alternate screen). Assistant hanya mengonsumsi event UiBus — tidak memanggil agen langsung.</span>
       </div></div>
     <div class="step"><div class="rail"><div class="dot">7</div><div class="line"></div></div>
       <div class="card"><b>Persistensi</b>
@@ -568,7 +568,7 @@
       <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">Composition root: rakit config + kernel session + tools + permission; inject wizard (setupWhenEmpty) dan approval (ask) ke lapisan logika.</div><div class="exports">createCliSession · CliSession</div></div>
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div><div class="exports">dispatch</div></div>
       <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya.</div><div class="exports">handleBuiltinCommand · /help /provider /model /sync /status /sessions /init /exit /theme /thinking</div></div>
-      <div class="mod"><div class="fname">fullscreen-driver.ts</div><div class="fdesc">Driver REPL fullscreen: routing slash &amp; skill, picker model/provider/sessions, overlay.</div></div>
+      <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver.</div><div class="exports">runRepl</div></div>
       <div class="mod"><div class="fname">commands/ — 9 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats</div></div>
       <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/.</div></div>
     </div>
@@ -647,11 +647,11 @@
       <div class="mod"><div class="fname">render/markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
       <div class="mod"><div class="fname">render/format.ts · diff.ts · table.ts · money.ts · reasoning.ts</div><div class="fdesc">Format event (tipe lokal), render diff, tabel, biaya, toggle reasoning.</div><div class="exports">reasoning (visible)</div></div>
       <div class="mod"><div class="fname">render/errors.ts</div><div class="fdesc">Format error provider jadi bahasa ramah user.</div><div class="exports">friendlyError · formatFriendly</div></div>
-      <div class="mod"><div class="fname">runtime/screen.ts · spinner.ts · statusline.ts</div><div class="fdesc">Alternate screen (?1049h) + heuristik, animasi spinner, baris status.</div></div>
-      <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni &amp; teruji: state, dekode CSI/UTF-8, render spec; history, askLine, askSecret.</div><div class="exports">createState · applyKey · buildRenderSpec · decodeKeys · askLine · askSecret</div></div>
-      <div class="mod"><div class="fname">assistant/fullscreen.ts · simple.ts · turn-status.ts</div><div class="fdesc">Shell REPL fullscreen ANSI, logger one-shot, status turn — semuanya berlangganan UiBus.</div><div class="exports">attachFullscreenMinimal · attachSimpleLogger</div></div>
+      <div class="mod"><div class="fname">runtime/spinner.ts · statusline.ts</div><div class="fdesc">Animasi spinner (wizard), koordinasi baris status vs printer linier.</div></div>
+      <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni &amp; teruji: state, dekode CSI/UTF-8, render spec; history, askLine (+ onKey), askSecret.</div><div class="exports">createState · applyKey · buildRenderSpec · decodeKeys · askLine · askSecret</div></div>
+      <div class="mod"><div class="fname">assistant/simple.ts · turn-status.ts</div><div class="fdesc">Printer linier (satu-satunya renderer, one-shot &amp; REPL): output append-only di scrollback, tool call inline EXPANDED by default (compact via MINICODE_COMPACT / /compact / Ctrl+O); spinner turn satu baris.</div><div class="exports">attachSimpleLogger · formatError · attachTurnStatus</div></div>
       <div class="mod"><div class="fname">approval/prompt.ts</div><div class="fdesc">View persetujuan tool call [y/a/n]; di-inject ke permission handler oleh cli/setup.ts.</div><div class="exports">promptAsk · ApprovalRequest</div></div>
-      <div class="mod"><div class="fname">screens/picker.ts · panel.ts</div><div class="fdesc">Picker generik; penangkap output console untuk overlay.</div><div class="exports">runPicker · runPanel · captureOutput</div></div>
+      <div class="mod"><div class="fname">screens/picker.ts</div><div class="fdesc">Picker generik — dipakai manager &amp; wizard; transient, membersihkan diri sendiri.</div><div class="exports">runPicker</div></div>
       <div class="mod"><div class="fname">screens/wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">View murni layar interaktif: hanya props data + callback async; tanpa akses config/disk.</div><div class="exports">runSetupWizardView · runModelManagerView · runProviderManagerView</div></div>
     </div>
   </details>
@@ -809,8 +809,7 @@ export const kalkulatorTool: Tool = {
 <!-- ── 6 · ENV & PERINTAH ── -->
 <section id="env">
   <h2><span class="hn">06</span> Referensi Env Var &amp; Perintah</h2>
-  <p class="lede">22 variabel <code>MINICODE_*</code> + <code>NO_COLOR</code> yang benar-benar dibaca kode, dengan titik bacanya. Nilai contoh bersifat ilustratif; sumber kebenaran tetap file yang tercantum.</p>
-  <div class="tscroll">
+  <p class="lede">22 variabel <code>MINICODE_*</code> + <code>NO_COLOR</code> yang benar-benar dibaca kode, dengan titik bacanya. Nilai contoh bersifat ilustratif; sumber kebenaran tetap file yang tercantum.</p>  <div class="tscroll">
   <table>
     <tr><th>Variabel</th><th>Fungsi</th><th>Dibaca di</th></tr>
     <tr><td>MINICODE_TIMEOUT_MS</td><td>timeout turn: <small>--timeout &gt; env &gt; 15 menit; 0 = tanpa batas</small></td><td>cli/setup.ts:100</td></tr>
@@ -830,7 +829,7 @@ export const kalkulatorTool: Tool = {
     <tr><td>MINICODE_THEME</td><td><code>minimal</code> → palet minim (runtime, bisa diganti /theme)</td><td>src/ui/render/theme.ts:48</td></tr>
     <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts:32</td></tr>
     <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts:47</td></tr>
-    <tr><td>MINICODE_NO_ALT</td><td><code>1</code> → jangan pakai alternate screen (keluaran heuristik salah)</td><td>src/ui/runtime/screen.ts:24</td></tr>
+    <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts:7</td></tr>
     <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts:93</td></tr>
     <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (juga ditulis ulang oleh /thinking)</td><td>src/ui/render/reasoning.ts:7</td></tr>
     <tr><td>MINICODE_THINKING</td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td>vendor/minicore/src/providers/openai-compat.ts:63</td></tr>
@@ -890,12 +889,13 @@ bun run bench            # benchmark loop agen</pre>
     <li><b>Flag tak dikenal = kata prompt.</b> <code>cli/args.ts</code> hanya mengenali whitelist flag; <code>--typo</code> tidak error tetapi ikut masuk teks prompt (args.ts:62). Tambah flag baru = daftarkan di whitelist.</li>
     <li><b>Jail mendahului segala mode.</b> Tidak ada jalur eksekusi tool yang boleh mem-bypass <code>src/policy/jail.ts</code>, termasuk allow-all dan tool MCP.</li>
     <li><b>Tool tidak mengimpor lapisan app/sesi.</b> Kebutuhan lintas-lapisan (mis. sesi sub-agen untuk <code>delegate_task</code>) disuntikkan dari composition root via setter DI; tanpa injeksi tool fail-closed. Arah <code>providers → config</code> juga satu arah sejak provisioning dipisah ke <code>providers/provision.ts</code>.</li>
+    <li><b>Output shell-first.</b> Tidak ada alternate screen (?1049h), tidak ada redraw penuh, tidak ada modal overlay: output mengalir append-only ke scrollback dan scrollback adalah satu-satunya transcript. Tool call inline &amp; expanded by default (transparansi ala <code>set -x</code>); compact = opt-in. UI ekran (manager/wizard/picker) transient — menghapus diri sendiri, tidak menyentuh scrollback.</li>
     <li><b>Peta ini harus hidup.</b> Setiap perubahan struktur (tambah/hapus/pindah modul atau lapisan) WAJIB memperbarui <code>docs/ARCHITECTURE.html</code> dalam perubahan yang sama — lihat AGENTS.md.</li>
   </ul>
   <footer>
-    Minicode v0.7.0 · Peta struktur hidup — diperbarui untuk perbaikan arsitektur B1–B5:
-    penjaga SSRF bersama (lib/net.ts), allowlist → policy/, provisioning → providers/provision.ts,
-    DI factory sub-agen untuk delegate_task, session.ts → src/app/.
+    Minicode v0.7.0 · Peta struktur hidup — diperbarui untuk REPL linier: fullscreen/screen/runPanel
+    dihapus, output append-only di scrollback (cli/repl.ts + assistant/simple.ts), tool call
+    expanded by default (MINICODE_COMPACT / /compact / Ctrl+O).
   </footer>
 </section>
 
