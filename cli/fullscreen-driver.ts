@@ -2,11 +2,11 @@
 // Slash builtin → overlay; skill → renderSkill → LLM
 
 import { resolve as resolvePath } from "node:path"
+import { expandMentions } from "../src/app/mentions.ts"
 import { detectAndSave, loadConfig, removeProvider, saveProvider } from "../src/config.ts"
 import { listSessions } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
-import { expandMentions } from "../src/tui/file-mention.ts"
-import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
+import { attachFullscreenMinimal } from "../src/ui/assistant/fullscreen.ts"
 import { appendHistory, loadHistory } from "../src/ui/input/input.ts"
 import { captureOutput } from "../src/ui/screens/panel.ts"
 import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"

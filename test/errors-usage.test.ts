@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test"
 import { createEventBus } from "#minicore/core/events.ts"
-import { extractProviderDetail, friendlyError, friendlyFromCategory } from "../cli/errors.ts"
 import { costFor, createUsageCollector } from "../src/policy/usage.ts"
+import {
+  extractProviderDetail,
+  friendlyError,
+  friendlyFromCategory,
+} from "../src/ui/render/errors.ts"
 
 test("friendlyFromCategory: auth + balance", () => {
   const f = friendlyFromCategory(

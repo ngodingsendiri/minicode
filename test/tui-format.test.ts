@@ -4,14 +4,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
+import { attachSimpleLogger, formatError } from "../src/ui/assistant/simple.ts"
 import {
   formatArgsPreview,
   formatCost,
   formatProviderError,
   formatStepCalls,
   formatUsage,
-} from "../src/tui/format.ts"
-import { attachSimpleLogger, formatError } from "../src/tui/minimal/simple.ts"
+} from "../src/ui/render/format.ts"
 import { decorateMarkdown, renderInline } from "../src/ui/render/markdown.ts"
 import { reasoning, setReasoningVisible } from "../src/ui/render/reasoning.ts"
 import { applyTheme, stripAnsi } from "../src/ui/render/theme.ts"

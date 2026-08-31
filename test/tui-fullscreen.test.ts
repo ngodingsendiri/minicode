@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
-import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
+import { attachFullscreenMinimal } from "../src/ui/assistant/fullscreen.ts"
 import { ESC, stripAnsi } from "../src/ui/render/theme.ts"
 import { createFakeBus, type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 

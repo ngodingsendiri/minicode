@@ -1,19 +1,15 @@
 // Fullscreen minimal — alternate-screen REPL tanpa Ink/React, pure ANSI
 // Header 1 baris · transcript ring 200 · status dots · input + dropdown · footer
-import type { EventBus } from "#minicore/core/index.ts"
-import {
-  applyKey,
-  decodeKeys,
-  type PromptState,
-  pointLength,
-} from "../../../src/ui/input/prompt-engine.ts"
-import { renderDiffCard } from "../../ui/render/diff.ts"
-import { decorateMarkdown } from "../../ui/render/markdown.ts"
-import { formatUsd } from "../../ui/render/money.ts"
-import { reasoning, setReasoningVisible } from "../../ui/render/reasoning.ts"
-import { sanitizeAnsi, sanitizeAnsiLine } from "../../ui/render/sanitize.ts"
-import { c, glyphs, stripAnsi } from "../../ui/render/theme.ts"
-import { displayWidth, truncateToWidth } from "../../ui/render/width.ts"
+import type { UiBus, UiEvent } from "../contract.ts"
+import { applyKey, decodeKeys, type PromptState, pointLength } from "../input/prompt-engine.ts"
+import { renderDiffCard } from "../render/diff.ts"
+import { formatProviderError } from "../render/format.ts"
+import { decorateMarkdown } from "../render/markdown.ts"
+import { formatUsd } from "../render/money.ts"
+import { reasoning, setReasoningVisible } from "../render/reasoning.ts"
+import { sanitizeAnsi, sanitizeAnsiLine } from "../render/sanitize.ts"
+import { c, glyphs, stripAnsi } from "../render/theme.ts"
+import { displayWidth, truncateToWidth } from "../render/width.ts"
 import {
   disableBracketedPaste,
   enableBracketedPaste,
@@ -23,8 +19,7 @@ import {
   hideCursor,
   onResize,
   showCursor,
-} from "../../ui/runtime/screen.ts"
-import { formatProviderError } from "../format.ts"
+} from "../runtime/screen.ts"
 import { formatError } from "./simple.ts"
 
 const RING_MAX = 60
@@ -58,12 +53,7 @@ export interface UsageSnapshot {
   cost?: number
 }
 
-interface ExecutionCompletedEvent {
-  execution: {
-    call: { name: string; args?: unknown }
-    result: { isError?: boolean; content?: unknown }
-  }
-}
+type ExecutionCompletedEvent = Extract<UiEvent, { type: "execution:completed" }>
 
 export interface TranscriptItem {
   id: number
@@ -72,7 +62,7 @@ export interface TranscriptItem {
 }
 
 export interface FullscreenMinimalOpts {
-  bus: EventBus
+  bus: UiBus
   model(): string | undefined
   cwdName: string
   budget?: number

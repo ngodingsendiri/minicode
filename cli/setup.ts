@@ -25,7 +25,7 @@ import { createMinicodeSession, type PermissionControl } from "../src/session.ts
 import type { Skill } from "../src/skills/loader.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
-import { attachSimpleLogger } from "../src/tui/minimal/simple.ts"
+import { attachSimpleLogger } from "../src/ui/assistant/simple.ts"
 import { c } from "../src/ui/render/theme.ts"
 
 export interface CliSessionOptions {
@@ -252,7 +252,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     detachSimple = attachSimpleLogger(session.events, { verbose })
   }
   // Turn status line — hanya untuk one-shot non-fullscreen
-  const { attachTurnStatus } = await import("../src/tui/turn-status.ts")
+  const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
   const detachStatus = useFullscreen
     ? () => {}
     : attachTurnStatus(session.events, {

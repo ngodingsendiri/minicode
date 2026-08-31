@@ -1,7 +1,7 @@
 // Formatter pesan event yang dipakai renderer ANSI (simple + fullscreen),
 // agar "apa yang ditampilkan" konsisten antar dua backend (tidak dobel logika).
-import type { ToolCall } from "#minicore/core/types.ts"
-import { formatFriendly, friendlyFromCategory } from "../../cli/errors.ts"
+import type { UiToolCallRef } from "../contract.ts"
+import { formatFriendly, friendlyFromCategory } from "./errors.ts"
 
 export function formatArgsPreview(args: unknown): string {
   try {
@@ -16,7 +16,7 @@ export function formatArgsPreview(args: unknown): string {
   }
 }
 
-export function formatStepCalls(calls: readonly ToolCall[], argCap = 35): string {
+export function formatStepCalls(calls: readonly UiToolCallRef[], argCap = 35): string {
   return calls.map((tc) => `${tc.name}(${JSON.stringify(tc.args).slice(0, argCap)})`).join(", ")
 }
 

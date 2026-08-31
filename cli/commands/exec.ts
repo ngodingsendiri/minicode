@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
-import { formatError } from "../../src/tui/minimal/simple.ts"
+import { formatError } from "../../src/ui/assistant/simple.ts"
 import { promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
 

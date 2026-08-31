@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expandMentions, parseMentions, resolveMentionContent } from "../src/tui/file-mention.ts"
+import { expandMentions, parseMentions, resolveMentionContent } from "../src/app/mentions.ts"
 
 let dir: string
 beforeAll(async () => {

@@ -17,7 +17,7 @@ const CLEAR = "\x1b[2J\x1b[H"
  * - `NO_COLOR` TIDAK dipakai di sini: itu soal warna, bukan kemampuan kursor.
  * - Windows: conhost modern (Windows 10+) mendukung VT, tapi konsol lama tidak.
  *   Indikator yang tersedia: WT_SESSION (Windows Terminal), TERM_PROGRAM,
- *   ANSICON, ConEmuANSI. Sama seperti heuristik di src/tui/turn-status.ts.
+ *   ANSICON, ConEmuANSI. Sama seperti heuristik di src/ui/assistant/turn-status.ts.
  * - `MINICODE_NO_ALT=1` : jalan keluar manual bila heuristik salah.
  */
 export function supportsVt(): boolean {

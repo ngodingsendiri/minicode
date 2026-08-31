@@ -43,9 +43,13 @@ export type UiEvent =
 
 export type UiEventType = UiEvent["type"]
 
+/**
+ * Bus event yang dibaca lapisan presentasi. Handler dilonggarkan ke `any`
+ * dengan sengaja: `on` milik EventBus kernel bersifat generik-kondisional, dan
+ * versi bertipe ketat (`handler: (event: Extract<UiEvent, {type: K}>) => void`)
+ * membuat kernel TIDAK assignable karena kontravariansi parameter. Tiap view
+ * menganotasi bentuk payload yang ia render sendiri (lihat assistant/*).
+ */
 export interface UiBus {
-  on<K extends UiEventType>(
-    type: K,
-    handler: (event: Extract<UiEvent, { type: K }>) => void,
-  ): () => void
+  on(type: UiEventType, handler: (event: any) => void): () => void
 }

@@ -1,13 +1,13 @@
 // Simple logger — pengganti renderer klasik (tanpa Ink, tanpa alternate-screen)
 // Untuk one-shot non-interaktif: streaming markdown per baris, wrap, diff ringkas
-import type { EventBus } from "#minicore/core/index.ts"
-import { formatFriendly, friendlyError, friendlyFromCategory } from "../../../cli/errors.ts"
-import { decorateMarkdown } from "../../ui/render/markdown.ts"
-import { reasoning } from "../../ui/render/reasoning.ts"
-import { c } from "../../ui/render/theme.ts"
-import { formatWrapped } from "../../ui/render/wrap.ts"
-import { runWithoutStatus } from "../../ui/runtime/statusline.ts"
-import { formatArgsPreview, formatProviderError, formatUsage } from "../format.ts"
+import type { UiBus, UiStep } from "../contract.ts"
+import { formatFriendly, friendlyError, friendlyFromCategory } from "../render/errors.ts"
+import { formatArgsPreview, formatProviderError, formatUsage } from "../render/format.ts"
+import { decorateMarkdown } from "../render/markdown.ts"
+import { reasoning } from "../render/reasoning.ts"
+import { c } from "../render/theme.ts"
+import { formatWrapped } from "../render/wrap.ts"
+import { runWithoutStatus } from "../runtime/statusline.ts"
 
 export interface SimpleOptions {
   verbose?: boolean
@@ -16,7 +16,7 @@ export interface SimpleOptions {
 const wOut = (s: string) => runWithoutStatus(() => process.stdout.write(s))
 const wErr = (s: string) => runWithoutStatus(() => process.stderr.write(s))
 
-export function attachSimpleLogger(bus: EventBus, opts: SimpleOptions = {}): () => void {
+export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => void {
   let streamBuffer = ""
   let inFence = false
 
@@ -85,7 +85,7 @@ export function attachSimpleLogger(bus: EventBus, opts: SimpleOptions = {}): () 
     }),
   )
   offs.push(
-    bus.on("step:started", (e) => {
+    bus.on("step:started", (e: { step: UiStep }) => {
       if (!opts.verbose) return
       const calls = e.step.toolCalls
         .map((tc) => `${c.info(tc.name)}(${c.muted(formatArgsPreview(tc.args))})`)
@@ -156,7 +156,7 @@ export function attachSimpleLogger(bus: EventBus, opts: SimpleOptions = {}): () 
  * Sebelumnya mengembalikan `${kind}: ${message}` mentah, sehingga baris terakhir
  * yang dilihat user setelah run gagal adalah dump JSON provider — pada uji live
  * OpenRouter: `provider: rate limited (429): {"error":{...400 karakter...}}`.
- * Kini kategori dipetakan lewat cli/errors.ts, sama seperti event error.
+ * Kini kategori dipetakan lewat src/ui/render/errors.ts, sama seperti event error.
  */
 export function formatError(e: unknown): string {
   const obj = e as { kind?: string; category?: string; message?: string } | undefined

@@ -1,12 +1,12 @@
-import type { EventBus } from "#minicore/core/index.ts"
-import { registerStatusLine } from "../ui/runtime/statusline.ts"
+import type { UiBus } from "../contract.ts"
+import { registerStatusLine } from "../runtime/statusline.ts"
 
 // Turn status line — satu baris di stderr: `·· model` (dots + label saja).
 // Kata status ("reasoning"/"working") sengaja tidak ditampilkan — indikator
 // cukup dari animasi dots. Selalu single-line, tidak merusak streaming:
 // output lain memakai runWithoutStatus() yang menahan repaint sesaat.
 export function attachTurnStatus(
-  bus: EventBus,
+  bus: UiBus,
   opts: { initialModel?: string; getModel?: () => string | undefined } = {},
 ): () => void {
   if (!process.stderr.isTTY) return () => {}
