@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { highlightCode } from "../src/tui/highlight.ts"
-import { decorateMarkdown } from "../src/tui/markdown.ts"
-import { c, glyphs, stripAnsi } from "../src/tui/theme.ts"
+import { highlightCode } from "../src/ui/render/highlight.ts"
+import { decorateMarkdown } from "../src/ui/render/markdown.ts"
+import { c, glyphs, stripAnsi } from "../src/ui/render/theme.ts"
 
 test("theme: stripAnsi removes escape codes cleanly", () => {
   const colored = c.info(c.bold("hello world"))

@@ -4,11 +4,11 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
-import { runPanel } from "../cli/panel.ts"
-import { runPicker } from "../cli/picker.ts"
 import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
-import { ESC, stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
+import { ESC, stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
+import { runPanel } from "../src/ui/screens/panel.ts"
+import { runPicker } from "../src/ui/screens/picker.ts"
 import { createFakeBus, type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 let tty: FakeTty | undefined
@@ -283,7 +283,7 @@ describe("screen: dukungan VT diperiksa sebelum menulis sekuens", () => {
     process.env.TERM = "dumb"
     delete process.env.WT_SESSION
     const { enterAlternate, hideCursor, exitAlternate, supportsVt } = await import(
-      "../src/tui/minimal/screen.ts"
+      "../src/ui/runtime/screen.ts"
     )
     expect(supportsVt()).toBe(false)
     tty.clear()
@@ -296,7 +296,7 @@ describe("screen: dukungan VT diperiksa sebelum menulis sekuens", () => {
   test("MINICODE_NO_ALT=1 mematikan alternate screen secara manual", async () => {
     tty = installFakeTty()
     process.env.MINICODE_NO_ALT = "1"
-    const { enterAlternate, supportsVt } = await import("../src/tui/minimal/screen.ts")
+    const { enterAlternate, supportsVt } = await import("../src/ui/runtime/screen.ts")
     expect(supportsVt()).toBe(false)
     tty.clear()
     enterAlternate()
@@ -307,7 +307,7 @@ describe("screen: dukungan VT diperiksa sebelum menulis sekuens", () => {
     tty = installFakeTty()
     process.env.TERM = "xterm-256color"
     delete process.env.MINICODE_NO_ALT
-    const { enterAlternate, supportsVt } = await import("../src/tui/minimal/screen.ts")
+    const { enterAlternate, supportsVt } = await import("../src/ui/runtime/screen.ts")
     expect(supportsVt()).toBe(true)
     tty.clear()
     enterAlternate()
@@ -316,7 +316,7 @@ describe("screen: dukungan VT diperiksa sebelum menulis sekuens", () => {
 
   test("non-TTY: tidak ada sekuens", async () => {
     tty = installFakeTty({ isTTY: false })
-    const { enterAlternate, supportsVt } = await import("../src/tui/minimal/screen.ts")
+    const { enterAlternate, supportsVt } = await import("../src/ui/runtime/screen.ts")
     expect(supportsVt()).toBe(false)
     tty.clear()
     enterAlternate()
@@ -325,7 +325,7 @@ describe("screen: dukungan VT diperiksa sebelum menulis sekuens", () => {
 
   test("getSize memberi nilai bawaan yang wajar", async () => {
     tty = installFakeTty({ columns: 111, rows: 33 })
-    const { getSize } = await import("../src/tui/minimal/screen.ts")
+    const { getSize } = await import("../src/ui/runtime/screen.ts")
     expect(getSize()).toEqual({ width: 111, height: 33 })
   })
 })

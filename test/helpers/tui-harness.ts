@@ -18,7 +18,7 @@
 // stub harus menyediakannya. `on("data")` mengumpulkan listener supaya send()
 // bisa memanggilnya persis seperti Node memanggil saat ada input.
 
-import { stripAnsi } from "../../src/tui/theme.ts"
+import { stripAnsi } from "../../src/ui/render/theme.ts"
 
 export interface FakeTtyOptions {
   columns?: number
@@ -197,8 +197,8 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     process.env.COLORTERM = "truecolor"
     delete process.env.NO_COLOR
   }
-  // src/tui/minimal/screen.ts memeriksa dukungan VT sebelum menulis sekuens,
-  // dan src/tui/theme.ts memeriksa dukungan UTF-8 untuk memilih glyph. Fake TTY
+  // src/ui/runtime/screen.ts memeriksa dukungan VT sebelum menulis sekuens,
+  // dan src/ui/render/theme.ts memeriksa dukungan UTF-8 untuk memilih glyph. Fake TTY
   // harus tampak seperti terminal modern, kalau tidak assertion gagal karena
   // alasan yang salah (sekuens tidak ditulis, glyph jadi ASCII).
   if (opts.vt !== false && isTTY) {

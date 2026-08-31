@@ -1,6 +1,6 @@
 // Word-wrap + justify (rata kanan-kiri) - untuk output teks AI.
 //
-// Semua pengukuran memakai KOLOM terminal (src/tui/width.ts), bukan jumlah
+// Semua pengukuran memakai KOLOM terminal (src/ui/render/width.ts), bukan jumlah
 // karakter: CJK/emoji memakan dua kolom, combining mark nol, dan sekuens ANSI
 // tidak menempati kolom sama sekali.
 //

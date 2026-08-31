@@ -7,9 +7,9 @@ import { listSessions } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { expandMentions } from "../src/tui/file-mention.ts"
 import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
+import { appendHistory, loadHistory } from "../src/ui/input/input.ts"
+import { captureOutput } from "../src/ui/screens/panel.ts"
 import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"
-import { appendHistory, loadHistory } from "./input.ts"
-import { captureOutput } from "./panel.ts"
 import type { CliSession } from "./setup.ts"
 
 const MODES = ["auto", "ask", "plan", "allowlist"] as const

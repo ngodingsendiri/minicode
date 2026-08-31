@@ -5,7 +5,7 @@
 // layar, keluar dari alternate screen, dan mengubah judul jendela.
 
 import { describe, expect, test } from "bun:test"
-import { sanitizeAnsi, sanitizeAnsiLine } from "../src/tui/sanitize.ts"
+import { sanitizeAnsi, sanitizeAnsiLine } from "../src/ui/render/sanitize.ts"
 
 describe("sanitizeAnsi: yang DIPERTAHANKAN", () => {
   test("SGR warna sederhana", () => {

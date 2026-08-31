@@ -1,4 +1,4 @@
-import { c, glyphs } from "./theme.ts"
+import { c, glyphs } from "../render/theme.ts"
 
 // Jaga agar kursor terminal selalu ter-restore meski proses dihentikan (SIGINT/dll).
 process.on("exit", () => {

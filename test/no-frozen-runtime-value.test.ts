@@ -4,12 +4,12 @@
 // dukungan UTF-8, NO_COLOR) disimpan ke `const` di module scope, sehingga
 // dievaluasi sekali saat modul di-import dan tidak pernah berubah lagi.
 //
-//   1. V6 — `src/tui/theme.ts`, objek `c` dibangun di module scope.
+//   1. V6 — `src/ui/render/theme.ts`, objek `c` dibangun di module scope.
 //      Akibat: `/theme` dan `--theme` tidak berefek apa pun. Test lolos karena
 //      hanya memeriksa nilai kembalian `applyTheme`, bukan warna yang dipakai.
 //   2. V6 — palet per-tema di module scope. Akibat: tema `mono` tidak pernah
 //      benar-benar monokrom, padahal itu jalur aksesibilitasnya.
-//   3. V8 — `glyphs` di `src/tui/theme.ts` dan `const OK = glyphs.check` di
+//   3. V8 — `glyphs` di `src/ui/render/theme.ts` dan `const OK = glyphs.check` di
 //      `cli/commands.ts`. Akibat: fallback ASCII tidak berlaku, `MINICODE_ASCII=1`
 //      diabaikan.
 //
@@ -18,7 +18,7 @@
 // seseorang memindahkan satu ekspresi ke module scope.
 //
 // Objek yang dijaga (`c`, `glyphs`, `themeState`) adalah getter/state mutable di
-// `src/tui/theme.ts`. Membacanya WAJIB terjadi saat pakai — di dalam fungsi,
+// `src/ui/render/theme.ts`. Membacanya WAJIB terjadi saat pakai — di dalam fungsi,
 // arrow, atau getter — bukan saat import.
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
@@ -27,7 +27,7 @@ import { join } from "node:path"
 
 const repoRoot = process.cwd()
 
-/** Objek di `src/tui/theme.ts` yang nilainya bergantung state runtime. */
+/** Objek di `src/ui/render/theme.ts` yang nilainya bergantung state runtime. */
 const RUNTIME_OBJECTS = ["c", "glyphs", "themeState"] as const
 
 /**

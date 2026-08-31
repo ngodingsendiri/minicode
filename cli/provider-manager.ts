@@ -2,10 +2,10 @@
 
 import { detectAndSave, loadConfig, removeProvider } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
-import { c, glyphs } from "../src/tui/theme.ts"
-import { padToWidth, truncateToWidth } from "../src/tui/width.ts"
-import { askLine, askSecret } from "./input.ts"
-import { decodeKeys } from "./prompt-engine.ts"
+import { askLine, askSecret } from "../src/ui/input/input.ts"
+import { decodeKeys } from "../src/ui/input/prompt-engine.ts"
+import { c, glyphs } from "../src/ui/render/theme.ts"
+import { padToWidth, truncateToWidth } from "../src/ui/render/width.ts"
 
 const DIM = "\x1b[2m",
   RESTORE = "\x1b[22m",

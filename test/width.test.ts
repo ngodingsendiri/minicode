@@ -12,7 +12,7 @@ import {
   escapeLength,
   padToWidth,
   truncateToWidth,
-} from "../src/tui/width.ts"
+} from "../src/ui/render/width.ts"
 
 describe("charWidth", () => {
   test("ASCII satu kolom", () => {

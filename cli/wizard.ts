@@ -2,10 +2,10 @@ import { createInterface } from "node:readline"
 import { detectAndSave } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
 import { formatError } from "../src/tui/minimal/simple.ts"
-import { c, glyphs } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
-import { askSecret } from "./input.ts"
-import { runPicker } from "./picker.ts"
+import { askSecret } from "../src/ui/input/input.ts"
+import { c, glyphs } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
+import { runPicker } from "../src/ui/screens/picker.ts"
 
 /**
  * Wizard setup pertama — hal PERTAMA yang dilihat pengguna baru.
@@ -96,7 +96,7 @@ export async function runSetupWizard(): Promise<boolean> {
     return false
   }
 
-  const { createSpinner } = await import("../src/tui/spinner.ts")
+  const { createSpinner } = await import("../src/ui/runtime/spinner.ts")
   const spin = createSpinner("Detecting models…")
   try {
     const preset = GATEWAY_PRESETS.find(

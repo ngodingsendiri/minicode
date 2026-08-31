@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, test } from "bun:test"
-import { applyTheme, c, ESC, stripAnsi } from "../src/tui/theme.ts"
-import { THEMES } from "../src/tui/themes.ts"
+import { applyTheme, c, ESC, stripAnsi } from "../src/ui/render/theme.ts"
+import { THEMES } from "../src/ui/render/themes.ts"
 
 // Deteksi warna dievaluasi lazy, jadi test bisa memaksa level warna lewat env.
 // Tanpa ini hasilnya bergantung apakah stdout runner tersambung ke TTY.

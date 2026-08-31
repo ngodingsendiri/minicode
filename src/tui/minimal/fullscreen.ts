@@ -1,15 +1,19 @@
 // Fullscreen minimal — alternate-screen REPL tanpa Ink/React, pure ANSI
 // Header 1 baris · transcript ring 200 · status dots · input + dropdown · footer
 import type { EventBus } from "#minicore/core/index.ts"
-import { applyKey, decodeKeys, type PromptState, pointLength } from "../../../cli/prompt-engine.ts"
-import { renderDiffCard } from "../diff.ts"
-import { formatProviderError } from "../format.ts"
-import { decorateMarkdown } from "../markdown.ts"
-import { formatUsd } from "../money.ts"
-import { reasoning, setReasoningVisible } from "../reasoning.ts"
-import { sanitizeAnsi, sanitizeAnsiLine } from "../sanitize.ts"
-import { c, glyphs, stripAnsi } from "../theme.ts"
-import { displayWidth, truncateToWidth } from "../width.ts"
+import {
+  applyKey,
+  decodeKeys,
+  type PromptState,
+  pointLength,
+} from "../../../src/ui/input/prompt-engine.ts"
+import { renderDiffCard } from "../../ui/render/diff.ts"
+import { decorateMarkdown } from "../../ui/render/markdown.ts"
+import { formatUsd } from "../../ui/render/money.ts"
+import { reasoning, setReasoningVisible } from "../../ui/render/reasoning.ts"
+import { sanitizeAnsi, sanitizeAnsiLine } from "../../ui/render/sanitize.ts"
+import { c, glyphs, stripAnsi } from "../../ui/render/theme.ts"
+import { displayWidth, truncateToWidth } from "../../ui/render/width.ts"
 import {
   disableBracketedPaste,
   enableBracketedPaste,
@@ -19,7 +23,8 @@ import {
   hideCursor,
   onResize,
   showCursor,
-} from "./screen.ts"
+} from "../../ui/runtime/screen.ts"
+import { formatProviderError } from "../format.ts"
 import { formatError } from "./simple.ts"
 
 const RING_MAX = 60
@@ -36,7 +41,7 @@ const sep = () => ` ${glyphs.dot} `
 /**
  * Potong ke lebar KOLOM terminal, pertahankan sekuens ANSI, tutup atribut.
  *
- * Delegasi ke src/tui/width.ts: CJK/emoji memakan dua kolom dan combining mark
+ * Delegasi ke src/ui/render/width.ts: CJK/emoji memakan dua kolom dan combining mark
  * nol kolom. Versi sebelumnya menghitung code point, sehingga 38 karakter CJK
  * dilaporkan "38 kolom" padahal menempati 73 — baris membungkus sendiri dan
  * frame TUI (yang dihitung per baris) rusak.

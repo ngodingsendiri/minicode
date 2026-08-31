@@ -15,7 +15,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { dispatch } from "../cli/router.ts"
 import { __resetPricingOverlay } from "../src/policy/pricing.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
 import { type FakeTty, installFakeTty } from "./helpers/tui-harness.ts"
 
 // `pricing status` memuat overlay models.dev ke state modul pricing, dan

@@ -1,7 +1,8 @@
 // Modal panel - VS Code palette
-import { c, stripAnsi } from "../src/tui/theme.ts"
-import { truncateToWidth } from "../src/tui/width.ts"
-import { decodeKeys } from "./prompt-engine.ts"
+
+import { decodeKeys } from "../input/prompt-engine.ts"
+import { c, stripAnsi } from "../render/theme.ts"
+import { truncateToWidth } from "../render/width.ts"
 
 export interface PanelOptions {
   title: string

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { loadConfig, type MinicodeConfig, refreshProviderModels } from "../../src/config.ts"
-import { renderTable } from "../../src/tui/table.ts"
-import { c, glyphs } from "../../src/tui/theme.ts"
+import { renderTable } from "../../src/ui/render/table.ts"
+import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 interface TraceRow {
   model?: string

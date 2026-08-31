@@ -11,12 +11,12 @@ import {
   formatStepCalls,
   formatUsage,
 } from "../src/tui/format.ts"
-import { decorateMarkdown, renderInline } from "../src/tui/markdown.ts"
 import { attachSimpleLogger, formatError } from "../src/tui/minimal/simple.ts"
-import { reasoning, setReasoningVisible } from "../src/tui/reasoning.ts"
-import { registerStatusLine, runWithoutStatus } from "../src/tui/statusline.ts"
-import { applyTheme, stripAnsi } from "../src/tui/theme.ts"
-import { formatWrapped, justifyLine, visibleLen, wordWrap } from "../src/tui/wrap.ts"
+import { decorateMarkdown, renderInline } from "../src/ui/render/markdown.ts"
+import { reasoning, setReasoningVisible } from "../src/ui/render/reasoning.ts"
+import { applyTheme, stripAnsi } from "../src/ui/render/theme.ts"
+import { formatWrapped, justifyLine, visibleLen, wordWrap } from "../src/ui/render/wrap.ts"
+import { registerStatusLine, runWithoutStatus } from "../src/ui/runtime/statusline.ts"
 import { createFakeBus, type FakeTty, installFakeTty } from "./helpers/tui-harness.ts"
 
 describe("wrap: wordWrap", () => {

@@ -18,7 +18,7 @@ import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { runProviderManager } from "../cli/provider-manager.ts"
 import { clearDetectCache } from "../src/providers/detect.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
 import { type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 const globalPath = join(homedir(), ".minicode", "config.json")

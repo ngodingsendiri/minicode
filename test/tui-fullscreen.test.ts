@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
 import { attachFullscreenMinimal } from "../src/tui/minimal/fullscreen.ts"
-import { ESC, stripAnsi } from "../src/tui/theme.ts"
+import { ESC, stripAnsi } from "../src/ui/render/theme.ts"
 import { createFakeBus, type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 /** Regex "ada sekuens SGR sebelum teks ini" — dibangun tanpa literal control char. */

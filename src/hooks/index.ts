@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { ToolCall } from "#minicore/core/types.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
-import { c } from "../tui/theme.ts"
+import { c } from "../ui/render/theme.ts"
 
 export interface Allowlist {
   allowed: string[] // entries like "bash:echo hi" or "write_file:.tmp/*"

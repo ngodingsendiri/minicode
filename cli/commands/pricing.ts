@@ -7,7 +7,7 @@ import {
   pricingOverlayMeta,
   syncPricing,
 } from "../../src/policy/pricing.ts"
-import { c, glyphs } from "../../src/tui/theme.ts"
+import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 const PRICING_HELP = `minicode pricing — tabel harga untuk estimasi biaya
 

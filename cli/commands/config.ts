@@ -7,8 +7,8 @@ import {
   saveLspServer,
   saveMcpServer,
 } from "../../src/config.ts"
-import { renderTable } from "../../src/tui/table.ts"
-import { c, glyphs } from "../../src/tui/theme.ts"
+import { renderTable } from "../../src/ui/render/table.ts"
+import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 // Help kontekstual per subcommand. Sebelumnya ketiga cabang ini mencetak HELP
 // global 45 baris dan exit 0 — user tidak tahu apa yang salah dan skrip tidak

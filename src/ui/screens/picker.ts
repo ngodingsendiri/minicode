@@ -1,7 +1,8 @@
 // Modal picker - searchable, VS Code palette
-import { c } from "../src/tui/theme.ts"
-import { truncateToWidth } from "../src/tui/width.ts"
-import { decodeKeys } from "./prompt-engine.ts"
+
+import { decodeKeys } from "../input/prompt-engine.ts"
+import { c } from "../render/theme.ts"
+import { truncateToWidth } from "../render/width.ts"
 
 export interface PickerItem {
   name: string

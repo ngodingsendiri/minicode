@@ -1,8 +1,8 @@
 // Prompt engine - PURE functions untuk logika input interaktif.
 // Sama sekali tidak menyentuh stdin/stdout - hanya data -> data.
-// Dipakai askLine (cli/input.ts), TUI fullscreen, + unit test.
+// Dipakai askLine (src/ui/input/input.ts), TUI fullscreen, + unit test.
 
-import { displayWidth } from "../src/tui/width.ts"
+import { displayWidth } from "../render/width.ts"
 
 export interface PromptState {
   line: string

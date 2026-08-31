@@ -6,7 +6,7 @@ import {
   loginWithDeviceFlow,
   OAUTH_PROVIDERS,
 } from "../../src/providers/oauth.ts"
-import { c, glyphs } from "../../src/tui/theme.ts"
+import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 function usage(code = 0): never {
   console.log(`minicode auth — login OAuth (tanpa API key)

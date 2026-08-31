@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
-import { stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth, truncateToWidth } from "../src/tui/width.ts"
+import { stripAnsi } from "../render/theme.ts"
+import { displayWidth, truncateToWidth } from "../render/width.ts"
 import { applyKey, buildRenderSpec, createState, decodeKeys, pointLength } from "./prompt-engine.ts"
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
@@ -61,7 +61,7 @@ export interface AskLineOptions {
 // - Legacy console (tanpa VT): fallback inline hints di baris yang sama.
 // Semua logika transisi ada di prompt-engine.ts (pure) - di sini hanya IO + render.
 export async function askLine(opts: AskLineOptions = {}): Promise<string | null> {
-  const { glyphs } = await import("../src/tui/theme.ts")
+  const { glyphs } = await import("../render/theme.ts")
   const prompt = opts.prompt ?? `${glyphs.prompt} `
 
   if (!process.stdin.isTTY) {
@@ -75,7 +75,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
   }
 
   const ansi = await detectAnsi()
-  const { c } = await import("../src/tui/theme.ts")
+  const { c } = await import("../render/theme.ts")
   const DIM = "\x1b[2m",
     RESTORE = "\x1b[22m",
     CLEAR = "\x1b[2K",

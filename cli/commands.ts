@@ -3,9 +3,9 @@ import { refreshProviderModels } from "../src/config.ts"
 import type { Usage } from "../src/policy/usage.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import type { Skill } from "../src/skills/loader.ts"
-import { formatUsd } from "../src/tui/money.ts"
-import { glyphs } from "../src/tui/theme.ts"
-import { padToWidth } from "../src/tui/width.ts"
+import { formatUsd } from "../src/ui/render/money.ts"
+import { glyphs } from "../src/ui/render/theme.ts"
+import { padToWidth } from "../src/ui/render/width.ts"
 
 // SEMUA output = PLAIN TEXT tanpa ANSI.
 // Readline + ANSI di Windows = karakter escape bocor jadi teks literal.

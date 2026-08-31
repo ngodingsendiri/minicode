@@ -11,7 +11,7 @@ import { buildProviderList } from "../src/providers/build.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
 import { createMinicodeSession } from "../src/session.ts"
 import { allTools } from "../src/tools/index.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
 
 const LOG = resolve(".tmp-demo", "demo.log")
 mkdirSync(".tmp-demo", { recursive: true })

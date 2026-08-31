@@ -2,12 +2,12 @@
 // Untuk one-shot non-interaktif: streaming markdown per baris, wrap, diff ringkas
 import type { EventBus } from "#minicore/core/index.ts"
 import { formatFriendly, friendlyError, friendlyFromCategory } from "../../../cli/errors.ts"
+import { decorateMarkdown } from "../../ui/render/markdown.ts"
+import { reasoning } from "../../ui/render/reasoning.ts"
+import { c } from "../../ui/render/theme.ts"
+import { formatWrapped } from "../../ui/render/wrap.ts"
+import { runWithoutStatus } from "../../ui/runtime/statusline.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "../format.ts"
-import { decorateMarkdown } from "../markdown.ts"
-import { reasoning } from "../reasoning.ts"
-import { runWithoutStatus } from "../statusline.ts"
-import { c } from "../theme.ts"
-import { formatWrapped } from "../wrap.ts"
 
 export interface SimpleOptions {
   verbose?: boolean

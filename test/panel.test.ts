@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { captureOutput } from "../cli/panel.ts"
+import { captureOutput } from "../src/ui/screens/panel.ts"
 
 test("captureOutput: menangkap console.log & stdout.write jadi baris bersih", async () => {
   const { lines } = await captureOutput(async () => {

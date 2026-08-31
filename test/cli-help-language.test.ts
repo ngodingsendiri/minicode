@@ -3,9 +3,9 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import { BUILTIN_COMMANDS, handleBuiltinCommand } from "../cli/commands.ts"
-import { captureOutput } from "../cli/panel.ts"
-import { glyphs, stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
+import { glyphs, stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
+import { captureOutput } from "../src/ui/screens/panel.ts"
 
 /** Kata Inggris yang pernah bocor ke keluaran pengguna. */
 const INDONESIAN =

@@ -5,7 +5,7 @@ import {
   createState,
   decodeKeys,
   type PromptState,
-} from "../cli/prompt-engine.ts"
+} from "../src/ui/input/prompt-engine.ts"
 
 // Fuzz — decodeKeys dengan bytes acak TIDAK BOLEH throw
 test("fuzz decodeKeys: 1000 iterasi byte acak tidak throw & hasil selalu PromptKey", () => {

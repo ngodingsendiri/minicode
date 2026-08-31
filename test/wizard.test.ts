@@ -7,8 +7,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runSetupWizard } from "../cli/wizard.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
 import { type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 let tty: FakeTty | undefined

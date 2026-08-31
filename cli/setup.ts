@@ -26,7 +26,7 @@ import type { Skill } from "../src/skills/loader.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
 import { attachSimpleLogger } from "../src/tui/minimal/simple.ts"
-import { c } from "../src/tui/theme.ts"
+import { c } from "../src/ui/render/theme.ts"
 
 export interface CliSessionOptions {
   cwd?: string

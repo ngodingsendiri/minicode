@@ -1,6 +1,6 @@
 import { loadConfig, saveProvider } from "../src/config.ts"
-import { askLine } from "./input.ts"
-import { decodeKeys } from "./prompt-engine.ts"
+import { askLine } from "../src/ui/input/input.ts"
+import { decodeKeys } from "../src/ui/input/prompt-engine.ts"
 
 /** Minimal model registry: list, select, add, and remove. */
 export async function runModelManager(opts: {

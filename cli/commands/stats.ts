@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { c } from "../../src/tui/theme.ts"
+import { c } from "../../src/ui/render/theme.ts"
 
 interface TraceRow {
   ok?: boolean

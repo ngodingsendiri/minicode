@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { computeLineDiff, renderDiffCard } from "../src/tui/diff.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
+import { computeLineDiff, renderDiffCard } from "../src/ui/render/diff.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
 
 test("diff: computeLineDiff identifies added and deleted lines", () => {
   const oldText = "line 1\nline 2\nline 3"

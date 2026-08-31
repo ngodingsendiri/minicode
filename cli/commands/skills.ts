@@ -1,6 +1,6 @@
 import { findSkill, loadSkills } from "../../src/skills/loader.ts"
-import { renderTable } from "../../src/tui/table.ts"
-import { c } from "../../src/tui/theme.ts"
+import { renderTable } from "../../src/ui/render/table.ts"
+import { c } from "../../src/ui/render/theme.ts"
 
 const SKILLS_HELP = `minicode skills — skill markdown di .minicode/skills/*.md
 

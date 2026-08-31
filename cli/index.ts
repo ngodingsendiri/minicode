@@ -7,8 +7,8 @@ import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { formatError } from "../src/tui/minimal/simple.ts"
-import { formatUsd } from "../src/tui/money.ts"
-import { c, glyphs } from "../src/tui/theme.ts"
+import { formatUsd } from "../src/ui/render/money.ts"
+import { c, glyphs } from "../src/ui/render/theme.ts"
 import { promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
@@ -157,7 +157,7 @@ if (budgetRaw && !Number.isFinite(budget))
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
-const { applyTheme } = await import("../src/tui/theme.ts")
+const { applyTheme } = await import("../src/ui/render/theme.ts")
 applyTheme("dark")
 
 const prompt = promptFromArgs(args) || (await readPrompt())

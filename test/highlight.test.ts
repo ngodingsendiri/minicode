@@ -8,8 +8,8 @@
 // tersambung ke TTY, dan pada level mono seluruh pewarnaan jadi identity sehingga
 // test lolos tanpa benar-benar menjalankan cabang pewarnaan.
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
-import { formatCodeBlock, highlightCode } from "../src/tui/highlight.ts"
-import { applyTheme, stripAnsi } from "../src/tui/theme.ts"
+import { formatCodeBlock, highlightCode } from "../src/ui/render/highlight.ts"
+import { applyTheme, stripAnsi } from "../src/ui/render/theme.ts"
 
 const origColorterm = process.env.COLORTERM
 const origNoColor = process.env.NO_COLOR

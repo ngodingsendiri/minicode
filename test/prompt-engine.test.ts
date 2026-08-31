@@ -6,7 +6,7 @@ import {
   decodeKeys,
   MAX_VISIBLE,
   type PromptKey,
-} from "../cli/prompt-engine.ts"
+} from "../src/ui/input/prompt-engine.ts"
 
 const cmds = [
   "/help",

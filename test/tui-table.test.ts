@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { renderTable } from "../src/tui/table.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
-import { displayWidth } from "../src/tui/width.ts"
+import { renderTable } from "../src/ui/render/table.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
 
 test("table: renders empty state", () => {
   const table = renderTable([{ header: "Name", key: "name" }], [])

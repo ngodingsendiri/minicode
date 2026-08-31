@@ -10,11 +10,11 @@
 // stdin, dan keystroke yang dikirim sebelum itu hilang tanpa jejak.
 
 import { afterEach, describe, expect, test } from "bun:test"
-import { askLine } from "../cli/input.ts"
-import { captureOutput, runPanel } from "../cli/panel.ts"
-import { runPicker } from "../cli/picker.ts"
 import { runProviderManager } from "../cli/provider-manager.ts"
-import { stripAnsi } from "../src/tui/theme.ts"
+import { askLine } from "../src/ui/input/input.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
+import { captureOutput, runPanel } from "../src/ui/screens/panel.ts"
+import { runPicker } from "../src/ui/screens/picker.ts"
 import { type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 let tty: FakeTty | undefined
