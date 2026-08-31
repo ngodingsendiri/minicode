@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Extreme Security experiment for Minicode — jail, SSRF, permission, env strip
 import { createPermissionHandler } from "../src/policy/permission.ts"
-import { isPrivateHost } from "../src/tools/web_fetch.ts"
+import { isPrivateHost } from "../src/lib/net.ts"
 import { isPathOutsideRoot, isRealPathOutsideRoot, isSensitive } from "../src/policy/jail.ts"
 import { scrubSecrets, sanitizeSpawnEnv } from "../src/policy/scrub.ts"
 

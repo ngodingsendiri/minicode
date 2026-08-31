@@ -19,7 +19,7 @@
 //   - Body respons dibatasi agar server nakal tak bisa membuat OOM.
 
 import { LIMITS } from "../constants.ts"
-import { isPrivateHostWithDns } from "../tools/web_fetch.ts"
+import { isPrivateHostWithDns } from "../lib/net.ts"
 
 /**
  * Kemampuan transport yang dipakai `McpConnection` setelah koneksi terbuka.

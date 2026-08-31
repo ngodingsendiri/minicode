@@ -1,5 +1,6 @@
 ﻿import { afterEach, expect, test } from "bun:test"
-import { isPrivateHost, webFetchTool } from "../src/tools/web_fetch.ts"
+import { isPrivateHost } from "../src/lib/net.ts"
+import { webFetchTool } from "../src/tools/web_fetch.ts"
 
 const ctx = { signal: new AbortController().signal } as never
 

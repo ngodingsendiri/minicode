@@ -1,6 +1,6 @@
 import type { Tool } from "#minicore"
+import { isPrivateHost } from "../lib/net.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
-import { isPrivateHost } from "./web_fetch.ts"
 
 export const webSearchTool: Tool = {
   name: "web_search",

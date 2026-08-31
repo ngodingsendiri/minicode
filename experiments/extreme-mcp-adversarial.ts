@@ -14,7 +14,7 @@
 // Usage: bun experiments/extreme-mcp-adversarial.ts
 
 import { McpHttpTransport } from "../src/mcp/http-transport.ts"
-import { isPrivateHost, isPrivateHostWithDns } from "../src/tools/web_fetch.ts"
+import { isPrivateHost, isPrivateHostWithDns } from "../src/lib/net.ts"
 
 let pass = 0
 let fail = 0
