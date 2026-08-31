@@ -1,6 +1,7 @@
-import { loadConfig, saveProvider } from "../src/config.ts"
-import { askLine } from "../src/ui/input/input.ts"
-import { decodeKeys } from "../src/ui/input/prompt-engine.ts"
+// Controller model registry — CRUD config; tampilannya di
+// src/ui/screens/model-manager.ts.
+import { loadConfig, type ProviderEntry, saveProvider } from "../src/config.ts"
+import { type ModelRow, runModelManagerView } from "../src/ui/screens/model-manager.ts"
 
 /** Minimal model registry: list, select, add, and remove. */
 export async function runModelManager(opts: {
@@ -14,103 +15,41 @@ export async function runModelManager(opts: {
     return
   }
 
-  let rows = cfg.providers.flatMap((p) => p.models.map((model) => ({ provider: p, model })))
-  let selected = Math.max(
-    0,
-    rows.findIndex((r) => `${r.provider.id}::${r.model}` === opts.currentModel),
-  )
+  const rowsOf = (providers: ProviderEntry[]): ModelRow[] =>
+    providers.flatMap((p) =>
+      p.models.map((model) => ({
+        id: `${p.id}::${model}`,
+        active: `${p.id}::${model}` === opts.currentModel,
+      })),
+    )
+  // Simpan ke scope yang sama dengan asal config aktif: tanpa cwd, atau tanpa
+  // config lokal, targetnya global.
+  const saveGlobal = async () =>
+    !opts.cwd || !(await Bun.file(`${opts.cwd}/.minicode/config.json`).exists())
 
-  const reload = async () => {
-    const next = await loadConfig(opts.cwd)
-    rows = next.providers.flatMap((p) => p.models.map((model) => ({ provider: p, model })))
-    selected = Math.min(Math.max(0, selected), Math.max(0, rows.length - 1))
-  }
-
-  return new Promise<void>((resolve) => {
-    const render = () => {
-      console.log("\nModels")
-      if (!rows.length) console.log("  No models configured.")
-      for (const [i, row] of rows.entries()) {
-        const id = `${row.provider.id}::${row.model}`
-        console.log(
-          `${i === selected ? ">" : " "} ${id}${id === opts.currentModel ? "  active" : ""}`,
-        )
+  return runModelManagerView({
+    initialRows: rowsOf(cfg.providers),
+    onSelect: (id) => opts.setModelOverride?.(id),
+    loadRows: async () => rowsOf((await loadConfig(opts.cwd)).providers),
+    onAdd: async (providerId, model) => {
+      const next = await loadConfig(opts.cwd)
+      const provider = next.providers.find((p) => p.id === providerId)
+      if (provider && !provider.models.includes(model)) {
+        provider.models = [...provider.models, model]
+        await saveProvider(provider, { global: await saveGlobal(), cwd: opts.cwd })
       }
-      console.log("\na add  d delete  Enter select  Esc close")
-    }
-    const finish = () => {
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      resolve()
-    }
-    const onData = (chunk: Buffer) => {
-      for (const item of decodeKeys(chunk)) {
-        if (item.key.type === "esc" || item.key.type === "ctrl-c" || item.key.type === "ctrl-d") {
-          finish()
-          return
-        }
-        if (item.key.type === "up") selected = Math.max(0, selected - 1)
-        else if (item.key.type === "down") selected = Math.min(rows.length - 1, selected + 1)
-        else if (item.key.type === "enter") {
-          const row = rows[selected]
-          if (row && opts.setModelOverride)
-            opts.setModelOverride(`${row.provider.id}::${row.model}`)
-          finish()
-          return
-        } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
-          void addModel()
-          return
-        } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "d") {
-          void deleteModel()
-          return
-        }
+      return rowsOf((await loadConfig(opts.cwd)).providers)
+    },
+    onDelete: async (id) => {
+      const sep = id.indexOf("::")
+      const next = await loadConfig(opts.cwd)
+      const provider = next.providers.find((p) => p.id === id.slice(0, sep))
+      const model = id.slice(sep + 2)
+      if (provider) {
+        provider.models = provider.models.filter((m) => m !== model)
+        await saveProvider(provider, { global: await saveGlobal(), cwd: opts.cwd })
       }
-      render()
-    }
-    const addModel = async () => {
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      const providerId = await askLine({ prompt: "Provider: " })
-      const model = await askLine({ prompt: "Model: " })
-      const provider = cfg.providers.find((p) => p.id === providerId?.trim())
-      if (provider && model?.trim() && !provider.models.includes(model.trim())) {
-        provider.models = [...provider.models, model.trim()]
-        await saveProvider(provider, {
-          global: !opts.cwd || !(await Bun.file(`${opts.cwd}/.minicode/config.json`).exists()),
-          cwd: opts.cwd,
-        })
-      }
-      await reload()
-      process.stdin.setRawMode(true)
-      process.stdin.resume()
-      process.stdin.on("data", onData)
-      render()
-    }
-    const deleteModel = async () => {
-      const row = rows[selected]
-      if (!row) return
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      const answer = await askLine({ prompt: `Delete ${row.provider.id}::${row.model}? [y/N] ` })
-      if (answer?.trim().toLowerCase() === "y") {
-        row.provider.models = row.provider.models.filter((model) => model !== row.model)
-        await saveProvider(row.provider, {
-          global: !opts.cwd || !(await Bun.file(`${opts.cwd}/.minicode/config.json`).exists()),
-          cwd: opts.cwd,
-        })
-      }
-      await reload()
-      process.stdin.setRawMode(true)
-      process.stdin.resume()
-      process.stdin.on("data", onData)
-      render()
-    }
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.on("data", onData)
-    render()
+      return rowsOf((await loadConfig(opts.cwd)).providers)
+    },
   })
 }
