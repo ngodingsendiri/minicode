@@ -239,6 +239,68 @@ describe("askLine: mouse tidak mencemari input", () => {
   })
 })
 
+describe("askLine: onKey", () => {
+  test("return truthy menangani key; default dilewati dan re-render terjadi", async () => {
+    tty = installFakeTty()
+    let mode = 0
+    const modes = ["code", "plan"] as const
+    // Prompt berbentuk fungsi: cycle mode REPL mengubah prefix tanpa mengulang askLine.
+    const p = askLine({
+      prompt: () => `${modes[mode]} › `,
+      onKey: (key) => {
+        if (key.type === "shift-tab") {
+          mode = (mode + 1) % modes.length
+          return true
+        }
+        return false
+      },
+    })
+    await tty.ready()
+    tty.clear()
+    await tty.send(KEY.shiftTab)
+    expect(visible(tty)).toContain("plan ›")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("")
+  })
+
+  test("ESC[Z didekode sebagai shift-tab, bukan esc", async () => {
+    tty = installFakeTty()
+    const seen: string[] = []
+    const p = askLine({
+      prompt: "> ",
+      onKey: (key) => {
+        seen.push(key.type)
+        return false
+      },
+    })
+    await tty.ready()
+    await tty.send(KEY.shiftTab)
+    expect(seen).toContain("shift-tab")
+    expect(seen).not.toContain("esc")
+    await tty.send(KEY.ctrlC, 20)
+    expect(await p).toBeNull()
+  })
+
+  test("return falsy melanjutkan handling default", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", onKey: () => false })
+    await tty.ready()
+    await tty.send("abc")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("abc")
+  })
+
+  test("onKey yang menangani ctrl-c mencegah pembatalan", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", onKey: (key) => key.type === "ctrl-c" })
+    await tty.ready()
+    await tty.send(KEY.ctrlC)
+    await tty.send("masih hidup")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("masih hidup")
+  })
+})
+
 describe("runPicker", () => {
   const items = Array.from({ length: 40 }, (_, i) => ({
     name: `model-${i}`,

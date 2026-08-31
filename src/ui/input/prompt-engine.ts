@@ -53,7 +53,7 @@ export type PromptKey =
   | { type: "ctrl-o" } // expand detail (TUI)
   | { type: "ctrl-r" } // reverse history search (TUI)
   | { type: "ctrl-t" } // toggle reasoning visibility
-  | { type: "shift-tab" } // cycle mode (TUI) — caller maps raw \x1b[Z
+  | { type: "shift-tab" } // cycle mode (REPL linier) — ESC[Z didekode decodeKey
   | { type: "ignore" } // sekuens yang sengaja dibuang (mis. byte mouse)
 
 // Terapkan satu keypress -> state baru + render spec + action (submit/cancel).
@@ -205,10 +205,10 @@ export function applyKey(
     case "ctrl-c":
     case "ctrl-d":
       return { state, action: "cancel" }
-    case "ctrl-o": // expand/collapse transcript — handled oleh renderer TUI
-    case "ctrl-r": // history search — handled oleh renderer TUI
-    case "ctrl-t": // toggle reasoning — handled oleh renderer TUI
-    case "shift-tab": // cycle mode — handled oleh renderer TUI
+    case "ctrl-o": // toggle compact — ditangani REPL lewat onKey askLine
+    case "ctrl-r": // (bekas picker history fullscreen — tidak dipakai lagi)
+    case "ctrl-t": // toggle reasoning — ditangani REPL lewat onKey askLine
+    case "shift-tab": // cycle mode — ditangani REPL lewat onKey askLine
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks
       return { state, action: "none" }
     case "ctrl-u": {
@@ -319,6 +319,10 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
       if (kind === "4" && s[i + 3] === "~") return { key: { type: "end" }, width: 4 }
       if (kind === "8" && s[i + 3] === "~") return { key: { type: "end" }, width: 4 }
       if (kind === "3" && s[i + 3] === "~") return { key: { type: "delete" }, width: 4 }
+      // Shift+Tab (backtab) ESC [ Z — dipakai REPL linier untuk cycle mode.
+      // Tanpa cabang eksplisit ini ia jatuh ke catch-all "esc" di bawah,
+      // sehingga tipe "shift-tab" tidak pernah dihasilkan decodeKeys.
+      if (kind === "Z") return { key: { type: "shift-tab" }, width: 3 }
       // ESC [ … lainnya -> konsumsi saja
       return { key: { type: "esc" }, width: Math.max(3, scanCsi(s, i)) }
     }

@@ -4,7 +4,14 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { stripAnsi } from "../render/theme.ts"
 import { displayWidth, truncateToWidth } from "../render/width.ts"
-import { applyKey, buildRenderSpec, createState, decodeKeys, pointLength } from "./prompt-engine.ts"
+import {
+  applyKey,
+  buildRenderSpec,
+  createState,
+  decodeKeys,
+  type PromptKey,
+  pointLength,
+} from "./prompt-engine.ts"
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
 const MAX_HISTORY = 1000
@@ -50,9 +57,21 @@ export async function detectAnsi(): Promise<boolean> {
 }
 
 export interface AskLineOptions {
-  prompt?: string
+  /**
+   * Prefix prompt: string statis ATAU fungsi yang dipanggil setiap render.
+   * Bentuk fungsi membuat perubahan eksternal — mis. cycle mode REPL via
+   * Shift+Tab — langsung terlihat tanpa mengulang askLine.
+   */
+  prompt?: string | (() => string)
   hints?: (line: string) => string[]
   groupOf?: (text: string) => string // opsional: label grup (commands/skills)
+  /**
+   * Dipanggil untuk setiap keypress SEBELUM logika bawaan (history, applyKey).
+   * Return truthy = key sudah ditangani pemanggil; askLine melewatkan handling
+   * default dan tetap me-render ulang. Dipakai REPL linier untuk Shift+Tab
+   * (cycle mode), Ctrl+T (reasoning), dan Ctrl+O (toggle compact).
+   */
+  onKey?: (key: PromptKey) => boolean
 }
 
 // Input interaktif satu baris + floating dropdown suggestions (dimmed).
@@ -62,12 +81,15 @@ export interface AskLineOptions {
 // Semua logika transisi ada di prompt-engine.ts (pure) - di sini hanya IO + render.
 export async function askLine(opts: AskLineOptions = {}): Promise<string | null> {
   const { glyphs } = await import("../render/theme.ts")
-  const prompt = opts.prompt ?? `${glyphs.prompt} `
+  // Diselesaikan per pemakaian (bukan sekali di awal) supaya prompt berbentuk
+  // fungsi — mis. prefix mode REPL yang berubah lewat Shift+Tab — tergambar baru.
+  const promptOf = (): string =>
+    typeof opts.prompt === "function" ? opts.prompt() : (opts.prompt ?? `${glyphs.prompt} `)
 
   if (!process.stdin.isTTY) {
     return new Promise((resolve) => {
       const rl = createInterface({ input: process.stdin, output: process.stdout })
-      rl.question(prompt, (a) => {
+      rl.question(promptOf(), (a) => {
         rl.close()
         resolve(a.trim())
       })
@@ -132,7 +154,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     }
 
     const renderAnsi = () => {
-      const spec = buildRenderSpec(state, prompt, matches(), opts.groupOf)
+      const spec = buildRenderSpec(state, promptOf(), matches(), opts.groupOf)
       const maxRows = Math.max(prevRows, spec.totalRows)
       const view = scrollableLine(spec.inputLine, spec.cursorCol)
       const inputLine = view.text
@@ -188,6 +210,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     // ── render inline (legacy console, tanpa ANSI) ──
     const renderInline = () => {
       const hs = matches()
+      const prompt = promptOf()
       const content = hs.length
         ? `${prompt}${state.line}    ${hs.slice(0, 5).join("  ")}`
         : `${prompt}${state.line}`
@@ -219,6 +242,9 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     const onData = (chunk: Buffer) => {
       for (const d of decodeKeys(chunk)) {
+        // Hook pemanggil: key yang ditangani sendiri (return truthy) dilewati
+        // dari logika bawaan; render() di akhir chunk tetap menggambar efeknya.
+        if (opts.onKey?.(d.key)) continue
         // Navigasi history saat dropdown tertutup.
         //
         // Sebelumnya entri history DIGABUNGKAN ke teks yang sedang ditulis
@@ -258,10 +284,10 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           // Empty Enter = "" (not null) - REPL continues; null = cancel (break)
           if (ansi) {
             clearOverlay()
-            const shown = scrollableLine(`${prompt}${state.line}`, 0).text
+            const shown = scrollableLine(`${promptOf()}${state.line}`, 0).text
             process.stdout.write("\r" + CLEAR + shown + "\r\n")
           } else {
-            process.stdout.write("\r" + CLEAR + `${prompt}${state.line}` + "\r\n")
+            process.stdout.write("\r" + CLEAR + `${promptOf()}${state.line}` + "\r\n")
           }
           finish(v)
           return
