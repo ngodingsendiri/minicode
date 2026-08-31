@@ -48,18 +48,18 @@ Options:
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
-  --interactive       REPL loop (fullscreen)
+  --interactive       REPL loop (linear)
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
   --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
   --budget <usd>      session cost limit (USD)
 
 Commands in REPL:
-  /help /provider /model /sync /status /sessions /init /exit
+  /help /provider /model /sync /status /sessions /init /mode /compact /thinking /exit
 
 Keyboard in REPL:
-  Enter submit · Tab complete · Up/Down history · Esc stop · Ctrl+C twice exit
-  akhiri baris dengan \\ untuk menyambung
+  Enter submit · Tab complete · Up/Down history · Shift+Tab cycle mode
+  Ctrl+O toggle compact · Ctrl+T reasoning · Ctrl+C stop turn / ^C twice exit
 `
 
 const args = process.argv.slice(2)
@@ -211,8 +211,8 @@ const ctx = await createCliSession({
 })
 
 if (enterRepl) {
-  const { runFullscreen } = await import("./fullscreen-driver.ts")
-  await runFullscreen(ctx)
+  const { runRepl } = await import("./repl.ts")
+  await runRepl(ctx)
 } else {
   const {
     session,

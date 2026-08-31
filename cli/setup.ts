@@ -64,11 +64,10 @@ export interface CliSession {
   allLoadedSkills: Skill[]
   usage: ReturnType<typeof createUsageCollector>
   budget?: number
-  detachSimple?: () => void
+  detachSimple: () => void
   persistCurrent: (usageData: unknown) => Promise<void>
-  useFullscreen: boolean
   runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
-  /** Kontrol mode permission saat runtime (Shift+Tab di TUI). */
+  /** Kontrol mode permission saat runtime (Shift+Tab / /mode di REPL). */
   permissions?: PermissionControl
   close: () => Promise<void>
 }
@@ -248,21 +247,14 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
   }
 
-  const useFullscreen = !!enterRepl // REPL = fullscreen minimal; one-shot = simple logger
-  // ── one-shot logger (hapus klasik renderer & Ink — satu jalur minimal) ──
-  let detachSimple: (() => void) | undefined
-  if (!useFullscreen) {
-    // hanya TTY yang butuh ANSI; non-TTY tetap log via simple (akan no-op di statusline)
-    detachSimple = attachSimpleLogger(session.events, { verbose })
-  }
-  // Turn status line — hanya untuk one-shot non-fullscreen
+  // Printer linier + status turn: dipakai one-shot DAN REPL linier — fullscreen
+  // sudah tidak ada, jadi tidak ada lagi jalur renderer kedua untuk dibedakan.
+  const detachSimple = attachSimpleLogger(session.events, { verbose })
   const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
-  const detachStatus = useFullscreen
-    ? () => {}
-    : attachTurnStatus(session.events, {
-        initialModel: effectiveInitialModel,
-        getModel: () => modelRef.current ?? effectiveInitialModel,
-      })
+  const detachStatus = attachTurnStatus(session.events, {
+    initialModel: effectiveInitialModel,
+    getModel: () => modelRef.current ?? effectiveInitialModel,
+  })
 
   const usage = createUsageCollector(session.events, effectiveInitialModel)
   // Muat overlay harga dari cache lokal (bila user pernah `pricing sync`).
@@ -278,7 +270,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   async function close(): Promise<void> {
     detachStatus()
-    if (detachSimple) detachSimple()
+    detachSimple()
     // background job harus mati bersama CLI — jangan tinggalkan proses yatim
     killAllBackgroundJobs()
     await mcpCloseAll()
@@ -286,7 +278,6 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   return {
-    useFullscreen,
     session,
     cfg,
     cwd,

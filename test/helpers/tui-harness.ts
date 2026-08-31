@@ -52,6 +52,15 @@ export interface FakeTty {
    * jadi ia berfungsi sebagai "prompt ke-berapa".
    */
   listenerEpoch(): number
+  /**
+   * Jumlah listener stdin yang dipasang saat raw mode aktif.
+   *
+   * Membedakan prompt `askLine` (pasang listener sambil raw) dari listener
+   * non-raw berumur pendek — mis. penangkap Ctrl+C REPL saat turn berjalan.
+   * `ready()` saja tidak cukup: listener busy membuat ready() pulang terlalu
+   * cepat dan keystroke berikutnya hilang.
+   */
+  promptListeners(): number
   /** Tunggu sampai listener stdin BARU terpasang (epoch melewati `since`). */
   waitForNewListener(since: number, timeoutMs?: number): Promise<number>
   /**
@@ -110,12 +119,15 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
   const chunks: string[] = []
   const errChunks: string[] = []
   const combinedChunks: string[] = []
-  const dataListeners: ((chunk: Buffer) => void)[] = []
+  // raw menandai APAKAH raw mode aktif saat listener dipasang — dipakai
+  // promptListeners() membedakan prompt askLine dari listener non-raw.
+  const dataListeners: { fn: (chunk: Buffer) => void; raw: boolean }[] = []
   const resizeListeners: (() => void)[] = []
   const failures: string[] = []
   // Naik setiap kali listener "data" dipasang. Tidak pernah turun — dipakai
   // sebagai jam logis untuk mendeteksi prompt berikutnya (lihat answerSequence).
   let listenerEpoch = 0
+  let rawMode = false
 
   const origStdin = process.stdin
   const origWrite = process.stdout.write.bind(process.stdout)
@@ -144,7 +156,8 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
 
   const fakeStdin = {
     isTTY,
-    setRawMode() {
+    setRawMode(v: boolean) {
+      rawMode = v
       return fakeStdin
     },
     resume() {
@@ -161,7 +174,7 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     },
     on(event: string, fn: (chunk: Buffer) => void) {
       if (event === "data") {
-        dataListeners.push(fn)
+        dataListeners.push({ fn, raw: rawMode })
         listenerEpoch++
       }
       return fakeStdin
@@ -171,7 +184,7 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     },
     off(event: string, fn: (chunk: Buffer) => void) {
       if (event === "data") {
-        const i = dataListeners.indexOf(fn)
+        const i = dataListeners.findIndex((l) => l.fn === fn)
         if (i >= 0) dataListeners.splice(i, 1)
       }
       return fakeStdin
@@ -267,10 +280,11 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     },
     async send(data, settleMs = 15) {
       const buf = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data)
-      for (const fn of [...dataListeners]) fn(buf)
+      for (const l of [...dataListeners]) l.fn(buf)
       await new Promise((r) => setTimeout(r, settleMs))
     },
     listenerEpoch: () => listenerEpoch,
+    promptListeners: () => dataListeners.filter((l) => l.raw).length,
     async waitForNewListener(since, timeoutMs = 2000) {
       const deadline = Date.now() + timeoutMs
       while (listenerEpoch <= since) {
@@ -367,6 +381,7 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       dataListeners.length = 0
       resizeListeners.length = 0
       listenerEpoch = 0
+      rawMode = false
     },
   }
   return tty
