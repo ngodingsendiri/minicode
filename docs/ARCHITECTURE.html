@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minicode — Arsitektur &amp; Struktur Modul</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel2: #1c2330;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --warn: #d29922;
+    --purple: #bc8cff;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sidebar-w: 276px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  code, .mono { font-family: var(--mono); font-size: 13px; }
+  code { background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:focus-visible, summary:focus-visible, button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+  }
+  .skip {
+    position: absolute; left: -9999px; top: 0; background: var(--accent); color: #000;
+    padding: 6px 12px; z-index: 100;
+  }
+  .skip:focus { left: 8px; top: 8px; }
+
+  /* ════════════ SIDEBAR ════════════ */
+  aside {
+    position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+    background: var(--panel); border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 22px 0 30px; z-index: 10;
+  }
+  aside .brand { padding: 0 20px 16px; border-bottom: 1px solid var(--border); }
+  aside .brand .name { font-family: var(--mono); font-size: 19px; font-weight: 700; letter-spacing: .5px; }
+  aside .brand .name b { color: var(--accent); }
+  aside .brand .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  aside .brand .vbadge {
+    display: inline-block; margin-top: 8px; font-family: var(--mono); font-size: 11px;
+    color: var(--accent2); border: 1px solid var(--accent2); border-radius: 999px; padding: 2px 9px;
+  }
+  aside nav { padding: 14px 0; }
+  aside nav .sec-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--muted); padding: 12px 20px 6px;
+  }
+  aside nav a.nav {
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 20px; font-size: 13.5px; color: var(--text);
+    border-left: 2px solid transparent;
+  }
+  aside nav a.nav:hover { background: var(--panel2); }
+  aside nav a.nav.active { border-left-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.07); }
+  aside nav a.nav .n { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 16px; text-align: right; flex: 0 0 auto; }
+  aside nav a.nav.active .n { color: var(--accent); }
+  aside .tree { padding: 2px 0 6px; }
+  aside .tree a {
+    display: block; padding: 4px 20px 4px 34px; font-family: var(--mono);
+    font-size: 12px; color: var(--muted); position: relative;
+  }
+  aside .tree a::before { content: "├─"; position: absolute; left: 12px; color: var(--border); }
+  aside .tree a:last-child::before { content: "└─"; }
+  aside .tree a:hover { color: var(--accent); background: var(--panel2); }
+  aside .rule {
+    margin: 14px 20px 0; padding: 10px 12px; font-size: 11.5px; color: var(--muted);
+    border: 1px dashed var(--border); border-radius: 6px;
+  }
+  aside .rule b { color: var(--warn); }
+
+  /* ════════════ MAIN ════════════ */
+  main { margin-left: var(--sidebar-w); padding: 36px 44px 90px; max-width: calc(1080px + var(--sidebar-w)); }
+  section { margin-bottom: 64px; scroll-margin-top: 24px; }
+  h1 { font-size: 27px; letter-spacing: .3px; }
+  h2 { font-size: 19px; margin-bottom: 6px; color: var(--accent); display: flex; align-items: baseline; gap: 10px; }
+  h2 .hn { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .lede { color: var(--muted); font-size: 14px; margin-bottom: 18px; max-width: 780px; }
+  .muted { color: var(--muted); }
+
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px; padding: 3px 10px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--panel);
+  }
+  .badge.blue { color: var(--accent); border-color: var(--accent); }
+  .badge.green { color: var(--accent2); border-color: var(--accent2); }
+
+  /* chip lapisan — warna konsisten di seluruh halaman */
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+    padding: 1px 8px; border-radius: 999px; border: 1px solid; vertical-align: middle;
+  }
+  .chip.c1 { color: var(--accent); border-color: var(--accent); }
+  .chip.c2 { color: var(--accent2); border-color: var(--accent2); }
+  .chip.c3 { color: var(--purple); border-color: var(--purple); }
+  .chip.cx { color: var(--warn); border-color: var(--warn); }
+
+  /* ════════════ DIAGRAM SVG ════════════ */
+  .diagram { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 10px 8px; }
+  .diagram svg { width: 100%; height: auto; display: block; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; fill: var(--text); }
+  svg .t  { font-size: 15px; font-weight: 700; }
+  svg .t1 { fill: var(--accent); } svg .t2 { fill: var(--accent2); } svg .t3 { fill: var(--purple); }
+  svg .tw { fill: var(--warn); }
+  svg .p  { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  svg .d  { font-size: 11.5px; fill: var(--muted); }
+  svg .e  { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+  svg .box  { fill: var(--bg); stroke: var(--border); stroke-width: 1.2; rx: 10; }
+  svg .b1 { stroke: var(--accent); } svg .b2 { stroke: var(--accent2); } svg .b3 { stroke: var(--purple); }
+  svg .bw { stroke: var(--warn); }
+  svg .edge { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+  svg .loop { stroke: var(--purple); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+  svg .side { stroke: var(--warn); stroke-width: 1.2; fill: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 12px 8px 6px; font-size: 12px; color: var(--muted); }
+  .legend .dash { width: 34px; border-top: 2px dashed var(--purple); display: inline-block; vertical-align: middle; }
+  .legend .solid { width: 34px; border-top: 2px solid var(--warn); display: inline-block; vertical-align: middle; }
+
+  /* ════════════ LAPISAN ════════════ */
+  .stack { display: flex; flex-direction: column; }
+  .layer {
+    border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
+    background: var(--panel); display: grid; grid-template-columns: 150px 1fr; gap: 6px 18px;
+  }
+  .layer .lnum { font-family: var(--mono); font-size: 30px; font-weight: 700; grid-row: span 3; align-self: center; text-align: center; }
+  .layer .ltitle { font-weight: 600; font-size: 15px; display: flex; gap: 10px; align-items: center; }
+  .layer .lpath { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .layer .ldesc { font-size: 13px; color: var(--muted); grid-column: 2; }
+  .layer.l1 { border-color: var(--accent); }  .layer.l1 .lnum, .layer.l1 .ltitle { color: var(--accent); }
+  .layer.l2 { border-color: var(--accent2); } .layer.l2 .lnum, .layer.l2 .ltitle { color: var(--accent2); }
+  .layer.l3 { border-color: var(--purple); }  .layer.l3 .lnum, .layer.l3 .ltitle { color: var(--purple); }
+  .stackarrow { align-self: center; font-family: var(--mono); color: var(--muted); font-size: 12px; padding: 7px 0; text-align: center; white-space: pre; }
+  .dirnote {
+    margin-top: 14px; padding: 10px 14px; border-left: 3px solid var(--accent);
+    background: var(--panel); border-radius: 0 6px 6px 0; font-size: 13px; color: var(--muted); max-width: 820px;
+  }
+  .dirnote + .dirnote { margin-top: 8px; }
+  .dirnote b { color: var(--text); }
+
+  /* ════════════ ALUR LANGKAH ════════════ */
+  .steps { display: flex; flex-direction: column; }
+  .step { display: flex; gap: 16px; position: relative; padding-bottom: 4px; }
+  .step .rail { display: flex; flex-direction: column; align-items: center; flex: 0 0 34px; }
+  .step .dot {
+    width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+    background: var(--panel2); border: 1px solid var(--accent); color: var(--accent);
+    font-family: var(--mono); font-size: 13px; display: flex; align-items: center; justify-content: center;
+  }
+  .step .line { width: 1px; flex: 1; background: var(--border); margin: 4px 0; }
+  .step:last-child .line { display: none; }
+  .step .card { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+  .step .card b { font-size: 14.5px; }
+  .step .card .where { font-family: var(--mono); font-size: 12px; color: var(--accent); display: block; margin-top: 3px; }
+  .step .card .what { font-size: 13px; color: var(--muted); margin-top: 5px; }
+
+  /* ════════════ POHON MODUL ════════════ */
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .toolbar input {
+    flex: 1; min-width: 200px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .toolbar button {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .toolbar button:hover { color: var(--accent); border-color: var(--accent); }
+  details.group {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel); margin-bottom: 10px; overflow: hidden;
+    scroll-margin-top: 24px; transition: box-shadow .4s;
+  }
+  details.group.flash { box-shadow: 0 0 0 2px var(--accent); }
+  details.group[hidden] { display: none; }
+  details.group summary {
+    cursor: pointer; padding: 12px 16px; font-family: var(--mono); font-size: 14px;
+    background: var(--panel2); user-select: none; list-style: none;
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  details.group summary::-webkit-details-marker { display: none; }
+  details.group summary::before { content: "▸"; color: var(--muted); }
+  details.group[open] summary::before { content: "▾"; }
+  details.group summary .role { font-family: "Segoe UI", system-ui, sans-serif; color: var(--muted); font-size: 13px; }
+  .mods { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px 16px; }
+  .mod { border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; background: var(--bg); }
+  .mod[hidden] { display: none; }
+  .mod .fname { font-family: var(--mono); font-size: 12.5px; color: var(--accent); word-break: break-all; }
+  .mod .fdesc { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+
+  /* ════════════ RANTAI KEAMANAN ════════════ */
+  .chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+  .chain .link {
+    flex: 1 1 150px; min-width: 148px; background: var(--panel);
+    border: 1px solid var(--border); border-top: 3px solid var(--warn);
+    border-radius: 6px; padding: 10px 12px; font-size: 12.5px; color: var(--muted);
+  }
+  .chain .link b { display: block; font-size: 13.5px; margin-bottom: 3px; color: var(--text); }
+  .chain .link .mono { display: block; margin-top: 5px; font-size: 11px; }
+  .chain .sep { align-self: center; color: var(--warn); font-family: var(--mono); font-size: 15px; }
+
+  /* ════════════ TABEL & LIST ════════════ */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 12px; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--panel2); color: var(--accent); font-weight: 600; font-size: 13px; }
+  td code { font-size: 12px; }
+  ul.plain { margin: 0 0 0 20px; }
+  ul.plain li { margin-bottom: 7px; font-size: 13.5px; }
+  ul.plain li .mono { color: var(--accent); }
+
+  footer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+
+  /* ════════════ RESPONSIF ════════════ */
+  @media (max-width: 900px) {
+    aside { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+    main { margin-left: 0; padding: 24px 18px 60px; }
+    .layer { grid-template-columns: 1fr; }
+    .layer .lnum { grid-row: auto; text-align: left; font-size: 22px; }
+    .layer .ldesc { grid-column: 1; }
+    .mods { grid-template-columns: 1fr; }
+  }
+
+  /* ════════════ CETAK ════════════ */
+  @media print {
+    aside, .toolbar, .skip { display: none !important; }
+    main { margin: 0; padding: 12px; max-width: none; }
+    body { background: #fff; color: #111; }
+    .diagram, .layer, .step .card, .mod, .chain .link, details.group { background: #fff; border-color: #bbb; }
+    svg text, .muted, .lede, .mod .fdesc, .step .card .what { fill: #333; color: #333; }
+    details.group { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#sekilas">Langsung ke konten</a>
+
+<!-- ══════════════════ SIDEBAR ══════════════════ -->
+<aside>
+  <div class="brand">
+    <div class="name">mini<b>code</b></div>
+    <div class="sub">Arsitektur &amp; Struktur Modul</div>
+    <span class="vbadge">v0.7.0 · Bun-only · 0 deps</span>
+  </div>
+  <nav id="nav">
+    <div class="sec-label">Peta</div>
+    <a class="nav" href="#sekilas"><span class="n">0</span> Sekilas — satu diagram</a>
+    <a class="nav" href="#lapisan"><span class="n">1</span> Tiga Lapisan</a>
+    <a class="nav" href="#alur"><span class="n">2</span> Alur Eksekusi Prompt</a>
+    <a class="nav" href="#pohon"><span class="n">3</span> Pohon Modul</a>
+    <div class="tree">
+      <a href="#g-cli">cli/</a>
+      <a href="#g-app">src/app + sesi</a>
+      <a href="#g-policy">src/policy/</a>
+      <a href="#g-tools">src/tools/</a>
+      <a href="#g-providers">src/providers/</a>
+      <a href="#g-session">src/session/</a>
+      <a href="#g-tui">src/tui/</a>
+      <a href="#g-lain">src/ lainnya</a>
+      <a href="#g-kernel">vendor/minicore/</a>
+      <a href="#g-quality">test · scripts · bench</a>
+    </div>
+    <a class="nav" href="#keamanan"><span class="n">4</span> Rantai Keamanan</a>
+    <a class="nav" href="#persistensi"><span class="n">5</span> Data Persisten</a>
+    <a class="nav" href="#invarian"><span class="n">6</span> Invarian Struktural</a>
+  </nav>
+  <div class="rule">
+    <b>Aturan repo:</b> setiap perubahan struktur wajib memperbarui file ini
+    (lihat AGENTS.md). Jangan biarkan peta ini usang.
+  </div>
+</aside>
+
+<!-- ══════════════════ KONTEN ══════════════════ -->
+<main>
+
+<!-- ── SEKILAS ── -->
+<section id="sekilas">
+  <h1>Satu diagram untuk memahami seluruh minicode</h1>
+  <p class="lede">
+    Jalur utama mengalir atas→bawah: prompt masuk, melewati tiga lapisan, loop
+    model↔tool berputar, hasil keluar sebagai tampilan + data tersimpan. Jalur
+    samping (garis kuning) menunjukkan jalan keluar/masuk alternatif: subcommand
+    admin dan mode MCP server.
+  </p>
+  <div class="meta">
+    <span class="badge blue">entry: cli/index.ts</span>
+    <span class="badge green">kernel beku pin 1eceea9e</span>
+    <span class="badge">pembaruan: 2026-08-31</span>
+  </div>
+
+  <div class="diagram" style="margin-top:24px">
+  <svg viewBox="0 0 960 780" role="img" aria-label="Diagram arsitektur minicode: prompt mengalir melewati tiga lapisan, loop provider dan tool, keluar sebagai tampilan dan data tersimpan">
+    <defs>
+      <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+      </marker>
+      <marker id="arwP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--purple)"></path>
+      </marker>
+      <marker id="arwW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"></path>
+      </marker>
+    </defs>
+
+    <!-- prompt -->
+    <rect class="box bw" x="290" y="10" width="380" height="56"></rect>
+    <text class="t tw" x="480" y="34" text-anchor="middle">PROMPT DARI USER</text>
+    <text class="d" x="480" y="52" text-anchor="middle">REPL · argv · stdin — slash /… dan mention @file termasuk</text>
+
+    <!-- edge prompt -> L1 + cabang subcommand -->
+    <path class="edge" d="M480,66 V110" marker-end="url(#arw)"></path>
+    <text class="e" x="470" y="92" text-anchor="end">parsing argv · rute</text>
+    <path class="side" d="M480,88 H746" marker-end="url(#arwW)"></path>
+    <rect class="box bw" x="746" y="64" width="204" height="76"></rect>
+    <text class="t tw" x="848" y="88" text-anchor="middle" style="font-size:13px">SUBCOMMAND ADMIN</text>
+    <text class="p" x="848" y="105" text-anchor="middle">exec · providers · …</text>
+    <text class="d" x="848" y="122" text-anchor="middle">tidak masuk loop agen</text>
+
+    <!-- L1 -->
+    <rect class="box b1" x="230" y="116" width="500" height="88"></rect>
+    <text class="t t1" x="480" y="142" text-anchor="middle">LAPISAN 1 — CLI &amp; TUI <tspan class="d" style="font-weight:400">(antarmuka)</tspan></text>
+    <text class="p" x="480" y="161" text-anchor="middle">cli/ · src/tui/</text>
+    <text class="d" x="480" y="180" text-anchor="middle">REPL fullscreen · routing slash &amp; skill · tema · markdown · sanitizeAnsi</text>
+
+    <path class="edge" d="M480,204 V248" marker-end="url(#arw)"></path>
+    <text class="e" x="492" y="230">createCliSession() — rakit config + tools + izin</text>
+
+    <!-- L2 -->
+    <rect class="box b2" x="230" y="254" width="500" height="88"></rect>
+    <text class="t t2" x="480" y="280" text-anchor="middle">LAPISAN 2 — AGEN MINICODE <tspan class="d" style="font-weight:400">(logika)</tspan></text>
+    <text class="p" x="480" y="299" text-anchor="middle">src/ — app · policy · tools · providers · session · mcp</text>
+    <text class="d" x="480" y="318" text-anchor="middle">31 tool bawaan · izin &amp; keamanan · persistensi sesi</text>
+
+    <!-- cabang MCP server -->
+    <path class="side" d="M230,298 H176" marker-end="url(#arwW)"></path>
+    <rect class="box bw" x="6" y="238" width="170" height="76"></rect>
+    <text class="t tw" x="91" y="262" text-anchor="middle" style="font-size:12.5px">MCP SERVER MODE</text>
+    <text class="p" x="91" y="279" text-anchor="middle">src/mcp/server.ts</text>
+    <text class="d" x="91" y="296" text-anchor="middle">minicode melayani tool</text>
+    <text class="d" x="91" y="310" text-anchor="middle">ke klien MCP eksternal</text>
+
+    <path class="edge" d="M480,342 V386" marker-end="url(#arw)"></path>
+    <text class="e" x="492" y="368">import #minicore — dideklarasikan di package.json imports</text>
+
+    <!-- L3 -->
+    <rect class="box b3" x="230" y="392" width="500" height="88"></rect>
+    <text class="t t3" x="480" y="418" text-anchor="middle">LAPISAN 3 — KERNEL MINICORE <tspan class="d" style="font-weight:400">(beku · vendor)</tspan></text>
+    <text class="p" x="480" y="437" text-anchor="middle">vendor/minicore/ · pin 1eceea9e</text>
+    <text class="d" x="480" y="456" text-anchor="middle">session.run → executeTurn (while · maxSteps) → executor tool</text>
+
+    <!-- fork ke provider & tool -->
+    <path class="edge" d="M480,480 V500 H325 V520" marker-end="url(#arw)"></path>
+    <path class="edge" d="M480,500 H635 V520" marker-end="url(#arw)"></path>
+    <text class="e" x="480" y="514" text-anchor="middle">loop kernel: panggil model ↔ eksekusi tool</text>
+
+    <rect class="box b3" x="180" y="526" width="290" height="92"></rect>
+    <text class="t t3" x="325" y="552" text-anchor="middle" style="font-size:13.5px">PROVIDER MODEL</text>
+    <text class="p" x="325" y="571" text-anchor="middle">src/providers/* · openai-compat</text>
+    <text class="d" x="325" y="590" text-anchor="middle">anthropic native &amp; OpenAI-compatible</text>
+
+    <rect class="box bw" x="490" y="526" width="290" height="92"></rect>
+    <text class="t tw" x="635" y="552" text-anchor="middle" style="font-size:13.5px">EKSEKUSI TOOL</text>
+    <text class="p" x="635" y="571" text-anchor="middle">policy/executor → tools/*</text>
+    <text class="d" x="635" y="590" text-anchor="middle">jail → izin → bash-guard → validate → execute</text>
+
+    <!-- loop kembali ke kernel -->
+    <path class="loop" d="M780,572 C 872,572 872,436 780,436" marker-end="url(#arwP)"></path>
+    <text class="e" x="876" y="498" style="fill:var(--purple)" transform="rotate(90 876 498)" text-anchor="middle">loop sampai selesai / maxSteps</text>
+
+    <!-- merge ke output -->
+    <path class="edge" d="M325,618 V640 H480" ></path>
+    <path class="edge" d="M635,618 V640 H480 V660" marker-end="url(#arw)"></path>
+    <text class="e" x="492" y="654">hasil naik kembali ke Lapisan 1</text>
+
+    <rect class="box" x="180" y="666" width="290" height="76"></rect>
+    <text class="t" x="325" y="692" text-anchor="middle" style="font-size:13.5px">TAMPILAN TERMINAL</text>
+    <text class="d" x="325" y="712" text-anchor="middle">sanitize → markdown → kolom → layar</text>
+
+    <rect class="box" x="490" y="666" width="290" height="76"></rect>
+    <text class="t" x="635" y="692" text-anchor="middle" style="font-size:13.5px">DATA TERSIMPAN</text>
+    <text class="d" x="635" y="712" text-anchor="middle">sqlite sesi · checkpoint · trace</text>
+  </svg>
+  <div class="legend">
+    <span><span class="chip c1">L1</span> antarmuka</span>
+    <span><span class="chip c2">L2</span> logika</span>
+    <span><span class="chip c3">L3</span> kernel beku</span>
+    <span><span class="dash"></span> loop balik ke kernel</span>
+    <span><span class="solid"></span> jalur samping (keluar/masuk alternatif)</span>
+  </div>
+  </div>
+</section>
+
+<!-- ── LAPISAN ── -->
+<section id="lapisan">
+  <h2><span class="hn">01</span> Tiga Lapisan</h2>
+  <p class="lede">Aturan arah: lapisan atas boleh memakai lapisan bawah; tidak pernah sebaliknya. Kernel tidak mengimpor apa pun dari luar <code>vendor/</code>.</p>
+  <div class="stack">
+    <div class="layer l1">
+      <div class="lnum">1</div>
+      <div class="ltitle">CLI &amp; TUI <span class="chip c1">L1</span></div>
+      <div class="lpath">cli/ · src/tui/</div>
+      <div class="ldesc">Semua yang menyentuh terminal: argv, REPL, picker, wizard, tema, rendering. Tidak ada logika agen di lapisan ini.</div>
+    </div>
+    <div class="stackarrow">▼ memakai</div>
+    <div class="layer l2">
+      <div class="lnum">2</div>
+      <div class="ltitle">Agen Minicode <span class="chip c2">L2</span></div>
+      <div class="lpath">src/</div>
+      <div class="ldesc">Perakit sesi (app/), keamanan &amp; izin (policy/), 31 tool, provider, MCP/LSP, hooks, memory, skills, persistensi sesi.</div>
+    </div>
+    <div class="stackarrow">▼ lewat <code>#minicore</code></div>
+    <div class="layer l3">
+      <div class="lnum">3</div>
+      <div class="ltitle">Kernel MiniCore <span class="chip c3">L3</span></div>
+      <div class="lpath">vendor/minicore/ · pin 1eceea9e</div>
+      <div class="ldesc">Loop agen inti. Beku: hanya seam aditif yang boleh diubah (compactAsync, initialMessages); sinkron via <code>bun run vendor:minicore</code>.</div>
+    </div>
+  </div>
+  <div class="dirnote">
+    <b>Lapisan logis ≠ struktur direktori.</b> <code>src/tui/</code> secara fisik berada di
+    <code>src/</code> tetapi milik <span class="chip c1">L1</span> — lapisan ditentukan oleh
+    peran, bukan oleh lokasi folder.
+  </div>
+  <div class="dirnote">
+    <b>Subpath <code>#minicore</code></b> dideklarasikan di blok <code>imports</code>
+    package.json — satu-satunya pintu masuk kode ke kernel.
+  </div>
+  <div class="dirnote">
+    <b>Mengapa tiga lapisan?</b> Kernel dapat diganti/disinkron tanpa menyentuh aplikasi;
+    kebijakan keamanan berdiri di L2 sehingga berlaku untuk semua tool; TUI bebas berubah
+    tanpa memengaruhi logika.
+  </div>
+</section>
+
+<!-- ── ALUR ── -->
+<section id="alur">
+  <h2><span class="hn">02</span> Alur Eksekusi Satu Prompt</h2>
+  <p class="lede">Tujuh tahap jalur utama. Subcommand admin dan mode MCP server tidak lewat alur ini (lihat jalur samping diagram).</p>
+  <div class="steps">
+    <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div>
+      <div class="card"><b>Entry &amp; parsing</b>
+        <span class="where">cli/index.ts → cli/args.ts → cli/router.ts</span>
+        <span class="what">argv dipisah jadi flag &amp; prompt; dispatch ke subcommand (auth/config/exec/mcp/pricing/providers/sessions/skills/stats) atau REPL.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div>
+      <div class="card"><b>Perakitan sesi</b>
+        <span class="where">cli/setup.ts → src/session.ts → src/app/{provider,tool,rag}-layer.ts</span>
+        <span class="what">Config dimuat; session kernel dibuat; provider + tools + permission dirakit; checkpoint disambungkan.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">3</div><div class="line"></div></div>
+      <div class="card"><b>Loop agen</b>
+        <span class="where">vendor/minicore/src/core/{session,loop}.ts</span>
+        <span class="what">session.run menjalankan executeTurn berulang (maxSteps 50) di atas salinan ContextStore transaksional per turn.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">4</div><div class="line"></div></div>
+      <div class="card"><b>Streaming provider</b>
+        <span class="where">src/providers/router.ts → anthropic.ts / vendor openai-compat.ts</span>
+        <span class="what">Model dipilih, request dikirim, token di-stream sebagai event bus kernel.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">5</div><div class="line"></div></div>
+      <div class="card"><b>Eksekusi tool</b>
+        <span class="where">vendor core/executor.ts → src/policy/executor.ts → src/tools/*</span>
+        <span class="what">runCall: permission → validateArgs → execute → truncation hasil. Tool MCP dirutekan lewat src/mcp/client.ts.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">6</div><div class="line"></div></div>
+      <div class="card"><b>Rendering output</b>
+        <span class="where">src/tui/{sanitize,markdown,highlight,wrap,width}.ts → minimal/fullscreen.ts</span>
+        <span class="what">Teks tidak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu digambar ke terminal.</span>
+      </div></div>
+    <div class="step"><div class="rail"><div class="dot">7</div><div class="line"></div></div>
+      <div class="card"><b>Persistensi</b>
+        <span class="where">src/session/{persistence,shadow-git,checkpoint}.ts · src/telemetry/trace.ts</span>
+        <span class="what">Pesan disimpan inkremental ke sqlite (WAL, TTL 30 hari); tree per turn dicatat shadow-git; trace jsonl untuk diagnostik.</span>
+      </div></div>
+  </div>
+</section>
+
+<!-- ── POHON MODUL ── -->
+<section id="pohon">
+  <h2><span class="hn">03</span> Pohon Modul</h2>
+  <p class="lede">Setiap kotak = satu berkas/dir dengan perannya. Chip warna menandai lapisan logisnya. Saring dengan kata kunci, atau lompat lewat sidebar.</p>
+
+  <div class="toolbar">
+    <input id="filter" type="search" placeholder="saring modul… (mis. bash, checkpoint, oauth)" aria-label="Saring modul">
+    <button id="openAll" type="button">Buka semua</button>
+    <button id="closeAll" type="button">Tutup semua</button>
+  </div>
+
+  <details class="group" id="g-cli" open>
+    <summary><span class="chip c1">L1</span> cli/ <span class="role">— entry point, subcommand, penggerak REPL</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Entry utama: parsing argv, HELP/versi, rute subcommand vs REPL.</div></div>
+      <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: daftar flag, getArg, promptFromArgs, baca stdin.</div></div>
+      <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">createCliSession — pabrik sesi CLI: config, kernel session, tools, permission, checkpoint.</div></div>
+      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div></div>
+      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry builtin slash (/help /provider /model /sync /status /sessions /init /exit) + handleBuiltinCommand.</div></div>
+      <div class="mod"><div class="fname">fullscreen-driver.ts</div><div class="fdesc">Driver REPL fullscreen: routing slash &amp; skill, picker model/provider/sessions, overlay.</div></div>
+      <div class="mod"><div class="fname">commands/ — 9 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts</div></div>
+      <div class="mod"><div class="fname">prompt-engine.ts</div><div class="fdesc">Engine input murni: state, dekode tombol (CSI/utf-8), render spec — tanpa I/O.</div></div>
+      <div class="mod"><div class="fname">input.ts</div><div class="fdesc">History, askLine, askSecret, deteksi ANSI.</div></div>
+      <div class="mod"><div class="fname">picker.ts · panel.ts</div><div class="fdesc">UI picker generik; penangkap output console untuk overlay.</div></div>
+      <div class="mod"><div class="fname">model-manager.ts · provider-manager.ts</div><div class="fdesc">Manajer interaktif model &amp; provider (list/select/add/delete).</div></div>
+      <div class="mod"><div class="fname">wizard.ts · errors.ts</div><div class="fdesc">Wizard setup pertama; format error CLI.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-app" open>
+    <summary><span class="chip c2">L2</span> src/app/ + src/session.ts <span class="role">— perakitan agen</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">session.ts</div><div class="fdesc">createMinicodeSession — menyambung kernel session dengan permission handler, recovery, event.</div></div>
+      <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Merakit provider dari config ke bentuk yang dimakan kernel.</div></div>
+      <div class="mod"><div class="fname">app/tool-layer.ts</div><div class="fdesc">Merakit daftar tool bawaan + MCP.</div></div>
+      <div class="mod"><div class="fname">app/rag-layer.ts</div><div class="fdesc">Lapisan RAG/memory untuk konteks.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-policy" open>
+    <summary><span class="chip c2">L2</span> src/policy/ <span class="role">— izin, keamanan, pembatasan</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">permission.ts</div><div class="fdesc">Handler 6 mode: auto/ask/readonly/plan/allowlist/allow-all; kunci per-tool.</div></div>
+      <div class="mod"><div class="fname">jail.ts</div><div class="fdesc">Jail realpath universal + deteksi path sensitif — jalan sebelum dispatch mode.</div></div>
+      <div class="mod"><div class="fname">bash-guard.ts</div><div class="fdesc">Normalisasi perintah bash (quote, variabel, wrapper) + pemeriksaan statik.</div></div>
+      <div class="mod"><div class="fname">executor.ts</div><div class="fdesc">runCall: permission → validateArgs → execute → truncation hasil.</div></div>
+      <div class="mod"><div class="fname">compaction.ts · context.ts</div><div class="fdesc">Kebijakan pemadatan konteks dan manajemen jendela konteks.</div></div>
+      <div class="mod"><div class="fname">pricing.ts · usage.ts</div><div class="fdesc">Tabel harga model; kolektor pemakaian token &amp; biaya.</div></div>
+      <div class="mod"><div class="fname">ratelimit.ts · sandbox-policy.ts</div><div class="fdesc">Batas laju permintaan; kebijakan sandbox.</div></div>
+      <div class="mod"><div class="fname">scrub.ts · verifier.ts</div><div class="fdesc">Pembersihan data sensitif; verifikasi hasil (mode --verify).</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-tools">
+    <summary><span class="chip c2">L2</span> src/tools/ <span class="role">— 31 tool bawaan agen (registry: allTools di index.ts)</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Registry allTools: 31 tool; MCP server tools di-append runtime via withMcpTools.</div></div>
+      <div class="mod"><div class="fname">bash.ts — 3 tool</div><div class="fdesc">bash (eksekusi, terintegrasi bash-guard), bashOutput, bashKill.</div></div>
+      <div class="mod"><div class="fname">read_file.ts · write_file.ts · edit.ts · patch.ts — 4 tool</div><div class="fdesc">Baca/tulis/edit/patch; edit pakai flexibleMatch bertingkat.</div></div>
+      <div class="mod"><div class="fname">glob.ts · grep.ts — 2 tool</div><div class="fdesc">Pencarian berkas dan isi.</div></div>
+      <div class="mod"><div class="fname">git.ts — 4 tool</div><div class="fdesc">gitStatus, gitDiff, gitLog, gitCommit.</div></div>
+      <div class="mod"><div class="fname">hashline.ts — helper, BUKAN tool</div><div class="fdesc">Pemetaan baris-hash untuk edit/patch; tidak terdaftar di allTools.</div></div>
+      <div class="mod"><div class="fname">lsp.ts — 6 tool</div><div class="fdesc">diagnostics, definition, references, hover, symbols, workspaceSymbols.</div></div>
+      <div class="mod"><div class="fname">web_fetch.ts · web_search.ts — 2 tool</div><div class="fdesc">Fetch/search web dengan proteksi SSRF (DNS pinning).</div></div>
+      <div class="mod"><div class="fname">memory.ts — 3 tool</div><div class="fdesc">readMemory, writeMemory, forgetMemory (RAG).</div></div>
+      <div class="mod"><div class="fname">task.ts · todo.ts — 3 tool</div><div class="fdesc">delegateTask (sub-agen via agents/pool); todoWrite, todoRead.</div></div>
+      <div class="mod"><div class="fname">mcp_call.ts — 4 tool</div><div class="fdesc">mcpList, mcpCall, mcpRead, mcpPrompt — klien tool MCP eksternal.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-providers">
+    <summary><span class="chip c2">L2</span> src/providers/ <span class="role">— koneksi model</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request.</div></div>
+      <div class="mod"><div class="fname">anthropic.ts</div><div class="fdesc">Adapter Anthropic native (stream SSE).</div></div>
+      <div class="mod"><div class="fname">build.ts · detect.ts · presets.ts</div><div class="fdesc">Bangun adapter; deteksi tipe provider dari base URL; preset populer.</div></div>
+      <div class="mod"><div class="fname">oauth.ts · auth-store.ts</div><div class="fdesc">Alur OAuth dan penyimpanan kredensial.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-session">
+    <summary><span class="chip c2">L2</span> src/session/ <span class="role">— persistensi &amp; checkpoint</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">persistence.ts</div><div class="fdesc">sqlite WAL: simpan pesan inkremental, listSessions, purge TTL 30 hari.</div></div>
+      <div class="mod"><div class="fname">shadow-git.ts</div><div class="fdesc">Catat SHA tree git per turn di refs/minicode/* — tanpa menyentuh HEAD/index user.</div></div>
+      <div class="mod"><div class="fname">checkpoint.ts</div><div class="fdesc">Manifes checkpoint di .minicode/checkpoints/ (maks 20) + undo.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-tui">
+    <summary><span class="chip c1">L1</span> src/tui/ <span class="role">— rendering terminal (L1 meski fisik di src/)</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">theme.ts · themes.ts</div><div class="fdesc">Warna &amp; glyph berbasis getter runtime; palet tema.</div></div>
+      <div class="mod"><div class="fname">sanitize.ts</div><div class="fdesc">sanitizeAnsi — hanya loloskan SGR; wajib untuk teks tak terpercaya.</div></div>
+      <div class="mod"><div class="fname">width.ts · wrap.ts</div><div class="fdesc">Ukuran teks dalam kolom (CJK/emoji = 2); pembungkus baris.</div></div>
+      <div class="mod"><div class="fname">markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
+      <div class="mod"><div class="fname">format.ts · diff.ts · table.ts</div><div class="fdesc">Format umum, render diff, tabel terminal.</div></div>
+      <div class="mod"><div class="fname">money.ts · reasoning.ts</div><div class="fdesc">Format biaya; render reasoning/thinking.</div></div>
+      <div class="mod"><div class="fname">spinner.ts · statusline.ts · turn-status.ts</div><div class="fdesc">Animasi &amp; baris status turn.</div></div>
+      <div class="mod"><div class="fname">file-mention.ts</div><div class="fdesc">Ekspansi @mention berkas dalam prompt.</div></div>
+      <div class="mod"><div class="fname">minimal/fullscreen.ts</div><div class="fdesc">Shell REPL fullscreen ANSI murni (tanpa Ink).</div></div>
+      <div class="mod"><div class="fname">minimal/screen.ts · minimal/simple.ts</div><div class="fdesc">Manajemen layar alternate; logger one-shot.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-lain">
+    <summary><span class="chip c2">L2</span> src/ lainnya <span class="role">— MCP, LSP, hooks, memory, skills, sandbox</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">mcp/client.ts · server.ts · transport.ts · http-transport.ts</div><div class="fdesc">Klien &amp; server MCP; transport stdio/HTTP (SSRF-protected). server.ts = minicode sebagai MCP server.</div></div>
+      <div class="mod"><div class="fname">lsp/client.ts</div><div class="fdesc">Klien LSP: diagnostics, symbol position, per-ext server.</div></div>
+      <div class="mod"><div class="fname">hooks/index.ts · hooks/run.ts</div><div class="fdesc">Allowlist hook &amp; eksekusi hook (opt-in MINICODE_HOOKS=1).</div></div>
+      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; vektor.</div></div>
+      <div class="mod"><div class="fname">skills/loader.ts</div><div class="fdesc">Muat &amp; render skill (slash /nama-skill).</div></div>
+      <div class="mod"><div class="fname">repo/repomap.ts</div><div class="fdesc">Peta ringkas struktur repo untuk konteks.</div></div>
+      <div class="mod"><div class="fname">sandbox/docker.ts · sandbox/os.ts</div><div class="fdesc">Eksekusi dalam sandbox Docker/OS.</div></div>
+      <div class="mod"><div class="fname">agents/pool.ts</div><div class="fdesc">Pool sub-agen untuk tool task.</div></div>
+      <div class="mod"><div class="fname">telemetry/trace.ts</div><div class="fdesc">Trace jsonl per request provider.</div></div>
+      <div class="mod"><div class="fname">config.ts · constants.ts</div><div class="fdesc">Muat/simpan config (global+project merge); LIMITS konstan.</div></div>
+      <div class="mod"><div class="fname">lib/atomic-write.ts · lib/db-path.ts</div><div class="fdesc">Tulis atomik; resolusi path database.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-kernel">
+    <summary><span class="chip c3">L3</span> vendor/minicore/ <span class="role">— kernel beku (jangan dimodifikasi)</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">src/core/session.ts · loop.ts</div><div class="fdesc">Sesi &amp; loop executeTurn (while, maxSteps).</div></div>
+      <div class="mod"><div class="fname">src/core/executor.ts · tool.ts · permission.ts</div><div class="fdesc">Eksekutor tool kernel: permission → validate → execute → truncate.</div></div>
+      <div class="mod"><div class="fname">src/core/provider.ts · recovery.ts</div><div class="fdesc">Antarmuka provider; pemulihan error/retry.</div></div>
+      <div class="mod"><div class="fname">src/core/compact.ts · tokens.ts · budget.ts</div><div class="fdesc">Pemadatan konteks, hitung token, anggaran.</div></div>
+      <div class="mod"><div class="fname">src/core/events.ts · history.ts · snapshot.ts</div><div class="fdesc">Bus event, riwayat pesan, snapshot konteks.</div></div>
+      <div class="mod"><div class="fname">src/core/index.ts · types.ts · errors.ts</div><div class="fdesc">Ekspor publik, tipe, error kernel.</div></div>
+      <div class="mod"><div class="fname">src/providers/openai-compat.ts</div><div class="fdesc">Adapter OpenAI-compatible bawaan kernel.</div></div>
+    </div>
+  </details>
+
+  <details class="group" id="g-quality">
+    <summary><span class="chip cx">QA</span> test/ · scripts/ · bench/ · experiments/ <span class="role">— kualitas &amp; verifikasi</span></summary>
+    <div class="mods">
+      <div class="mod"><div class="fname">test/</div><div class="fdesc">Suite bun:test — termasuk penjaga invarian (no-frozen-runtime-value, import-convention).</div></div>
+      <div class="mod"><div class="fname">scripts/</div><div class="fdesc">Gate coverage &amp; pack, utilitas rilis.</div></div>
+      <div class="mod"><div class="fname">bench/ · experiments/</div><div class="fdesc">Benchmark dan eksperimen adversarial.</div></div>
+    </div>
+  </details>
+</section>
+
+<!-- ── KEAMANAN ── -->
+<section id="keamanan">
+  <h2><span class="hn">04</span> Rantai Pemeriksaan Tool Call</h2>
+  <p class="lede">Setiap tool call melewati gerbang berurutan; gagal di satu gerbang = ditolak, tidak lanjut.</p>
+  <div class="chain">
+    <div class="link"><b>1 · Jail universal</b>Realpath di luar root &amp; path sensitif ditolak sebelum dispatch mode. Selalu aktif di semua mode.<span class="mono">src/policy/jail.ts</span></div>
+    <div class="sep">→</div>
+    <div class="link"><b>2 · Mode izin</b>auto / ask / readonly / plan / allowlist / allow-all.<span class="mono">src/policy/permission.ts</span></div>
+    <div class="sep">→</div>
+    <div class="link"><b>3 · Bash-guard</b>Normalisasi &amp; pemeriksaan statik perintah bash.<span class="mono">src/policy/bash-guard.ts</span></div>
+    <div class="sep">→</div>
+    <div class="link"><b>4 · validateArgs</b>Validasi argumen per skema tool.<span class="mono">vendor core/executor.ts</span></div>
+    <div class="sep">→</div>
+    <div class="link"><b>5 · Execute &amp; truncate</b>Hasil dipotong sesuai LIMITS sebelum kembali ke konteks.<span class="mono">src/policy/executor.ts</span></div>
+  </div>
+  <div class="dirnote" style="margin-top:14px">
+    <b>Pengecualian by-design:</b> mode <code>allow-all</code> sengaja melewati gerbang 3
+    (bash-guard) — kepercayaan penuh pada user. Gerbang 1 (jail universal) tetap berlaku
+    untuk semua mode, termasuk allow-all.
+  </div>
+</section>
+
+<!-- ── PERSISTENSI ── -->
+<section id="persistensi">
+  <h2><span class="hn">05</span> Lokasi Data Persisten</h2>
+  <table>
+    <tr><th>Data</th><th>Lokasi</th><th>Format</th></tr>
+    <tr><td>Konfigurasi global</td><td><code>~/.minicode/config.json</code></td><td>JSON (providers, MCP, LSP)</td></tr>
+    <tr><td>Konfigurasi proyek</td><td><code>.minicode/config.json</code></td><td>JSON — merge per-key dengan global</td></tr>
+    <tr><td>Sesi</td><td><code>~/.minicode/sessions.sqlite</code></td><td>sqlite WAL, append inkremental, TTL 30 hari</td></tr>
+    <tr><td>Checkpoint</td><td><code>.minicode/checkpoints/</code> + <code>refs/minicode/*</code></td><td>Manifes JSON (maks 20) + SHA tree shadow-git</td></tr>
+    <tr><td>Trace provider</td><td><code>~/.minicode/traces/</code></td><td>JSONL per request</td></tr>
+    <tr><td>History input</td><td><code>~/.minicode/history</code></td><td>Teks</td></tr>
+    <tr><td>Allowlist hook</td><td><code>~/.minicode/allowlist.json</code> (global) + <code>.minicode/allowlist.json</code> (proyek)</td><td>JSON — lokal melengkapi global</td></tr>
+  </table>
+</section>
+
+<!-- ── INVARIAN ── -->
+<section id="invarian">
+  <h2><span class="hn">06</span> Invarian Struktural</h2>
+  <ul class="plain">
+    <li><span class="mono">Bun-only, zero runtime deps</span> — bin menunjuk langsung <code>cli/index.ts</code>; tidak ada build step.</li>
+    <li><span class="mono">Kernel beku</span> — <code>vendor/minicore</code> hanya boleh diubah lewat seam aditif; sinkron via <code>bun run vendor:minicore</code>.</li>
+    <li><span class="mono">Teks tak terpercaya → sanitizeAnsi</span> — output model/tool/berkas wajib disanitasi sebelum render.</li>
+    <li><span class="mono">Lebar dalam kolom</span> — gunakan <code>displayWidth</code>/<code>truncateToWidth</code>, bukan <code>.length</code>/<code>.slice()</code>.</li>
+    <li><span class="mono">c &amp; glyphs adalah getter</span> — jangan simpan ke const module scope; nilai dibekukan saat import.</li>
+    <li><span class="mono">Gate</span> — <code>bun x tsc --noEmit &amp;&amp; bun run lint &amp;&amp; bun test &amp;&amp; bun run gate:coverage &amp;&amp; bun run gate:pack</code>.</li>
+  </ul>
+  <footer>
+    Minicode v0.7.0 · Peta struktur hidup — wajib diperbarui setiap struktur berubah (AGENTS.md).
+  </footer>
+</section>
+
+</main>
+
+<script>
+// Scrollspy: sorot item sidebar sesuai section yang sedang terlihat.
+const links = [...document.querySelectorAll("aside nav a.nav")];
+const sections = links.map((a) => document.querySelector(a.hash)).filter(Boolean);
+const spy = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    links.forEach((a) => a.classList.toggle("active", a.hash === "#" + e.target.id));
+  }
+}, { rootMargin: "-20% 0px -60% 0px" });
+sections.forEach((s) => spy.observe(s));
+
+// Link pohon di sidebar: buka kelompok target, scroll, kedipkan.
+document.querySelectorAll("aside .tree a").forEach((a) => {
+  a.addEventListener("click", () => {
+    const t = document.querySelector(a.hash);
+    if (!t) return;
+    t.open = true;
+    t.hidden = false;
+    t.scrollIntoView({ behavior: "smooth", block: "start" });
+    t.classList.add("flash");
+    setTimeout(() => t.classList.remove("flash"), 900);
+  });
+});
+
+// Buka/tutup semua kelompok.
+const groups = [...document.querySelectorAll("details.group")];
+document.getElementById("openAll").addEventListener("click", () => groups.forEach((g) => (g.open = true)));
+document.getElementById("closeAll").addEventListener("click", () => groups.forEach((g) => (g.open = false)));
+
+// Filter modul: sembunyikan kartu tak cocok; kelompok tanpa kartu cocok ikut sembunyi.
+const filter = document.getElementById("filter");
+filter.addEventListener("input", () => {
+  const q = filter.value.trim().toLowerCase();
+  for (const g of groups) {
+    let any = false;
+    for (const m of g.querySelectorAll(".mod")) {
+      const hit = !q || m.textContent.toLowerCase().includes(q);
+      m.hidden = !hit;
+      if (hit) any = true;
+    }
+    g.hidden = q && !any;
+    if (q && any) g.open = true;
+  }
+});
+
+// Cetak: buka semua kelompok agar isi lengkap ikut tercetak.
+window.addEventListener("beforeprint", () => groups.forEach((g) => (g.open = true)));
+</script>
+</body>
+</html>

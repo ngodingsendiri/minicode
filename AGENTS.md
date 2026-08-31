@@ -104,6 +104,10 @@ src/lsp/client.ts:
 ## Konvensi
 - Ikuti gaya kode existing.
 - Jalankan typecheck/test sebelum menyatakan selesai.
+- **Setiap agent yang menambah, menghapus, memindah modul/berkas, atau mengubah
+  lapisan/ketergantungan antarlapisan WAJIB memperbarui `docs/ARCHITECTURE.html`
+  dalam perubahan yang sama.** File itu peta struktur hidup repo ini dan harus
+  selalu mencerminkan struktur terkini — jangan biarkan usang.
 
 ## Rencana kerja aktif
 
