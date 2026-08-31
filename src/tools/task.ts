@@ -1,13 +1,43 @@
-import type { Tool } from "#minicore"
+import type { ModelProvider, Tool } from "#minicore"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { Pool } from "../agents/pool.ts"
 import { loadConfig } from "../config.ts"
 import { LIMITS } from "../constants.ts"
 import { buildProviderListAsync } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
-import { createMinicodeSession } from "../session.ts"
 
 const pool = new Pool(LIMITS.SUB_AGENT_POOL_SIZE)
+
+// Factory sesi sub-agen di-inject dari composition root (cli/index.ts memakai
+// createMinicodeSession). Lapisan tool tidak lagi mengimpor lapisan sesi/app
+// secara langsung — tanpa injeksi tool menolak jalan, konsisten dengan pola DI
+// `ask` (permission) dan `setupWhenEmpty` (wizard).
+export interface SubAgentSpec {
+  provider: ModelProvider
+  tools: Tool[]
+  cwd: string
+  permissionMode: "auto"
+  maxSteps: number
+  timeoutMs: number
+  systemExtra: string
+}
+
+/** Subset struktural sesi yang dibutuhkan tool ini — tanpa tipe lapisan app. */
+export interface SubAgentSession {
+  events: { on(type: string, handler: (event: never) => void): () => void }
+  run(
+    prompt: string,
+    opts: { signal: AbortSignal },
+  ): Promise<{ finalText?: string; usage: { steps: number } }>
+}
+
+export type SubAgentSessionFactory = (spec: SubAgentSpec) => Promise<SubAgentSession>
+
+let sessionFactory: SubAgentSessionFactory | undefined
+
+export function setSubAgentSessionFactory(factory: SubAgentSessionFactory): void {
+  sessionFactory = factory
+}
 
 async function getProvider() {
   const cfg = await loadConfig()
@@ -99,6 +129,9 @@ export const delegateTaskTool: Tool = {
         : base
     return await pool.run(async () => {
       ctx.signal.throwIfAborted()
+      // Cek factory dulu: fail-closed deterministik tanpa menyentuh config/env.
+      const factory = sessionFactory
+      if (!factory) return "[sub-agent error] session factory not configured"
       let provider: Awaited<ReturnType<typeof getProvider>>
       try {
         provider = await getProvider()
@@ -108,7 +141,7 @@ export const delegateTaskTool: Tool = {
 
       // inherit parent cwd if available (for --cwd case)
       const parentCwd = (ctx as unknown as { cwd?: string })?.cwd ?? process.cwd()
-      const session = await createMinicodeSession({
+      const session = await factory({
         provider,
         tools: subTools,
         cwd: parentCwd,

@@ -4,8 +4,10 @@ import { readFileSync } from "node:fs"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
+import { createMinicodeSession } from "../src/session.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
+import { setSubAgentSessionFactory } from "../src/tools/task.ts"
 import { formatError } from "../src/ui/assistant/simple.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
@@ -64,6 +66,10 @@ const args = process.argv.slice(2)
 function getArg(name: string): string | undefined {
   return rawGetArg(args, name)
 }
+
+// DI factory sesi sub-agen untuk delegate_task — dipasang di composition root
+// sebelum dispatch agar semua jalur (REPL, one-shot, mcp serve) tercakup.
+setSubAgentSessionFactory(createMinicodeSession)
 
 // dispatch subcommands via registry (handlers call process.exit internally)
 await dispatch(args, getArg, HELP)
