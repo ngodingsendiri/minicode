@@ -22,7 +22,7 @@ function getArg(name: string, fallback: number): number {
 }
 
 // Baseline terukur setelah penambahan test lapisan UI (harness fake-TTY untuk
-// fullscreen/askLine/picker/panel + handler subcommand): 79,26% funcs /
+// askLine/picker + handler subcommand): 79,26% funcs /
 // 82,13% lines. Ambil sedikit di bawah supaya CI tidak flaky, lalu naikkan
 // bertahap. Riwayat: 0.7.0 = 71,95%/76,76%.
 // Baseline baru setelah test anti-frozen runtime, highlight adversarial,

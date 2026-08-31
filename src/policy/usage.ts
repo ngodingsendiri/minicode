@@ -57,7 +57,7 @@ export function createUsageCollector(bus: EventBus, model?: string) {
   // DUA akumulator, bukan satu.
   //
   // `turn` di-reset setiap kali pemanggil menyimpan hasil satu turn
-  // (fullscreen-driver memanggil reset() setelah persistCurrent). `session`
+  // (REPL memanggil reset() setelah persistCurrent). `session`
   // TIDAK pernah di-reset. Tanpa pemisahan ini, satu-satunya total yang ada
   // ikut terhapus setiap turn, sehingga `/cost` yang berjudul "biaya sesi"
   // selalu melaporkan 0 setelah turn pertama selesai, header REPL kembali ke

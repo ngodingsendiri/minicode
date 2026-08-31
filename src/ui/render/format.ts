@@ -1,5 +1,5 @@
-// Formatter pesan event yang dipakai renderer ANSI (simple + fullscreen),
-// agar "apa yang ditampilkan" konsisten antar dua backend (tidak dobel logika).
+// Formatter pesan event yang dipakai printer linier (simple.ts), sehingga
+// "apa yang ditampilkan" konsisten antar konsumen (tidak dobel logika).
 import type { UiToolCallRef } from "../contract.ts"
 import { formatFriendly, friendlyFromCategory } from "./errors.ts"
 

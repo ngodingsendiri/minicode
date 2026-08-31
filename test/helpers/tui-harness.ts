@@ -1,24 +1,23 @@
 // Harness TUI — fake TTY untuk menguji lapisan interaktif tanpa terminal nyata.
 //
-// Kenapa ada: `attachFullscreenMinimal`, `askLine`, `runPicker`, `runPanel`, dan
-// `runProviderManager` semuanya menulis langsung ke process.stdout dan membaca
-// process.stdin dalam raw mode. Tanpa harness, satu-satunya cara mengujinya
-// adalah manual — dan itulah sebabnya bug rekursi spinner (REPL mati bisu pada
-// prompt pertama) lolos ke main tanpa satu test pun menangkapnya.
+// Kenapa ada: `askLine`, `runPicker`, dan `runProviderManager` semuanya
+// menulis langsung ke process.stdout dan membaca process.stdin dalam raw mode.
+// Tanpa harness, satu-satunya cara mengujinya adalah manual — dan itulah
+// sebabnya bug rekursi spinner (REPL mati bisu pada prompt pertama) lolos ke
+// main tanpa satu test pun menangkapnya.
 //
 // Cara pakai:
 //   const tty = installFakeTty({ columns: 100, rows: 30 })
-//   const shell = attachFullscreenMinimal({ ... })
-//   await tty.send("/help")          // suntik keystroke
-//   tty.lastFrame()                   // frame full-repaint terakhir (dengan ANSI)
-//   tty.visibleFrame()                // frame tanpa ANSI, untuk assertion teks
-//   tty.restore()                     // WAJIB di afterEach
+//   const p = askLine({ prompt: "> " })
+//   await tty.ready()                  // tunggu listener stdin terpasang
+//   await tty.send("halo")             // suntik keystroke
+//   await tty.send(KEY.enter, 30)      // submit
+//   tty.all()                          // seluruh output stdout terkumpul
+//   tty.restore()                      // WAJIB di afterEach
 //
 // Catatan: setiap fungsi UI memanggil setRawMode/resume/pause pada stdin, jadi
 // stub harus menyediakannya. `on("data")` mengumpulkan listener supaya send()
 // bisa memanggilnya persis seperti Node memanggil saat ada input.
-
-import { stripAnsi } from "../../src/ui/render/theme.ts"
 
 export interface FakeTtyOptions {
   columns?: number
@@ -93,16 +92,7 @@ export interface FakeTty {
   allErr(): string
   /** stdout + stderr digabung, urut sesuai penulisan. */
   combined(): string
-  /**
-   * Frame full-repaint terakhir. Fullscreen menulis satu string per render yang
-   * dimulai dengan ESC[H ESC[2J — itu penanda batas frame.
-   */
-  lastFrame(): string
-  /** lastFrame() tanpa sekuens ANSI, siap di-assert sebagai teks. */
-  visibleFrame(): string
-  /** Baris non-kosong dari visibleFrame(), untuk assertion yang toleran layout. */
-  visibleLines(): string[]
-  /** Buang riwayat output — dipakai untuk mengisolasi frame per langkah. */
+  /** Buang riwayat output — dipakai untuk mengisolasi output per langkah. */
   clear(): void
   /** Ubah ukuran terminal dan picu event resize. */
   resize(columns: number, rows: number): void
@@ -210,10 +200,9 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     process.env.COLORTERM = "truecolor"
     delete process.env.NO_COLOR
   }
-  // src/ui/runtime/screen.ts memeriksa dukungan VT sebelum menulis sekuens,
-  // dan src/ui/render/theme.ts memeriksa dukungan UTF-8 untuk memilih glyph. Fake TTY
-  // harus tampak seperti terminal modern, kalau tidak assertion gagal karena
-  // alasan yang salah (sekuens tidak ditulis, glyph jadi ASCII).
+  // src/ui/render/theme.ts memeriksa TERM/WT_SESSION untuk memilih glyph dan
+  // warna. Fake TTY harus tampak seperti terminal modern, kalau tidak assertion
+  // gagal karena alasan yang salah (glyph jadi ASCII).
   if (opts.vt !== false && isTTY) {
     process.env.TERM = process.env.TERM || "xterm-256color"
     process.env.WT_SESSION = process.env.WT_SESSION || "fake-tty"
@@ -264,8 +253,6 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
   ;(process.stdout as unknown as { off: unknown }).off = dropResize
   ;(process.stdout as unknown as { removeListener: unknown }).removeListener = dropResize
 
-  const FRAME_MARK = "\x1b[H\x1b[2J"
-
   const tty: FakeTty = {
     async ready(timeoutMs = 2000) {
       const deadline = Date.now() + timeoutMs
@@ -314,22 +301,6 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     all: () => chunks.join(""),
     allErr: () => errChunks.join(""),
     combined: () => combinedChunks.join(""),
-    lastFrame() {
-      for (let i = chunks.length - 1; i >= 0; i--) {
-        if (chunks[i]!.includes(FRAME_MARK)) return chunks[i]!
-      }
-      return chunks.at(-1) ?? ""
-    },
-    visibleFrame() {
-      return stripAnsi(tty.lastFrame())
-    },
-    visibleLines() {
-      return tty
-        .visibleFrame()
-        .split("\n")
-        .map((l) => l.replace(/\s+$/, ""))
-        .filter((l) => l !== "")
-    },
     clear() {
       chunks.length = 0
       errChunks.length = 0

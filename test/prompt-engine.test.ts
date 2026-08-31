@@ -420,7 +420,7 @@ test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
   const kontrol: [number, string][] = [
     [0x0c, "ctrl+l"],
     [0x0b, "ctrl+k"],
-    // Ctrl+T now toggles reasoning visibility in the fullscreen UI.
+    // Ctrl+T now toggles reasoning visibility in the REPL.
     [0x14, "ctrl+t"],
     [0x1a, "ctrl+z"],
     [0x02, "ctrl+b"],

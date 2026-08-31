@@ -317,7 +317,7 @@ export const ESC = String.fromCharCode(27)
 // CSI dengan parameter privat (`?`, `<`, `=`, `>`) juga harus tertangkap:
 // ESC[?25l, ESC[?2026h, ESC[?1049h dipakai untuk kursor/sync/alternate-screen.
 // Tanpa itu sekuens kontrol lolos ke teks yang seharusnya sudah bersih —
-// terlihat saat captureOutput() memakainya untuk isi overlay.
+// terlihat saat output ditangkap/disanitasi untuk tampilan.
 export const ANSI_PATTERN = `${ESC}(?:\\[[0-9;?<=>]*[a-zA-Z]|\\][^${ESC}\\u0007]*(?:\\u0007|${ESC}\\\\)|[()#][0-9A-Za-z]|[0-9A-Za-z])`
 
 export function stripAnsi(str: string): string {

@@ -247,7 +247,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
   }
 
-  // Printer linier + status turn: dipakai one-shot DAN REPL linier — fullscreen
+  // Printer linier + status turn: dipakai one-shot DAN REPL linier — tidak ada
   // sudah tidak ada, jadi tidak ada lagi jalur renderer kedua untuk dibedakan.
   const detachSimple = attachSimpleLogger(session.events, { verbose })
   const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")

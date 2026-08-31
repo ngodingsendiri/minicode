@@ -1,9 +1,9 @@
 // Test lapisan interaktif klasik: askLine (input + dropdown), runPicker,
-// runPanel, runProviderManager. Semuanya sebelumnya nol cakupan.
+// runProviderManager. Semuanya sebelumnya nol cakupan.
 //
-// Berbeda dari fullscreen, komponen ini menggambar overlay relatif terhadap
-// posisi kursor (bukan alternate screen), jadi assertion dilakukan pada seluruh
-// output yang terkumpul, bukan pada "frame" tunggal.
+// Komponen ini menggambar overlay relatif terhadap posisi kursor (bukan
+// alternate screen), jadi assertion dilakukan pada seluruh output yang
+// terkumpul.
 //
 // Selalu `await tty.ready()` setelah memanggil komponen: semuanya melakukan
 // await (dynamic import / loadHistory / loadConfig) sebelum memasang listener
@@ -13,8 +13,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { runProviderManager } from "../cli/provider-manager.ts"
 import { askLine } from "../src/ui/input/input.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
-import { captureOutput, runPanel } from "../src/ui/screens/panel.ts"
 import { runPicker } from "../src/ui/screens/picker.ts"
+import { captureOutput } from "./helpers/capture.ts"
 import { type FakeTty, installFakeTty, KEY } from "./helpers/tui-harness.ts"
 
 let tty: FakeTty | undefined
@@ -450,53 +450,6 @@ describe("runPicker", () => {
     await tty.send(KEY.esc, 20)
     await p
     expect(tty.all()).toContain("\x1b[?25h")
-  })
-})
-
-describe("runPanel", () => {
-  test("menampilkan judul dan isi; Enter menutup", async () => {
-    tty = installFakeTty({ rows: 20 })
-    const p = runPanel({ title: "Bantuan", lines: ["baris satu", "baris dua"] })
-    await tty.ready()
-    const out = visible(tty)
-    expect(out).toContain("Bantuan")
-    expect(out).toContain("baris satu")
-    await tty.send(KEY.enter, 20)
-    await p
-  })
-
-  test("isi lebih panjang dari layar bisa di-scroll", async () => {
-    tty = installFakeTty({ rows: 12 })
-    const lines = Array.from({ length: 40 }, (_, i) => `baris ${i + 1}`)
-    const p = runPanel({ title: "Panjang", lines })
-    await tty.ready()
-    tty.clear()
-    for (let i = 0; i < 6; i++) await tty.send(KEY.down, 5)
-    expect(visible(tty)).toContain("baris 7")
-    await tty.send(KEY.esc, 20)
-    await p
-  })
-
-  test("tidak melebihi tinggi terminal", async () => {
-    tty = installFakeTty({ rows: 12 })
-    const lines = Array.from({ length: 60 }, (_, i) => `baris ${i + 1}`)
-    const p = runPanel({ title: "Panjang", lines })
-    await tty.ready()
-    const drawn = visible(tty)
-      .split("\n")
-      .filter((l) => l.trim() !== "").length
-    expect(drawn).toBeLessThanOrEqual(12)
-    await tty.send(KEY.esc, 20)
-    await p
-  })
-
-  test("fallback non-TTY mencetak semua baris", async () => {
-    tty = installFakeTty({ isTTY: false })
-    await runPanel({ title: "T", lines: ["a", "b"] })
-    const out = visible(tty)
-    expect(out).toContain("T")
-    expect(out).toContain("a")
-    expect(out).toContain("b")
   })
 })
 

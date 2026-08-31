@@ -1,7 +1,7 @@
 // Test pemisahan usage turn vs sesi.
 //
 // Regresi yang ditemukan lewat uji live: `usage.reset()` dipanggil per turn oleh
-// fullscreen-driver, dan dulu ia menghapus SATU-SATUNYA akumulator. Akibatnya
+// driver REPL, dan dulu ia menghapus SATU-SATUNYA akumulator. Akibatnya
 // 51.915 token nyata dilaporkan sebagai 0, `/cost` yang berjudul "biaya sesi"
 // selalu 0 setelah turn pertama, header REPL kembali $0.0000, dan `--budget`
 // tidak pernah bisa terpicu berapa pun yang dipakai.

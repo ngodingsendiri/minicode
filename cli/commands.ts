@@ -57,9 +57,10 @@ const KEYBOARD_HELP: [string, string][] = [
   ["shift+tab", "cycle permission mode"],
   ["tab", "complete command"],
   ["up / down", "history or picker navigation"],
-  ["ctrl+o", "toggle detail"],
-  ["esc", "stop or close"],
-  ["ctrl+c 2x", "exit"],
+  ["ctrl+o", "toggle compact/expanded tool output"],
+  ["ctrl+t", "toggle reasoning"],
+  ["esc", "close dropdown or picker"],
+  ["ctrl+c", "stop turn when busy; twice to exit"],
 ]
 
 function pad(text: string, width: number): string {
@@ -109,7 +110,7 @@ export async function handleBuiltinCommand(
         const withArgs = b.args ? `${b.name} ${b.args}` : b.name
         console.log(`  /${pad(withArgs, 22)}${b.desc}`)
       }
-      console.log("\nEnter submit · Tab complete · Esc stop/close · Ctrl+C twice exit\n")
+      console.log("\nEnter submit · Tab complete · Shift+Tab mode · Ctrl+O compact · Ctrl+C exit\n")
       return { handled: true }
     }
 

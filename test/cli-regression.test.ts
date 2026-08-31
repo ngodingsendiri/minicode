@@ -1,17 +1,17 @@
 // Regression Fase 0 — tiga bug yang lolos CI karena cli/ dulu di luar tsconfig
 // dan tanpa test sama sekali:
-//   B1 cli/fullscreen-driver.ts — `cmdName` undefined → semua slash builtin
+//   B1 driver REPL lama — `cmdName` undefined → semua slash builtin
 //      gagal senyap di TUI (ReferenceError ditelan `catch { return null }`).
 //   B2 cli/commands/exec.ts — events.on(handler) 1-argumen tidak pernah
 //      terpanggil → `exec --json` tidak stream apa pun.
-//   B3 cli/fullscreen-driver.ts — session.config tidak ada di kernel, jadi
+//   B3 driver REPL lama — session.config tidak ada di kernel, jadi
 //      Shift+Tab hanya mengubah label header sementara mode permission tetap.
 import { describe, expect, test } from "bun:test"
 import type { ModelProvider } from "#minicore/core/provider.ts"
 import { handleBuiltinCommand } from "../cli/commands.ts"
 import { createMinicodeSession, type PermissionControl } from "../src/app/session.ts"
 import { createPermissionHandler, type PermissionMode } from "../src/policy/permission.ts"
-import { captureOutput } from "../src/ui/screens/panel.ts"
+import { captureOutput } from "./helpers/capture.ts"
 
 const fakeProvider: ModelProvider = {
   id: "fake",
@@ -37,7 +37,7 @@ const commandCtx = {
   setModelOverride() {},
 } as unknown as Parameters<typeof handleBuiltinCommand>[1]
 
-// Cermin persis logika onOverlay di cli/fullscreen-driver.ts.
+// Cermin logika dispatch builtin di driver REPL (dulu onOverlay).
 async function overlay(q: string): Promise<{ title: string; lines: string[] } | null> {
   const cmdName = q.slice(1).split(" ")[0]?.toLowerCase() ?? ""
   try {

@@ -260,8 +260,8 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         return false
       }
 
-      // Builtin mengalir langsung ke scrollback (console.log) — TANPA
-      // captureOutput/overlay. Manajer /model & /provider transient:
+      // Builtin mengalir langsung ke scrollback (console.log) — tanpa
+      // penangkap output/overlay. Manajer /model & /provider transient:
       // menghapus diri sendiri dan tidak menyentuh scrollback.
       const builtin = await handleBuiltinCommand(q, commandCtx)
       if (builtin.handled) return !!builtin.shouldExit
