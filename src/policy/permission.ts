@@ -1,11 +1,22 @@
 import { resolve } from "node:path"
 import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "#minicore"
-import { loadAllowlist, matchAllowlist, promptAsk, saveAllowlist } from "../hooks/index.ts"
+import { loadAllowlist, matchAllowlist, saveAllowlist } from "../hooks/index.ts"
 import { inspectBashCommand } from "./bash-guard.ts"
 import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
 
 export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
+
+/**
+ * View persetujuan yang di-inject dari composition root (cli/setup.ts memakai
+ * src/ui/approval/prompt.ts). Policy layer tidak pernah mengimpor UI langsung;
+ * tanpa injeksi jawabannya selalu deny (headless), sama dengan perilaku
+ * non-TTY sebelumnya.
+ */
+export type PermissionAsk = (call: {
+  name: string
+  args?: unknown
+}) => Promise<"allow" | "deny" | "always">
 
 const READONLY_TOOLS = new Set([
   "read_file",
@@ -116,10 +127,11 @@ function matchBashAllowlist(cmd: string, pattern: string): boolean {
 }
 
 export function createPermissionHandler(
-  opts: { mode?: PermissionMode; root?: string } = {},
+  opts: { mode?: PermissionMode; root?: string; ask?: PermissionAsk } = {},
 ): PermissionHandler {
   const state = { mode: (opts.mode ?? "auto") as PermissionMode }
   const root = resolve(opts.root ?? cwd())
+  const askUser = opts.ask
   let allowlistCache: string[] | null = null
   // bash allowlist di-cache sekali (bukan baca env tiap panggilan)
   const envRaw = process.env.MINICODE_BASH_ALLOWLIST
@@ -193,7 +205,7 @@ export function createPermissionHandler(
       } else if (isGated(call.name)) {
         return await promptAskOr(call, () => "deny")
       }
-      const ans = await promptAsk(call)
+      const ans = askUser ? await askUser(call) : "deny"
       if (ans === "always") {
         await saveAlways(call)
         return "allow"
@@ -273,10 +285,11 @@ export function createPermissionHandler(
   }
 
   async function promptAskOr(call: ToolCall, noTty: () => "deny"): Promise<"allow" | "deny"> {
+    if (!askUser) return noTty()
     if (!process.stdin.isTTY) return noTty()
     const list = await getAllowlist()
     if (matchAllowlist(call, list)) return "allow"
-    const ans = await promptAsk(call)
+    const ans = await askUser(call)
     if (ans === "always") {
       await saveAlways(call)
       return "allow"

@@ -25,8 +25,10 @@ import { createMinicodeSession, type PermissionControl } from "../src/session.ts
 import type { Skill } from "../src/skills/loader.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
+import { promptAsk } from "../src/ui/approval/prompt.ts"
 import { attachSimpleLogger } from "../src/ui/assistant/simple.ts"
 import { c } from "../src/ui/render/theme.ts"
+import { runSetupWizard } from "./wizard.ts"
 
 export interface CliSessionOptions {
   cwd?: string
@@ -105,6 +107,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     enterRepl,
     rateLimiter,
     providerOverride,
+    setupWhenEmpty: runSetupWizard,
   })
   const { systemExtra, skills: allLoadedSkills } = await createRagLayer({ cfg, prompt, cwd })
 
@@ -154,6 +157,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     permissionMode,
     systemExtra,
     model: modelRef.current,
+    ask: promptAsk,
     onPermissions: (ctl) => {
       permissions = ctl
     },

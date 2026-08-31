@@ -3,7 +3,6 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { ToolCall } from "#minicore/core/types.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
-import { c } from "../ui/render/theme.ts"
 
 export interface Allowlist {
   allowed: string[] // entries like "bash:echo hi" or "write_file:.tmp/*"
@@ -51,35 +50,4 @@ export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
     if (pat.includes(":")) return re.test(key)
     return re.test(call.name) || re.test(key)
   })
-}
-
-export async function promptAsk(call: ToolCall): Promise<"allow" | "deny" | "always"> {
-  if (!process.stdin.isTTY) return "deny"
-  // Attention bell (ala OpenCode): terminal bunyi saat butuh konfirmasi.
-  process.stdout.write("\x07")
-
-  const { createInterface } = await import("node:readline")
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-
-  const toolName = call.name
-  const args = (call.args ?? {}) as Record<string, unknown>
-
-  let actionSummary = ""
-  if (args.command) actionSummary = `Command: ${String(args.command).slice(0, 100)}`
-  else if (args.path) actionSummary = `File: ${String(args.path)}`
-  else if (args.query) actionSummary = `Query: ${String(args.query)}`
-  else actionSummary = `Args: ${JSON.stringify(args).slice(0, 100)}`
-
-  process.stdout.write(`\n${c.warning(c.bold("Permission required"))}\n`)
-  process.stdout.write(`  ${c.bold("Tool:")} ${c.info(toolName)}\n`)
-  process.stdout.write(`  ${actionSummary}\n`)
-
-  const promptText = `${c.bold("[y]")} Allow once  ${c.bold("[a]")} Always  ${c.bold("[n]")} Deny: `
-  const ans: string = await new Promise((resolve) => rl.question(promptText, resolve))
-  rl.close()
-
-  const a = ans.trim().toLowerCase()
-  if (a === "a" || a === "always") return "always"
-  if (a === "y" || a === "yes") return "allow"
-  return "deny"
 }

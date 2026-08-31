@@ -6,7 +6,11 @@ import { defaultRecoveryPolicy } from "#minicore/core/recovery.ts"
 import { LIMITS } from "./constants.ts"
 import { buildSystemPrompt, minicodeEstimator } from "./policy/context.ts"
 import { parallelExecutor } from "./policy/executor.ts"
-import { createPermissionHandler, type PermissionMode } from "./policy/permission.ts"
+import {
+  createPermissionHandler,
+  type PermissionAsk,
+  type PermissionMode,
+} from "./policy/permission.ts"
 
 // P2 cap wrapper: limit retryAfter to 30s without mutating original error
 const cappedRecovery = {
@@ -42,6 +46,9 @@ export async function createMinicodeSession(
      * `config`, jadi satu-satunya cara mengubah mode saat runtime (mis.
      * Shift+Tab di TUI) adalah menangkap handler di sini. */
     onPermissions?: (control: PermissionControl) => void
+    /** View persetujuan tool (di-inject dari cli/; tanpa ini mode interaktif
+     * menolak semua prompt — aman untuk headless/library). */
+    ask?: PermissionAsk
   },
 ): Promise<Session> {
   const planHint =
@@ -60,10 +67,11 @@ export async function createMinicodeSession(
     systemExtra: _extra,
     provider,
     onPermissions,
+    ask,
     ...rest
   } = opts
   if (!provider) throw new Error("createMinicodeSession: provider is required")
-  const permissions = createPermissionHandler({ mode: permissionMode ?? "auto", root: cwd })
+  const permissions = createPermissionHandler({ mode: permissionMode ?? "auto", root: cwd, ask })
   if (onPermissions) {
     const withMode = permissions as typeof permissions & {
       __setMode(m: PermissionMode): void

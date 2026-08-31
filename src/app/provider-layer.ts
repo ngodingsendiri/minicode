@@ -1,5 +1,4 @@
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
-import { runSetupWizard } from "../../cli/wizard.ts"
 import { loadConfig, type MinicodeConfig } from "../config.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"
 import { createAnthropicProvider } from "../providers/anthropic.ts"
@@ -12,6 +11,9 @@ export async function createProviderLayer(opts: {
   enterRepl: boolean
   rateLimiter?: RateLimiter
   providerOverride?: string
+  /** Setup first-run (wizard) — di-inject dari cli/. Tanpa injeksi, kosong
+   * berarti langsung error "no provider configured". */
+  setupWhenEmpty?: () => Promise<boolean>
 }): Promise<{ cfg: MinicodeConfig; router: ReturnType<typeof createRouterProvider> }> {
   const cfg = await loadConfig(opts.cwd)
   type Provider = ReturnType<typeof createOpenAICompatProvider>
@@ -70,7 +72,7 @@ export async function createProviderLayer(opts: {
       )
   }
   if (providers.length === 0 && (opts.enterRepl || opts.prompt)) {
-    const ok = await runSetupWizard()
+    const ok = opts.setupWhenEmpty ? await opts.setupWhenEmpty() : false
     if (ok) {
       const cfg2 = await loadConfig(opts.cwd)
       cfg.providers = cfg2.providers
