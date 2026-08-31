@@ -1,11 +1,16 @@
-// Simple logger — pengganti renderer klasik (tanpa Ink, tanpa alternate-screen)
-// Untuk one-shot non-interaktif: streaming markdown per baris, wrap, diff ringkas
+// Printer linier — satu-satunya renderer output agen (one-shot & REPL linier).
+// Output append-only ke scrollback terminal, tanpa alternate screen. Tool call
+// inline dan EXPANDED by default (transparansi shell); mode compact via
+// MINICODE_COMPACT=1 atau setCompactMode (/compact).
 import type { UiBus, UiStep } from "../contract.ts"
+import { detail } from "../render/detail.ts"
+import { renderDiffCard } from "../render/diff.ts"
 import { formatFriendly, friendlyError, friendlyFromCategory } from "../render/errors.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "../render/format.ts"
 import { decorateMarkdown } from "../render/markdown.ts"
 import { reasoning } from "../render/reasoning.ts"
-import { c } from "../render/theme.ts"
+import { sanitizeAnsi, sanitizeAnsiLine } from "../render/sanitize.ts"
+import { c, glyphs } from "../render/theme.ts"
 import { formatWrapped } from "../render/wrap.ts"
 import { runWithoutStatus } from "../runtime/statusline.ts"
 
@@ -15,6 +20,29 @@ export interface SimpleOptions {
 
 const wOut = (s: string) => runWithoutStatus(() => process.stdout.write(s))
 const wErr = (s: string) => runWithoutStatus(() => process.stderr.write(s))
+
+// Batas tampilan expanded. Scrollback terminal tidak terbatas, tapi satu tool
+// yang memuntahkan 10 ribu baris tetap tidak ramah dibaca — pangkas dengan
+// penanda jumlah sisa, seperti `| head` yang disengaja.
+const TOOL_OUT_MAX_LINES = 50
+const CONTENT_PREVIEW_LINES = 20
+const DIFF_MAX_LINES = 24
+// Tool yang hasilnya adalah KONTEN yang memang ingin dilihat user (bukan cuma
+// status aksi) — di mode expanded isinya ikut dicetak.
+const CONTENT_TOOLS = new Set([
+  "read_file",
+  "grep",
+  "glob",
+  "web_fetch",
+  "web_search",
+  "bash_output",
+])
+
+/** Gabungkan blok search/replace apply_patch menjadi sepasang teks lama/baru. */
+function patchBlocks(patches: unknown): [string, string] {
+  const list = Array.isArray(patches) ? (patches as { search?: string; replace?: string }[]) : []
+  return [list.map((p) => p.search ?? "").join("\n"), list.map((p) => p.replace ?? "").join("\n")]
+}
 
 export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => void {
   let streamBuffer = ""
@@ -53,7 +81,9 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   )
   offs.push(
     bus.on("provider:text", (e) => {
-      streamBuffer += e.text
+      // Teks model TIDAK terpercaya: tanpa sanitasi ia bisa menyisipkan sekuens
+      // kontrol (bersihkan layar, ubah judul jendela) langsung ke scrollback.
+      streamBuffer += sanitizeAnsi(e.text)
       flushBuf()
     }),
   )
@@ -74,7 +104,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         // tidak dibanjiri log build. Ringkasan tetap muncul di execution:completed.
         if (opts.verbose) {
           const d = e.data as { text?: string }
-          if (d.text) wErr(c.muted(d.text))
+          if (d.text) wErr(c.muted(sanitizeAnsi(d.text)))
         }
       } else if (e.kind === "error") {
         const d = e.data as { message?: string; category?: string }
@@ -95,8 +125,19 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   )
   offs.push(
     bus.on("execution:started", (e) => {
-      if (opts.verbose || !process.stderr.isTTY)
-        wErr(c.muted(`  running ${e.execution.call.name}... `))
+      if (detail.compact) {
+        if (opts.verbose || !process.stderr.isTTY)
+          wErr(c.muted(`  running ${e.execution.call.name}... `))
+        return
+      }
+      // Expanded: user melihat tool apa yang mulai berjalan SEBELUM hasilnya,
+      // inline di aliran output — transparansi ala shell (`set -x`).
+      const args = (e.execution.call.args ?? {}) as Record<string, unknown>
+      wErr(
+        c.muted(
+          `  ${glyphs.arrow} ${e.execution.call.name} ${sanitizeAnsiLine(formatArgsPreview(args))}\n`,
+        ),
+      )
     }),
   )
   offs.push(
@@ -105,7 +146,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
       const name = e.execution.call.name
       const args = (e.execution.call.args ?? {}) as Record<string, unknown>
       if (r.isError) {
-        wErr(c.error(`  ✗ ${name}: ${String(r.content).slice(0, 200)}\n`))
+        wErr(c.error(`  ✗ ${name}: ${sanitizeAnsi(String(r.content)).slice(0, 200)}\n`))
         return
       }
       const target = typeof args.path === "string" ? args.path : undefined
@@ -114,30 +155,69 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         wOut(c.success(`  ✓ write_file ${target}${size ? c.muted(` (${size})`) : ""}\n`))
         return
       }
-      if (name === "edit" && typeof args.path === "string") {
-        wOut(c.success(`  ✓ edit ${args.path}\n`))
-        return
-      }
-      if (name === "apply_patch" && target) {
-        wOut(c.success(`  ✓ apply_patch ${target}\n`))
+      if ((name === "edit" || name === "apply_patch") && target) {
+        const [oldT, newT] =
+          name === "edit"
+            ? [String(args.oldString ?? ""), String(args.newString ?? "")]
+            : patchBlocks(args.patches)
+        // Expanded: diff adalah inti perubahan — tampilkan inline. Compact
+        // jatuh ke baris ringkasan seperti sebelumnya.
+        if (!detail.compact && (oldT || newT)) {
+          wOut(
+            `${renderDiffCard(target, sanitizeAnsi(oldT), sanitizeAnsi(newT), {
+              maxLines: DIFF_MAX_LINES,
+            })}\n`,
+          )
+          return
+        }
+        wOut(c.success(`  ✓ ${name} ${target}\n`))
         return
       }
       // todo_write: tampilkan daftarnya utuh — ini rencana kerja, bukan noise.
       if (name === "todo_write" || name === "todo_read") {
-        wErr(c.success(`  ✓ ${name}\n`) + c.muted(`${String(r.content)}\n`))
+        wErr(c.success(`  ✓ ${name}\n`) + c.muted(`${sanitizeAnsi(String(r.content))}\n`))
         return
       }
       const cmdStr = (args.cmd as string) ?? (args.command as string)
       if (name === "bash" && typeof cmdStr === "string") {
-        const out = String(r.content).trim().split("\n").filter(Boolean)
-        const preview =
-          out.length > 3
-            ? out.slice(0, 3).join("\n    ") + c.muted(`\n    ... (${out.length - 3} more)`)
-            : out.join("\n    ")
-        wErr(c.success(`  ✓ $ ${String(cmdStr).slice(0, 80)}\n`) + c.muted(`    ${preview}\n`))
+        const cmdLabel = sanitizeAnsiLine(String(cmdStr)).slice(0, 80)
+        const lines = String(r.content).trim().split("\n").filter(Boolean)
+        if (detail.compact) {
+          const preview =
+            lines.length > 3
+              ? lines.slice(0, 3).join("\n    ") + c.muted(`\n    ... (${lines.length - 3} more)`)
+              : lines.join("\n    ")
+          wErr(c.success(`  ✓ $ ${cmdLabel}\n`) + c.muted(`    ${preview}\n`))
+          return
+        }
+        const shown = lines.slice(0, TOOL_OUT_MAX_LINES).map((l) => `    ${sanitizeAnsi(l)}`)
+        const more =
+          lines.length > TOOL_OUT_MAX_LINES
+            ? c.muted(`\n    … (${lines.length - TOOL_OUT_MAX_LINES} baris lagi)`)
+            : ""
+        wErr(
+          c.success(`  ✓ $ ${cmdLabel}\n`) +
+            (shown.length ? `${c.muted(shown.join("\n")) + more}\n` : ""),
+        )
         return
       }
-      const raw = String(r.content).trim()
+      if (!detail.compact && CONTENT_TOOLS.has(name)) {
+        // Hasil berupa KONTEN (isi berkas, hasil cari) ikut mengalir expanded.
+        const raw = sanitizeAnsi(String(r.content ?? "")).trim()
+        const lines = raw ? raw.split("\n") : []
+        const preview = lines
+          .slice(0, CONTENT_PREVIEW_LINES)
+          .map((l) => `    ${l}`)
+          .join("\n")
+        const more =
+          lines.length > CONTENT_PREVIEW_LINES
+            ? c.muted(`\n    … (${lines.length - CONTENT_PREVIEW_LINES} baris lagi)`)
+            : ""
+        const label = sanitizeAnsiLine(target ?? formatArgsPreview(args))
+        wErr(c.success(`  ✓ ${name} ${label}\n`) + (preview ? `${c.muted(preview) + more}\n` : ""))
+        return
+      }
+      const raw = sanitizeAnsi(String(r.content)).trim()
       const first = raw.split("\n")[0] ?? ""
       const preview = first.slice(0, 80) + (raw.length > 100 || raw.includes("\n") ? "..." : "")
       wErr(c.success(`  ✓ ${name}`) + c.muted(preview ? ` ${preview}` : "\n"))

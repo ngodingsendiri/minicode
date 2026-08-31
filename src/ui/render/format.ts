@@ -8,6 +8,8 @@ export function formatArgsPreview(args: unknown): string {
     const a = args as Record<string, unknown>
     if (a.path) return String(a.path)
     if (a.command) return String(a.command).slice(0, 60)
+    if (a.cmd) return String(a.cmd).slice(0, 60)
+    if (a.pattern) return String(a.pattern)
     if (a.query) return String(a.query)
     if (a.prompt) return String(a.prompt).slice(0, 40)
     return JSON.stringify(a).slice(0, 40)

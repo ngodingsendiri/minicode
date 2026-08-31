@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
 import { attachSimpleLogger, formatError } from "../src/ui/assistant/simple.ts"
+import { detail, setCompactMode } from "../src/ui/render/detail.ts"
 import {
   formatArgsPreview,
   formatCost,
@@ -318,6 +319,31 @@ describe("reasoning: satu state untuk /thinking", () => {
   })
 })
 
+describe("detail: state compact", () => {
+  afterEach(() => {
+    setCompactMode(false)
+  })
+
+  test("toggle tanpa argumen membalik nilai", () => {
+    setCompactMode(false)
+    expect(setCompactMode()).toBe(true)
+    expect(setCompactMode()).toBe(false)
+  })
+
+  test("set eksplisit menang", () => {
+    expect(setCompactMode(true)).toBe(true)
+    expect(detail.compact).toBe(true)
+    expect(setCompactMode(false)).toBe(false)
+  })
+
+  test("env disinkronkan supaya sub-proses mewarisi pilihan", () => {
+    setCompactMode(true)
+    expect(process.env.MINICODE_COMPACT).toBe("1")
+    setCompactMode(false)
+    expect(process.env.MINICODE_COMPACT).toBe("0")
+  })
+})
+
 describe("statusline: koordinasi suspend/resume", () => {
   afterEach(() => {
     registerStatusLine(null)
@@ -362,6 +388,7 @@ describe("simple logger (one-shot)", () => {
     tty?.restore()
     tty = undefined
     applyTheme("dark")
+    setCompactMode(false)
   })
 
   const attach = (verbose = false) => {
@@ -379,6 +406,16 @@ describe("simple logger (one-shot)", () => {
     detach()
     expect(out()).toContain("baris satu")
     expect(out()).toContain("baris dua")
+  })
+
+  test("teks model disanitasi sebelum masuk scrollback", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("provider:text", { text: "halo\x1b[2J\x1b[?1049l dunia\n" })
+    detach()
+    const o = out()
+    expect(o).not.toContain("\x1b[2J")
+    expect(o).not.toContain("\x1b[?1049l")
+    expect(o).toContain("halo dunia")
   })
 
   test("sisa buffer di-flush saat turn selesai", () => {
@@ -408,7 +445,8 @@ describe("simple logger (one-shot)", () => {
     expect(out()).toContain("edit b.ts")
   })
 
-  test("bash menampilkan perintah + potongan keluaran", () => {
+  test("compact: bash menampilkan perintah + potongan 3 baris keluaran", () => {
+    setCompactMode(true)
     const { bus, detach, out } = attach()
     bus.emit("execution:completed", {
       execution: {
@@ -420,7 +458,117 @@ describe("simple logger (one-shot)", () => {
     const o = out()
     expect(o).toContain("bun test")
     expect(o).toContain("l1")
+    expect(o).not.toContain("l4")
     expect(o).toContain("more")
+  })
+
+  test("expanded: execution:started mencetak tool + target", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:started", {
+      execution: { call: { name: "bash", args: { cmd: "ls -la" } } },
+    })
+    detach()
+    expect(out()).toContain("bash ls -la")
+  })
+
+  test("expanded: keluaran bash panjang dipangkas dengan penanda sisa", () => {
+    const { bus, detach, out } = attach()
+    const lines = Array.from({ length: 60 }, (_, i) => `baris-${i + 1}`)
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "bash", args: { cmd: "urutan" } },
+        result: { isError: false, content: lines.join("\n") },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("baris-50")
+    expect(o).not.toContain("baris-51")
+    expect(o).toContain("10 baris lagi")
+  })
+
+  test("expanded: edit menampilkan diff card inline", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: {
+          name: "edit",
+          args: { path: "f.ts", oldString: "lama", newString: "baru" },
+        },
+        result: { isError: false, content: "" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("f.ts")
+    expect(o).toContain("+ baru")
+    expect(o).toContain("- lama")
+  })
+
+  test("compact: edit hanya baris ringkasan", () => {
+    setCompactMode(true)
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: {
+          name: "edit",
+          args: { path: "f.ts", oldString: "lama", newString: "baru" },
+        },
+        result: { isError: false, content: "" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("edit f.ts")
+    expect(o).not.toContain("+ baru")
+  })
+
+  test("expanded: apply_patch merender blok search/replace sebagai diff", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: {
+          name: "apply_patch",
+          args: { path: "g.ts", patches: [{ search: "satu", replace: "dua" }] },
+        },
+        result: { isError: false, content: "" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("g.ts")
+    expect(o).toContain("+ dua")
+    expect(o).toContain("- satu")
+  })
+
+  test("expanded: read_file preview 20 baris + penanda sisa", () => {
+    const { bus, detach, out } = attach()
+    const lines = Array.from({ length: 30 }, (_, i) => `isi-${i + 1}`)
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "read_file", args: { path: "baca.ts" } },
+        result: { isError: false, content: lines.join("\n") },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("isi-20")
+    expect(o).not.toContain("isi-21")
+    expect(o).toContain("10 baris lagi")
+  })
+
+  test("hasil tool disanitasi dari sekuens kontrol", () => {
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "read_file", args: { path: "x.ts" } },
+        result: { isError: false, content: "halo\x1b[2Jdunia" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).not.toContain("\x1b[2J")
+    expect(o).toContain("halodunia")
   })
 
   test("tool error ditandai", () => {
