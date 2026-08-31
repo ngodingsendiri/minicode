@@ -6,7 +6,7 @@ MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satuny
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) **tidak ditulis di sini** — jalankan `bun test`, `bun run gate:coverage`, atau lihat CI. Riwayat perubahan per versi ada di [CHANGELOG.md](CHANGELOG.md).
 
-📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark) · [docs/PLAN_V4.md](docs/PLAN_V4.md) & [docs/PLAN_V5.md](docs/PLAN_V5.md) untuk riwayat audit dan sisa pekerjaan.
+📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark) · [docs/ARCHITECTURE.html](docs/ARCHITECTURE.html) untuk peta struktur repo.
 
 ## Hubungan
 ```
@@ -15,7 +15,7 @@ vendor/minicore (zero-dep — inti di-freeze; hanya seam additif `compactAsync` 
 minicode (coding-agent — self-contained, tanpa sibling clone)
   ├─ src/tools/     → Tool fs/bash/git/memory/todo/task/mcp/lsp + symlink jail defense-in-depth
   ├─ src/agents/    → Pool concurrency 3 (sub-agent isolasi, abort-aware)
-  ├─ src/hooks/     → allowlist merge global+local atomic chmod600 + promptAsk card [y/n/a]
+  ├─ src/hooks/     → allowlist merge global+local atomic chmod600
   ├─ src/policy/    → permission auto|ask|readonly|plan|allowlist|allow-all, bash-guard ternormalisasi,
   │                   sandbox-policy (OS-native otomatis), pricing, executor order-preserving
   ├─ src/providers/ → openai-compat + anthropic + router fallback · OAuth device-code + auth-store
@@ -23,10 +23,13 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
   ├─ src/lsp/       → client diagnostics/definition/references/hover/symbols (didClose cleanup)
   ├─ src/session/   → persistence sqlite + checkpoint shadow-git (tree, O(delta), HEAD user utuh)
   ├─ src/skills/    → loader recursive .minicode/skills/*.md ({{args}}/$ARGUMENTS, slug name)
-  ├─ src/tui/       → minimal/simple+fullscreen (pure ANSI ?1049h) + theme/highlight/diff/spinner
+  ├─ src/ui/        → presentation layer mandiri: render (theme/markdown/highlight/diff/width),
+  │                   input, assistant view simple+fullscreen (pure ANSI ?1049h), approval prompt,
+  │                   screens (picker/wizard/managers) — tanpa impor core/#minicore
   ├─ experiments/   → harness adversarial (fuzz bash, stress shadow-git, server MCP jahat)
-  ├─ docs/          → ARCHITECTURE.md · USAGE.md · PLAN_V4.md · PLAN_V5.md
-  └─ cli/           → REPL (tab completion, multiline, history, slash commands), wizard, subcommands
+  ├─ docs/          → ARCHITECTURE.html (peta struktur hidup) · USAGE.md
+  └─ cli/           → REPL (tab completion, multiline, history, slash commands) + controller tipis
+                      wizard/model-manager/provider-manager (logic config tetap di src/)
 ```
 
 ## Quickstart

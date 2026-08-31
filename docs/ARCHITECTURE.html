@@ -266,7 +266,7 @@
       <a href="#g-tools">src/tools/</a>
       <a href="#g-providers">src/providers/</a>
       <a href="#g-session">src/session/</a>
-      <a href="#g-tui">src/tui/</a>
+      <a href="#g-ui">src/ui/</a>
       <a href="#g-lain">src/ lainnya</a>
       <a href="#g-kernel">vendor/minicore/</a>
       <a href="#g-quality">test · scripts · bench</a>
@@ -329,8 +329,8 @@
 
     <!-- L1 -->
     <rect class="box b1" x="230" y="116" width="500" height="88"></rect>
-    <text class="t t1" x="480" y="142" text-anchor="middle">LAPISAN 1 — CLI &amp; TUI <tspan class="d" style="font-weight:400">(antarmuka)</tspan></text>
-    <text class="p" x="480" y="161" text-anchor="middle">cli/ · src/tui/</text>
+    <text class="t t1" x="480" y="142" text-anchor="middle">LAPISAN 1 — CLI &amp; UI <tspan class="d" style="font-weight:400">(antarmuka)</tspan></text>
+    <text class="p" x="480" y="161" text-anchor="middle">cli/ · src/ui/</text>
     <text class="d" x="480" y="180" text-anchor="middle">REPL fullscreen · routing slash &amp; skill · tema · markdown · sanitizeAnsi</text>
 
     <path class="edge" d="M480,204 V248" marker-end="url(#arw)"></path>
@@ -408,9 +408,9 @@
   <div class="stack">
     <div class="layer l1">
       <div class="lnum">1</div>
-      <div class="ltitle">CLI &amp; TUI <span class="chip c1">L1</span></div>
-      <div class="lpath">cli/ · src/tui/</div>
-      <div class="ldesc">Semua yang menyentuh terminal: argv, REPL, picker, wizard, tema, rendering. Tidak ada logika agen di lapisan ini.</div>
+      <div class="ltitle">CLI &amp; UI <span class="chip c1">L1</span></div>
+      <div class="lpath">cli/ · src/ui/</div>
+      <div class="ldesc">Semua yang menyentuh terminal: argv, REPL, picker, wizard, tema, rendering. Tidak ada logika agen di lapisan ini; layar interaktif = view murni (data + callback) di <code>src/ui/screens/</code>, controller tipis di <code>cli/</code>.</div>
     </div>
     <div class="stackarrow">▼ memakai</div>
     <div class="layer l2">
@@ -428,9 +428,16 @@
     </div>
   </div>
   <div class="dirnote">
-    <b>Lapisan logis ≠ struktur direktori.</b> <code>src/tui/</code> secara fisik berada di
+    <b>Lapisan logis ≠ struktur direktori.</b> <code>src/ui/</code> secara fisik berada di
     <code>src/</code> tetapi milik <span class="chip c1">L1</span> — lapisan ditentukan oleh
-    peran, bukan oleh lokasi folder.
+    peran, bukan oleh lokasi folder. <code>src/ui/</code> DILARANG mengimpor <code>cli/</code>,
+    <code>src/</code> non-ui, atau <code>#minicore</code>; <code>src/</code> non-ui dilarang
+    mengimpor <code>src/ui/</code>. Dijaga oleh <code>test/ui-boundary.test.ts</code>.
+  </div>
+  <div class="dirnote">
+    <b>Kontrak UI ↔ agen.</b> <code>src/ui/contract.ts</code> (UiBus + tipe event struktural)
+    adalah satu-satunya bentuk data yang mengalir ke presentation layer; kemampuan agen
+    masuk lewat callback yang di-inject dari <code>cli/setup.ts</code> (composition root).
   </div>
   <div class="dirnote">
     <b>Subpath <code>#minicore</code></b> dideklarasikan di blok <code>imports</code>
@@ -438,7 +445,7 @@
   </div>
   <div class="dirnote">
     <b>Mengapa tiga lapisan?</b> Kernel dapat diganti/disinkron tanpa menyentuh aplikasi;
-    kebijakan keamanan berdiri di L2 sehingga berlaku untuk semua tool; TUI bebas berubah
+    kebijakan keamanan berdiri di L2 sehingga berlaku untuk semua tool; UI bebas berubah
     tanpa memengaruhi logika.
   </div>
 </section>
@@ -475,7 +482,7 @@
       </div></div>
     <div class="step"><div class="rail"><div class="dot">6</div><div class="line"></div></div>
       <div class="card"><b>Rendering output</b>
-        <span class="where">src/tui/{sanitize,markdown,highlight,wrap,width}.ts → minimal/fullscreen.ts</span>
+        <span class="where">src/ui/render/{sanitize,markdown,highlight,wrap,width}.ts → src/ui/assistant/fullscreen.ts</span>
         <span class="what">Teks tidak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu digambar ke terminal.</span>
       </div></div>
     <div class="step"><div class="rail"><div class="dot">7</div><div class="line"></div></div>
@@ -498,30 +505,27 @@
   </div>
 
   <details class="group" id="g-cli" open>
-    <summary><span class="chip c1">L1</span> cli/ <span class="role">— entry point, subcommand, penggerak REPL</span></summary>
+    <summary><span class="chip c1">L1</span> cli/ <span class="role">— entry point, subcommand, penggerak REPL, controller layar</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Entry utama: parsing argv, HELP/versi, rute subcommand vs REPL.</div></div>
       <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: daftar flag, getArg, promptFromArgs, baca stdin.</div></div>
-      <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">createCliSession — pabrik sesi CLI: config, kernel session, tools, permission, checkpoint.</div></div>
+      <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">Composition root: createCliSession — rakit config, kernel session, tools, permission; inject wizard (setupWhenEmpty) dan approval view (ask) ke L2.</div></div>
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div></div>
       <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry builtin slash (/help /provider /model /sync /status /sessions /init /exit) + handleBuiltinCommand.</div></div>
       <div class="mod"><div class="fname">fullscreen-driver.ts</div><div class="fdesc">Driver REPL fullscreen: routing slash &amp; skill, picker model/provider/sessions, overlay.</div></div>
       <div class="mod"><div class="fname">commands/ — 9 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts</div></div>
-      <div class="mod"><div class="fname">prompt-engine.ts</div><div class="fdesc">Engine input murni: state, dekode tombol (CSI/utf-8), render spec — tanpa I/O.</div></div>
-      <div class="mod"><div class="fname">input.ts</div><div class="fdesc">History, askLine, askSecret, deteksi ANSI.</div></div>
-      <div class="mod"><div class="fname">picker.ts · panel.ts</div><div class="fdesc">UI picker generik; penangkap output console untuk overlay.</div></div>
-      <div class="mod"><div class="fname">model-manager.ts · provider-manager.ts</div><div class="fdesc">Manajer interaktif model &amp; provider (list/select/add/delete).</div></div>
-      <div class="mod"><div class="fname">wizard.ts · errors.ts</div><div class="fdesc">Wizard setup pertama; format error CLI.</div></div>
+      <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis layar interaktif: pegang CRUD config (detectAndSave/saveProvider/removeProvider), render &amp; keyboard di view src/ui/screens/.</div></div>
     </div>
   </details>
 
   <details class="group" id="g-app" open>
     <summary><span class="chip c2">L2</span> src/app/ + src/session.ts <span class="role">— perakitan agen</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">session.ts</div><div class="fdesc">createMinicodeSession — menyambung kernel session dengan permission handler, recovery, event.</div></div>
-      <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Merakit provider dari config ke bentuk yang dimakan kernel.</div></div>
+      <div class="mod"><div class="fname">session.ts</div><div class="fdesc">createMinicodeSession — menyambung kernel session dengan permission handler (opsi ask di-inject), recovery, event.</div></div>
+      <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Merakit provider dari config ke bentuk yang dimakan kernel; wizard first-run via callback setupWhenEmpty injeksi.</div></div>
       <div class="mod"><div class="fname">app/tool-layer.ts</div><div class="fdesc">Merakit daftar tool bawaan + MCP.</div></div>
       <div class="mod"><div class="fname">app/rag-layer.ts</div><div class="fdesc">Lapisan RAG/memory untuk konteks.</div></div>
+      <div class="mod"><div class="fname">app/mentions.ts</div><div class="fdesc">Ekspansi @mention berkas dalam prompt (jail path sensitif).</div></div>
     </div>
   </details>
 
@@ -575,19 +579,22 @@
     </div>
   </details>
 
-  <details class="group" id="g-tui">
-    <summary><span class="chip c1">L1</span> src/tui/ <span class="role">— rendering terminal (L1 meski fisik di src/)</span></summary>
+  <details class="group" id="g-ui">
+    <summary><span class="chip c1">L1</span> src/ui/ <span class="role">— presentation layer mandiri (dilarang impor cli/ · src/ non-ui · #minicore)</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">theme.ts · themes.ts</div><div class="fdesc">Warna &amp; glyph berbasis getter runtime; palet tema.</div></div>
-      <div class="mod"><div class="fname">sanitize.ts</div><div class="fdesc">sanitizeAnsi — hanya loloskan SGR; wajib untuk teks tak terpercaya.</div></div>
-      <div class="mod"><div class="fname">width.ts · wrap.ts</div><div class="fdesc">Ukuran teks dalam kolom (CJK/emoji = 2); pembungkus baris.</div></div>
-      <div class="mod"><div class="fname">markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
-      <div class="mod"><div class="fname">format.ts · diff.ts · table.ts</div><div class="fdesc">Format umum, render diff, tabel terminal.</div></div>
-      <div class="mod"><div class="fname">money.ts · reasoning.ts</div><div class="fdesc">Format biaya; render reasoning/thinking.</div></div>
-      <div class="mod"><div class="fname">spinner.ts · statusline.ts · turn-status.ts</div><div class="fdesc">Animasi &amp; baris status turn.</div></div>
-      <div class="mod"><div class="fname">file-mention.ts</div><div class="fdesc">Ekspansi @mention berkas dalam prompt.</div></div>
-      <div class="mod"><div class="fname">minimal/fullscreen.ts</div><div class="fdesc">Shell REPL fullscreen ANSI murni (tanpa Ink).</div></div>
-      <div class="mod"><div class="fname">minimal/screen.ts · minimal/simple.ts</div><div class="fdesc">Manajemen layar alternate; logger one-shot.</div></div>
+      <div class="mod"><div class="fname">contract.ts</div><div class="fdesc">Kontrak UI↔agen: UiBus + tipe event struktural (UiEvent, UiStep, UiToolCallRef) — EventBus kernel kompatibel struktural.</div></div>
+      <div class="mod"><div class="fname">render/theme.ts · themes.ts</div><div class="fdesc">Warna &amp; glyph berbasis getter runtime; palet tema.</div></div>
+      <div class="mod"><div class="fname">render/sanitize.ts</div><div class="fdesc">sanitizeAnsi — hanya loloskan SGR; wajib untuk teks tak terpercaya.</div></div>
+      <div class="mod"><div class="fname">render/width.ts · wrap.ts</div><div class="fdesc">Ukuran teks dalam kolom (CJK/emoji = 2); pembungkus baris.</div></div>
+      <div class="mod"><div class="fname">render/markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
+      <div class="mod"><div class="fname">render/format.ts · diff.ts · table.ts · money.ts · reasoning.ts</div><div class="fdesc">Format event (tipe lokal), render diff, tabel, biaya, reasoning/thinking.</div></div>
+      <div class="mod"><div class="fname">render/errors.ts</div><div class="fdesc">Format error provider ramah user (friendlyError).</div></div>
+      <div class="mod"><div class="fname">runtime/screen.ts · spinner.ts · statusline.ts</div><div class="fdesc">Manajemen layar alternate (?1049h), animasi spinner, baris status.</div></div>
+      <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni (state, dekode tombol CSI/utf-8, render spec); history, askLine, askSecret.</div></div>
+      <div class="mod"><div class="fname">assistant/fullscreen.ts · simple.ts · turn-status.ts</div><div class="fdesc">Shell REPL fullscreen ANSI murni, logger one-shot, status turn — semua berlangganan UiBus.</div></div>
+      <div class="mod"><div class="fname">approval/prompt.ts</div><div class="fdesc">promptAsk — view persetujuan tool call [y/a/n]; di-inject ke permission handler.</div></div>
+      <div class="mod"><div class="fname">screens/picker.ts · panel.ts</div><div class="fdesc">Picker generik; penangkap output console untuk overlay.</div></div>
+      <div class="mod"><div class="fname">screens/wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">View murni layar interaktif: data + callback async; tanpa akses config/disk.</div></div>
     </div>
   </details>
 
@@ -624,7 +631,7 @@
   <details class="group" id="g-quality">
     <summary><span class="chip cx">QA</span> test/ · scripts/ · bench/ · experiments/ <span class="role">— kualitas &amp; verifikasi</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">test/</div><div class="fdesc">Suite bun:test — termasuk penjaga invarian (no-frozen-runtime-value, import-convention).</div></div>
+      <div class="mod"><div class="fname">test/</div><div class="fdesc">Suite bun:test — termasuk penjaga invarian (no-frozen-runtime-value, import-convention, ui-boundary).</div></div>
       <div class="mod"><div class="fname">scripts/</div><div class="fdesc">Gate coverage &amp; pack, utilitas rilis.</div></div>
       <div class="mod"><div class="fname">bench/ · experiments/</div><div class="fdesc">Benchmark dan eksperimen adversarial.</div></div>
     </div>
@@ -677,6 +684,7 @@
     <li><span class="mono">Teks tak terpercaya → sanitizeAnsi</span> — output model/tool/berkas wajib disanitasi sebelum render.</li>
     <li><span class="mono">Lebar dalam kolom</span> — gunakan <code>displayWidth</code>/<code>truncateToWidth</code>, bukan <code>.length</code>/<code>.slice()</code>.</li>
     <li><span class="mono">c &amp; glyphs adalah getter</span> — jangan simpan ke const module scope; nilai dibekukan saat import.</li>
+    <li><span class="mono">Batas src/ui</span> — presentation layer tidak boleh mengimpor <code>cli/</code>, <code>src/</code> non-ui, atau <code>#minicore</code>; sebaliknya <code>src/</code> non-ui tidak boleh mengimpor <code>src/ui/</code>. Dijaga <code>test/ui-boundary.test.ts</code>.</li>
     <li><span class="mono">Gate</span> — <code>bun x tsc --noEmit &amp;&amp; bun run lint &amp;&amp; bun test &amp;&amp; bun run gate:coverage &amp;&amp; bun run gate:pack</code>.</li>
   </ul>
   <footer>

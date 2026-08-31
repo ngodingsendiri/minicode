@@ -40,10 +40,9 @@ src/hooks/index.ts:
   function loadAllowlist(...)
   function saveAllowlist(...)
   function matchAllowlist(...)
-  function promptAsk(...)
 cli/commands/skills.ts:
   function handleSkills(...)
-cli/prompt-engine.ts:
+src/ui/input/prompt-engine.ts:
   interface PromptState
   const MAX_VISIBLE
   interface RenderSpec
@@ -60,7 +59,7 @@ cli/router.ts:
   function dispatch(...)
 cli/commands/mcp.ts:
   function handleMcp(...)
-cli/input.ts:
+src/ui/input/input.ts:
   function loadHistory(...)
   function appendHistory(...)
   function detectAnsi(...)
@@ -99,11 +98,49 @@ src/lsp/client.ts:
   function findSymbolPosition(...)
   function lspDiagnostics(...)
   function lspCa
+src/ui/contract.ts:
+  interface UiToolCallRef(...)
+  interface UiStep(...)
+  interface UiExecution(...)
+  type UiEvent(...)
+  type UiEventType(...)
+  interface UiBus(...)
+src/ui/approval/prompt.ts:
+  interface ApprovalRequest(...)
+  function promptAsk(...)
+src/ui/render/errors.ts:
+  function friendlyError(...)
+  function formatFriendly(...)
+src/ui/screens/picker.ts:
+  function runPicker(...)
+src/ui/screens/panel.ts:
+  function captureOutput(...)
+  function runPanel(...)
+src/ui/screens/wizard.ts:
+  function runSetupWizardView(...)
+src/ui/screens/model-manager.ts:
+  function runModelManagerView(...)
+src/ui/screens/provider-manager.ts:
+  function runProviderManagerView(...)
+src/ui/assistant/fullscreen.ts:
+  function attachFullscreenMinimal(...)
+src/ui/assistant/simple.ts:
+  function attachSimpleLogger(...)
+src/app/mentions.ts:
+  function parseMentions(...)
+  function resolveMentionContent(...)
+  function expandMentions(...)
 ```
 
 ## Konvensi
 - Ikuti gaya kode existing.
 - Jalankan typecheck/test sebelum menyatakan selesai.
+- **Arah dependensi**: `cli/` boleh mengimpor `src/ui/` dan `src/`; `src/`
+  non-ui DILARANG mengimpor `src/ui/`; `src/ui/` DILARANG mengimpor `cli/`,
+  `src/` non-ui, atau `#minicore`. UI adalah presentation layer mandiri —
+  komunikasi lewat kontrak (`src/ui/contract.ts`) dan callback yang
+  di-inject dari `cli/` (composition root: `cli/setup.ts`). Penjaganya:
+  `test/ui-boundary.test.ts`.
 - **Setiap agent yang menambah, menghapus, memindah modul/berkas, atau mengubah
   lapisan/ketergantungan antarlapisan WAJIB memperbarui `docs/ARCHITECTURE.html`
   dalam perubahan yang sama.** File itu peta struktur hidup repo ini dan harus
@@ -123,15 +160,15 @@ bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun r
 
 ## Jebakan yang sudah tiga kali terulang
 
-`c` dan `glyphs` di `src/tui/theme.ts` adalah **getter** yang membaca state
+`c` dan `glyphs` di `src/ui/render/theme.ts` adalah **getter** yang membaca state
 runtime (tema aktif, dukungan UTF-8, `NO_COLOR`). Menyimpannya ke `const` di
 module scope membekukan nilainya saat import — `/theme` pernah tidak berefek
 apa pun karena ini, dua kali. Lihat PLAN.md P0.1.
 
 Lebar teks di terminal diukur dalam **kolom**, bukan karakter: pakai
-`displayWidth`/`truncateToWidth`/`padToWidth` dari `src/tui/width.ts`, jangan
+`displayWidth`/`truncateToWidth`/`padToWidth` dari `src/ui/render/width.ts`, jangan
 `.length` atau `.slice()`. CJK dan emoji memakan dua kolom.
 
 Teks dari model, hasil tool, dan isi berkas adalah masukan **tidak terpercaya**:
-lewatkan `sanitizeAnsi` (`src/tui/sanitize.ts`) sebelum ditampilkan. Tanpa itu
+lewatkan `sanitizeAnsi` (`src/ui/render/sanitize.ts`) sebelum ditampilkan. Tanpa itu
 model bisa membersihkan layar atau keluar dari alternate screen.

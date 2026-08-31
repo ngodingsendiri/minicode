@@ -35,7 +35,7 @@ Requires `bun >=1.0` (`bun:sqlite` dipakai langsung — tidak jalan di Node).
 - New features as Tools / Providers / Policies in `minicode`, not core patches.
 - Central limits live in `src/constants.ts` (`LIMITS`) — no scattered magic numbers.
 - All process spawns go through `sanitizeSpawnEnv`; all file writes through `atomicWriteText`.
-- ANSI escape pattern punya satu sumber: `ANSI_PATTERN`/`stripAnsi` di `src/tui/theme.ts`.
+- ANSI escape pattern punya satu sumber: `ANSI_PATTERN`/`stripAnsi` di `src/ui/render/theme.ts`.
 - Production code must contain zero `as never` / `as any`.
 
 ## Testing

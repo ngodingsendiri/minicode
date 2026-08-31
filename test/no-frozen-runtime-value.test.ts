@@ -152,7 +152,7 @@ function trackedFiles(): string[] {
     .split("\n")
     .map((s) => s.trim())
     .filter((s) => s.endsWith(".ts"))
-    .filter((s) => s.startsWith("src/tui/") || s.startsWith("cli/"))
+    .filter((s) => s.startsWith("src/ui/") || s.startsWith("cli/"))
 }
 
 describe("detektor nilai beku (unit)", () => {
@@ -212,7 +212,7 @@ describe("konvensi: tak ada nilai runtime yang dibekukan saat import", () => {
     expect(files.length).toBeGreaterThan(10)
   })
 
-  test("src/tui/** dan cli/** bersih", () => {
+  test("src/ui/** dan cli/** bersih", () => {
     const offenses: string[] = []
     for (const f of files) {
       // Berkas ini memuat pola pelanggaran sebagai fixture — ia akan menuduh
