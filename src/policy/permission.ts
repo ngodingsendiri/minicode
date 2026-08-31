@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "#minicore"
-import { loadAllowlist, matchAllowlist, saveAllowlist } from "../hooks/index.ts"
+import { loadAllowlist, matchAllowlist, saveAllowlist } from "./allowlist.ts"
 import { inspectBashCommand } from "./bash-guard.ts"
 import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
 
