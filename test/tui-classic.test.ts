@@ -307,7 +307,7 @@ describe("runPicker", () => {
     await tty.ready()
     tty.clear()
     await tty.send("zzzz")
-    expect(visible(tty)).toContain("tidak ada yang cocok")
+    expect(visible(tty)).toContain("No matches")
     await tty.send(KEY.enter, 20)
     await p
     expect(picked).toBeNull()
@@ -461,14 +461,14 @@ describe("runProviderManager", () => {
     expect(overridden).toBeUndefined()
   })
 
-  test("footer menyebut pintasan a/d/e", async () => {
+  test("footer menyebut operasi add/delete/edit", async () => {
     tty = installFakeTty({ rows: 24 })
     const p = runProviderManager({ cwd: process.cwd() })
     await tty.ready()
     const out = visible(tty)
-    expect(out).toContain("tambah")
-    expect(out).toContain("hapus")
-    expect(out).toContain("ubah")
+    expect(out).toContain("add")
+    expect(out).toContain("delete")
+    expect(out).toContain("edit")
     await tty.send(KEY.esc, 30)
     await p
   })

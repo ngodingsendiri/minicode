@@ -24,9 +24,9 @@ export async function runSetupWizard(): Promise<boolean> {
   // Sapaan: pada terminal sempit, petunjuk batal pindah ke baris sendiri
   // supaya tidak membungkus.
   const cols = process.stdout.columns || 80
-  const sapaan = "Hubungkan provider AI pertama Anda."
-  const petunjuk = "(Ctrl+C untuk batal)"
-  process.stdout.write(`\n${c.bold("Setup minicode")}\n`)
+  const sapaan = "Connect your first provider."
+  const petunjuk = "(Ctrl+C to cancel)"
+  process.stdout.write(`\n${c.bold("Minicode setup")}\n`)
   process.stdout.write(
     displayWidth(`${sapaan} ${petunjuk}`) <= cols
       ? `${sapaan} ${c.dim(petunjuk)}\n`
@@ -36,15 +36,15 @@ export async function runSetupWizard(): Promise<boolean> {
   const CUSTOM = "\u0000custom"
   const items = [
     ...GATEWAY_PRESETS.map((p) => ({ name: p.label, provider: "", value: p.baseUrl })),
-    { name: "URL kustom (endpoint OpenAI-compatible apa pun)", provider: "", value: CUSTOM },
+    { name: "Custom URL", provider: "", value: CUSTOM },
   ]
 
   let picked: string | null = null
   await runPicker({
-    title: "Pilih gateway",
+    title: "Select gateway",
     items,
     filterable: true,
-    placeholder: "ketik untuk memfilter",
+    placeholder: "Filter",
     onPick: (v) => {
       picked = v
     },
@@ -53,7 +53,7 @@ export async function runSetupWizard(): Promise<boolean> {
     },
   })
   if (picked === null) {
-    process.stdout.write("Setup dibatalkan.\n")
+    process.stdout.write("Setup canceled.\n")
     return false
   }
 
@@ -74,7 +74,7 @@ export async function runSetupWizard(): Promise<boolean> {
   }
 
   if (!targetUrl) {
-    process.stdout.write("Setup dibatalkan.\n")
+    process.stdout.write("Setup canceled.\n")
     return false
   }
   // Validasi URL — umpan balik langsung, bukan gagal saat detect.
@@ -82,24 +82,22 @@ export async function runSetupWizard(): Promise<boolean> {
     const u = new URL(targetUrl)
     if (!["http:", "https:"].includes(u.protocol)) throw new Error("protocol")
   } catch {
-    process.stdout.write(`${c.red(glyphs.cross)} URL tidak valid: ${targetUrl}\n`)
+    process.stdout.write(`${c.red(glyphs.cross)} Invalid URL: ${targetUrl}\n`)
     return false
   }
 
   // Endpoint lokal (Ollama/LM Studio) tidak butuh API key; kirim placeholder
   // agar header Authorization tetap terbentuk.
   const lokal = /^(https?:\/\/)(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(targetUrl)
-  const apiKey = lokal ? "ollama" : await askSecret("API Key (tersembunyi): ")
+  const apiKey = lokal ? "ollama" : await askSecret("API key: ")
 
   if (!apiKey) {
-    process.stdout.write(
-      `Setup dibatalkan. Anda bisa memakai variabel lingkungan OPENAI_API_KEY nanti.\n`,
-    )
+    process.stdout.write(`Setup canceled. Set OPENAI_API_KEY later to continue.\n`)
     return false
   }
 
   const { createSpinner } = await import("../src/tui/spinner.ts")
-  const spin = createSpinner("Mendeteksi model…")
+  const spin = createSpinner("Detecting models…")
   try {
     const preset = GATEWAY_PRESETS.find(
       (p) => p.baseUrl.replace(/\/+$/, "") === targetUrl.replace(/\/+$/, ""),
@@ -108,11 +106,11 @@ export async function runSetupWizard(): Promise<boolean> {
       preset?.fallbackModels ??
       (targetUrl.includes("anthropic") ? ["claude-sonnet-4"] : ["gpt-4o-mini"])
     const entry = await detectAndSave(targetUrl, apiKey, undefined, { fallbackModels })
-    spin.success(`Provider "${entry.id}" tersimpan — ${entry.models.length} model`)
-    process.stdout.write(`Setup selesai. ${c.dim("Ketik /help untuk daftar perintah.")}\n\n`)
+    spin.success(`Provider "${entry.id}" saved — ${entry.models.length} models`)
+    process.stdout.write(`Setup complete.\n\n`)
     return true
   } catch (e) {
-    spin.error(`Deteksi model gagal: ${formatError(e)}`)
+    spin.error(`Model detection failed: ${formatError(e)}`)
     return false
   }
 }

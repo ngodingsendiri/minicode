@@ -50,7 +50,7 @@ async function overlay(q: string): Promise<{ title: string; lines: string[] } | 
 }
 
 describe("B1 — slash builtin overlay tidak crash", () => {
-  for (const cmd of ["/help", "/cost", "/status", "/sessions"]) {
+  for (const cmd of ["/help", "/status", "/sessions"]) {
     test(`${cmd} menghasilkan baris output, bukan error`, async () => {
       const r = await overlay(cmd)
       expect(r).not.toBeNull()

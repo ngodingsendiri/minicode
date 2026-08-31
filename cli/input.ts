@@ -290,6 +290,14 @@ export async function askSecret(promptText: string): Promise<string> {
     process.stdout.write(promptText)
     let secret = ""
 
+    const finish = (value: string) => {
+      process.stdin.removeListener("data", onData)
+      process.stdin.setRawMode(false)
+      process.stdin.pause()
+      process.stdout.write("\n")
+      resolve(value)
+    }
+
     const onData = (chunk: Buffer) => {
       const str = chunk.toString()
 
@@ -297,18 +305,24 @@ export async function askSecret(promptText: string): Promise<string> {
         const char = str[i]!
 
         if (char === "\r" || char === "\n") {
-          process.stdin.removeListener("data", onData)
-          process.stdin.setRawMode(false)
-          process.stdin.pause()
-          process.stdout.write("\n")
-          resolve(secret.trim())
+          finish(secret.trim())
           return
         } else if (char === "\u0003") {
-          process.stdin.removeListener("data", onData)
-          process.stdin.setRawMode(false)
-          process.stdin.pause()
-          process.stdout.write("\n")
-          process.exit(130)
+          // Ctrl+C = BATALKAN PROMPT, bukan matikan proses.
+          //
+          // Dulu di sini `process.exit(130)`. Di raw mode Ctrl+C tidak
+          // menghasilkan SIGINT, jadi itu emulasi manual — tapi `askSecret`
+          // dipanggil dari `runProviderManager`, sebuah dialog di dalam REPL
+          // yang hidup. Menekan Ctrl+C saat salah ketik API key mematikan
+          // seluruh sesi beserta riwayatnya, bukan menutup dialognya.
+          //
+          // String kosong adalah sinyal batal yang SUDAH ditangani kedua
+          // pemanggil: provider-manager mencetak "API Key wajib diisi." lalu
+          // kembali ke daftar, wizard mencetak "Setup dibatalkan.". Ini juga
+          // menyamakan perilakunya dengan `askLine`, yang membatalkan (null)
+          // alih-alih keluar.
+          finish("")
+          return
         } else if (char === "\u007f" || char === "\b") {
           if (secret.length > 0) {
             secret = secret.slice(0, -1)

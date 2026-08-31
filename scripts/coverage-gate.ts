@@ -25,8 +25,12 @@ function getArg(name: string, fallback: number): number {
 // fullscreen/askLine/picker/panel + handler subcommand): 79,26% funcs /
 // 82,13% lines. Ambil sedikit di bawah supaya CI tidak flaky, lalu naikkan
 // bertahap. Riwayat: 0.7.0 = 71,95%/76,76%.
-const MIN_LINES = getArg("--lines", 80)
-const MIN_FUNCS = getArg("--funcs", 77)
+// Baseline baru setelah test anti-frozen runtime, highlight adversarial,
+// provider-manager flows, dan CLI subprocess: 82,36% funcs / 84,16% lines.
+// Ambil sedikit di bawah hasil terukur agar gate tetap tahan flake, tetapi
+// naik dari baseline lama supaya coverage tidak bisa mundur diam-diam.
+const MIN_LINES = getArg("--lines", 83)
+const MIN_FUNCS = getArg("--funcs", 81)
 
 const res = spawnSync("bun", ["test", "--coverage"], {
   encoding: "utf8",

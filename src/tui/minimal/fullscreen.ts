@@ -87,6 +87,11 @@ export interface FullscreenMinimalOpts {
     title: string
     items: { label: string; value: string }[]
     onPick(v: string): string | void
+    onKey?(
+      key: string,
+      selectedValue?: string,
+      openForm?: (label: string, submit: (value: string) => Promise<string | void>) => void,
+    ): Promise<string | void> | string | void
   } | null>
   onOverlay(q: string): Promise<{ title: string; lines: string[] } | null>
   onExit(): Promise<void>
@@ -116,6 +121,12 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     items: { label: string; value: string }[]
     sel: number
     onPick: (v: string) => string | void
+    onKey?: (
+      key: string,
+      selectedValue?: string,
+      openForm?: (label: string, submit: (value: string) => Promise<string | void>) => void,
+    ) => Promise<string | void> | string | void
+    form?: { label: string; submit: (value: string) => Promise<string | void> }
   } | null = null
   let effModel: string | undefined
   let effProvider: string | undefined
@@ -299,12 +310,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     add("user", q)
     histCache = [...histCache, q].slice(-200)
     histIdx = -1
-    if (q === "/exit" || q === "/quit") return void (await opts.onExit())
-    if (q === "/clear") {
-      items = []
-      render()
-      return
-    }
+    if (q === "/exit") return void (await opts.onExit())
     // Batas biaya berlaku juga di REPL: tolak prompt baru, jangan lanjut membakar.
     if (overBudget() && !q.startsWith("/")) {
       add("error", "batas biaya sesi terlampaui — mulai sesi baru atau naikkan --budget")
@@ -451,13 +457,14 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
     // header — narrow terminal (<80 cols) → brand di baris 1, model+mode baris 2
     const modeColored =
       mode === "plan" ? c.warning(mode) : mode === "ask" ? c.info(mode) : c.success(mode)
+    const thinking = reasoning.visible ? "think:on" : "think:off"
     const dispModel = effModel ?? opts.model() ?? "-"
     const viaTag = effProvider ? ` ${c.muted(`(via ${effProvider})`)}` : ""
     out += `\x1b[H\x1b[2J`
     const headerModel = `${c.yellow(truncAnsi(dispModel, narrow ? Math.max(4, W - 8) : Math.max(20, W - 40)))}${viaTag}`
     const header = narrow
-      ? `${c.cyan("minicode")} ${c.muted("-")} ${modeColored}${costTag()}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n ${headerModel}\n`
-      : `${c.cyan("minicode")} ${c.muted("-")} ${headerModel} ${c.muted("-")} ${modeColored}${costTag()}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n`
+      ? `${c.cyan("minicode")} ${c.muted("-")} ${modeColored}${costTag()} ${c.muted(thinking)}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n ${headerModel}\n`
+      : `${c.cyan("minicode")} ${c.muted("-")} ${headerModel} ${c.muted("-")} ${modeColored}${costTag()} ${c.muted(thinking)}${expanded ? ` ${c.muted("- DETAIL")}` : ""}\n`
     // Header dibangun dari beberapa bagian; potong per baris supaya terminal
     // sangat sempit (mis. 10 kolom) tidak membuatnya membungkus.
     out += header
@@ -479,6 +486,7 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
             : `  ${truncAnsi(it.label, W - 6)}`) + "\n"
       }
       out += `${c.muted(`[atas/bawah] pilih${sep()}[enter] ok${sep()}[esc] batal`)}\n`
+      if (picker.form) out += `${c.accent(picker.form.label)} ${truncAnsi(line, W - 2)}\n`
     } else if (overlay) {
       // Overlay di-SLICE ke kapasitas layar dan bisa di-scroll.
       // Sebelumnya seluruh overlay.lines dicetak apa pun tingginya, sehingga
@@ -519,58 +527,63 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
         }
       }
     }
-    // input — kursor sungguhan diposisikan setelah frame ditulis, bukan "_" palsu.
-    //
-    // Semua perhitungan di sini memakai KOLOM, bukan jumlah karakter: satu
-    // karakter CJK/emoji memakan dua kolom, jadi jendela geser dan posisi kursor
-    // harus menghitungnya. Versi sebelumnya memakai jumlah code point, sehingga
-    // prompt berisi CJK menggeser kursor terminal ke tempat yang salah.
-    const promptGlyph = "> "
-    const promptCols = displayWidth(promptGlyph)
-    const avail = Math.max(8, W - promptCols)
-    const pts = Array.from(line)
-    // Lebar kumulatif tiap posisi kursor (0..len) dalam kolom.
-    const colAt: number[] = [0]
-    for (const ch of pts) colAt.push(colAt[colAt.length - 1]! + displayWidth(ch))
-    const totalCols = colAt[colAt.length - 1]!
+    // Modal memiliki frame sendiri. Jangan menggambar prompt chat dan footer
+    // global di bawahnya: itulah sumber output ganda seperti `- Models -`, `>`
+    // lalu footer chat yang sebelumnya terlihat saat `/model` dibuka.
+    if (picker || overlay) {
+      if (out.endsWith("\n")) out = out.slice(0, -1)
+    } else {
+      // input — kursor sungguhan diposisikan setelah frame ditulis, bukan "_" palsu.
+      //
+      // Semua perhitungan di sini memakai KOLOM, bukan jumlah karakter: satu
+      // karakter CJK/emoji memakan dua kolom, jadi jendela geser dan posisi kursor
+      // harus menghitungnya. Versi sebelumnya memakai jumlah code point, sehingga
+      // prompt berisi CJK menggeser kursor terminal ke tempat yang salah.
+      const promptGlyph = "> "
+      const promptCols = displayWidth(promptGlyph)
+      const avail = Math.max(8, W - promptCols)
+      const pts = Array.from(line)
+      // Lebar kumulatif tiap posisi kursor (0..len) dalam kolom.
+      const colAt: number[] = [0]
+      for (const ch of pts) colAt.push(colAt[colAt.length - 1]! + displayWidth(ch))
+      const totalCols = colAt[colAt.length - 1]!
 
-    let start = 0
-    if (totalCols > avail) {
-      // Geser jendela sampai kursor masuk: cari `start` terkecil yang membuat
-      // kolom kursor berada dalam `avail`.
-      const cursorCols = colAt[Math.min(cursor, pts.length)]!
-      while (start < pts.length && cursorCols - colAt[start]! >= avail) start++
-    }
-    const visibleLine = pts.slice(start, pts.length).join("")
-    out += `${c.cyan(promptGlyph)}${truncateToWidth(visibleLine, avail, "")}\n`
+      let start = 0
+      if (totalCols > avail) {
+        // Geser jendela sampai kursor masuk: cari `start` terkecil yang membuat
+        // kolom kursor berada dalam `avail`.
+        const cursorCols = colAt[Math.min(cursor, pts.length)]!
+        while (start < pts.length && cursorCols - colAt[start]! >= avail) start++
+      }
+      const visibleLine = pts.slice(start, pts.length).join("")
+      out += `${c.cyan(promptGlyph)}${truncateToWidth(visibleLine, avail, "")}\n`
 
-    const footerHints = [
-      "ctrl+c stop/keluar",
-      "esc stop",
-      "ctrl+o detail",
-      "shift+tab mode",
-      "/help",
-    ]
-    const u = opts.usage()
-    if (u.cost != null && u.cost > 0) {
-      footerHints.unshift(
-        opts.budget != null ? `${formatUsd(u.cost)}/${formatUsd(opts.budget)}` : formatUsd(u.cost),
-      )
-    }
-    // Terminal sempit: buang hint dari ekor sampai muat, jangan biarkan wrap.
-    let footer = footerHints.join(sep())
-    while (displayWidth(footer) > W && footerHints.length > 1) {
-      footerHints.pop()
-      footer = footerHints.join(sep())
-    }
-    out += `${c.muted(truncAnsi(footer, W))}`
+      const footerHints = picker
+        ? ["enter select", "esc close"]
+        : ["ctrl+t thinking", "esc stop", "/help"]
+      const u = opts.usage()
+      if (u.cost != null && u.cost > 0) {
+        footerHints.unshift(
+          opts.budget != null
+            ? `${formatUsd(u.cost)}/${formatUsd(opts.budget)}`
+            : formatUsd(u.cost),
+        )
+      }
+      // Terminal sempit: buang hint dari ekor sampai muat, jangan biarkan wrap.
+      let footer = footerHints.join(sep())
+      while (displayWidth(footer) > W && footerHints.length > 1) {
+        footerHints.pop()
+        footer = footerHints.join(sep())
+      }
+      out += `${c.muted(truncAnsi(footer, W))}`
 
-    // Posisikan kursor pada baris input, kolom sesuai state kursor.
-    const frameRows = out.split("\n").length
-    const inputRow = frameRows - 1 // 1-based: baris terakhir adalah footer
-    const cursorCol =
-      promptCols + (colAt[Math.min(cursor, pts.length)]! - colAt[Math.min(start, pts.length)]!)
-    out += `\x1b[${Math.max(1, inputRow)};${Math.max(1, cursorCol + 1)}H`
+      // Posisikan kursor pada baris input, kolom sesuai state kursor.
+      const frameRows = out.split("\n").length
+      const inputRow = frameRows - 1 // 1-based: baris terakhir adalah footer
+      const cursorCol =
+        promptCols + (colAt[Math.min(cursor, pts.length)]! - colAt[Math.min(start, pts.length)]!)
+      out += `\x1b[${Math.max(1, inputRow)};${Math.max(1, cursorCol + 1)}H`
+    }
 
     if (out !== prevOut) {
       process.stdout.write(out)
@@ -661,6 +674,32 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       }
       // picker mode
       if (picker) {
+        if (picker.form) {
+          const result = applyKey({ line, cursor, sel: -1, menuOpen: false }, key, () => [])
+          if (result.action === "cancel") {
+            picker.form = undefined
+            line = ""
+            cursor = 0
+            render()
+            continue
+          }
+          if (result.action === "submit") {
+            const form = picker.form
+            const value = line.trim()
+            line = ""
+            cursor = 0
+            picker.form = undefined
+            void form.submit(value).then((message) => {
+              if (message) add("info", message)
+              render()
+            })
+            continue
+          }
+          line = result.state.line
+          cursor = result.state.cursor
+          render()
+          continue
+        }
         if (key.type === "up") {
           picker.sel = Math.max(0, picker.sel - 1)
           render()
@@ -680,6 +719,22 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
             if (typeof r === "string") add("info", r)
           }
           render()
+          continue
+        }
+        if (key.type === "char" && picker.onKey) {
+          const openForm = (label: string, submit: (value: string) => Promise<string | void>) => {
+            picker!.form = { label, submit }
+            line = ""
+            cursor = 0
+            render()
+          }
+          const action = picker.onKey(key.ch, picker.items[picker.sel]?.value, openForm)
+          if (action instanceof Promise) {
+            void action.then((message) => {
+              if (message) add("info", message)
+              render()
+            })
+          } else if (action) add("info", action)
           continue
         }
         continue
@@ -719,6 +774,11 @@ export function attachFullscreenMinimal(opts: FullscreenMinimalOpts): { detach()
       // Ctrl+O / Ctrl+R (decodeKeys native)
       if (key.type === "ctrl-o") {
         expanded = !expanded
+        render()
+        continue
+      }
+      if (key.type === "ctrl-t") {
+        setReasoningVisible()
         render()
         continue
       }

@@ -52,6 +52,7 @@ export type PromptKey =
   | { type: "ctrl-w" } // delete previous word
   | { type: "ctrl-o" } // expand detail (TUI)
   | { type: "ctrl-r" } // reverse history search (TUI)
+  | { type: "ctrl-t" } // toggle reasoning visibility
   | { type: "shift-tab" } // cycle mode (TUI) — caller maps raw \x1b[Z
   | { type: "ignore" } // sekuens yang sengaja dibuang (mis. byte mouse)
 
@@ -206,6 +207,7 @@ export function applyKey(
       return { state, action: "cancel" }
     case "ctrl-o": // expand/collapse transcript — handled oleh renderer TUI
     case "ctrl-r": // history search — handled oleh renderer TUI
+    case "ctrl-t": // toggle reasoning — handled oleh renderer TUI
     case "shift-tab": // cycle mode — handled oleh renderer TUI
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks
       return { state, action: "none" }
@@ -327,6 +329,7 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   // Ctrl+O (15) & Ctrl+R (18) sebagai key types sendiri
   if (code === 0x0f) return { key: { type: "ctrl-o" }, width: 1 }
   if (code === 0x12) return { key: { type: "ctrl-r" }, width: 1 }
+  if (code === 0x14) return { key: { type: "ctrl-t" }, width: 1 }
   if (code === 0x7f || code === 0x08) return { key: { type: "backspace" }, width: 1 }
   if (c === "\n" || c === "\r") return { key: { type: "enter" }, width: 1 }
   if (c === "\t") return { key: { type: "tab" }, width: 1 }

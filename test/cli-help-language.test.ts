@@ -8,8 +8,8 @@ import { glyphs, stripAnsi } from "../src/tui/theme.ts"
 import { displayWidth } from "../src/tui/width.ts"
 
 /** Kata Inggris yang pernah bocor ke keluaran pengguna. */
-const INGGRIS =
-  /\b(canceled|Detecting|required|Providers|Save globally|Unknown selection|Add New|select gateway|no providers|press a to add|set active|delete|close|Session ID|Active Tools|Goodbye|Recent Sessions|no previous|Syncing|Compaction|type a number|Undo failed|Redo failed|Reapplied|Undid|deprecated|Estimated Cost|Input Tokens|Output Tokens)\b/
+const INDONESIAN =
+  /\b(Tampilkan|Kelola|Pilih|Segarkan|Batalkan|Terapkan|Pemakaian|Daftar|Lanjutkan|Status|Ganti|Buat|Bersihkan|Keluar)\b/
 
 const ctx = {
   cwd: process.cwd(),
@@ -40,22 +40,16 @@ describe("/help: kelengkapan & ukuran", () => {
     expect(lines.length).toBeLessThanOrEqual(19)
   })
 
-  test("menyebut perintah yang sebelumnya tak terdaftar", async () => {
+  test("contains only the supported command surface", async () => {
     const teks = (await run("/help")).join("\n")
-    for (const cmd of ["/clear", "/exit"]) expect(teks, cmd).toContain(cmd)
+    for (const cmd of ["/help", "/provider", "/model", "/status", "/sessions", "/init", "/exit"])
+      expect(teks, cmd).toContain(cmd)
+    for (const cmd of ["/models", "/providers", "/cost", "/resume", "/theme", "/thinking"])
+      expect(teks, cmd).not.toContain(cmd)
   })
 
-  test("mengarahkan ke daftar pintasan lengkap", async () => {
-    expect((await run("/help")).join("\n")).toContain("/help tombol")
-  })
-
-  test("/help tombol memberi daftar pintasan lengkap", async () => {
-    const lines = await run("/help tombol")
-    expect(lines.length).toBeGreaterThanOrEqual(10)
-    const teks = lines.join("\n")
-    for (const k of ["ctrl+r", "ctrl+o", "ctrl+w", "ctrl+u", "shift+tab"]) {
-      expect(teks, k).toContain(k)
-    }
+  test("does not include legacy help detail command", async () => {
+    expect((await run("/help")).join("\n")).not.toContain("/help tombol")
   })
 
   test("baris /help tidak melebihi 80 kolom", async () => {
@@ -66,29 +60,7 @@ describe("/help: kelengkapan & ukuran", () => {
 describe("BUILTIN_COMMANDS: setiap perintah yang ditangani terdaftar", () => {
   // Perintah yang berfungsi tapi tidak terdaftar tidak muncul di /help DAN tidak
   // bisa dilengkapi dengan Tab — user tidak punya cara menemukannya.
-  const DITANGANI = [
-    "help",
-    "clear",
-    "thinking",
-    "theme",
-    "init",
-    "undo",
-    "redo",
-    "exit",
-    "quit",
-    "model",
-    "models",
-    "provider",
-    "providers",
-    "cost",
-    "usage",
-    "compact",
-    "sync",
-    "sessions",
-    "resume",
-    "status",
-    "history",
-  ]
+  const DITANGANI = ["help", "init", "exit", "model", "provider", "sync", "sessions", "status"]
 
   test("tidak ada perintah yang hilang dari daftar", () => {
     const terdaftar = new Set(BUILTIN_COMMANDS.map((b) => b.name))
@@ -100,10 +72,23 @@ describe("BUILTIN_COMMANDS: setiap perintah yang ditangani terdaftar", () => {
     for (const b of BUILTIN_COMMANDS) expect(b.desc, b.name).toBeTruthy()
   })
 
-  test("alias ditandai hidden agar tidak memenuhi /help", () => {
-    for (const n of ["quit", "usage", "models", "providers", "history", "compact"]) {
-      const b = BUILTIN_COMMANDS.find((x) => x.name === n)
-      expect(b?.hidden, n).toBe(true)
+  test("legacy aliases are absent", () => {
+    for (const n of [
+      "quit",
+      "usage",
+      "models",
+      "providers",
+      "history",
+      "compact",
+      "theme",
+      "thinking",
+      "cost",
+      "resume",
+    ]) {
+      expect(
+        BUILTIN_COMMANDS.some((x) => x.name === n),
+        n,
+      ).toBe(false)
     }
   })
 
@@ -113,75 +98,20 @@ describe("BUILTIN_COMMANDS: setiap perintah yang ditangani terdaftar", () => {
 })
 
 describe("konsistensi bahasa keluaran", () => {
-  const PERINTAH = [
-    "/undo",
-    "/redo",
-    "/sync",
-    "/theme light",
-    "/thinking on",
-    "/status",
-    "/cost",
-    "/sessions",
-    "/compact",
-    "/history",
-    "/exit",
-    "/model prov::x",
-  ]
+  const PERINTAH = ["/sync", "/status", "/sessions", "/exit", "/model"]
 
   for (const cmd of PERINTAH) {
     test(`${cmd} tidak memuat frasa Inggris yang pernah bocor`, async () => {
       const teks = (await run(cmd)).join(" ")
-      const m = INGGRIS.exec(teks)
+      const m = INDONESIAN.exec(teks)
       expect(m?.[0], `${cmd}: ${teks.slice(0, 90)}`).toBeUndefined()
     })
   }
 
-  test("/cost memakai istilah Indonesia", async () => {
-    const teks = (await run("/cost")).join("\n")
-    expect(teks).toContain("Pemakaian sesi")
-    expect(teks).toContain("Token masuk")
-    expect(teks).toContain("Estimasi biaya")
-  })
-
-  test("/status memakai istilah Indonesia", async () => {
+  test("/status uses English labels and includes usage", async () => {
     const teks = (await run("/status")).join("\n")
-    expect(teks).toContain("ID sesi")
-    expect(teks).toContain("Tool aktif")
-  })
-})
-
-describe("penanda hasil aksi seragam", () => {
-  // Dulu bercampur: `[OK]`/`[FAIL]` hardcoded di /undo, kalimat biasa di /theme,
-  // tanpa penanda di /sync. Kini semua memakai `glyphs` — yang nilainya "✓"/"✗"
-  // pada terminal UTF-8 dan "[OK]"/"[FAIL]" pada conhost legacy. Assertion
-  // memeriksa nilai glyph yang aktif, bukan literal, supaya berlaku di keduanya.
-  test("/undo & /redo memakai glyph hasil", async () => {
-    for (const cmd of ["/undo", "/redo"]) {
-      const teks = (await run(cmd)).join(" ")
-      expect(teks.includes(glyphs.check) || teks.includes(glyphs.cross), cmd).toBe(true)
-    }
-  })
-
-  test("/undo & /redo memakai glyph Unicode saat terminal mendukung", async () => {
-    const orig = process.env.MINICODE_ASCII
-    const origWt = process.env.WT_SESSION
-    process.env.WT_SESSION = "uji"
-    delete process.env.MINICODE_ASCII
-    try {
-      const teks = (await run("/undo")).join(" ")
-      expect(teks).not.toContain("[FAIL]")
-      expect(teks.includes("✓") || teks.includes("✗")).toBe(true)
-    } finally {
-      if (orig == null) delete process.env.MINICODE_ASCII
-      else process.env.MINICODE_ASCII = orig
-      if (origWt == null) delete process.env.WT_SESSION
-      else process.env.WT_SESSION = origWt
-    }
-  })
-
-  test("/model memakai glyph sukses", async () => {
-    const teks = (await run("/model prov::x")).join(" ")
-    expect(teks).toContain(glyphs.check)
+    expect(teks).toContain("Session")
+    expect(teks).toContain("Cost")
   })
 })
 

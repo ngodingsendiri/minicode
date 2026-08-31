@@ -56,7 +56,7 @@ describe("wizard: pemilihan gateway", () => {
     await tty.ready(3000)
     const out = visible(tty)
     // Judul picker muncul; tidak ada prompt "Choice [1-N]".
-    expect(out).toContain("Pilih gateway")
+    expect(out).toContain("Select gateway")
     expect(out).not.toMatch(/Choice \[1-\d+\]/)
     // Penanda seleksi picker ada.
     expect(out).toMatch(/\u203a/)
@@ -71,7 +71,7 @@ describe("wizard: pemilihan gateway", () => {
     await tty.ready(3000)
     await tty.send(KEY.esc, 60)
     expect(await p).toBe(false)
-    expect(visible(tty)).toContain("dibatalkan")
+    expect(visible(tty)).toContain("Setup canceled")
   })
 
   test("menyebut cara membatalkan sejak awal", async () => {
@@ -127,17 +127,15 @@ describe("wizard: pemilihan gateway", () => {
 })
 
 describe("wizard: bahasa", () => {
-  test("keluaran berbahasa Indonesia, bukan campur Inggris", async () => {
+  test("output is consistently English", async () => {
     tty = installFakeTty()
     isolateHome()
     const p = runSetupWizard()
     await tty.ready(3000)
     const out = visible(tty)
-    expect(out).toContain("Setup minicode")
-    expect(out).toContain("Hubungkan provider")
-    // Frasa Inggris yang dulu ada.
-    expect(out).not.toContain("Connect your first")
-    expect(out).not.toContain("Setup canceled")
+    expect(out).toContain("Minicode setup")
+    expect(out).toContain("Connect your first")
+    expect(out).toContain("Select gateway")
     await tty.send(KEY.esc, 60)
     await p
   })

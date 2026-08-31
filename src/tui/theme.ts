@@ -1,4 +1,10 @@
 import { resolveThemeName, THEMES, type Theme, type ThemeName } from "./themes.ts"
+/**
+ * State tema aktif — MUTABLE, diubah oleh `applyTheme()`.
+ *
+ * JANGAN simpan turunannya ke `const` di module scope; lihat PLAN.md P0.1.
+ * Baca `themeState.name` saat dipakai, bukan saat import.
+ */
 export const themeState: { current: Theme; name: ThemeName } = {
   current: THEMES.dark,
   name: "dark",
@@ -120,7 +126,10 @@ function buildPalette(name: ThemeName): Palette {
     accent,
     accentAlt: truecolor ? paintFrom(t.info) : wrap(95, 39),
     accentBold: truecolor ? paintFrom(`1;${t.accent}`) : wrap(94, 39),
-    gray: wrap(90, 39),
+    // Pada tema mono, `gray` memakai dim (SGR 2) alih-alih bright-black (SGR 90):
+    // 90 adalah warna, dan `mono` adalah jalur aksesibilitas yang seharusnya
+    // monokrom. Dim tetap memberi hierarki visual tanpa memakai kanal warna.
+    gray: mono ? attr(2, 22) : wrap(90, 39),
     // Alias legacy: dipetakan ke token tema, bukan hex hardcoded. Inilah yang
     // membuat `mono` benar-benar monokrom dan `light` benar-benar berubah.
     red: paintFrom(t.error),
@@ -160,6 +169,19 @@ function attr(open: number, close: number): Paint {
   return built
 }
 
+/**
+ * Slot warna semantik.
+ *
+ * GETTER — JANGAN simpan ke `const` di module scope; lihat PLAN.md P0.1.
+ * Setiap properti membaca `themeState` dan level warna saat DIPANGGIL. Menulis
+ * `const HEADER = c.dim(...)` di module scope membekukan hasilnya pada import
+ * pertama, sehingga `applyTheme()` dari `/theme` maupun `--theme` tidak berefek.
+ * Kesalahan ini sudah terjadi dua kali (V6). Dijaga oleh
+ * `test/no-frozen-runtime-value.test.ts`.
+ *
+ * Benar: `() => c.dim(x)`, `get header() { return c.dim(x) }`, atau baca di
+ * dalam fungsi render.
+ */
 export const c = {
   // Text hierarchy — tidak bergantung tema.
   text: identity,
@@ -241,8 +263,11 @@ export const c = {
 
 // ── Glyphs - minimal, Ubuntu Server style ──
 //
-// Getter, bukan nilai tetap: `supportsUtf8()` dievaluasi saat dipakai supaya
-// `MINICODE_ASCII=1` dan perubahan env di test langsung berlaku.
+// GETTER — JANGAN simpan ke `const` di module scope; lihat PLAN.md P0.1.
+// `supportsUtf8()` dievaluasi saat dipakai supaya `MINICODE_ASCII=1` dan
+// perubahan env di test langsung berlaku. `const OK = glyphs.check` di
+// `cli/commands.ts` pernah membekukannya (V8) sehingga fallback ASCII tidak
+// pernah aktif. Dijaga oleh `test/no-frozen-runtime-value.test.ts`.
 export const glyphs = {
   get check() {
     return supportsUtf8() ? "✓" : "[OK]"

@@ -150,7 +150,8 @@ export async function saveProvider(
   const needsKey = entry.auth !== "oauth"
   if (!entry.id || !entry.baseUrl || (needsKey && !entry.apiKey))
     throw new Error("provider id/baseUrl/apiKey required")
-  if (!entry.models || entry.models.length === 0) throw new Error("provider models required")
+  // A provider may temporarily have no models: `/model` can remove the last
+  // entry before `/sync` discovers a new one.
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
   let cfg: MinicodeConfig = { providers: [] }
   try {

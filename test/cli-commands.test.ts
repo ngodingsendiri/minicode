@@ -36,28 +36,19 @@ test("commands: BUILTIN_COMMANDS name tidak boleh berisi placeholder args", () =
   }
 })
 
-test("commands: /models tanpa arg handled tanpa crash (args kosong)", async () => {
-  const res = await handleBuiltinCommand("/models", dummyCtx())
+test("commands: /model opens the model manager", async () => {
+  const res = await handleBuiltinCommand("/model", dummyCtx())
   expect(res.handled).toBe(true)
 })
 
-test("commands: /help, /clear, /status, /model are handled", async () => {
-  let switchedModel = ""
-  const ctx = dummyCtx({
-    setModelOverride: (m: string) => {
-      switchedModel = m
-    },
-  })
+test("commands: /help, /status, /model, /exit are handled", async () => {
+  const ctx = dummyCtx()
 
   const resHelp = await handleBuiltinCommand("/help", ctx)
   expect(resHelp.handled).toBe(true)
 
-  const resClear = await handleBuiltinCommand("/clear", ctx)
-  expect(resClear.handled).toBe(true)
-
-  const resModel = await handleBuiltinCommand("/model foo::deepseek-chat", ctx)
+  const resModel = await handleBuiltinCommand("/model", ctx)
   expect(resModel.handled).toBe(true)
-  expect(switchedModel).toBe("foo::deepseek-chat")
 
   const resExit = await handleBuiltinCommand("/exit", ctx)
   expect(resExit.handled).toBe(true)
@@ -73,10 +64,10 @@ test("commands: /sessions lists saved sessions with cwd", async () => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
-test("commands: /resume fails gracefully on unknown id", async () => {
+test("commands: /sessions with an unknown id fails gracefully", async () => {
   const tmp = mkdtempSync(join(tmpdir(), "minicode-resume-"))
   const ctx = { ...dummyCtx(), cwd: tmp }
-  const res = await handleBuiltinCommand("/resume no-such-id", ctx)
+  const res = await handleBuiltinCommand("/sessions no-such-id", ctx)
   expect(res.handled).toBe(true)
   rmSync(tmp, { recursive: true, force: true })
 })

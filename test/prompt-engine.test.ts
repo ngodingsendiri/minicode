@@ -420,6 +420,7 @@ test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
   const kontrol: [number, string][] = [
     [0x0c, "ctrl+l"],
     [0x0b, "ctrl+k"],
+    // Ctrl+T now toggles reasoning visibility in the fullscreen UI.
     [0x14, "ctrl+t"],
     [0x1a, "ctrl+z"],
     [0x02, "ctrl+b"],
@@ -430,7 +431,7 @@ test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
   for (const [code, nama] of kontrol) {
     const keys = decodeKeys(new Uint8Array([code]))
     expect(keys.length, nama).toBe(1)
-    expect(keys[0]?.key.type, nama).toBe("ignore")
+    expect(keys[0]?.key.type, nama).toBe(nama === "ctrl+t" ? "ctrl-t" : "ignore")
   }
 })
 

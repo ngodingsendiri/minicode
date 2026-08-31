@@ -76,13 +76,13 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       const lines: string[] = []
       lines.push(cut(`${DIM}─ ${ACC(opts.title)} ${DIM}─${RESTORE}`))
       if (isFilterable) {
-        const placeholderText = opts.placeholder ?? "ketik untuk memfilter"
+        const placeholderText = opts.placeholder ?? "type to filter"
         const display = filter ? c.brightCyan(filter) : DIM + placeholderText + RESTORE
-        const label = filter ? ACC_DIM("Cari:") : `${DIM}Cari:${RESTORE}`
+        const label = filter ? ACC_DIM("Filter:") : `${DIM}Filter:${RESTORE}`
         lines.push(cut(`${label} ${display}`))
       }
       if (items.length === 0) {
-        lines.push(cut(`${DIM}  (tidak ada yang cocok dengan "${filter}")${RESTORE}`))
+        lines.push(cut(`${DIM}  No matches for "${filter}"${RESTORE}`))
         return lines
       }
       for (let i = 0; i < rows.length; i++) {

@@ -25,53 +25,38 @@ function readVersion(): string {
 
 const HELP = `Minicode - coding agent on frozen MiniCore
 Usage:
-  minicode                        # mode chat interaktif (setup wizard saat pertama)
-  minicode "prompt" [options]     # sekali jalan
+  minicode                        # interactive chat
+  minicode "prompt" [options]     # one-shot run
   minicode exec "prompt" [--json] # headless CI mode (Codex/Gemini-like, JSON stream)
   echo "prompt" | minicode        # via pipe
-  minicode providers              # daftar provider gateway (tanpa LLM)
-  minicode models [id]            # daftar model per provider (tanpa LLM)
-  minicode sync                   # refresh daftar model dari semua provider
-  minicode config <add|list|remove|detect> [options]
-  minicode config mcp <add|list|remove> [options]
-  minicode config lsp <add|list|remove> [options]
-  minicode auth <login|status|logout|list>  # OAuth device-code (tanpa API key)
-  minicode pricing <status|sync|show>       # tabel harga (models.dev, opt-in)
-  minicode mcp serve [--allow-all] [--all-tools]
-  minicode skills <list|show <name>>   # .minicode/skills/*.md, prompt /name args
-  minicode sessions <list|export|purge> [id]
-  minicode stats [--json]         # ringkasan dari .minicode/traces.jsonl
-
+  minicode sync                   # refresh models from all providers
 Options:
   -h, --help          show help
   -v, --version       show version
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
   --resume <id>       resume session id
-  --model <name>      override model (atau provider::model)
-  --provider <id>     paksa provider id (agnostik, tanpa ubah config)
+  --model <name>      override model (provider::model)
+  --provider <id>     force provider id
   --session <id>      session id (default random)
   --allow-all         allow all tools (no sandbox)
   --ask               ask per tool (y/n/a) - human-in-loop
-  --plan              read-only plan mode (no file writes / bash / sub-agents)
+  --plan              read-only mode (no file writes / bash / sub-agents)
   --allowlist         bash allowlist only (git/bun/npm safe cmds; via MINICODE_BASH_ALLOWLIST)
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
   --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
   --interactive       REPL loop (fullscreen)
-  --theme <name>      dark | dim | light | mono
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
   --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
-  --budget <usd>      session cost limit (USD); warn at 80%, stop when exceeded
+  --budget <usd>      session cost limit (USD)
 
 Commands in REPL:
-  /help /clear /model /provider /sync /cost /sessions /resume /status /thinking /init /theme /exit
+  /help /provider /model /sync /status /sessions /init /exit
 
 Keyboard in REPL:
-  enter kirim · shift+tab ganti mode · ctrl+o detail · ctrl+r cari history
-  tab lengkapi · up/down history · ctrl+a/ctrl+e awal/akhir baris
-  ctrl+w hapus kata · ctrl+u kosongkan baris · esc hentikan · ctrl+c x2 keluar
+  Enter submit · Tab complete · Up/Down history · Esc stop · Ctrl+C twice exit
   akhiri baris dengan \\ untuk menyambung
 `
 
@@ -172,12 +157,8 @@ if (budgetRaw && !Number.isFinite(budget))
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
-const themeArg = getArg("--theme") ?? ""
-const themeName = ["dark", "dim", "light", "mono"].includes(themeArg)
-  ? themeArg
-  : (process.env.MINICODE_THEME ?? "")
 const { applyTheme } = await import("../src/tui/theme.ts")
-applyTheme(themeName)
+applyTheme("dark")
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)

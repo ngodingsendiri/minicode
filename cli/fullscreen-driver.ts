@@ -2,6 +2,7 @@
 // Slash builtin → overlay; skill → renderSkill → LLM
 
 import { resolve as resolvePath } from "node:path"
+import { detectAndSave, loadConfig, removeProvider, saveProvider } from "../src/config.ts"
 import { listSessions } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { expandMentions } from "../src/tui/file-mention.ts"
@@ -77,53 +78,129 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
     title: string
     items: { label: string; value: string }[]
     onPick(v: string): string | void
+    onKey?(
+      key: string,
+      selectedValue?: string,
+      openForm?: (label: string, submit: (value: string) => Promise<string | void>) => void,
+    ): Promise<string | void> | string | void
   } | null> => {
     const cmd = q.slice(1).split(" ")[0]!.toLowerCase()
-    if (cmd === "model" || cmd === "models") {
+    if (cmd === "model") {
       const items = cfg.providers.flatMap((p) =>
-        p.models.map((m) => ({ label: `${p.id} :: ${m}`, value: `${p.id}::${m}` })),
+        p.models.map((m) => ({ label: `${p.id}::${m}`, value: `${p.id}::${m}` })),
       )
-      if (!items.length) return { title: "model", items: [], onPick: () => {} }
       return {
-        title: "model",
+        title: "Models",
         items,
-        onPick: (v) => {
-          modelRef.current = v
-          return `model aktif: ${v}`
+        onPick: (value) => {
+          modelRef.current = value
+          return `Selected ${value}`
+        },
+        onKey: async (key, _selectedValue, openForm) => {
+          if (key.toLowerCase() === "a" && openForm) {
+            openForm("Model name:", async (value) => {
+              const [providerId] = (modelRef.current ?? "").split("::")
+              const provider = cfg.providers.find((p) => p.id === providerId) ?? cfg.providers[0]
+              if (!provider || !value.trim()) return "Model name is required"
+              if (!provider.models.includes(value.trim())) {
+                provider.models = [...provider.models, value.trim()]
+                await saveProvider(provider, { global: !cwd, cwd })
+              }
+              return `Added ${provider.id}::${value.trim()}`
+            })
+            return
+          }
+          if (key.toLowerCase() !== "d") return
+          const current = items.find((item) => item.value === modelRef.current) ?? items[0]
+          if (!current) return "No models configured"
+          const [providerId, ...modelParts] = current.value.split("::")
+          const model = modelParts.join("::")
+          const provider = cfg.providers.find((p) => p.id === providerId)
+          if (!provider) return "Provider not found"
+          provider.models = provider.models.filter((m) => m !== model)
+          await saveProvider(provider, { global: !cwd, cwd })
+          return `Deleted ${current.value}`
         },
       }
     }
-    if (cmd === "provider" || cmd === "providers") {
+    if (cmd === "provider") {
       return {
-        title: "providers",
+        title: "Providers",
         items: cfg.providers.map((p) => ({
-          label: `${p.id}  ${p.baseUrl}  (${p.models.length} model)`,
+          label: `${p.id}  ${p.models.length} models`,
           value: p.id,
         })),
-        onPick: (id) => `"${id}" terpilih - atur model via /model`,
+        onPick: (id) => {
+          const provider = cfg.providers.find((p) => p.id === id)
+          const model = provider?.models[0]
+          if (model) modelRef.current = `${id}::${model}`
+          return model ? `Selected ${id}::${model}` : `Selected ${id}`
+        },
+        onKey: async (key: string, selectedValue: string | undefined, openForm) => {
+          if (key.toLowerCase() === "a" && openForm) {
+            openForm("Provider id:", async (value) => {
+              if (!value.trim()) return "Provider id is required"
+              if (cfg.providers.some((p) => p.id === value.trim())) return "Provider already exists"
+              openForm("Base URL:", async (baseUrl) => {
+                if (!baseUrl.trim()) return "Base URL is required"
+                openForm("API key:", async (apiKey) => {
+                  if (!apiKey.trim()) return "API key is required"
+                  const entry = await detectAndSave(baseUrl.trim(), apiKey.trim(), value.trim(), {
+                    global: !cwd,
+                    cwd,
+                    fallbackModels: ["gpt-4o-mini"],
+                  })
+                  return `Added ${entry.id}`
+                })
+              })
+              return
+            })
+            return
+          }
+          if (key.toLowerCase() === "e" && openForm) {
+            const provider = cfg.providers.find((p) => p.id === selectedValue)
+            if (!provider) return "Provider not found"
+            openForm(`Base URL [${provider.baseUrl}]:`, async (baseUrl) => {
+              openForm("API key [unchanged]:", async (apiKey) => {
+                const nextUrl = baseUrl.trim() || provider.baseUrl
+                const nextKey = apiKey.trim() || provider.apiKey
+                await saveProvider(
+                  { ...provider, baseUrl: nextUrl, apiKey: nextKey },
+                  { global: !cwd, cwd },
+                )
+                return `Updated ${provider.id}`
+              })
+            })
+            return
+          }
+          if (key.toLowerCase() !== "d") return
+          const provider = cfg.providers.find((p) => p.id === selectedValue)
+          if (!provider) return "No providers configured"
+          await removeProvider(provider.id, { global: !cwd, cwd })
+          const next = (await loadConfig(cwd)).providers[0]
+          if (modelRef.current?.startsWith(`${provider.id}::`))
+            modelRef.current = next?.models[0] ? `${next.id}::${next.models[0]}` : undefined
+          return `Deleted ${provider.id}`
+        },
       }
     }
-    if (cmd === "resume") {
+    if (cmd === "sessions") {
       const sessions = listSessions(cwd)
-      if (!sessions.length) return { title: "resume", items: [], onPick: () => {} }
       return {
-        title: "resume",
+        title: "Sessions",
         items: sessions.slice(0, 20).map((s) => ({
-          label: `${s.id}  ${new Date(s.updated_at ?? s.created_at).toLocaleString()}`,
+          label: `${s.id}  ${new Date(s.updated_at ?? s.created_at).toISOString()}`,
           value: s.id,
         })),
-        // Jalur klasik me-respawn proses dengan --resume; TUI dulu hanya
-        // mencetak instruksi manual dan menyuruh user melakukannya sendiri.
         onPick: (id) => {
           void respawnWithResume(id)
-          return `melanjutkan sesi ${id}…`
+          return `Resuming ${id}`
         },
       }
     }
     return null
   }
 
-  /** Ganti proses dengan sesi yang dilanjutkan (sama seperti /resume klasik). */
   async function respawnWithResume(id: string): Promise<void> {
     await close()
     const { spawn } = await import("node:child_process")
@@ -168,7 +245,7 @@ export async function runFullscreen(ctx: CliSession): Promise<void> {
       const skill = allLoadedSkills.find((s) => s.name === skillName)
       if (!skill) {
         if (isBuiltin) return "handled" // sudah lewat overlay path
-        return { note: `perintah tidak dikenal: ${skillName} - ketik /help` }
+        return { note: `Unknown command: ${skillName}. Use /help.` }
       }
       finalPrompt = await renderSkill(skill, skillArgs)
     }

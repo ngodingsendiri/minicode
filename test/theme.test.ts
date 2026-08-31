@@ -77,6 +77,10 @@ test("theme: mono tidak menghasilkan warna, hanya teks/atribut", () => {
     "green",
     "yellow",
     "cyan",
+    // `gray` dulu selalu SGR 90 (bright-black) — itu warna, jadi tema mono tak
+    // pernah benar-benar monokrom. Terlihat lewat highlightCode: komentar tetap
+    // berwarna di tema mono. Sekarang jatuh ke dim (SGR 2).
+    "gray",
     "brightYellow",
     "brightMagenta",
     "brightCyan",

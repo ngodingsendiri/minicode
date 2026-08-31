@@ -118,7 +118,7 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
     case "invalid_request":
       return {
         message: withDetail("Permintaan ditolak provider"),
-        fix: hint ?? "Lihat nama model yang tepat dengan /models, atau ganti lewat /model.",
+        fix: hint ?? "Check the model name or select another model with /model.",
       }
     case "context_length_exceeded":
       return {

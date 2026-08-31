@@ -165,9 +165,10 @@ function highlightTsTokens(text: string): string {
       // Type / Class name
       return c.brightCyan(token)
     }
-    if (token === "true" || token === "false" || token === "null" || token === "undefined") {
-      return c.yellow(token)
-    }
+    // Tidak ada cabang khusus untuk true/false/null/undefined: keempatnya sudah
+    // ada di TS_KEYWORDS, jadi cabang di atas selalu menang. Cabang terpisah
+    // yang pernah ada di sini tak pernah terjangkau (terlihat saat coverage
+    // highlight.ts dinaikkan: satu baris mustahil dicapai test apa pun).
     return token
   })
 }

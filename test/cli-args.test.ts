@@ -84,8 +84,6 @@ test("nilai SEMUA value flag dibuang dari prompt, bukan hanya --model/--cwd", ()
       "3",
       "--context-window",
       "8000",
-      "--theme",
-      "mono",
       "--resume",
       "abc",
     ]),

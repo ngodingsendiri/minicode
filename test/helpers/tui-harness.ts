@@ -43,6 +43,33 @@ export interface FakeTty {
    * timing mesin. Selalu `await tty.ready()` setelah memanggil komponen async.
    */
   ready(timeoutMs?: number): Promise<void>
+  /**
+   * Berapa kali listener stdin sudah dipasang sejak harness dibuat.
+   *
+   * Dipakai untuk mendeteksi siklus suspend→resume: `runProviderManager`
+   * melepas listener-nya, membiarkan `askLine`/`askSecret` memasang listener
+   * sendiri, lalu memasangnya kembali. Setiap pemasangan menaikkan angka ini,
+   * jadi ia berfungsi sebagai "prompt ke-berapa".
+   */
+  listenerEpoch(): number
+  /** Tunggu sampai listener stdin BARU terpasang (epoch melewati `since`). */
+  waitForNewListener(since: number, timeoutMs?: number): Promise<number>
+  /**
+   * Jawab prompt berurutan.
+   *
+   * Setiap kali komponen memasang listener stdin baru, jawaban berikutnya
+   * dikirim (diakhiri Enter). Panggil SEBELUM keystroke yang memicu rangkaian
+   * prompt, lalu `await` hasilnya:
+   *
+   *   const seq = tty.answerSequence(["0", "sk-key", "n"])
+   *   await tty.send("a")
+   *   await seq
+   *
+   * Tanpa ini, alur a/d/e di `provider-manager` tidak bisa diuji sama sekali:
+   * `send()` hanya mengirim ke listener yang ada SEKARANG, sementara prompt
+   * berikutnya baru memasang listener setelah yang sebelumnya selesai.
+   */
+  answerSequence(answers: string[], opts?: { timeoutMs?: number; settleMs?: number }): Promise<void>
   /** Kirim byte ke semua listener stdin, lalu beri kesempatan microtask jalan. */
   send(data: string | Uint8Array, settleMs?: number): Promise<void>
   /** Semua chunk yang ditulis ke stdout, apa adanya. */
@@ -86,6 +113,9 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
   const dataListeners: ((chunk: Buffer) => void)[] = []
   const resizeListeners: (() => void)[] = []
   const failures: string[] = []
+  // Naik setiap kali listener "data" dipasang. Tidak pernah turun — dipakai
+  // sebagai jam logis untuk mendeteksi prompt berikutnya (lihat answerSequence).
+  let listenerEpoch = 0
 
   const origStdin = process.stdin
   const origWrite = process.stdout.write.bind(process.stdout)
@@ -130,7 +160,10 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       return fakeStdin
     },
     on(event: string, fn: (chunk: Buffer) => void) {
-      if (event === "data") dataListeners.push(fn)
+      if (event === "data") {
+        dataListeners.push(fn)
+        listenerEpoch++
+      }
       return fakeStdin
     },
     once(event: string, fn: (chunk: Buffer) => void) {
@@ -237,6 +270,32 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       for (const fn of [...dataListeners]) fn(buf)
       await new Promise((r) => setTimeout(r, settleMs))
     },
+    listenerEpoch: () => listenerEpoch,
+    async waitForNewListener(since, timeoutMs = 2000) {
+      const deadline = Date.now() + timeoutMs
+      while (listenerEpoch <= since) {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `fake tty: tidak ada listener stdin baru dalam ${timeoutMs}ms (epoch tetap ${listenerEpoch})`,
+          )
+        }
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      // Satu tick: komponen menulis prompt-nya setelah memasang listener.
+      await new Promise((r) => setTimeout(r, 5))
+      return listenerEpoch
+    },
+    async answerSequence(answers, opts = {}) {
+      const timeoutMs = opts.timeoutMs ?? 2000
+      const settleMs = opts.settleMs ?? 15
+      let epoch = listenerEpoch
+      for (const answer of answers) {
+        epoch = await tty.waitForNewListener(epoch, timeoutMs)
+        // Karakter dikirim menyatu dengan Enter: askLine/askSecret keduanya
+        // memproses seluruh chunk per byte, jadi ini setara dengan mengetik.
+        await tty.send(`${answer}\r`, settleMs)
+      }
+    },
     chunks: () => [...chunks],
     all: () => chunks.join(""),
     allErr: () => errChunks.join(""),
@@ -307,6 +366,7 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       ;(process.stdout as unknown as { removeListener: unknown }).removeListener = origStdoutRemove
       dataListeners.length = 0
       resizeListeners.length = 0
+      listenerEpoch = 0
     },
   }
   return tty

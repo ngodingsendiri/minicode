@@ -25,21 +25,7 @@ interface Harness {
   cost: { value?: number }
 }
 
-const BUILTIN = [
-  "/help",
-  "/provider",
-  "/model",
-  "/sync",
-  "/undo",
-  "/redo",
-  "/cost",
-  "/sessions",
-  "/resume",
-  "/status",
-  "/thinking",
-  "/init",
-  "/theme",
-]
+const BUILTIN = ["/help", "/provider", "/model", "/sync", "/sessions", "/status", "/init", "/exit"]
 
 interface SetupOptions {
   columns?: number
@@ -97,12 +83,12 @@ function setup(opts: SetupOptions = {}): Harness {
       log.push(`onPicker(${q})`)
       if (q.startsWith("/model")) {
         return {
-          title: "model",
+          title: "Models",
           items: [
             { label: "p :: a", value: "p::a" },
             { label: "p :: b", value: "p::b" },
           ],
-          onPick: (v: string) => `model aktif: ${v}`,
+          onPick: (v: string) => `Selected ${v}`,
         }
       }
       return null
@@ -280,7 +266,7 @@ describe("fullscreen: picker", () => {
 
     await h.tty.send(KEY.down)
     await h.tty.send(KEY.enter, 60)
-    expect(h.tty.visibleFrame()).toContain("model aktif: p::b")
+    expect(h.tty.visibleFrame()).toContain("Selected p::b")
   })
 
   test("Esc membatalkan picker tanpa memilih", async () => {

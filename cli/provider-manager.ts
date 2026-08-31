@@ -69,20 +69,20 @@ export async function runProviderManager(opts: {
       const lines: string[] = []
       lines.push(
         cut(
-          `${DIM}─ ${c.accent(c.bold("Provider"))}${providers.length ? ` ${DIM}(${providers.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
+          `${DIM}─ ${c.accent(c.bold("Providers"))}${providers.length ? ` ${DIM}(${providers.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
         ),
       )
       if (providers.length === 0) {
-        lines.push(cut(`${DIM}  (belum ada provider - tekan a untuk menambah)${RESTORE}`))
+        lines.push(cut(`${DIM}  No providers${RESTORE}`))
       } else {
         for (let i = 0; i < rows.length; i++) {
           const it = rows[i]!
           const picked = i === sel - scroll
           // Tandai provider yang sedang aktif supaya user tahu apa yang akan
           // hilang bila ia menekan d.
-          const aktif = opts.currentModel?.startsWith(`${it.id}::`) ? " (aktif)" : ""
+          const aktif = opts.currentModel?.startsWith(`${it.id}::`) ? " (active)" : ""
           const label = truncateToWidth(
-            `${padToWidth(it.id, 18)} ${padToWidth(String(it.models), 3, "right")} model  ${it.baseUrl}${aktif}`,
+            `${padToWidth(it.id, 18)} ${padToWidth(String(it.models), 3, "right")} models  ${it.baseUrl}${aktif}`,
             w - 4,
           )
           if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
@@ -97,7 +97,7 @@ export async function runProviderManager(opts: {
       lines.push("")
       lines.push(
         cut(
-          `${DIM}Enter:${RESTORE}${c.accent("jadikan aktif")}  ${DIM}a:${RESTORE}${c.accent("tambah")}  ${DIM}d:${RESTORE}${c.accent("hapus")}  ${DIM}e:${RESTORE}${c.accent("ubah")}  ${DIM}Esc:${RESTORE}${c.accent("tutup")}${RESTORE}`,
+          `${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}e:${RESTORE}${c.accent("edit")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
         ),
       )
       return lines
@@ -172,16 +172,16 @@ export async function runProviderManager(opts: {
       if (busy) return
       busy = true
       suspend()
-      console.log("\nTambah provider\n")
+      console.log("\nAdd provider\n")
       GATEWAY_PRESETS.forEach((p, i) => {
         console.log(`  [${i}] ${p.label}`)
         console.log(`      ${p.baseUrl}`)
       })
       const customIdx = GATEWAY_PRESETS.length
-      console.log(`  [${customIdx}] Base URL kustom\n`)
-      const selStr = await askLine({ prompt: "nomor gateway > " })
+      console.log(`  [${customIdx}] Custom URL\n`)
+      const selStr = await askLine({ prompt: "Gateway > " })
       if (selStr == null) {
-        console.log("dibatalkan")
+        console.log("Canceled")
         busy = false
         await reload()
         resume()
@@ -200,7 +200,7 @@ export async function runProviderManager(opts: {
       } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
         const url = await askLine({ prompt: "Base URL > " })
         if (!url || !url.trim()) {
-          console.log("Base URL wajib diisi.")
+          console.log("Base URL is required.")
           busy = false
           await reload()
           resume()
@@ -208,15 +208,15 @@ export async function runProviderManager(opts: {
         }
         baseUrl = url.trim()
       } else {
-        console.log(`${glyphs.cross} Pilihan tidak dikenal`)
+        console.log(`${glyphs.cross} Unknown selection`)
         busy = false
         await reload()
         resume()
         return
       }
-      const apiKey = await askSecret("API Key (tersembunyi): ")
+      const apiKey = await askSecret("API key: ")
       if (!apiKey) {
-        console.log("API Key wajib diisi.")
+        console.log("API key is required.")
         busy = false
         await reload()
         resume()
@@ -224,10 +224,10 @@ export async function runProviderManager(opts: {
       }
       let scope: "global" | "local" = "global"
       if (opts.cwd) {
-        const ans = await askLine({ prompt: "Simpan global ke ~/.minicode? [Y/n] " })
+        const ans = await askLine({ prompt: "Save globally? [Y/n] " })
         scope = ans?.trim().toLowerCase() === "n" ? "local" : "global"
       }
-      console.log("Mendeteksi model…")
+      console.log("Detecting models…")
       try {
         const entry = await detectAndSave(baseUrl, apiKey, hintId, {
           global: scope === "global",
@@ -235,10 +235,10 @@ export async function runProviderManager(opts: {
           fallbackModels,
         })
         console.log(
-          `${glyphs.check} Provider "${entry.id}" tersimpan (${entry.models.length} model, ${scope}).`,
+          `${glyphs.check} Provider "${entry.id}" saved (${entry.models.length} models, ${scope}).`,
         )
       } catch (e) {
-        console.log(`${glyphs.cross} Deteksi model gagal: ${(e as Error).message.slice(0, 80)}`)
+        console.log(`${glyphs.cross} Model detection failed: ${(e as Error).message.slice(0, 80)}`)
       }
       busy = false
       await reload()
@@ -255,22 +255,17 @@ export async function runProviderManager(opts: {
       // dan apakah provider ini yang sedang dipakai. Tanpa itu user menekan "y"
       // tanpa tahu prompt berikutnya akan gagal.
       const aktif = opts.currentModel?.startsWith(`${target.id}::`)
-      console.log(
-        `\nHapus provider "${target.id}" — ${target.models} model ikut hilang dari daftar.`,
-      )
+      console.log(`\nDelete provider "${target.id}" and ${target.models} models?`)
       if (aktif) {
-        console.log(
-          `${glyphs.cross} Provider ini SEDANG AKTIF (${opts.currentModel}). Setelah dihapus, pilih model lain lewat /model sebelum mengirim prompt.`,
-        )
+        console.log(`${glyphs.cross} Provider is active (${opts.currentModel}).`)
       }
-      console.log("API key di config akan dihapus; berkas proyek tidak tersentuh.")
-      const ans = await askLine({ prompt: "Lanjut hapus? [y/N] > " })
+      const ans = await askLine({ prompt: "Delete? [y/N] " })
       if (ans?.trim().toLowerCase() === "y") {
         await removeProvider(target.id, { global: true })
         if (opts.cwd) await removeProvider(target.id, { global: false, cwd: opts.cwd })
-        console.log(`${glyphs.check} Provider "${target.id}" dihapus.`)
+        console.log(`${glyphs.check} Provider "${target.id}" deleted.`)
       } else {
-        console.log("dibatalkan")
+        console.log("Canceled")
       }
       busy = false
       await reload()
@@ -286,21 +281,21 @@ export async function runProviderManager(opts: {
       const cfg = await loadConfig(opts.cwd)
       const cur = cfg.providers.find((p) => p.id === target.id)
       if (!cur) {
-        console.log("Provider tidak ditemukan")
+        console.log("Provider not found")
         busy = false
         await reload()
         resume()
         return
       }
-      console.log(`\nUbah provider "${target.id}" (kosongkan untuk mempertahankan)\n`)
+      console.log(`\nEdit provider "${target.id}"\n`)
       const newUrl = await askLine({ prompt: `Base URL [${cur.baseUrl}]: ` })
-      const newKey = await askSecret("API Key [****]: ")
+      const newKey = await askSecret("API key [****]: ")
       const baseUrl = newUrl && newUrl.trim() ? newUrl.trim() : cur.baseUrl
       const apiKey = newKey && newKey.trim() ? newKey.trim() : cur.apiKey
       if (baseUrl === cur.baseUrl && apiKey === cur.apiKey) {
-        console.log("Tidak ada perubahan.")
+        console.log("No changes.")
       } else {
-        console.log("Mendeteksi model…")
+        console.log("Detecting models…")
         try {
           await removeProvider(target.id, { global: true })
           if (opts.cwd) await removeProvider(target.id, { global: false, cwd: opts.cwd })
@@ -310,10 +305,10 @@ export async function runProviderManager(opts: {
             fallbackModels: cur.models,
           })
           console.log(
-            `${glyphs.check} Provider "${entry.id}" diperbarui (${entry.models.length} model)`,
+            `${glyphs.check} Provider "${entry.id}" updated (${entry.models.length} models)`,
           )
         } catch (e) {
-          console.log(`${glyphs.cross} ${(e as Error).message.slice(0, 80)}`)
+          console.log(`${glyphs.cross} Update failed: ${(e as Error).message.slice(0, 80)}`)
           await detectAndSave(cur.baseUrl, cur.apiKey, cur.id, {
             global: true,
             cwd: opts.cwd,

@@ -21,7 +21,6 @@ const VALUE_FLAGS = new Set([
   "--sandbox",
   "--ratelimit",
   "--budget",
-  "--theme",
   "--output-format", // `exec --output-format=json`
   "--prompt",
 ])
