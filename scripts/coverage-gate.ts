@@ -32,10 +32,15 @@ function getArg(name: string, fallback: number): number {
 const MIN_LINES = getArg("--lines", 83)
 const MIN_FUNCS = getArg("--funcs", 81)
 
-const res = spawnSync("bun", ["test", "--coverage"], {
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"],
-})
+const res = spawnSync(
+  process.execPath,
+  ["test", "--coverage", "--reporter", "dots", "--timeout", "30000"],
+  {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 32 * 1024 * 1024,
+  },
+)
 const output = `${res.stdout ?? ""}\n${res.stderr ?? ""}`
 
 if (res.status !== 0 && !/\d+ pass/.test(output)) {

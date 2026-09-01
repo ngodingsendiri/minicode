@@ -254,7 +254,7 @@ describe("sandbox-policy: resolusi mode", () => {
     const r = resolveSandbox(undefined, false, probes(true, false))
     expect(r.mode).toBe("os")
     expect(r.fallbackPermission).toBeUndefined()
-    expect(r.notice).toContain("otomatis")
+    expect(r.notice).toContain("automatically")
   })
 
   test("tanpa permintaan + tak ada OS sandbox → allowlist + penjelasan", () => {
@@ -308,7 +308,7 @@ describe("sandbox-policy: resolusi mode", () => {
   test("mode tak dikenal diberi tahu, tidak diam", () => {
     const r = resolveSandbox("kotak-pasir", false, probes(true, false))
     expect(r.mode).toBe("none")
-    expect(r.notice).toContain("tidak dikenal")
+    expect(r.notice).toContain("unknown mode")
   })
 })
 

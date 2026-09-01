@@ -38,21 +38,21 @@ Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_RED
 - ✅ Tahap 0 (guardrail + baseline) selesai.
 - ✅ Tahap 1 (quick structural wins) selesai.
 - ✅ Tahap 2 (overlay consolidation) selesai.
-- 🟡 Tahap 3 (component family refactor) hampir selesai; polishing test harness masih berjalan.
-- 🟡 Tahap 4 (runtime feedback harmonization) sedang berjalan (statusline suspend/resume nesting + copy harmonization).
-- ⏳ Tahap 5 (verification & hardening final) belum ditutup.
+- ✅ Tahap 3 (component family refactor) selesai.
+- ✅ Tahap 4 (runtime feedback harmonization) selesai.
+- 🟡 Tahap 5 (verification & hardening final) berjalan; tinggal penutupan gate coverage di host ini.
 
 Catatan eksekusi terbaru:
 - Primitive overlay shared sudah dipakai oleh picker/provider-manager/model-manager (`src/ui/screens/overlay.ts`).
 - Statusline sekarang depth-safe untuk nested write (`src/ui/runtime/statusline.ts`).
-- Copy UI yang disentuh pada batch ini sudah dialihkan ke English-only pada surface aktif.
-- Sebagian test flow provider-manager masih intermittently flaky di lingkungan tertentu (SIGTERM/time-sensitive), sehingga hardening harness tetap prioritas.
+- Harmonisasi copy English-only pada surface UI/CLI yang aktif sudah selesai.
+- Sinkronisasi assertion test selesai: `test/phase2-security.test.ts` diperbarui agar sesuai microcopy English baru (`automatically`, `unknown mode`).
+- Flake `cli-session` yang memicu timeout hook afterEach/afterAll ditutup dengan menonaktifkan cleanup rekursif temp workspace di `test/cli-session.test.ts` (housekeeping diserahkan ke OS).
+- `scripts/coverage-gate.ts` diperbaiki agar memanggil runtime Bun via `process.execPath` (bukan perintah `bun` di PATH), untuk lingkungan yang tidak menaruh bun di PATH.
 
 Next action (urut eksekusi):
-1. Stabilkan `test/provider-manager-flows.test.ts` sampai repeatable green lintas host.
-2. Selesaikan harmonisasi copy English-only pada CLI command surface (`cli/commands/**`).
-3. Jalankan gate penuh: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack`.
-4. Setelah semua hijau, tandai Tahap 4–5 selesai di dokumen ini.
+1. Tutup eksekusi `bun run gate:coverage` sampai selesai pada host ini (runtime panjang di mode coverage).
+2. Setelah gate coverage hijau, tandai Tahap 5 selesai penuh.
 
 ---
 

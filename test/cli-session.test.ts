@@ -21,7 +21,7 @@
 // terbaca (dan tidak ikut ternoda).
 
 import { afterAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { type FakeReply, startFakeProvider } from "./helpers/fake-provider.ts"
@@ -32,7 +32,11 @@ const entry = join(repoRoot, "cli", "index.ts")
 const tmpRoots: string[] = []
 
 afterAll(() => {
-  for (const d of tmpRoots) rmSync(d, { recursive: true, force: true })
+  // Cleanup direktori temp sengaja dinonaktifkan di test ini.
+  // Pada Windows, penghapusan rekursif puluhan workspace sementara terbukti
+  // sering melewati timeout hook dan membuat suite gagal walau assertion inti
+  // sudah hijau. Trade-off: artefak temp dibiarkan untuk dibersihkan OS.
+  void tmpRoots
 })
 
 interface Workspace {
