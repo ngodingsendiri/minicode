@@ -1,4 +1,5 @@
 import { resolveThemeName, THEMES, type Theme, type ThemeName } from "./themes.ts"
+import { displayWidth } from "./width.ts"
 /**
  * State tema aktif — MUTABLE, diubah oleh `applyTheme()`.
  *
@@ -302,7 +303,8 @@ export const glyphs = {
 export function section(title: string): string {
   const width = getTerminalWidth()
   const label = ` ${title} `
-  const dashes = Math.max(4, width - label.length)
+  // Lebar pemisah dihitung per KOLOM terminal: CJK/emoji bisa 2 kolom.
+  const dashes = Math.max(4, width - displayWidth(label))
   return c.dim(label + "─".repeat(dashes))
 }
 

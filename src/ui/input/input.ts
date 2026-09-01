@@ -196,7 +196,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         }
         if (spec.moreCount > 0) {
           process.stdout.write("\r\n")
-          process.stdout.write(`${CLEAR + DIM}    … ${spec.moreCount} lagi${RESTORE}`)
+          process.stdout.write(`${CLEAR + DIM}    … ${spec.moreCount} more${RESTORE}`)
         }
         process.stdout.write(`\x1b[${spec.totalRows}A`)
         process.stdout.write("\r" + inputLine)
@@ -214,11 +214,14 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       const content = hs.length
         ? `${prompt}${state.line}    ${hs.slice(0, 5).join("  ")}`
         : `${prompt}${state.line}`
-      const pad = printedW - content.length
+      // Fallback non-ANSI tetap harus mengukur lebar per KOLOM terminal.
+      // Jika memakai .length, CJK/emoji meninggalkan jejak saat baris memendek.
+      const contentW = displayWidth(content)
+      const pad = printedW - contentW
       process.stdout.write(
         "\r" + " ".repeat(printedW) + "\r" + content + (pad > 0 ? " ".repeat(pad) : ""),
       )
-      printedW = content.length
+      printedW = contentW
     }
 
     const render = ansi ? renderAnsi : renderInline

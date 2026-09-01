@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
 import { highlightCode } from "../src/ui/render/highlight.ts"
 import { decorateMarkdown } from "../src/ui/render/markdown.ts"
-import { c, glyphs, stripAnsi } from "../src/ui/render/theme.ts"
+import { c, glyphs, section, stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
 
 test("theme: stripAnsi removes escape codes cleanly", () => {
   const colored = c.info(c.bold("hello world"))
@@ -41,4 +42,12 @@ test("markdown: decorates code fences with indentation", () => {
 
 test("markdown: plain text without fences unchanged", () => {
   expect(decorateMarkdown("just text")).toBe("just text")
+})
+
+test("theme: section separator uses display width for CJK/emoji", () => {
+  const orig = process.stdout.columns
+  Object.defineProperty(process.stdout, "columns", { value: 40, configurable: true })
+  const line = stripAnsi(section("状态😀"))
+  expect(displayWidth(line)).toBeGreaterThanOrEqual(40)
+  Object.defineProperty(process.stdout, "columns", { value: orig, configurable: true })
 })

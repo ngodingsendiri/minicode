@@ -193,7 +193,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         const shown = lines.slice(0, TOOL_OUT_MAX_LINES).map((l) => `    ${sanitizeAnsi(l)}`)
         const more =
           lines.length > TOOL_OUT_MAX_LINES
-            ? c.muted(`\n    … (${lines.length - TOOL_OUT_MAX_LINES} baris lagi)`)
+            ? c.muted(`\n    … (${lines.length - TOOL_OUT_MAX_LINES} more lines)`)
             : ""
         wErr(
           c.success(`  ✓ $ ${cmdLabel}\n`) +
@@ -211,7 +211,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
           .join("\n")
         const more =
           lines.length > CONTENT_PREVIEW_LINES
-            ? c.muted(`\n    … (${lines.length - CONTENT_PREVIEW_LINES} baris lagi)`)
+            ? c.muted(`\n    … (${lines.length - CONTENT_PREVIEW_LINES} more lines)`)
             : ""
         const label = sanitizeAnsiLine(target ?? formatArgsPreview(args))
         wErr(c.success(`  ✓ ${name} ${label}\n`) + (preview ? `${c.muted(preview) + more}\n` : ""))

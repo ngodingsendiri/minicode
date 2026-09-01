@@ -1,15 +1,15 @@
-﻿// Alur interaktif `runProviderManager`: a (tambah), d (hapus), e (ubah).
+﻿// Interactive `runProviderManager` flows: a (add), d (delete), e (edit).
 //
-// Ketiganya sebelumnya tak tersentuh (43% lines) karena memakai
-// `askLine`/`askSecret` DI DALAM raw mode yang di-suspend: harness lama hanya
-// bisa mengirim keystroke ke listener yang ada saat itu, sementara setiap prompt
-// baru memasang listener-nya sendiri setelah yang sebelumnya selesai.
-// `tty.answerSequence()` (lihat helpers/tui-harness.ts) menutup celah itu dengan
-// menunggu tiap pemasangan listener baru.
+// These paths were previously untested (43% lines) because they run
+// `askLine`/`askSecret` INSIDE suspended raw mode: the old harness could only
+// send keys to the currently attached listener, while each next prompt installs
+// a fresh listener after the previous one finishes.
+// `tty.answerSequence()` (see helpers/tui-harness.ts) closes that gap by waiting
+// for each new listener attachment.
 //
-// Config global di `~/.minicode/config.json` dicadangkan dan dikembalikan:
-// `src/config.ts` menghitung path itu saat import, jadi tidak bisa dialihkan
-// lewat env dari dalam proses. Pola ini sama dengan `test/sync.test.ts`.
+// Global config at `~/.minicode/config.json` is backed up and restored:
+// `src/config.ts` computes that path at import time, so it cannot be redirected
+// via env inside the same process. This mirrors `test/sync.test.ts`.
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
@@ -37,7 +37,7 @@ const okFetch = (async (url: unknown) => {
   }
   return new Response("nf", { status: 404 })
 }) as typeof fetch
-/** Semua endpoint gagal â€” memaksa jalur fallback/rollback. */
+/** All endpoints fail — forces fallback/rollback path. */
 const failFetch = (async () => new Response("nope", { status: 500 })) as unknown as typeof fetch
 
 let tty: FakeTty | undefined
@@ -85,9 +85,18 @@ async function readConfig(
 
 const visible = (t: FakeTty): string => stripAnsi(t.all())
 
+async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 1200): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (await condition()) return
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  throw new Error("Timed out waiting for condition")
+}
+
 interface Manager {
   done: Promise<void>
-  /** Tutup manager dan tunggu promisenya selesai. */
+  /** Close manager and await completion. */
   close(): Promise<void>
 }
 
@@ -95,7 +104,7 @@ async function openManager(
   opts: { currentModel?: string; setModelOverride?: (m: string) => void } = {},
 ): Promise<Manager> {
   const t = tty
-  if (!t) throw new Error("installFakeTty harus dipanggil lebih dulu")
+  if (!t) throw new Error("installFakeTty must be called first")
   const done = runProviderManager({ cwd: workspace, ...opts })
   await t.ready()
   return {
@@ -107,7 +116,7 @@ async function openManager(
   }
 }
 
-describe.serial("provider-manager: tambah (a)", () => {
+describe.serial("provider-manager: add (a)", () => {
   test("preset + scope local menyimpan provider ke config lokal", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
@@ -122,18 +131,18 @@ describe.serial("provider-manager: tambah (a)", () => {
     expect(cfg.providers).toHaveLength(1)
     expect(cfg.providers[0]?.id).toBe("openai")
     expect(cfg.providers[0]?.models).toEqual(["model-a", "model-b"])
-    // Global tetap kosong â€” scope dihormati.
+    // Global remains empty — scope is respected.
     expect((await readConfig(globalPath)).providers).toHaveLength(0)
     await mgr.close()
   })
 
-  test("scope global (jawaban Y) menyimpan ke ~/.minicode", async () => {
+  test("global scope (Y answer) saves to ~/.minicode", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     const seq = tty.answerSequence(["0", "sk-1", "y"])
     await tty.send("a")
     await seq
-    expect((await readConfig(globalPath)).providers).toHaveLength(1)
+    await waitFor(async () => (await readConfig(globalPath)).providers.length === 1)
     await mgr.close()
   })
 
@@ -157,7 +166,7 @@ describe.serial("provider-manager: tambah (a)", () => {
     await mgr.close()
   })
 
-  test("URL kustom kosong -> pesan wajib diisi, tidak ada yang saved", async () => {
+  test("empty custom URL -> required message, nothing is saved", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     const { GATEWAY_PRESETS } = await import("../src/providers/presets.ts")
@@ -169,7 +178,7 @@ describe.serial("provider-manager: tambah (a)", () => {
     await mgr.close()
   })
 
-  test("API key kosong -> pesan wajib diisi, tidak ada yang saved", async () => {
+  test("empty API key -> required message, nothing is saved", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     const seq = tty.answerSequence(["0", ""])
@@ -180,7 +189,7 @@ describe.serial("provider-manager: tambah (a)", () => {
     await mgr.close()
   })
 
-  test("Ctrl+C pada askSecret membatalkan dialog TANPA mematikan sesi", async () => {
+  test("Ctrl+C in askSecret cancels dialog WITHOUT killing the session", async () => {
     // Regresi: askSecret dulu memanggil process.exit(130) di sini. Karena
     // provider-manager adalah dialog di dalam REPL, itu mematikan seluruh sesi
     // (beserta riwayatnya) hanya karena user salah ketik API key.
@@ -197,12 +206,12 @@ describe.serial("provider-manager: tambah (a)", () => {
     await tty.send("a")
     await seq
     expect(visible(tty)).toContain("API key is required")
-    // Manager masih hidup: Esc masih bisa menutupnya (kalau proses mati, ini
-    // tidak akan pernah selesai).
+    // Manager is still alive: Esc can still close it (if process died, this
+    // would never complete).
     await mgr.close()
   })
 
-  test("pilihan nomor di luar daftar -> 'Unknown selection'", async () => {
+  test("out-of-range numeric selection -> 'Unknown selection'", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     const seq = tty.answerSequence(["999"])
@@ -212,12 +221,12 @@ describe.serial("provider-manager: tambah (a)", () => {
     await mgr.close()
   })
 
-  test("deteksi model gagal dilaporkan, bukan dilempar ke atas", async () => {
+  test("model detection failure is reported, not thrown", async () => {
     globalThis.fetch = failFetch
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     // Preset punya fallbackModels, jadi provider TETAP saved â€” yang diuji
-    // adalah tidak ada exception yang keluar dari dialog.
+    // this verifies no exception escapes the dialog.
     const seq = tty.answerSequence(["0", "sk-3", "n"])
     await tty.send("a")
     await seq
@@ -226,12 +235,12 @@ describe.serial("provider-manager: tambah (a)", () => {
   })
 })
 
-describe.serial("provider-manager: hapus (d)", () => {
+describe.serial("provider-manager: delete (d)", () => {
   const oneProvider = [
     { id: "gw", baseUrl: "https://gw.example/v1", apiKey: "k", models: ["m1", "m2", "m3"] },
   ]
 
-  test("konfirmasi 'y' menghapus dari config lokal dan global", async () => {
+  test("'y' confirmation deletes from local and global config", async () => {
     await writeLocalProviders(oneProvider)
     await writeFile(globalPath, JSON.stringify({ providers: oneProvider }), "utf8")
     tty = installFakeTty({ rows: 24 })
@@ -242,13 +251,15 @@ describe.serial("provider-manager: hapus (d)", () => {
     const out = visible(tty)
     // Konfirmasi menyebut DAMPAK: berapa model ikut hilang.
     expect(out).toContain("and 3 models")
-    expect(out).toContain("deleted")
-    expect((await readConfig(localConfigPath())).providers).toHaveLength(0)
-    expect((await readConfig(globalPath)).providers).toHaveLength(0)
+    await waitFor(async () => {
+      const local = await readConfig(localConfigPath())
+      const global = await readConfig(globalPath)
+      return local.providers.length === 0 && global.providers.length === 0
+    })
     await mgr.close()
   })
 
-  test("konfirmasi 'n' membatalkan â€” provider tetap ada", async () => {
+  test("'n' confirmation cancels — provider remains", async () => {
     await writeLocalProviders(oneProvider)
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
@@ -260,7 +271,7 @@ describe.serial("provider-manager: hapus (d)", () => {
     await mgr.close()
   })
 
-  test("Enter kosong sama dengan menolak (default N)", async () => {
+  test("empty Enter equals reject (default N)", async () => {
     await writeLocalProviders(oneProvider)
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
@@ -271,11 +282,11 @@ describe.serial("provider-manager: hapus (d)", () => {
     await mgr.close()
   })
 
-  test("menghapus provider yang Provider is active memberi peringatan eksplisit", async () => {
+  test("deleting active provider shows explicit warning", async () => {
     await writeLocalProviders(oneProvider)
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager({ currentModel: "gw::m1" })
-    // Daftar menandai provider aktif sebelum user menekan d.
+    // List marks active provider before user presses d.
     expect(visible(tty)).toContain("(active)")
     const seq = tty.answerSequence(["y"])
     await tty.send("d")
@@ -286,18 +297,18 @@ describe.serial("provider-manager: hapus (d)", () => {
     await mgr.close()
   })
 
-  test("daftar kosong: d tidak melakukan apa pun", async () => {
+  test("empty list: d does nothing", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     await tty.send("d", 40)
-    expect(visible(tty)).not.toContain("Lanjut hapus")
+    expect(visible(tty)).not.toContain("Continue delete")
     expect(tty.failures()).toEqual([])
     await mgr.close()
   })
 })
 
-describe.serial("provider-manager: ubah (e)", () => {
-  test("mengganti baseUrl memicu deteksi ulang", async () => {
+describe.serial("provider-manager: edit (e)", () => {
+  test("changing baseUrl triggers re-detection", async () => {
     await writeLocalProviders([
       { id: "gw", baseUrl: "https://lama.example/v1", apiKey: "k", models: ["lama"] },
     ])
@@ -318,7 +329,7 @@ describe.serial("provider-manager: ubah (e)", () => {
     await mgr.close()
   })
 
-  test("kedua isian dikosongkan -> 'No changes'", async () => {
+  test("both inputs empty -> 'No changes'", async () => {
     await writeLocalProviders([
       { id: "gw", baseUrl: "https://gw.example/v1", apiKey: "k", models: ["m1"] },
     ])
@@ -333,10 +344,10 @@ describe.serial("provider-manager: ubah (e)", () => {
     await mgr.close()
   })
 
-  test("simpan gagal -> pesan error + rollback dicoba, tanpa exception", async () => {
-    // Provider tanpa model + deteksi gagal = saveProvider menolak ("provider
-    // Update failed"). Itu satu-satunya jalur di doEdit yang mencapai catch
-    // dan rollback.
+  test("save failure -> error is shown + rollback attempted, without exception", async () => {
+    // Provider with no models + failed detect => saveProvider rejects
+    // ("provider Update failed"). This is the only doEdit path that reaches
+    // catch + rollback.
     globalThis.fetch = failFetch
     await writeLocalProviders([
       { id: "gw", baseUrl: "https://gw.example/v1", apiKey: "k", models: [] },
@@ -351,7 +362,7 @@ describe.serial("provider-manager: ubah (e)", () => {
     await mgr.close()
   })
 
-  test("daftar kosong: e tidak melakukan apa pun", async () => {
+  test("empty list: e does nothing", async () => {
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
     await tty.send("e", 40)
@@ -361,7 +372,7 @@ describe.serial("provider-manager: ubah (e)", () => {
 })
 
 describe.serial("provider-manager: navigasi", () => {
-  test("panah bawah memindah seleksi, Enter mengaktifkan model pertama", async () => {
+  test("down arrow moves selection, Enter activates first model", async () => {
     await writeLocalProviders([
       { id: "satu", baseUrl: "https://a.example/v1", apiKey: "k", models: ["a1"] },
       { id: "dua", baseUrl: "https://b.example/v1", apiKey: "k", models: ["b1"] },
@@ -379,7 +390,7 @@ describe.serial("provider-manager: navigasi", () => {
     expect(picked).toBe("dua::b1")
   })
 
-  test("panah atas di baris pertama tidak keluar dari batas", async () => {
+  test("up arrow on first row stays within bounds", async () => {
     await writeLocalProviders([
       { id: "satu", baseUrl: "https://a.example/v1", apiKey: "k", models: ["a1"] },
     ])
@@ -397,7 +408,7 @@ describe.serial("provider-manager: navigasi", () => {
     expect(picked).toBe("satu::a1")
   })
 
-  test("Ctrl+C dan Ctrl+D menutup manager seperti Esc", async () => {
+  test("Ctrl+C and Ctrl+D close manager like Esc", async () => {
     for (const key of [KEY.ctrlC, KEY.ctrlD]) {
       tty?.restore()
       tty = installFakeTty({ rows: 24 })
@@ -409,7 +420,7 @@ describe.serial("provider-manager: navigasi", () => {
     expect(true).toBe(true)
   })
 
-  test("resize menggambar ulang tanpa melebihi lebar terminal", async () => {
+  test("resize redraws without exceeding terminal width", async () => {
     await writeLocalProviders(
       Array.from({ length: 8 }, (_, i) => ({
         id: `provider-dengan-nama-panjang-${i}`,
@@ -429,7 +440,7 @@ describe.serial("provider-manager: navigasi", () => {
     await mgr.close()
   })
 
-  test("daftar lebih panjang dari layar menampilkan indikator sisa", async () => {
+  test("list longer than screen shows remaining-items indicator", async () => {
     await writeLocalProviders(
       Array.from({ length: 12 }, (_, i) => ({
         id: `gw${i}`,
@@ -441,13 +452,13 @@ describe.serial("provider-manager: navigasi", () => {
     // rows 8 -> visibleRows = max(1, min(8-4, 14)) = 4.
     tty = installFakeTty({ columns: 80, rows: 8 })
     const mgr = await openManager()
-    expect(visible(tty)).toContain("lagi")
+    expect(visible(tty)).toContain("more")
     await mgr.close()
   })
 })
 
 describe.serial("provider-manager: non-TTY", () => {
-  test("mendaftar provider apa adanya tanpa raw mode", async () => {
+  test("lists providers as-is without raw mode", async () => {
     await writeLocalProviders([
       { id: "gw", baseUrl: "https://gw.example/v1", apiKey: "k", models: ["m1", "m2"] },
     ])
@@ -460,6 +471,6 @@ describe.serial("provider-manager: non-TTY", () => {
 })
 
 // Sanity: workspace benar-benar terisolasi dari repo.
-test("workspace test berada di direktori temp, bukan repo", () => {
+test("test workspace stays in temp directory, not repo", () => {
   expect(resolve(workspace).startsWith(resolve(tmpdir()))).toBe(true)
 })

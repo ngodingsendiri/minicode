@@ -57,7 +57,7 @@ test("diff: CJK dalam diff dihitung per kolom", () => {
 })
 
 test("diff: tanpa perubahan memberi pesan", () => {
-  expect(stripAnsi(renderDiffCard("f.ts", "sama", "sama"))).toContain("tidak ada perubahan")
+  expect(stripAnsi(renderDiffCard("f.ts", "sama", "sama"))).toContain("no changes")
 })
 
 test("diff: maxLines membatasi jumlah baris + ringkasan sisa", () => {

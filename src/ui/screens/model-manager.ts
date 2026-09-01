@@ -1,7 +1,13 @@
-// View minimal model registry — list, select, add, remove. Data dan mutasi
-// config mengalir lewat callback dari controller (cli/model-manager.ts).
+// View model registry — pola overlay transient yang konsisten dengan picker/
+// provider-manager. Tetap shell-like: overlay sementara, hasil aksi tetap inline.
 import { askLine } from "../input/input.ts"
 import { decodeKeys } from "../input/prompt-engine.ts"
+import { c } from "../render/theme.ts"
+import { padToWidth, truncateToWidth } from "../render/width.ts"
+import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
+
+const DIM = "\x1b[2m",
+  RESTORE = "\x1b[22m"
 
 export interface ModelRow {
   /** Format "providerId::model". */
@@ -20,36 +26,118 @@ export interface ModelManagerViewOptions {
 
 export async function runModelManagerView(opts: ModelManagerViewOptions): Promise<void> {
   let rows = opts.initialRows
-  let selected = Math.max(
+  let sel = Math.max(
     0,
     rows.findIndex((r) => r.active),
   )
+  let scroll = 0
+  let prevRows = 0
 
   return new Promise<void>((resolve) => {
-    const render = () => {
-      console.log("\nModels")
-      if (!rows.length) console.log("  No models configured.")
-      for (const [i, row] of rows.entries()) {
-        console.log(`${i === selected ? ">" : " "} ${row.id}${row.active ? "  active" : ""}`)
+    const visibleRows = () => Math.max(1, Math.min((process.stdout.rows || 24) - 4, 14))
+    const width = () => Math.max(12, (process.stdout.columns || 80) - 2)
+
+    const buildLines = (): string[] => {
+      const v = visibleRows()
+      if (sel < scroll) scroll = sel
+      if (sel >= scroll + v) scroll = sel - v + 1
+      const w = width()
+      const cut = (s: string) => truncateToWidth(s, w)
+      const view = rows.slice(scroll, scroll + v)
+      const lines: string[] = []
+      lines.push(cut(`${DIM}─ ${c.accent(c.bold("Models"))}${rows.length ? ` ${DIM}(${rows.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`))
+      if (!rows.length) {
+        lines.push(cut(`${DIM}  No models configured${RESTORE}`))
+      } else {
+        for (let i = 0; i < view.length; i++) {
+          const row = view[i]!
+          const picked = i === sel - scroll
+          const label = truncateToWidth(`${padToWidth(row.id, w - 14)}${row.active ? "  active" : ""}`, w - 4)
+          if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
+          else lines.push(`   ${DIM}${label}${RESTORE}`)
+        }
+        if (rows.length > scroll + v) {
+          lines.push(cut(`${DIM}… ${c.accent(String(rows.length - scroll - v))} more${RESTORE}`))
+        }
       }
-      console.log("\na add  d delete  Enter select  Esc close")
+      lines.push("")
+      lines.push(cut(`${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`))
+      return lines
     }
-    const finish = () => {
-      process.stdin.removeListener("data", onData)
+
+    const render = () => {
+      prevRows = renderTransientOverlay(buildLines(), prevRows)
+    }
+
+    let busy = false
+    let done = false
+
+    const suspend = () => {
+      prevRows = clearTransientOverlay(prevRows)
+      process.stdout.write("\x1b[0m\x1b[?25h")
+      process.stdout.write("\r\n")
       process.stdin.setRawMode(false)
       process.stdin.pause()
+      process.stdin.removeListener("data", onData)
+      process.stdout.removeListener("resize", onResize)
+    }
+
+    const resume = () => {
+      process.stdin.setMaxListeners(0)
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.on("data", onData)
+      process.stdout.on("resize", onResize)
+      render()
+    }
+
+    const finish = () => {
+      if (done) return
+      done = true
+      suspend()
       resolve()
     }
+
+    const addModel = async () => {
+      if (busy) return
+      busy = true
+      suspend()
+      const providerId = await askLine({ prompt: "Provider > " })
+      const model = await askLine({ prompt: "Model > " })
+      rows =
+        providerId?.trim() && model?.trim()
+          ? await opts.onAdd(providerId.trim(), model.trim())
+          : await opts.loadRows()
+      sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      busy = false
+      resume()
+    }
+
+    const deleteModel = async () => {
+      if (busy || rows.length === 0) return
+      const row = rows[sel]
+      if (!row) return
+      busy = true
+      suspend()
+      const answer = await askLine({ prompt: `Delete ${row.id}? [y/N] ` })
+      rows =
+        answer?.trim().toLowerCase() === "y" ? await opts.onDelete(row.id) : await opts.loadRows()
+      sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      busy = false
+      resume()
+    }
+
     const onData = (chunk: Buffer) => {
+      if (busy) return
       for (const item of decodeKeys(chunk)) {
         if (item.key.type === "esc" || item.key.type === "ctrl-c" || item.key.type === "ctrl-d") {
           finish()
           return
         }
-        if (item.key.type === "up") selected = Math.max(0, selected - 1)
-        else if (item.key.type === "down") selected = Math.min(rows.length - 1, selected + 1)
+        if (item.key.type === "up") sel = Math.max(0, sel - 1)
+        else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
         else if (item.key.type === "enter") {
-          const row = rows[selected]
+          const row = rows[sel]
           if (row) opts.onSelect(row.id)
           finish()
           return
@@ -63,40 +151,15 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       }
       render()
     }
-    const addModel = async () => {
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      const providerId = await askLine({ prompt: "Provider: " })
-      const model = await askLine({ prompt: "Model: " })
-      rows =
-        providerId?.trim() && model?.trim()
-          ? await opts.onAdd(providerId.trim(), model.trim())
-          : await opts.loadRows()
-      selected = Math.min(Math.max(0, selected), Math.max(0, rows.length - 1))
-      process.stdin.setRawMode(true)
-      process.stdin.resume()
-      process.stdin.on("data", onData)
-      render()
-    }
-    const deleteModel = async () => {
-      const row = rows[selected]
-      if (!row) return
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      const answer = await askLine({ prompt: `Delete ${row.id}? [y/N] ` })
-      rows =
-        answer?.trim().toLowerCase() === "y" ? await opts.onDelete(row.id) : await opts.loadRows()
-      selected = Math.min(Math.max(0, selected), Math.max(0, rows.length - 1))
-      process.stdin.setRawMode(true)
-      process.stdin.resume()
-      process.stdin.on("data", onData)
-      render()
-    }
+
+    const onResize = () => render()
+
+    process.stdout.write("\x1b[?25l")
     process.stdin.setRawMode(true)
     process.stdin.resume()
+    process.stdin.setMaxListeners(0)
     process.stdin.on("data", onData)
+    process.stdout.on("resize", onResize)
     render()
   })
 }

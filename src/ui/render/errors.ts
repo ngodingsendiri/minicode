@@ -83,8 +83,8 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
   switch (category) {
     case "rate_limit":
       return {
-        message: withDetail("Provider membatasi laju permintaan"),
-        fix: hint ?? "Tunggu sebentar lalu coba lagi, atau pakai --ratelimit untuk menahan laju.",
+        message: withDetail("Provider is rate-limiting requests"),
+        fix: hint ?? "Wait a moment and try again, or use --ratelimit to throttle requests.",
       }
     case "auth": {
       const low = truth.toLowerCase()
@@ -96,40 +96,40 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
         low.includes("credit limit")
       ) {
         return {
-          message: withDetail("Saldo atau kuota API key habis"),
-          fix: hint ?? "Ganti provider lewat /model, atau isi ulang kredit.",
+          message: withDetail("API key balance or quota is exhausted"),
+          fix: hint ?? "Switch provider via /model, or top up credits.",
         }
       }
       return {
-        message: withDetail("Provider menolak autentikasi"),
-        fix: hint ?? "Periksa API key, atau ganti provider lewat /model.",
+        message: withDetail("Provider rejected authentication"),
+        fix: hint ?? "Check your API key, or switch provider via /model.",
       }
     }
     case "server":
       return {
-        message: withDetail("Provider mengalami gangguan sementara"),
-        fix: hint ?? "Tunggu sebentar lalu coba lagi, atau ganti provider lewat /model.",
+        message: withDetail("Provider is temporarily unavailable"),
+        fix: hint ?? "Wait a moment and try again, or switch provider via /model.",
       }
     case "network":
       return {
-        message: withDetail("Gagal menghubungi provider"),
-        fix: hint ?? "Periksa koneksi lalu coba lagi.",
+        message: withDetail("Failed to reach provider"),
+        fix: hint ?? "Check your connection and try again.",
       }
     case "invalid_request":
       return {
-        message: withDetail("Permintaan ditolak provider"),
+        message: withDetail("Request was rejected by provider"),
         fix: hint ?? "Check the model name or select another model with /model.",
       }
     case "context_length_exceeded":
       return {
-        message: withDetail("Jendela konteks terlampaui"),
+        message: withDetail("Context window exceeded"),
         fix:
-          hint ?? "Mulai sesi baru (/exit lalu minicode) atau pakai model berkonteks lebih besar.",
+          hint ?? "Start a new session (/exit then minicode), or use a model with a larger context window.",
       }
     case "content_filter":
       return {
-        message: withDetail("Permintaan diblokir filter konten provider"),
-        fix: hint ?? "Ubah kalimat prompt, atau ganti provider lewat /model.",
+        message: withDetail("Request was blocked by provider content filter"),
+        fix: hint ?? "Rewrite the prompt, or switch provider via /model.",
       }
     default: {
       if (providerDetail) return { message: providerDetail, ...(hint ? { fix: hint } : {}) }
@@ -144,19 +144,19 @@ export function friendlyError(raw: string): FriendlyError {
   const lower = raw.toLowerCase()
   if (lower.includes("timed out") || lower.includes("timeout"))
     return {
-      message: "Run melewati batas waktu",
-      fix: "Naikkan --timeout atau pakai model yang lebih cepat.",
+      message: "Run exceeded timeout",
+      fix: "Increase --timeout or use a faster model.",
     }
   if (lower.includes("max steps") || lower.includes("max_steps"))
     return {
-      message: "Batas langkah tool tercapai",
-      fix: "Pecah tugas menjadi prompt lebih kecil.",
+      message: "Tool step limit reached",
+      fix: "Split the task into smaller prompts.",
     }
   if (lower.includes("budget"))
-    return { message: "Batas biaya sesi terlampaui", fix: "Mulai sesi baru atau naikkan --budget." }
+    return { message: "Session budget exceeded", fix: "Start a new session or increase --budget." }
   if (lower.includes("busy"))
-    return { message: "Masih ada run berjalan", fix: "Tunggu run saat ini selesai." }
-  if (lower.includes("aborted")) return { message: "Run dihentikan" }
+    return { message: "A run is still in progress", fix: "Wait for the current run to finish." }
+  if (lower.includes("aborted")) return { message: "Run was aborted" }
   const { detail } = extractProviderDetail(raw)
   if (detail) return { message: detail }
   const cut = raw.length > 160 ? `${raw.slice(0, 157)}…` : raw

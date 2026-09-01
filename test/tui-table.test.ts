@@ -5,7 +5,7 @@ import { displayWidth } from "../src/ui/render/width.ts"
 
 test("table: renders empty state", () => {
   const table = renderTable([{ header: "Name", key: "name" }], [])
-  expect(stripAnsi(table)).toContain("(tidak ada entri)")
+  expect(stripAnsi(table)).toContain("(no entries)")
 })
 
 test("table: renders headers and aligned data rows", () => {
@@ -89,7 +89,7 @@ test("table: width negatif atau NaN tidak melempar", () => {
 })
 
 test("table: tanpa kolom memberi pesan, bukan melempar", () => {
-  expect(stripAnsi(renderTable([], [{ v: "x" }]))).toContain("tidak ada kolom")
+  expect(stripAnsi(renderTable([], [{ v: "x" }]))).toContain("no columns")
 })
 
 // CJK memakan dua kolom; tabel harus tetap berbaris di terminal sungguhan.

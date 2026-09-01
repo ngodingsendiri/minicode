@@ -3,6 +3,7 @@
 import { decodeKeys } from "../input/prompt-engine.ts"
 import { c } from "../render/theme.ts"
 import { truncateToWidth } from "../render/width.ts"
+import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
 
 export interface PickerItem {
   name: string
@@ -21,9 +22,6 @@ export interface PickerOptions {
 
 const DIM = "\x1b[2m",
   RESTORE = "\x1b[22m",
-  CLEAR = "\x1b[2K",
-  SYNC_START = "\x1b[?2026h",
-  SYNC_END = "\x1b[?2026l",
   ACC = (s: string) => c.accent(c.bold(s)),
   ACC_DIM = (s: string) => c.accent(s)
 
@@ -95,57 +93,25 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
         else lines.push(`   ${DIM}${label}${RESTORE}`)
       }
       if (items.length > scroll + v) {
-        lines.push(cut(`${DIM}… ${c.accent(String(items.length - scroll - v))} lagi${RESTORE}`))
+        lines.push(cut(`${DIM}… ${c.accent(String(items.length - scroll - v))} more${RESTORE}`))
       } else if (isFilterable && filter) {
         lines.push(
-          cut(`${DIM}  ${c.accent(String(items.length))}/${opts.items.length} cocok${RESTORE}`),
+          cut(`${DIM}  ${c.accent(String(items.length))}/${opts.items.length} matches${RESTORE}`),
         )
       }
       return lines
     }
 
     const render = () => {
-      const lines = buildLines()
-      const next = lines.length
-      const max = Math.max(prevRows, next)
-      process.stdout.write(SYNC_START)
-      if (max > 0) {
-        process.stdout.write("\r\n")
-        for (let k = 0; k < max; k++) {
-          process.stdout.write(CLEAR)
-          if (k < max - 1) process.stdout.write("\r\n")
-        }
-        process.stdout.write(`\x1b[${max}A`)
-      }
-      if (next > 0) {
-        process.stdout.write("\r\n")
-        for (let i = 0; i < next; i++) {
-          process.stdout.write(CLEAR + lines[i]!)
-          if (i < next - 1) process.stdout.write("\r\n")
-        }
-        process.stdout.write(`\x1b[${next}A`)
-      }
-      process.stdout.write(SYNC_END)
-      prevRows = next
+      prevRows = renderTransientOverlay(buildLines(), prevRows)
     }
 
     let done = false
     const cleanup = () => {
       if (done) return
       done = true
-      process.stdout.write(SYNC_START)
-      if (prevRows > 0) {
-        // Delete overlay lines to avoid 18 blank gap: move to first overlay line and delete each
-        process.stdout.write("\r\n")
-        for (let k = 0; k < prevRows; k++) {
-          process.stdout.write(CLEAR)
-          // Delete current line (removes blank gap)
-          process.stdout.write("\x1b[1M")
-        }
-        prevRows = 0
-      }
+      prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
-      process.stdout.write(SYNC_END)
       // Ensure cursor at next line after anchor for result
       process.stdout.write("\r\n")
       process.stdin.setRawMode(false)

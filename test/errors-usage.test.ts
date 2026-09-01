@@ -12,28 +12,28 @@ test("friendlyFromCategory: auth + balance", () => {
     "auth",
     'credits: {"message":"Insufficient balance. Manage billing here: https://opencode.ai/workspace/wrk_123/billing"}',
   )
-  expect(f.message).toContain("Saldo atau kuota")
+  expect(f.message).toContain("balance or quota")
   expect(f.fix).toContain("/model")
 })
 
 test("friendlyFromCategory: auth tanpa saldo → pesan auth generik", () => {
   const f = friendlyFromCategory("auth", "auth failed (401): invalid api key")
-  expect(f.message).toContain("menolak autentikasi")
+  expect(f.message).toContain("rejected authentication")
 })
 
 test("friendlyFromCategory: rate_limit / server / network", () => {
-  expect(friendlyFromCategory("rate_limit", "429").message).toContain("membatasi laju")
-  expect(friendlyFromCategory("server", "500").message).toContain("gangguan sementara")
+  expect(friendlyFromCategory("rate_limit", "429").message).toContain("rate-limiting")
+  expect(friendlyFromCategory("server", "500").message).toContain("temporarily unavailable")
   expect(friendlyFromCategory("network", "socket hang up").message).toContain(
-    "Gagal menghubungi provider",
+    "Failed to reach provider",
   )
 })
 
 test("friendlyFromCategory: invalid_request & context_length", () => {
   expect(friendlyFromCategory("invalid_request", "400 model not found").message).toContain(
-    "ditolak provider",
+    "rejected by provider",
   )
-  expect(friendlyFromCategory("context_length_exceeded", "").message).toContain("konteks")
+  expect(friendlyFromCategory("context_length_exceeded", "").message).toContain("Context window")
 })
 
 test("friendlyFromCategory: unknown mengambil field message dari JSON", () => {
@@ -44,9 +44,9 @@ test("friendlyFromCategory: unknown mengambil field message dari JSON", () => {
 })
 
 test("friendlyError: string bergaya AgentError", () => {
-  expect(friendlyError("timeout: run exceeded 600000ms").message).toContain("batas waktu")
-  expect(friendlyError("max_steps_exceeded: 50 steps").message).toContain("langkah tool")
-  expect(friendlyError("budget exceeded").message.toLowerCase()).toContain("biaya")
+  expect(friendlyError("timeout: run exceeded 600000ms").message).toContain("timeout")
+  expect(friendlyError("max_steps_exceeded: 50 steps").message).toContain("Tool step limit")
+  expect(friendlyError("budget exceeded").message.toLowerCase()).toContain("budget")
 })
 
 // ── Regresi dari uji live OpenRouter ────────────────────────────────────────
@@ -144,9 +144,9 @@ test("semua kategori selalu memberi saran tindakan", () => {
 test("detail yang sama dengan pesan dasar tidak diulang dua kali", () => {
   const f = friendlyFromCategory(
     "rate_limit",
-    '{"error":{"message":"Provider membatasi laju permintaan"}}',
+    '{"error":{"message":"Provider is rate-limiting requests"}}',
   )
-  const occurrences = f.message.split("membatasi laju").length - 1
+  const occurrences = f.message.split("rate-limiting").length - 1
   expect(occurrences).toBe(1)
 })
 

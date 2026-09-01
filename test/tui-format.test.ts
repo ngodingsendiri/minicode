@@ -245,7 +245,7 @@ describe("format: usage, cost, error, step", () => {
 
   test("formatProviderError memetakan kategori ke pesan + saran", () => {
     const out = formatProviderError({ category: "auth", message: "401" })
-    expect(out).toContain("autentikasi")
+    expect(out).toContain("rejected authentication")
     expect(out).toContain("→") // saran tindakan
     // Kategori mentah dan kode HTTP tidak dibocorkan ke layar.
     expect(out).not.toContain("[auth]")
@@ -274,13 +274,13 @@ describe("format: usage, cost, error, step", () => {
 describe("format: formatError", () => {
   test("AgentError (punya kind) dipetakan ke pesan yang bisa ditindaklanjuti", () => {
     const out = formatError({ kind: "timeout", message: "lewat batas" })
-    expect(out.toLowerCase()).toContain("batas waktu")
+    expect(out.toLowerCase()).toContain("timeout")
     expect(out).not.toContain("timeout:") // nama kode tidak dibocorkan
   })
 
   test("ProviderError (punya category) memakai pemetaan kategori", () => {
     const out = formatError({ category: "rate_limit", message: "429" })
-    expect(out).toContain("membatasi laju")
+    expect(out).toContain("rate-limiting")
   })
 
   test("Error biasa tetap memakai message-nya", () => {
@@ -379,6 +379,38 @@ describe("statusline: koordinasi suspend/resume", () => {
       }),
     ).toThrow("boom")
     expect(calls).toEqual(["suspend", "resume"])
+  })
+
+  test("nested write hanya suspend/resume sekali", () => {
+    const calls: string[] = []
+    registerStatusLine({
+      suspend: () => calls.push("suspend"),
+      resume: () => calls.push("resume"),
+    })
+
+    const out = runWithoutStatus(() =>
+      runWithoutStatus(() => {
+        calls.push("tulis")
+        return "ok"
+      }),
+    )
+
+    expect(out).toBe("ok")
+    expect(calls).toEqual(["suspend", "tulis", "resume"])
+  })
+
+  test("register handle baru saat nested tidak me-resume handle lama", () => {
+    const callsA: string[] = []
+    registerStatusLine({
+      suspend: () => callsA.push("suspend-a"),
+      resume: () => callsA.push("resume-a"),
+    })
+
+    runWithoutStatus(() => {
+      registerStatusLine({ suspend: () => {}, resume: () => {} })
+    })
+
+    expect(callsA).toEqual(["suspend-a"])
   })
 })
 
@@ -484,7 +516,7 @@ describe("simple logger (one-shot)", () => {
     const o = out()
     expect(o).toContain("baris-50")
     expect(o).not.toContain("baris-51")
-    expect(o).toContain("10 baris lagi")
+    expect(o).toContain("10 more lines")
   })
 
   test("expanded: edit menampilkan diff card inline", () => {
@@ -554,7 +586,7 @@ describe("simple logger (one-shot)", () => {
     const o = out()
     expect(o).toContain("isi-20")
     expect(o).not.toContain("isi-21")
-    expect(o).toContain("10 baris lagi")
+    expect(o).toContain("10 more lines")
   })
 
   test("hasil tool disanitasi dari sekuens kontrol", () => {
@@ -587,7 +619,7 @@ describe("simple logger (one-shot)", () => {
     const { bus, detach, out } = attach()
     bus.emit("provider:extension", { kind: "error", data: { category: "auth", message: "401" } })
     detach()
-    expect(out()).toContain("autentikasi")
+    expect(out()).toContain("rejected authentication")
     expect(out()).not.toContain("[auth]")
   })
 

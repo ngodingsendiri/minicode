@@ -28,8 +28,8 @@ function sanitizeCell(v: unknown): string {
 
 // Table minimal - kolom aligned + separator header, tanpa border.
 export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[]): string {
-  if (columns.length === 0) return c.muted("(tidak ada kolom)")
-  if (data.length === 0) return c.muted("(tidak ada entri)")
+  if (columns.length === 0) return c.muted("(no columns)")
+  if (data.length === 0) return c.muted("(no entries)")
 
   const cells = data.map((row) => columns.map((col) => sanitizeCell(row[col.key])))
 

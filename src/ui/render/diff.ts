@@ -46,7 +46,7 @@ export function renderDiffCard(
 ): string {
   const diff = computeLineDiff(oldText, newText)
   const changes = diff.filter((d) => d.type !== "context")
-  if (changes.length === 0) return c.muted("  (tidak ada perubahan)")
+  if (changes.length === 0) return c.muted("  (no changes)")
 
   const max = opts.maxLines ?? 12
   // Baris diff bisa sepanjang baris kode aslinya. Tanpa batas, satu baris 300

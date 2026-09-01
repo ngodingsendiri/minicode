@@ -6,12 +6,10 @@ import { askLine, askSecret } from "../input/input.ts"
 import { decodeKeys } from "../input/prompt-engine.ts"
 import { c, glyphs } from "../render/theme.ts"
 import { padToWidth, truncateToWidth } from "../render/width.ts"
+import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
 
 const DIM = "\x1b[2m",
-  RESTORE = "\x1b[22m",
-  CLEAR = "\x1b[2K",
-  SYNC_START = "\x1b[?2026h",
-  SYNC_END = "\x1b[?2026l"
+  RESTORE = "\x1b[22m"
 
 export interface ProviderRow {
   id: string
@@ -103,7 +101,7 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         }
         if (providers.length > scroll + v) {
           lines.push(
-            cut(`${DIM}… ${c.accent(String(providers.length - scroll - v))} lagi${RESTORE}`),
+            cut(`${DIM}… ${c.accent(String(providers.length - scroll - v))} more${RESTORE}`),
           )
         }
       }
@@ -117,28 +115,7 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
     }
 
     const render = () => {
-      const lines = buildLines()
-      const next = lines.length
-      const max = Math.max(prevRows, next)
-      process.stdout.write(SYNC_START)
-      if (max > 0) {
-        process.stdout.write("\r\n")
-        for (let k = 0; k < max; k++) {
-          process.stdout.write(CLEAR)
-          if (k < max - 1) process.stdout.write("\r\n")
-        }
-        process.stdout.write(`\x1b[${max}A`)
-      }
-      if (next > 0) {
-        process.stdout.write("\r\n")
-        for (let i = 0; i < next; i++) {
-          process.stdout.write(CLEAR + lines[i]!)
-          if (i < next - 1) process.stdout.write("\r\n")
-        }
-        process.stdout.write(`\x1b[${next}A`)
-      }
-      process.stdout.write(SYNC_END)
-      prevRows = next
+      prevRows = renderTransientOverlay(buildLines(), prevRows)
     }
 
     let done = false
@@ -148,17 +125,8 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
     // (untuk askLine/askSecret di a/d/e). Tidak menyentuh `done` - manager
     // tetap hidup; resume() menggambar ulang overlay dari posisi kursor kini.
     const suspend = () => {
-      process.stdout.write(SYNC_START)
-      if (prevRows > 0) {
-        process.stdout.write("\r\n")
-        for (let k = 0; k < prevRows; k++) {
-          process.stdout.write(CLEAR)
-          process.stdout.write("\x1b[1M")
-        }
-        prevRows = 0
-      }
+      prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
-      process.stdout.write(SYNC_END)
       process.stdout.write("\r\n")
       process.stdin.setRawMode(false)
       process.stdin.pause()
@@ -255,9 +223,9 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
       // Konfirmasi menyebut DAMPAK, bukan hanya nama: berapa model ikut hilang,
       // dan apakah provider ini yang sedang dipakai. Tanpa itu user menekan "y"
       // tanpa tahu prompt berikutnya akan gagal.
-      const aktif = opts.currentModel?.startsWith(`${target.id}::`)
+      const active = opts.currentModel?.startsWith(`${target.id}::`)
       console.log(`\nDelete provider "${target.id}" and ${target.models} models?`)
-      if (aktif) {
+      if (active) {
         console.log(`${glyphs.cross} Provider is active (${opts.currentModel}).`)
       }
       const ans = await askLine({ prompt: "Delete? [y/N] " })

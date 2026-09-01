@@ -218,7 +218,7 @@ describe("cli: sesi one-shot dasar", () => {
     })
     const { run: r } = await runWithProvider([{ kind: "status", status: 400, body }], ["apa saja"])
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain("Permintaan ditolak provider")
+    expect(r.stderr).toContain("Request was rejected by provider")
     // Detail spesifik tetap disampaikan — satu kalimat, bukan seluruh JSON.
     expect(r.stderr).toContain("tidak menerima tools")
     expect(r.stderr).not.toContain("remedy_hint")
@@ -234,7 +234,7 @@ describe("cli: sesi one-shot dasar", () => {
       ["apa saja"],
     )
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain("Provider membatasi laju permintaan")
+    expect(r.stderr).toContain("Provider is rate-limiting requests")
   }, 30_000)
 })
 
@@ -341,7 +341,7 @@ describe("cli: --timeout", () => {
       },
     )
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain("melewati batas waktu")
+    expect(r.stderr).toContain("Run exceeded timeout")
   })
 
   test("MINICODE_TIMEOUT_MS dipakai bila --timeout tidak ada", async () => {
@@ -350,7 +350,7 @@ describe("cli: --timeout", () => {
       timeoutMs: 45_000,
     })
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain("melewati batas waktu")
+    expect(r.stderr).toContain("Run exceeded timeout")
   })
 })
 
@@ -570,7 +570,7 @@ describe("cli: --max-steps", () => {
       ["loop terus", "--max-steps", "2"],
     )
     expect(r.code).toBe(1)
-    expect(r.stderr).toContain("Batas langkah tool tercapai")
+    expect(r.stderr).toContain("Tool step limit reached")
   })
 })
 
