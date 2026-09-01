@@ -283,16 +283,28 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   console.log(c.dim("minicode — /help daftar perintah · Ctrl+C 2x keluar"))
 
   let shouldExit = false
+  // Akumulasi baris yang diakhiri `\` — shell-like continuation di driver
+  // (bukan di askLine) agar hanya prompt REPL yang punya, tidak semua pemanggil askLine.
+  // Sesuai USAGE.md "akhiri baris dengan \ untuk menyambung".
+  let pending = ""
+  const contPrompt = () => c.dim("··· › ")
   try {
     for (;;) {
       let line: string | null
       try {
-        line = await askLine({ prompt: promptPrefix, hints: suggestions, groupOf, onKey })
+        const usePrompt = pending ? contPrompt : promptPrefix
+        line = await askLine({ prompt: usePrompt, hints: suggestions, groupOf, onKey })
       } catch (e) {
         console.log(`${c.red(glyphs.cross)} ${formatError(e)}`)
         continue
       }
       if (line == null) {
+        if (pending) {
+          pending = ""
+          console.log("^C")
+          nullStreak = 0
+          continue
+        }
         // Ctrl+C/Ctrl+D saat idle: cetak ^C seperti shell; dua kali beruntun = keluar.
         nullStreak++
         console.log("^C")
@@ -301,7 +313,14 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         continue
       }
       nullStreak = 0
-      const q = line.trim()
+      // Baris berakhir `\` → sambung, tanpa dispatch.
+      if (line.endsWith("\\")) {
+        pending += `${line.slice(0, -1)}\n`
+        continue
+      }
+      const full = pending ? `${pending}${line}` : line
+      pending = ""
+      const q = full.trim()
       if (!q) continue
       try {
         shouldExit = await dispatchLine(q)
