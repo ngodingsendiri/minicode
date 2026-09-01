@@ -62,7 +62,7 @@ export async function handleProviders(
   if (firstArg === "providers") {
     if (cfg.providers.length === 0) {
       console.log(
-        "(belum ada provider - jalankan `minicode` untuk wizard, atau `minicode config add --baseUrl <url> --apiKey <key>`)",
+        "(no providers yet - run `minicode` for the wizard, or `minicode config add --baseUrl <url> --apiKey <key>`)",
       )
       process.exit(0)
     }
@@ -72,7 +72,7 @@ export async function handleProviders(
     const rows = cfg.providers.map((p) => {
       const h = health.get(p.id)
       const status = !h
-        ? c.dim("belum dipakai")
+        ? c.dim("not used yet")
         : `${h.ok ? c.green("ok") : c.red("ERR")} ${c.dim(
             h.ts ? new Date(h.ts).toISOString().slice(0, 10) : "-",
           )}`
@@ -84,7 +84,7 @@ export async function handleProviders(
       }
     })
     console.log(
-      `\n${c.bold("Provider LLM")}\n` +
+      `\n${c.bold("LLM Providers")}\n` +
         renderTable(
           [
             { header: "ID", key: "id", width: 24 },
@@ -97,7 +97,7 @@ export async function handleProviders(
         "\n",
     )
     console.log(
-      `  ${c.dim("lanjut: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>")}\n`,
+      `  ${c.dim("next: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>")}\n`,
     )
     process.exit(0)
   }
@@ -109,18 +109,18 @@ export async function handleProviders(
     if (pid) {
       const p = cfg.providers.find((x) => x.id === pid)
       if (!p) {
-        console.error(`provider "${pid}" tidak ditemukan - lihat: minicode providers`)
+        console.error(`provider "${pid}" not found - see: minicode providers`)
         process.exit(1)
       }
       const list = p.models.filter(match)
-      if (!list.length) console.log(`  (tidak ada yang cocok dengan "${filter}")`)
+      if (!list.length) console.log(`  (no matches for "${filter}")`)
       for (const [i, m] of list.entries()) console.log(`  [${i}] ${m}`)
     } else {
-      if (cfg.providers.length === 0) console.log("(belum ada provider)")
+      if (cfg.providers.length === 0) console.log("(no providers yet)")
       for (const p of cfg.providers) {
         const list = p.models.filter(match)
-        console.log(`${p.id} (${p.baseUrl})${filter ? ` - cocok "${filter}"` : ""}`)
-        if (!list.length) console.log("  (tidak ada yang cocok)")
+        console.log(`${p.id} (${p.baseUrl})${filter ? ` - matches "${filter}"` : ""}`)
+        if (!list.length) console.log("  (no matches)")
         for (const m of list.slice(0, 10)) console.log(`  ${m}`)
         if (filter && list.length > 10) console.log(`  … +${list.length - 10} lagi`)
         if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} lagi`)
@@ -129,12 +129,11 @@ export async function handleProviders(
     process.exit(0)
   }
   if (firstArg === "sync") {
-    console.log("Menyinkronkan daftar model dari provider…")
+    console.log("Syncing model list from providers…")
     const results = await refreshProviderModels({ cwd: cwdArg })
     for (const r of results)
       console.log(`  ${c.green(glyphs.check)} ${r.id}: ${r.from} -> ${r.to} model`)
-    if (!results.length)
-      console.log("  (belum ada provider - jalankan `minicode config add` lebih dulu)")
+    if (!results.length) console.log("  (no providers yet - run `minicode config add` first)")
     process.exit(0)
   }
   process.exit(0)

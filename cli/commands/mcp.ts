@@ -1,14 +1,14 @@
 import { resolve as resolvePath } from "node:path"
 
-const MCP_HELP = `minicode mcp — jalankan minicode sebagai server MCP
+const MCP_HELP = `minicode mcp — run minicode as an MCP server
 
   minicode mcp serve [--allow-all] [--all-tools] [--cwd <dir>]
 
-  --allow-all   izinkan semua tool tanpa gate permission
-  --all-tools   ekspos seluruh tool, bukan hanya yang aman
-  --cwd <dir>   akar workspace yang diekspos
+  --allow-all   allow all tools without permission gating
+  --all-tools   expose all tools, not only safe ones
+  --cwd <dir>   workspace root to expose
 
-  Daftar server MCP yang DIPAKAI minicode diatur lewat:
+  MCP servers USED by minicode are configured via:
     minicode config mcp <add|list|remove>`
 
 export async function handleMcp(
@@ -29,7 +29,7 @@ export async function handleMcp(
   }
   // Help kontekstual, bukan HELP global 45 baris. Subcommand asing = exit 1.
   const asking = sub === undefined || sub === "--help" || sub === "-h"
-  if (!asking) console.error(`subcommand mcp tidak dikenal: ${sub}\n`)
+  if (!asking) console.error(`unknown mcp subcommand: ${sub}\n`)
   console.log(MCP_HELP)
   process.exit(asking ? 0 : 1)
 }

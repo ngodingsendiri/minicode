@@ -11,11 +11,11 @@ import {
 import { renderTable } from "../../src/ui/render/table.ts"
 import { c } from "../../src/ui/render/theme.ts"
 
-const SESSIONS_HELP = `minicode sessions — riwayat sesi
+const SESSIONS_HELP = `minicode sessions — session history
 
-  minicode sessions list                 daftar sesi terbaru
-  minicode sessions export <id> [--jsonl]  ekspor riwayat pesan
-  minicode sessions purge                hapus sesi kedaluwarsa (TTL)`
+  minicode sessions list                 list recent sessions
+  minicode sessions export <id> [--jsonl]  export message history
+  minicode sessions purge                remove expired sessions (TTL)`
 
 export async function handleSessions(
   args: string[],
@@ -25,7 +25,7 @@ export async function handleSessions(
   if (sub === "list" || !sub) {
     const cwdArg = getArg("--cwd")
     const rows = listSessions(cwdArg)
-    if (rows.length === 0) console.log(c.dim("(belum ada sesi tercatat)"))
+    if (rows.length === 0) console.log(c.dim("(no recorded sessions yet)"))
     else {
       const tableData = rows.map((r) => ({
         id: c.cyan(r.id),
@@ -33,11 +33,11 @@ export async function handleSessions(
         cwd: c.dim(r.cwd),
       }))
       console.log(
-        `\n${c.bold("Sesi terbaru")}\n` +
+        `\n${c.bold("Recent Sessions")}\n` +
           renderTable(
             [
-              { header: "ID Sesi", key: "id", width: 14 },
-              { header: "Dibuat", key: "date", width: 22 },
+              { header: "Session ID", key: "id", width: 14 },
+              { header: "Created", key: "date", width: 22 },
               { header: "Workspace", key: "cwd", width: 40 },
             ],
             tableData,
@@ -57,7 +57,7 @@ export async function handleSessions(
     }
     const sess = loadSession(id, getArg("--cwd"))
     if (!sess) {
-      console.error(`sesi "${id}" tidak ditemukan - lihat: minicode sessions list`)
+      console.error(`session "${id}" not found - see: minicode sessions list`)
       process.exit(1)
     }
     if (asJsonl) for (const m of sess.messages) console.log(JSON.stringify(m))
@@ -77,14 +77,14 @@ export async function handleSessions(
     try {
       const removed = purgeExpired(db)
       const ttl = getSessionTtlDays()
-      console.log(`[purge] ${removed} sesi dihapus (lebih tua dari ${ttl} hari)`)
+      console.log(`[purge] removed ${removed} sessions (older than ${ttl} days)`)
     } finally {
       db.close()
     }
     process.exit(0)
   } else {
     const asked = sub === "--help" || sub === "-h"
-    if (!asked) console.error(`subcommand sessions tidak dikenal: ${sub}\n`)
+    if (!asked) console.error(`unknown sessions subcommand: ${sub}\n`)
     console.log(SESSIONS_HELP)
     process.exit(asked ? 0 : 1)
   }

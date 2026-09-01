@@ -91,10 +91,11 @@ describe("cli: help kontekstual + exit code", () => {
     ["auth", "bogus"],
   ]
   for (const args of unknown) {
-    test(`${args.join(" ")} -> exit 1 + sebut yang tidak dikenal`, () => {
+    test(`${args.join(" ")} -> exit 1 + mentions unknown subcommand`, () => {
       const r = run(args)
       expect(r.code).toBe(1)
-      expect(r.out.toLowerCase()).toContain("tidak dikenal")
+      expect(r.out.toLowerCase()).toContain("unknown")
+      expect(r.out.toLowerCase()).toContain("subcommand")
     })
   }
 })
@@ -146,7 +147,7 @@ describe("cli: perintah tanpa LLM tetap jalan", () => {
       mkdirSync(join(tmp, ".minicode"), { recursive: true })
       const r = run(["sessions", "list", "--cwd", tmp])
       expect(r.code).toBe(0)
-      expect(r.out).toContain("belum ada sesi")
+      expect(r.out).toContain("no recorded sessions yet")
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

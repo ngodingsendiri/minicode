@@ -85,7 +85,10 @@ async function readConfig(
 
 const visible = (t: FakeTty): string => stripAnsi(t.all())
 
-async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 1200): Promise<void> {
+async function waitFor(
+  condition: () => boolean | Promise<boolean>,
+  timeoutMs = 1200,
+): Promise<void> {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     if (await condition()) return
@@ -317,7 +320,10 @@ describe.serial("provider-manager: edit (e)", () => {
     const seq = tty.answerSequence(["https://baru.example/v1", ""])
     await tty.send("e")
     await seq
-    const out = visible(tty)
+    const t = tty
+    if (!t) throw new Error("fake tty is missing")
+    await waitFor(() => visible(t).includes("updated"), 2000)
+    const out = visible(t)
     expect(out).toContain('Edit provider "gw"')
     expect(out).toContain("updated")
     // Entri updated ditulis ke global (perilaku doEdit: global: true).
@@ -357,7 +363,10 @@ describe.serial("provider-manager: edit (e)", () => {
     const seq = tty.answerSequence(["https://baru.example/v1", ""])
     await tty.send("e")
     await seq
-    expect(visible(tty)).toContain("updated")
+    const t = tty
+    if (!t) throw new Error("fake tty is missing")
+    await waitFor(() => visible(t).includes("updated"), 2000)
+    expect(visible(t)).toContain("updated")
     expect(tty.failures()).toEqual([])
     await mgr.close()
   })

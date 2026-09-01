@@ -10,14 +10,14 @@ import { saveProvider } from "../../src/providers/provision.ts"
 import { c, glyphs } from "../../src/ui/render/theme.ts"
 
 function usage(code = 0): never {
-  console.log(`minicode auth — login OAuth (tanpa API key)
+  console.log(`minicode auth — OAuth login (no API key)
 
-  minicode auth login [provider]   masuk via device code
-  minicode auth status             lihat kredensial tersimpan
-  minicode auth logout <provider>  hapus kredensial
-  minicode auth list               provider yang mendukung OAuth
+  minicode auth login [provider]   sign in via device code
+  minicode auth status             show stored credentials
+  minicode auth logout <provider>  remove credentials
+  minicode auth list               list providers with OAuth support
 
-Token disimpan di ${authFilePath()} (chmod 600), TIDAK di config.json.`)
+Tokens are stored at ${authFilePath()} (chmod 600), NOT in config.json.`)
   process.exit(code)
 }
 
@@ -27,7 +27,7 @@ export async function handleAuth(args: string[]): Promise<never> {
   if (!sub || sub === "help" || sub === "--help" || sub === "-h") usage()
 
   if (sub === "list") {
-    console.log(`\n${c.bold("Provider dengan dukungan OAuth")}`)
+    console.log(`\n${c.bold("Providers with OAuth support")}`)
     for (const p of OAUTH_PROVIDERS) {
       console.log(`  ${c.cyan(p.id.padEnd(12))} ${p.label}`)
       if (p.note) console.log(`  ${" ".repeat(12)} ${c.dim(p.note)}`)
@@ -39,17 +39,17 @@ export async function handleAuth(args: string[]): Promise<never> {
   if (sub === "status") {
     const rows = await listAuth()
     if (rows.length === 0) {
-      console.log(`\n(belum ada kredensial OAuth — ${c.dim("minicode auth login")})\n`)
+      console.log(`\n(no OAuth credentials yet — ${c.dim("minicode auth login")})\n`)
       process.exit(0)
     }
-    console.log(`\n${c.bold("Kredensial OAuth")}  ${c.dim(authFilePath())}`)
+    console.log(`\n${c.bold("OAuth Credentials")}  ${c.dim(authFilePath())}`)
     for (const r of rows) {
       const exp = r.expiresAt ? new Date(r.expiresAt).toLocaleString() : "-"
       const state = r.expired
         ? r.hasRefresh
-          ? c.yellow("kedaluwarsa (auto-refresh)")
-          : c.red("kedaluwarsa (perlu login ulang)")
-        : c.green("aktif")
+          ? c.yellow("expired (auto-refresh)")
+          : c.red("expired (re-login required)")
+        : c.green("active")
       console.log(`  ${c.cyan(r.providerId.padEnd(12))} ${state}  ${c.dim(`exp ${exp}`)}`)
     }
     console.log("")
@@ -64,29 +64,27 @@ export async function handleAuth(args: string[]): Promise<never> {
     }
     const ok = await removeAuth(id)
     console.log(
-      ok
-        ? `${c.green(glyphs.check)} kredensial "${id}" dihapus`
-        : `(tidak ada kredensial untuk "${id}")`,
+      ok ? `${c.green(glyphs.check)} credentials "${id}" removed` : `(no credentials for "${id}")`,
     )
     process.exit(0)
   }
 
   if (sub !== "login") {
     // Subcommand asing = salah pakai, bukan permintaan bantuan: exit 1.
-    console.error(`subcommand auth tidak dikenal: ${sub}`)
+    console.error(`unknown auth subcommand: ${sub}`)
     usage(1)
   }
 
   // ── login ──
   const requested = args[2] ?? OAUTH_PROVIDERS[0]?.id
   if (!requested) {
-    console.error("tidak ada provider OAuth terdaftar")
+    console.error("no OAuth providers registered")
     process.exit(1)
   }
   const spec = findOAuthProvider(requested)
   if (!spec) {
     console.error(
-      `provider "${requested}" tidak mendukung OAuth. Yang tersedia: ${OAUTH_PROVIDERS.map((p) => p.id).join(", ")}`,
+      `provider "${requested}" does not support OAuth. Available: ${OAUTH_PROVIDERS.map((p) => p.id).join(", ")}`,
     )
     process.exit(1)
   }
@@ -97,7 +95,7 @@ export async function handleAuth(args: string[]): Promise<never> {
   // Ctrl+C harus membatalkan polling, bukan meninggalkan proses menggantung.
   const ac = new AbortController()
   const onSigint = () => {
-    console.log(`\n${c.yellow("dibatalkan")}`)
+    console.log(`\n${c.yellow("canceled")}`)
     ac.abort()
   }
   process.once("SIGINT", onSigint)
@@ -106,11 +104,11 @@ export async function handleAuth(args: string[]): Promise<never> {
     const creds = await loginWithDeviceFlow(spec, {
       signal: ac.signal,
       onPrompt: (info) => {
-        console.log(`\n  1. Buka: ${c.cyan(info.verificationUriComplete ?? info.verificationUri)}`)
+        console.log(`\n  1. Open: ${c.cyan(info.verificationUriComplete ?? info.verificationUri)}`)
         if (!info.verificationUriComplete) {
-          console.log(`  2. Masukkan kode: ${c.bold(info.userCode)}`)
+          console.log(`  2. Enter code: ${c.bold(info.userCode)}`)
         }
-        console.log(`\n  ${c.dim("menunggu persetujuan… (Ctrl+C untuk batal)")}`)
+        console.log(`\n  ${c.dim("waiting for approval… (Ctrl+C to cancel)")}`)
       },
       onPoll: (elapsed) => {
         // satu baris yang di-overwrite, bukan spam per-poll
@@ -118,7 +116,7 @@ export async function handleAuth(args: string[]): Promise<never> {
       },
     })
     process.stderr.write("\r                    \r")
-    console.log(`${c.green(glyphs.check)} login berhasil`)
+    console.log(`${c.green(glyphs.check)} login successful`)
 
     // Daftarkan provider bila belum ada. apiKey dibiarkan kosong: tokennya
     // hidup di auth.json dan diambil saat runtime oleh buildProviderListAsync.
@@ -144,8 +142,8 @@ export async function handleAuth(args: string[]): Promise<never> {
       { global: true },
     )
     console.log(
-      `${c.green(glyphs.check)} provider "${c.bold(spec.id)}" siap (${models.length} model)\n` +
-        `  ${c.dim(`coba: minicode --provider ${spec.id} "hello"`)}\n`,
+      `${c.green(glyphs.check)} provider "${c.bold(spec.id)}" ready (${models.length} models)\n` +
+        `  ${c.dim(`try: minicode --provider ${spec.id} "hello"`)}\n`,
     )
     process.exit(0)
   } catch (e) {

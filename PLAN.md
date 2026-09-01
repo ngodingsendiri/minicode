@@ -27,7 +27,32 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 - Biaya sesi kumulatif benar; `--budget` benar-benar memutus.
 - Error provider tampil ringkas + saran, bukan dump JSON.
 - Semua overlay menghormati ukuran terminal sungguhan.
-- Bahasa UI konsisten Indonesia; glyph punya fallback ASCII.
+- Bahasa UI diarahkan ke English-only pada surface UI aktif; glyph tetap punya fallback ASCII.
+
+---
+
+## Status eksekusi terbaru (update 2026-09-01)
+
+Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_REDESIGN_CLI_CONSTRAINED_2026-09-01.md):
+
+- ✅ Tahap 0 (guardrail + baseline) selesai.
+- ✅ Tahap 1 (quick structural wins) selesai.
+- ✅ Tahap 2 (overlay consolidation) selesai.
+- 🟡 Tahap 3 (component family refactor) hampir selesai; polishing test harness masih berjalan.
+- 🟡 Tahap 4 (runtime feedback harmonization) sedang berjalan (statusline suspend/resume nesting + copy harmonization).
+- ⏳ Tahap 5 (verification & hardening final) belum ditutup.
+
+Catatan eksekusi terbaru:
+- Primitive overlay shared sudah dipakai oleh picker/provider-manager/model-manager (`src/ui/screens/overlay.ts`).
+- Statusline sekarang depth-safe untuk nested write (`src/ui/runtime/statusline.ts`).
+- Copy UI yang disentuh pada batch ini sudah dialihkan ke English-only pada surface aktif.
+- Sebagian test flow provider-manager masih intermittently flaky di lingkungan tertentu (SIGTERM/time-sensitive), sehingga hardening harness tetap prioritas.
+
+Next action (urut eksekusi):
+1. Stabilkan `test/provider-manager-flows.test.ts` sampai repeatable green lintas host.
+2. Selesaikan harmonisasi copy English-only pada CLI command surface (`cli/commands/**`).
+3. Jalankan gate penuh: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack`.
+4. Setelah semua hijau, tandai Tahap 4–5 selesai di dokumen ini.
 
 ---
 
@@ -145,13 +170,21 @@ Tarball sudah terverifikasi bisa dipasang (`bun run gate:pack` hijau, 22 pemerik
 
 Sebelum publish, pastikan: versi di `package.json` dinaikkan, `CHANGELOG.md` punya bagian bernomor versi (bukan `[Unreleased]`), dan `bun run gate:pack` masih hijau.
 
-### P2.3 Internasionalisasi — **butuh persetujuan, jangan mulai tanpa itu**
+### P2.3 Internasionalisasi — **keputusan sudah diambil: English-only**
 
-Kondisi sekarang: UI konsisten bahasa Indonesia, tapi tidak seragam — istilah teknis (`token`, `provider`, `model`) dan pesan `usage:` tetap Inggris karena memang nama/konvensi. Hasilnya konsisten tapi campur.
+Keputusan pemilik repo untuk batch saat ini: gunakan **English-only** pada UI/copy aktif.
 
-Untuk audiens global, tabel string dengan `MINICODE_LANG=en|id` lebih baik daripada memilih satu bahasa. Tapi ini pekerjaan besar (setiap string di `cli/**` dan `src/tui/**`) dan **harus diputuskan sebelum publish**, bukan sesudah — mengubah bahasa setelah ada pengguna jauh lebih mahal.
+Implikasi eksekusi:
+1. Semua user-facing string baru wajib berbahasa Inggris.
+2. String Indonesia yang tersisa diperlakukan sebagai technical debt dan dibersihkan bertahap.
+3. Fokus tahap ini **bukan** membangun i18n table (`MINICODE_LANG=en|id`) dulu, melainkan menuntaskan konsistensi English-only agar rilis tidak campur bahasa.
 
-Sajikan pilihan: (a) tetap Indonesia, (b) ganti ke Inggris seluruhnya, (c) tabel i18n dua bahasa. Sertakan estimasi: ~200 string, ~2 hari.
+Scope lanjutan yang masih harus dibereskan:
+- surface `cli/commands/**`
+- sisa pesan error/tool yang masih Indonesia di luar jalur UI yang sudah disentuh
+- test titles/assertions yang masih campur bahasa bila menguji copy user-facing
+
+Catatan: opsi i18n dua bahasa tetap bisa dibuka lagi setelah stabilisasi release berikutnya.
 
 ---
 

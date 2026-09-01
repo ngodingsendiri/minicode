@@ -9,12 +9,12 @@ import {
 } from "../../src/policy/pricing.ts"
 import { c, glyphs } from "../../src/ui/render/theme.ts"
 
-const PRICING_HELP = `minicode pricing — tabel harga untuk estimasi biaya
+const PRICING_HELP = `minicode pricing — price table for cost estimation
 
-  minicode pricing status        sumber harga yang aktif (default)
-  minicode pricing sync          tarik dari models.dev (eksplisit, tidak otomatis)
-  minicode pricing show <model>  harga satu model
-  minicode pricing clear         hapus cache, kembali ke bawaan`
+  minicode pricing status        active price sources (default)
+  minicode pricing sync          pull from models.dev (explicit, not automatic)
+  minicode pricing show <model>  show one model price
+  minicode pricing clear         clear cache and use built-in data`
 
 export async function handlePricing(args: string[]): Promise<never> {
   const raw = args[1]
@@ -25,16 +25,16 @@ export async function handlePricing(args: string[]): Promise<never> {
   const sub = (raw ?? "status").toLowerCase()
 
   if (sub === "sync") {
-    process.stderr.write("menarik harga dari models.dev…\n")
+    process.stderr.write("fetching prices from models.dev…\n")
     try {
       const res = await syncPricing()
       console.log(
-        `${c.green(glyphs.check)} ${res.count} model tersimpan (${Math.round(res.bytes / 1024)} KB)\n  ${c.dim(res.path)}`,
+        `${c.green(glyphs.check)} saved ${res.count} models (${Math.round(res.bytes / 1024)} KB)\n  ${c.dim(res.path)}`,
       )
       process.exit(0)
     } catch (e) {
-      console.error(`${c.red(glyphs.cross)} gagal: ${(e as Error).message}`)
-      console.error(c.dim("  tabel harga bawaan tetap dipakai — tidak ada yang rusak"))
+      console.error(`${c.red(glyphs.cross)} failed: ${(e as Error).message}`)
+      console.error(c.dim("  built-in price table is still used — nothing is broken"))
       process.exit(1)
     }
   }
@@ -42,18 +42,20 @@ export async function handlePricing(args: string[]): Promise<never> {
   if (sub === "status") {
     await loadPricingOverlay()
     const meta = pricingOverlayMeta()
-    console.log(`\n${c.bold("Harga model")}`)
-    console.log(`  bawaan       ${Object.keys(BUILTIN_PRICING).length} model (offline, selalu ada)`)
+    console.log(`\n${c.bold("Model pricing")}`)
+    console.log(
+      `  built-in     ${Object.keys(BUILTIN_PRICING).length} models (offline, always available)`,
+    )
     if (!meta) {
-      console.log(`  models.dev   ${c.dim("belum di-sync")} — jalankan: minicode pricing sync`)
+      console.log(`  models.dev   ${c.dim("not synced yet")} — run: minicode pricing sync`)
     } else {
       const age = Math.round((Date.now() - meta.fetchedAt) / 3_600_000)
       console.log(
-        `  models.dev   ${meta.count} model, ${age}j lalu${meta.stale ? c.yellow(" (kedaluwarsa, masih dipakai)") : ""}`,
+        `  models.dev   ${meta.count} models, ${age}h ago${meta.stale ? c.yellow(" (stale, still in use)") : ""}`,
       )
       console.log(`  ${c.dim(pricingCachePath())}`)
     }
-    console.log(`\n  ${c.dim("Tidak ada fetch otomatis: sync hanya saat Anda meminta.")}\n`)
+    console.log(`\n  ${c.dim("No automatic fetch: sync only runs when you ask.")}\n`)
     process.exit(0)
   }
 
@@ -66,10 +68,10 @@ export async function handlePricing(args: string[]): Promise<never> {
     const overlay = await loadPricingOverlay()
     const p = findPrice(model, overlay)
     if (!p) {
-      console.log(`(harga "${model}" tidak diketahui — cost akan tampil N/A)`)
+      console.log(`(price for "${model}" is unknown — cost will show N/A)`)
       process.exit(0)
     }
-    const src = findPrice(model, {}) === p ? "bawaan" : "models.dev"
+    const src = findPrice(model, {}) === p ? "built-in" : "models.dev"
     console.log(`\n${c.bold(model)}  ${c.dim(`(${src})`)}`)
     console.log(`  input        $${p.input}/M token`)
     console.log(`  output       $${p.output}/M token`)
@@ -84,15 +86,15 @@ export async function handlePricing(args: string[]): Promise<never> {
       await readFile(pricingCachePath(), "utf8")
       const { rm } = await import("node:fs/promises")
       await rm(pricingCachePath(), { force: true })
-      console.log(`${c.green(glyphs.check)} cache harga dihapus`)
+      console.log(`${c.green(glyphs.check)} pricing cache cleared`)
     } catch {
-      console.log("(tidak ada cache harga)")
+      console.log("(no pricing cache)")
     }
     process.exit(0)
   }
 
   // Subcommand asing = salah pakai: exit 1 supaya skrip bisa mendeteksinya.
-  console.error(`subcommand pricing tidak dikenal: ${sub}\n`)
+  console.error(`unknown pricing subcommand: ${sub}\n`)
   console.log(PRICING_HELP)
   process.exit(1)
 }

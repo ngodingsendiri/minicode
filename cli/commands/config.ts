@@ -12,36 +12,36 @@ import { c, glyphs } from "../../src/ui/render/theme.ts"
 // Help kontekstual per subcommand. Sebelumnya ketiga cabang ini mencetak HELP
 // global 45 baris dan exit 0 — user tidak tahu apa yang salah dan skrip tidak
 // bisa mendeteksi kegagalan.
-const CONFIG_HELP = `minicode config — provider, MCP, dan LSP
+const CONFIG_HELP = `minicode config — provider, MCP, and LSP
 
   minicode config add --baseUrl <url> --apiKey <key> [--id <id>] [--global|--local]
   minicode config list
   minicode config remove <id> [--global|--local]
   minicode config detect --baseUrl <url> --apiKey <key>
 
-  minicode config mcp <add|list|remove>    server MCP yang dipakai minicode
-  minicode config lsp <add|list|remove>    language server per ekstensi`
+  minicode config mcp <add|list|remove>    MCP servers used by minicode
+  minicode config lsp <add|list|remove>    language servers per extension`
 
-const MCP_HELP = `minicode config mcp — server MCP yang dipakai minicode
+const MCP_HELP = `minicode config mcp — MCP servers used by minicode
 
   minicode config mcp add <id> --command <cmd> --args "<a1,a2>" [--env K=V]
   minicode config mcp add <id> --url <https://…> [--header K=V] [--allow-private]
   minicode config mcp list
   minicode config mcp remove <id>
 
-  [--global|--local]   simpan ke ~/.minicode (default) atau .minicode/ lokal`
+  [--global|--local]   save to ~/.minicode (default) or local .minicode/`
 
-const LSP_HELP = `minicode config lsp — language server per ekstensi berkas
+const LSP_HELP = `minicode config lsp — language servers per file extension
 
   minicode config lsp add <ext> --command <cmd> [--args "<a1,a2>"] [--env K=V]
   minicode config lsp list
   minicode config lsp remove <ext>
 
-  [--global|--local]   simpan ke ~/.minicode (default) atau .minicode/ lokal`
+  [--global|--local]   save to ~/.minicode (default) or local .minicode/`
 
 /** Cetak help lalu keluar: 0 bila user memang meminta, 1 bila salah pakai. */
 function showHelp(text: string, asked: boolean, unknown?: string): never {
-  if (!asked) console.error(`subcommand tidak dikenal: ${unknown}\n`)
+  if (!asked) console.error(`unknown subcommand: ${unknown}\n`)
   console.log(text)
   process.exit(asked ? 0 : 1)
 }
@@ -73,7 +73,7 @@ export async function handleConfig(
   } else if (sub === "list") {
     const cfg = await loadConfig()
     if (cfg.providers.length === 0)
-      console.log(c.dim("(belum ada provider - tambahkan lewat `minicode config add` atau wizard)"))
+      console.log(c.dim("(no providers yet - add one via `minicode config add` or the wizard)"))
     else {
       const tableData = cfg.providers.map((p) => ({
         id: c.cyan(p.id),
@@ -82,13 +82,13 @@ export async function handleConfig(
         hint: c.dim(p.providerHint ?? "?"),
       }))
       console.log(
-        `\n${c.bold("Provider LLM terkonfigurasi")}\n` +
+        `\n${c.bold("Configured LLM Providers")}\n` +
           renderTable(
             [
               { header: "ID", key: "id", width: 24 },
               { header: "Base URL", key: "url", width: 34 },
-              { header: "Model", key: "models", width: 6, align: "right" },
-              { header: "Tipe", key: "hint", width: 12 },
+              { header: "Models", key: "models", width: 6, align: "right" },
+              { header: "Type", key: "hint", width: 12 },
             ],
             tableData,
           ) +
@@ -151,11 +151,11 @@ export async function handleConfig(
         try {
           const parsed = new URL(url)
           if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-            console.error(`URL harus http/https, bukan ${parsed.protocol}`)
+            console.error(`URL must use http/https, not ${parsed.protocol}`)
             process.exit(1)
           }
         } catch {
-          console.error(`URL tidak valid: ${url}`)
+          console.error(`Invalid URL: ${url}`)
           process.exit(1)
         }
         await saveMcpServer(

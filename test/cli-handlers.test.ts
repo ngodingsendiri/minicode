@@ -153,7 +153,7 @@ describe("sessions", () => {
   test("list kosong memberi pesan, bukan tabel kosong", async () => {
     const r = await runDispatch(["sessions", "list", "--cwd", tmp])
     expect(r.code).toBe(0)
-    expect(r.out).toContain("belum ada sesi")
+    expect(r.out).toContain("no recorded sessions yet")
   })
 
   test("export tanpa id = salah pakai (exit 1)", async () => {
@@ -163,15 +163,15 @@ describe("sessions", () => {
   })
 
   test("export id tak dikenal = exit 1 dengan pesan jelas", async () => {
-    const r = await runDispatch(["sessions", "export", "tidak-ada", "--cwd", tmp])
+    const r = await runDispatch(["sessions", "export", "not-found", "--cwd", tmp])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak ditemukan")
+    expect(r.out).toContain("not found")
   })
 
-  test("subcommand asing = exit 1 + help sessions", async () => {
+  test("unknown subcommand = exit 1 + sessions help", async () => {
     const r = await runDispatch(["sessions", "bogus", "--cwd", tmp])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak dikenal")
+    expect(r.out).toContain("unknown sessions subcommand")
     expect(r.out).toContain("minicode sessions")
   })
 
@@ -255,17 +255,17 @@ describe("skills", () => {
     expect(r.out).toContain("usage:")
   })
 
-  test("show nama tak dikenal = exit 1 + arahkan ke list", async () => {
-    const r = await runDispatch(["skills", "show", "hantu", "--cwd", tmp])
+  test("show unknown name = exit 1 + points to list", async () => {
+    const r = await runDispatch(["skills", "show", "ghost", "--cwd", tmp])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak ditemukan")
+    expect(r.out).toContain("not found")
     expect(r.out).toContain("skills list")
   })
 
-  test("subcommand asing = exit 1", async () => {
+  test("unknown subcommand = exit 1", async () => {
     const r = await runDispatch(["skills", "bogus", "--cwd", tmp])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak dikenal")
+    expect(r.out).toContain("unknown skills subcommand")
   })
 })
 
@@ -278,10 +278,10 @@ describe("config", () => {
     expect(r.out).not.toContain("GLOBAL HELP")
   })
 
-  test("subcommand asing = exit 1", async () => {
+  test("unknown subcommand = exit 1", async () => {
     const r = await runDispatch(["config", "bogus"])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak dikenal")
+    expect(r.out).toContain("unknown subcommand")
   })
 
   test("mcp/lsp tanpa argumen memberi help masing-masing", async () => {
@@ -318,10 +318,10 @@ describe("config", () => {
     expect(r.out.toLowerCase()).toContain("http")
   })
 
-  test("mcp add menolak URL cacat", async () => {
-    const r = await runDispatch(["config", "mcp", "add", "x", "--url", "bukan-url"])
+  test("mcp add rejects malformed URL", async () => {
+    const r = await runDispatch(["config", "mcp", "add", "x", "--url", "not-a-url"])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak valid")
+    expect(r.out).toContain("Invalid URL")
   })
 
   test("mcp add tanpa command maupun url = exit 1", async () => {
@@ -345,18 +345,18 @@ describe("mcp", () => {
     expect(r.out).not.toContain("GLOBAL HELP")
   })
 
-  test("subcommand asing = exit 1", async () => {
+  test("unknown subcommand = exit 1", async () => {
     const r = await runDispatch(["mcp", "bogus"])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak dikenal")
+    expect(r.out).toContain("unknown mcp subcommand")
   })
 })
 
 describe("pricing", () => {
-  test("tanpa argumen default ke status", async () => {
+  test("no args defaults to status", async () => {
     const r = await runDispatch(["pricing"])
     expect(r.code).toBe(0)
-    expect(r.out).toContain("Harga model")
+    expect(r.out).toContain("Model pricing")
   })
 
   test("--help memberi daftar subcommand", async () => {
@@ -384,10 +384,10 @@ describe("pricing", () => {
     expect(r.out).toContain("N/A")
   })
 
-  test("subcommand asing = exit 1", async () => {
+  test("unknown subcommand = exit 1", async () => {
     const r = await runDispatch(["pricing", "bogus"])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak dikenal")
+    expect(r.out).toContain("unknown pricing subcommand")
   })
 })
 
@@ -456,11 +456,11 @@ describe("providers & models", () => {
     expect(r.out).toContain("beta")
   })
 
-  test("models <id> tak dikenal = exit 1", async () => {
+  test("models <id> unknown = exit 1", async () => {
     writeConfig([])
-    const r = await runDispatch(["models", "hantu", "--cwd", tmp])
+    const r = await runDispatch(["models", "ghost", "--cwd", tmp])
     expect(r.code).toBe(1)
-    expect(r.out).toContain("tidak ditemukan")
+    expect(r.out).toContain("not found")
   })
 
   test("models --match menyaring", async () => {
@@ -478,11 +478,11 @@ describe("providers & models", () => {
     expect(r.out).not.toContain("beta")
   })
 
-  test("models --match tanpa hasil memberi pesan", async () => {
+  test("models --match with no result shows message", async () => {
     writeConfig([
       { id: "p", baseUrl: "https://a/v1", apiKey: "k", models: ["alpha"], providerHint: "openai" },
     ])
     const r = await runDispatch(["models", "p", "--match", "zzz", "--cwd", tmp])
-    expect(r.out).toContain("tidak ada yang cocok")
+    expect(r.out).toContain("no matches")
   })
 })

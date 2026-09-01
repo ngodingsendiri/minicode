@@ -162,12 +162,21 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
     setMaxListeners() {
       return fakeStdin
     },
+    listenerCount(_event: string) {
+      // `readline.emitKeypressEvents()` checks this before wiring internals.
+      // Fake stdin does not model keypress listeners, but returning 0 keeps
+      // the path compatible with Node/Bun expectations.
+      return 0
+    },
     on(event: string, fn: (chunk: Buffer) => void) {
       if (event === "data") {
         dataListeners.push({ fn, raw: rawMode })
         listenerEpoch++
       }
       return fakeStdin
+    },
+    addListener(event: string, fn: (chunk: Buffer) => void) {
+      return fakeStdin.on(event, fn)
     },
     once(event: string, fn: (chunk: Buffer) => void) {
       return fakeStdin.on(event, fn)
