@@ -12,7 +12,7 @@ import {
 export const mcpListTool: Tool = {
   name: "mcp_list",
   description:
-    "Daftar MCP server yang terhubung beserta tools, resources, dan prompts-nya. Panggil ini dulu sebelum mcp_call / mcp_read / mcp_prompt.",
+    "List connected MCP servers with their tools, resources, and prompts. Call this first, before mcp_call / mcp_read / mcp_prompt.",
   parameters: {
     type: "object",
     properties: {},
@@ -21,8 +21,7 @@ export const mcpListTool: Tool = {
   async execute(_input, ctx) {
     ctx.signal.throwIfAborted()
     const inv = mcpInventory()
-    if (inv.length === 0)
-      return "(tidak ada MCP server terhubung — tambah via minicode config mcp add)"
+    if (inv.length === 0) return "(no MCP servers connected — add one via minicode config mcp add)"
     const lines: string[] = []
     for (const s of inv) {
       lines.push(
@@ -48,7 +47,7 @@ export const mcpListTool: Tool = {
 export const mcpCallTool: Tool = {
   name: "mcp_call",
   description:
-    "Panggil tool dari MCP server yang terhubung. Parameter: server id, nama tool, dan arguments.",
+    "Call a tool on a connected MCP server. Parameters: server id, tool name, and arguments.",
   parameters: {
     type: "object",
     properties: {
@@ -58,11 +57,11 @@ export const mcpCallTool: Tool = {
       },
       tool: {
         type: "string",
-        description: "Nama tool yang akan dipanggil",
+        description: "Name of the tool to call",
       },
       args: {
         type: "object",
-        description: "Arguments untuk tool (object key-value)",
+        description: "Arguments for the tool (key-value object)",
         additionalProperties: true,
       },
     },
@@ -78,7 +77,7 @@ export const mcpCallTool: Tool = {
 
     const ids = getMcpServerIds()
     if (!ids.includes(sid)) {
-      return `[mcp] server '${sid}' tidak terhubung. Server terdaftar: ${ids.join(", ") || "(tidak ada)"}`
+      return `[mcp] server '${sid}' is not connected. Registered servers: ${ids.join(", ") || "(none)"}`
     }
 
     try {
@@ -94,7 +93,7 @@ export const mcpCallTool: Tool = {
 /** Pesan kesalahan seragam untuk server yang tak terdaftar. */
 function notConnected(sid: string): string {
   const ids = getMcpServerIds()
-  return `[mcp] server '${sid}' tidak terhubung. Server terdaftar: ${ids.join(", ") || "(tidak ada)"}`
+  return `[mcp] server '${sid}' is not connected. Registered servers: ${ids.join(", ") || "(none)"}`
 }
 
 export const mcpReadTool: Tool = {
@@ -105,7 +104,7 @@ export const mcpReadTool: Tool = {
     type: "object",
     properties: {
       server: { type: "string", description: "ID MCP server" },
-      uri: { type: "string", description: "URI resource, mis. file:///x atau db://table" },
+      uri: { type: "string", description: "Resource URI, e.g. file:///x or db://table" },
     },
     required: ["server", "uri"],
     additionalProperties: false,
@@ -114,11 +113,11 @@ export const mcpReadTool: Tool = {
     ctx.signal.throwIfAborted()
     const sid = String(server ?? "")
     const u = String(uri ?? "").trim()
-    if (!u) throw new Error("uri wajib diisi")
+    if (!u) throw new Error("uri is required")
     if (!getMcpServerIds().includes(sid)) return notConnected(sid)
     try {
       const text = await readMcpResource(sid, u)
-      if (!text) return `[mcp] resource '${u}' kosong atau tidak mengembalikan teks`
+      if (!text) return `[mcp] resource '${u}' is empty or returned no text`
       return text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
     } catch (e) {
       return `[mcp] error: ${(e as Error).message}`
@@ -129,7 +128,7 @@ export const mcpReadTool: Tool = {
 export const mcpPromptTool: Tool = {
   name: "mcp_prompt",
   description:
-    "Ambil prompt template dari MCP server (spec prompts/get) — server merender argumennya. Hasilnya teks untuk dipakai sebagai konteks.",
+    "Fetch a prompt template from an MCP server (spec prompts/get) — the server renders its arguments. The result is text to use as context.",
   parameters: {
     type: "object",
     properties: {
@@ -148,11 +147,11 @@ export const mcpPromptTool: Tool = {
     ctx.signal.throwIfAborted()
     const sid = String(server ?? "")
     const pn = String(name ?? "").trim()
-    if (!pn) throw new Error("name wajib diisi")
+    if (!pn) throw new Error("name is required")
     if (!getMcpServerIds().includes(sid)) return notConnected(sid)
     try {
       const text = await getMcpPrompt(sid, pn, (args as Record<string, unknown>) ?? {})
-      if (!text) return `[mcp] prompt '${pn}' tidak mengembalikan pesan`
+      if (!text) return `[mcp] prompt '${pn}' returned no message`
       return text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
     } catch (e) {
       return `[mcp] error: ${(e as Error).message}`

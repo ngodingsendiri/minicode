@@ -1,0 +1,858 @@
+diff --git a/cli/commands/auth.ts b/cli/commands/auth.ts
+index 86b796f..eb5b107 100644
+--- a/cli/commands/auth.ts
++++ b/cli/commands/auth.ts
+@@ -10,14 +10,14 @@ import { saveProvider } from "../../src/providers/provision.ts"
+ import { c, glyphs } from "../../src/ui/render/theme.ts"
+ 
+ function usage(code = 0): never {
+-  console.log(`minicode auth — login OAuth (tanpa API key)
++  console.log(`minicode auth — OAuth login (no API key)
+ 
+-  minicode auth login [provider]   masuk via device code
+-  minicode auth status             lihat kredensial tersimpan
+-  minicode auth logout <provider>  hapus kredensial
+-  minicode auth list               provider yang mendukung OAuth
++  minicode auth login [provider]   sign in via device code
++  minicode auth status             show stored credentials
++  minicode auth logout <provider>  remove credentials
++  minicode auth list               list providers with OAuth support
+ 
+-Token disimpan di ${authFilePath()} (chmod 600), TIDAK di config.json.`)
++Tokens are stored at ${authFilePath()} (chmod 600), NOT in config.json.`)
+   process.exit(code)
+ }
+ 
+@@ -27,7 +27,7 @@ export async function handleAuth(args: string[]): Promise<never> {
+   if (!sub || sub === "help" || sub === "--help" || sub === "-h") usage()
+ 
+   if (sub === "list") {
+-    console.log(`\n${c.bold("Provider dengan dukungan OAuth")}`)
++    console.log(`\n${c.bold("Providers with OAuth support")}`)
+     for (const p of OAUTH_PROVIDERS) {
+       console.log(`  ${c.cyan(p.id.padEnd(12))} ${p.label}`)
+       if (p.note) console.log(`  ${" ".repeat(12)} ${c.dim(p.note)}`)
+@@ -39,17 +39,17 @@ export async function handleAuth(args: string[]): Promise<never> {
+   if (sub === "status") {
+     const rows = await listAuth()
+     if (rows.length === 0) {
+-      console.log(`\n(belum ada kredensial OAuth — ${c.dim("minicode auth login")})\n`)
++      console.log(`\n(no OAuth credentials yet — ${c.dim("minicode auth login")})\n`)
+       process.exit(0)
+     }
+-    console.log(`\n${c.bold("Kredensial OAuth")}  ${c.dim(authFilePath())}`)
++    console.log(`\n${c.bold("OAuth Credentials")}  ${c.dim(authFilePath())}`)
+     for (const r of rows) {
+       const exp = r.expiresAt ? new Date(r.expiresAt).toLocaleString() : "-"
+       const state = r.expired
+         ? r.hasRefresh
+-          ? c.yellow("kedaluwarsa (auto-refresh)")
+-          : c.red("kedaluwarsa (perlu login ulang)")
+-        : c.green("aktif")
++          ? c.yellow("expired (auto-refresh)")
++          : c.red("expired (re-login required)")
++        : c.green("active")
+       console.log(`  ${c.cyan(r.providerId.padEnd(12))} ${state}  ${c.dim(`exp ${exp}`)}`)
+     }
+     console.log("")
+@@ -64,29 +64,27 @@ export async function handleAuth(args: string[]): Promise<never> {
+     }
+     const ok = await removeAuth(id)
+     console.log(
+-      ok
+-        ? `${c.green(glyphs.check)} kredensial "${id}" dihapus`
+-        : `(tidak ada kredensial untuk "${id}")`,
++      ok ? `${c.green(glyphs.check)} credentials "${id}" removed` : `(no credentials for "${id}")`,
+     )
+     process.exit(0)
+   }
+ 
+   if (sub !== "login") {
+     // Subcommand asing = salah pakai, bukan permintaan bantuan: exit 1.
+-    console.error(`subcommand auth tidak dikenal: ${sub}`)
++    console.error(`unknown auth subcommand: ${sub}`)
+     usage(1)
+   }
+ 
+   // ── login ──
+   const requested = args[2] ?? OAUTH_PROVIDERS[0]?.id
+   if (!requested) {
+-    console.error("tidak ada provider OAuth terdaftar")
++    console.error("no OAuth providers registered")
+     process.exit(1)
+   }
+   const spec = findOAuthProvider(requested)
+   if (!spec) {
+     console.error(
+-      `provider "${requested}" tidak mendukung OAuth. Yang tersedia: ${OAUTH_PROVIDERS.map((p) => p.id).join(", ")}`,
++      `provider "${requested}" does not support OAuth. Available: ${OAUTH_PROVIDERS.map((p) => p.id).join(", ")}`,
+     )
+     process.exit(1)
+   }
+@@ -97,7 +95,7 @@ export async function handleAuth(args: string[]): Promise<never> {
+   // Ctrl+C harus membatalkan polling, bukan meninggalkan proses menggantung.
+   const ac = new AbortController()
+   const onSigint = () => {
+-    console.log(`\n${c.yellow("dibatalkan")}`)
++    console.log(`\n${c.yellow("canceled")}`)
+     ac.abort()
+   }
+   process.once("SIGINT", onSigint)
+@@ -106,11 +104,11 @@ export async function handleAuth(args: string[]): Promise<never> {
+     const creds = await loginWithDeviceFlow(spec, {
+       signal: ac.signal,
+       onPrompt: (info) => {
+-        console.log(`\n  1. Buka: ${c.cyan(info.verificationUriComplete ?? info.verificationUri)}`)
++        console.log(`\n  1. Open: ${c.cyan(info.verificationUriComplete ?? info.verificationUri)}`)
+         if (!info.verificationUriComplete) {
+-          console.log(`  2. Masukkan kode: ${c.bold(info.userCode)}`)
++          console.log(`  2. Enter code: ${c.bold(info.userCode)}`)
+         }
+-        console.log(`\n  ${c.dim("menunggu persetujuan… (Ctrl+C untuk batal)")}`)
++        console.log(`\n  ${c.dim("waiting for approval… (Ctrl+C to cancel)")}`)
+       },
+       onPoll: (elapsed) => {
+         // satu baris yang di-overwrite, bukan spam per-poll
+@@ -118,7 +116,7 @@ export async function handleAuth(args: string[]): Promise<never> {
+       },
+     })
+     process.stderr.write("\r                    \r")
+-    console.log(`${c.green(glyphs.check)} login berhasil`)
++    console.log(`${c.green(glyphs.check)} login successful`)
+ 
+     // Daftarkan provider bila belum ada. apiKey dibiarkan kosong: tokennya
+     // hidup di auth.json dan diambil saat runtime oleh buildProviderListAsync.
+@@ -144,8 +142,8 @@ export async function handleAuth(args: string[]): Promise<never> {
+       { global: true },
+     )
+     console.log(
+-      `${c.green(glyphs.check)} provider "${c.bold(spec.id)}" siap (${models.length} model)\n` +
+-        `  ${c.dim(`coba: minicode --provider ${spec.id} "hello"`)}\n`,
++      `${c.green(glyphs.check)} provider "${c.bold(spec.id)}" ready (${models.length} models)\n` +
++        `  ${c.dim(`try: minicode --provider ${spec.id} "hello"`)}\n`,
+     )
+     process.exit(0)
+   } catch (e) {
+diff --git a/cli/commands/config.ts b/cli/commands/config.ts
+index bf062d8..e7e9ecf 100644
+--- a/cli/commands/config.ts
++++ b/cli/commands/config.ts
+@@ -12,36 +12,36 @@ import { c, glyphs } from "../../src/ui/render/theme.ts"
+ // Help kontekstual per subcommand. Sebelumnya ketiga cabang ini mencetak HELP
+ // global 45 baris dan exit 0 — user tidak tahu apa yang salah dan skrip tidak
+ // bisa mendeteksi kegagalan.
+-const CONFIG_HELP = `minicode config — provider, MCP, dan LSP
++const CONFIG_HELP = `minicode config — provider, MCP, and LSP
+ 
+   minicode config add --baseUrl <url> --apiKey <key> [--id <id>] [--global|--local]
+   minicode config list
+   minicode config remove <id> [--global|--local]
+   minicode config detect --baseUrl <url> --apiKey <key>
+ 
+-  minicode config mcp <add|list|remove>    server MCP yang dipakai minicode
+-  minicode config lsp <add|list|remove>    language server per ekstensi`
++  minicode config mcp <add|list|remove>    MCP servers used by minicode
++  minicode config lsp <add|list|remove>    language servers per extension`
+ 
+-const MCP_HELP = `minicode config mcp — server MCP yang dipakai minicode
++const MCP_HELP = `minicode config mcp — MCP servers used by minicode
+ 
+   minicode config mcp add <id> --command <cmd> --args "<a1,a2>" [--env K=V]
+   minicode config mcp add <id> --url <https://…> [--header K=V] [--allow-private]
+   minicode config mcp list
+   minicode config mcp remove <id>
+ 
+-  [--global|--local]   simpan ke ~/.minicode (default) atau .minicode/ lokal`
++  [--global|--local]   save to ~/.minicode (default) or local .minicode/`
+ 
+-const LSP_HELP = `minicode config lsp — language server per ekstensi berkas
++const LSP_HELP = `minicode config lsp — language servers per file extension
+ 
+   minicode config lsp add <ext> --command <cmd> [--args "<a1,a2>"] [--env K=V]
+   minicode config lsp list
+   minicode config lsp remove <ext>
+ 
+-  [--global|--local]   simpan ke ~/.minicode (default) atau .minicode/ lokal`
++  [--global|--local]   save to ~/.minicode (default) or local .minicode/`
+ 
+ /** Cetak help lalu keluar: 0 bila user memang meminta, 1 bila salah pakai. */
+ function showHelp(text: string, asked: boolean, unknown?: string): never {
+-  if (!asked) console.error(`subcommand tidak dikenal: ${unknown}\n`)
++  if (!asked) console.error(`unknown subcommand: ${unknown}\n`)
+   console.log(text)
+   process.exit(asked ? 0 : 1)
+ }
+@@ -73,7 +73,7 @@ export async function handleConfig(
+   } else if (sub === "list") {
+     const cfg = await loadConfig()
+     if (cfg.providers.length === 0)
+-      console.log(c.dim("(belum ada provider - tambahkan lewat `minicode config add` atau wizard)"))
++      console.log(c.dim("(no providers yet - add one via `minicode config add` or the wizard)"))
+     else {
+       const tableData = cfg.providers.map((p) => ({
+         id: c.cyan(p.id),
+@@ -82,13 +82,13 @@ export async function handleConfig(
+         hint: c.dim(p.providerHint ?? "?"),
+       }))
+       console.log(
+-        `\n${c.bold("Provider LLM terkonfigurasi")}\n` +
++        `\n${c.bold("Configured LLM Providers")}\n` +
+           renderTable(
+             [
+               { header: "ID", key: "id", width: 24 },
+               { header: "Base URL", key: "url", width: 34 },
+-              { header: "Model", key: "models", width: 6, align: "right" },
+-              { header: "Tipe", key: "hint", width: 12 },
++              { header: "Models", key: "models", width: 6, align: "right" },
++              { header: "Type", key: "hint", width: 12 },
+             ],
+             tableData,
+           ) +
+@@ -151,11 +151,11 @@ export async function handleConfig(
+         try {
+           const parsed = new URL(url)
+           if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+-            console.error(`URL harus http/https, bukan ${parsed.protocol}`)
++            console.error(`URL must use http/https, not ${parsed.protocol}`)
+             process.exit(1)
+           }
+         } catch {
+-          console.error(`URL tidak valid: ${url}`)
++          console.error(`Invalid URL: ${url}`)
+           process.exit(1)
+         }
+         await saveMcpServer(
+diff --git a/cli/commands/mcp.ts b/cli/commands/mcp.ts
+index 302a4ea..f1833dd 100644
+--- a/cli/commands/mcp.ts
++++ b/cli/commands/mcp.ts
+@@ -1,14 +1,14 @@
+ import { resolve as resolvePath } from "node:path"
+ 
+-const MCP_HELP = `minicode mcp — jalankan minicode sebagai server MCP
++const MCP_HELP = `minicode mcp — run minicode as an MCP server
+ 
+   minicode mcp serve [--allow-all] [--all-tools] [--cwd <dir>]
+ 
+-  --allow-all   izinkan semua tool tanpa gate permission
+-  --all-tools   ekspos seluruh tool, bukan hanya yang aman
+-  --cwd <dir>   akar workspace yang diekspos
++  --allow-all   allow all tools without permission gating
++  --all-tools   expose all tools, not only safe ones
++  --cwd <dir>   workspace root to expose
+ 
+-  Daftar server MCP yang DIPAKAI minicode diatur lewat:
++  MCP servers USED by minicode are configured via:
+     minicode config mcp <add|list|remove>`
+ 
+ export async function handleMcp(
+@@ -29,7 +29,7 @@ export async function handleMcp(
+   }
+   // Help kontekstual, bukan HELP global 45 baris. Subcommand asing = exit 1.
+   const asking = sub === undefined || sub === "--help" || sub === "-h"
+-  if (!asking) console.error(`subcommand mcp tidak dikenal: ${sub}\n`)
++  if (!asking) console.error(`unknown mcp subcommand: ${sub}\n`)
+   console.log(MCP_HELP)
+   process.exit(asking ? 0 : 1)
+ }
+diff --git a/cli/commands/pricing.ts b/cli/commands/pricing.ts
+index 72ac917..2a8ace7 100644
+--- a/cli/commands/pricing.ts
++++ b/cli/commands/pricing.ts
+@@ -9,12 +9,12 @@ import {
+ } from "../../src/policy/pricing.ts"
+ import { c, glyphs } from "../../src/ui/render/theme.ts"
+ 
+-const PRICING_HELP = `minicode pricing — tabel harga untuk estimasi biaya
++const PRICING_HELP = `minicode pricing — price table for cost estimation
+ 
+-  minicode pricing status        sumber harga yang aktif (default)
+-  minicode pricing sync          tarik dari models.dev (eksplisit, tidak otomatis)
+-  minicode pricing show <model>  harga satu model
+-  minicode pricing clear         hapus cache, kembali ke bawaan`
++  minicode pricing status        active price sources (default)
++  minicode pricing sync          pull from models.dev (explicit, not automatic)
++  minicode pricing show <model>  show one model price
++  minicode pricing clear         clear cache and use built-in data`
+ 
+ export async function handlePricing(args: string[]): Promise<never> {
+   const raw = args[1]
+@@ -25,16 +25,16 @@ export async function handlePricing(args: string[]): Promise<never> {
+   const sub = (raw ?? "status").toLowerCase()
+ 
+   if (sub === "sync") {
+-    process.stderr.write("menarik harga dari models.dev…\n")
++    process.stderr.write("fetching prices from models.dev…\n")
+     try {
+       const res = await syncPricing()
+       console.log(
+-        `${c.green(glyphs.check)} ${res.count} model tersimpan (${Math.round(res.bytes / 1024)} KB)\n  ${c.dim(res.path)}`,
++        `${c.green(glyphs.check)} saved ${res.count} models (${Math.round(res.bytes / 1024)} KB)\n  ${c.dim(res.path)}`,
+       )
+       process.exit(0)
+     } catch (e) {
+-      console.error(`${c.red(glyphs.cross)} gagal: ${(e as Error).message}`)
+-      console.error(c.dim("  tabel harga bawaan tetap dipakai — tidak ada yang rusak"))
++      console.error(`${c.red(glyphs.cross)} failed: ${(e as Error).message}`)
++      console.error(c.dim("  built-in price table is still used — nothing is broken"))
+       process.exit(1)
+     }
+   }
+@@ -42,18 +42,20 @@ export async function handlePricing(args: string[]): Promise<never> {
+   if (sub === "status") {
+     await loadPricingOverlay()
+     const meta = pricingOverlayMeta()
+-    console.log(`\n${c.bold("Harga model")}`)
+-    console.log(`  bawaan       ${Object.keys(BUILTIN_PRICING).length} model (offline, selalu ada)`)
++    console.log(`\n${c.bold("Model pricing")}`)
++    console.log(
++      `  built-in     ${Object.keys(BUILTIN_PRICING).length} models (offline, always available)`,
++    )
+     if (!meta) {
+-      console.log(`  models.dev   ${c.dim("belum di-sync")} — jalankan: minicode pricing sync`)
++      console.log(`  models.dev   ${c.dim("not synced yet")} — run: minicode pricing sync`)
+     } else {
+       const age = Math.round((Date.now() - meta.fetchedAt) / 3_600_000)
+       console.log(
+-        `  models.dev   ${meta.count} model, ${age}j lalu${meta.stale ? c.yellow(" (kedaluwarsa, masih dipakai)") : ""}`,
++        `  models.dev   ${meta.count} models, ${age}h ago${meta.stale ? c.yellow(" (stale, still in use)") : ""}`,
+       )
+       console.log(`  ${c.dim(pricingCachePath())}`)
+     }
+-    console.log(`\n  ${c.dim("Tidak ada fetch otomatis: sync hanya saat Anda meminta.")}\n`)
++    console.log(`\n  ${c.dim("No automatic fetch: sync only runs when you ask.")}\n`)
+     process.exit(0)
+   }
+ 
+@@ -66,10 +68,10 @@ export async function handlePricing(args: string[]): Promise<never> {
+     const overlay = await loadPricingOverlay()
+     const p = findPrice(model, overlay)
+     if (!p) {
+-      console.log(`(harga "${model}" tidak diketahui — cost akan tampil N/A)`)
++      console.log(`(price for "${model}" is unknown — cost will show N/A)`)
+       process.exit(0)
+     }
+-    const src = findPrice(model, {}) === p ? "bawaan" : "models.dev"
++    const src = findPrice(model, {}) === p ? "built-in" : "models.dev"
+     console.log(`\n${c.bold(model)}  ${c.dim(`(${src})`)}`)
+     console.log(`  input        $${p.input}/M token`)
+     console.log(`  output       $${p.output}/M token`)
+@@ -84,15 +86,15 @@ export async function handlePricing(args: string[]): Promise<never> {
+       await readFile(pricingCachePath(), "utf8")
+       const { rm } = await import("node:fs/promises")
+       await rm(pricingCachePath(), { force: true })
+-      console.log(`${c.green(glyphs.check)} cache harga dihapus`)
++      console.log(`${c.green(glyphs.check)} pricing cache cleared`)
+     } catch {
+-      console.log("(tidak ada cache harga)")
++      console.log("(no pricing cache)")
+     }
+     process.exit(0)
+   }
+ 
+   // Subcommand asing = salah pakai: exit 1 supaya skrip bisa mendeteksinya.
+-  console.error(`subcommand pricing tidak dikenal: ${sub}\n`)
++  console.error(`unknown pricing subcommand: ${sub}\n`)
+   console.log(PRICING_HELP)
+   process.exit(1)
+ }
+diff --git a/cli/commands/providers.ts b/cli/commands/providers.ts
+index 23569e1..df7806f 100644
+--- a/cli/commands/providers.ts
++++ b/cli/commands/providers.ts
+@@ -62,7 +62,7 @@ export async function handleProviders(
+   if (firstArg === "providers") {
+     if (cfg.providers.length === 0) {
+       console.log(
+-        "(belum ada provider - jalankan `minicode` untuk wizard, atau `minicode config add --baseUrl <url> --apiKey <key>`)",
++        "(no providers yet - run `minicode` for the wizard, or `minicode config add --baseUrl <url> --apiKey <key>`)",
+       )
+       process.exit(0)
+     }
+@@ -72,7 +72,7 @@ export async function handleProviders(
+     const rows = cfg.providers.map((p) => {
+       const h = health.get(p.id)
+       const status = !h
+-        ? c.dim("belum dipakai")
++        ? c.dim("not used yet")
+         : `${h.ok ? c.green("ok") : c.red("ERR")} ${c.dim(
+             h.ts ? new Date(h.ts).toISOString().slice(0, 10) : "-",
+           )}`
+@@ -84,7 +84,7 @@ export async function handleProviders(
+       }
+     })
+     console.log(
+-      `\n${c.bold("Provider LLM")}\n` +
++      `\n${c.bold("LLM Providers")}\n` +
+         renderTable(
+           [
+             { header: "ID", key: "id", width: 24 },
+@@ -97,7 +97,7 @@ export async function handleProviders(
+         "\n",
+     )
+     console.log(
+-      `  ${c.dim("lanjut: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>")}\n`,
++      `  ${c.dim("next: minicode models | minicode sync | minicode config add --baseUrl <url> --apiKey <key>")}\n`,
+     )
+     process.exit(0)
+   }
+@@ -109,18 +109,18 @@ export async function handleProviders(
+     if (pid) {
+       const p = cfg.providers.find((x) => x.id === pid)
+       if (!p) {
+-        console.error(`provider "${pid}" tidak ditemukan - lihat: minicode providers`)
++        console.error(`provider "${pid}" not found - see: minicode providers`)
+         process.exit(1)
+       }
+       const list = p.models.filter(match)
+-      if (!list.length) console.log(`  (tidak ada yang cocok dengan "${filter}")`)
++      if (!list.length) console.log(`  (no matches for "${filter}")`)
+       for (const [i, m] of list.entries()) console.log(`  [${i}] ${m}`)
+     } else {
+-      if (cfg.providers.length === 0) console.log("(belum ada provider)")
++      if (cfg.providers.length === 0) console.log("(no providers yet)")
+       for (const p of cfg.providers) {
+         const list = p.models.filter(match)
+-        console.log(`${p.id} (${p.baseUrl})${filter ? ` - cocok "${filter}"` : ""}`)
+-        if (!list.length) console.log("  (tidak ada yang cocok)")
++        console.log(`${p.id} (${p.baseUrl})${filter ? ` - matches "${filter}"` : ""}`)
++        if (!list.length) console.log("  (no matches)")
+         for (const m of list.slice(0, 10)) console.log(`  ${m}`)
+         if (filter && list.length > 10) console.log(`  … +${list.length - 10} lagi`)
+         if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} lagi`)
+@@ -129,12 +129,11 @@ export async function handleProviders(
+     process.exit(0)
+   }
+   if (firstArg === "sync") {
+-    console.log("Menyinkronkan daftar model dari provider…")
++    console.log("Syncing model list from providers…")
+     const results = await refreshProviderModels({ cwd: cwdArg })
+     for (const r of results)
+       console.log(`  ${c.green(glyphs.check)} ${r.id}: ${r.from} -> ${r.to} model`)
+-    if (!results.length)
+-      console.log("  (belum ada provider - jalankan `minicode config add` lebih dulu)")
++    if (!results.length) console.log("  (no providers yet - run `minicode config add` first)")
+     process.exit(0)
+   }
+   process.exit(0)
+diff --git a/cli/commands/sessions.ts b/cli/commands/sessions.ts
+index 9e1f3a3..ce89a83 100644
+--- a/cli/commands/sessions.ts
++++ b/cli/commands/sessions.ts
+@@ -11,11 +11,11 @@ import {
+ import { renderTable } from "../../src/ui/render/table.ts"
+ import { c } from "../../src/ui/render/theme.ts"
+ 
+-const SESSIONS_HELP = `minicode sessions — riwayat sesi
++const SESSIONS_HELP = `minicode sessions — session history
+ 
+-  minicode sessions list                 daftar sesi terbaru
+-  minicode sessions export <id> [--jsonl]  ekspor riwayat pesan
+-  minicode sessions purge                hapus sesi kedaluwarsa (TTL)`
++  minicode sessions list                 list recent sessions
++  minicode sessions export <id> [--jsonl]  export message history
++  minicode sessions purge                remove expired sessions (TTL)`
+ 
+ export async function handleSessions(
+   args: string[],
+@@ -25,7 +25,7 @@ export async function handleSessions(
+   if (sub === "list" || !sub) {
+     const cwdArg = getArg("--cwd")
+     const rows = listSessions(cwdArg)
+-    if (rows.length === 0) console.log(c.dim("(belum ada sesi tercatat)"))
++    if (rows.length === 0) console.log(c.dim("(no recorded sessions yet)"))
+     else {
+       const tableData = rows.map((r) => ({
+         id: c.cyan(r.id),
+@@ -33,11 +33,11 @@ export async function handleSessions(
+         cwd: c.dim(r.cwd),
+       }))
+       console.log(
+-        `\n${c.bold("Sesi terbaru")}\n` +
++        `\n${c.bold("Recent Sessions")}\n` +
+           renderTable(
+             [
+-              { header: "ID Sesi", key: "id", width: 14 },
+-              { header: "Dibuat", key: "date", width: 22 },
++              { header: "Session ID", key: "id", width: 14 },
++              { header: "Created", key: "date", width: 22 },
+               { header: "Workspace", key: "cwd", width: 40 },
+             ],
+             tableData,
+@@ -57,7 +57,7 @@ export async function handleSessions(
+     }
+     const sess = loadSession(id, getArg("--cwd"))
+     if (!sess) {
+-      console.error(`sesi "${id}" tidak ditemukan - lihat: minicode sessions list`)
++      console.error(`session "${id}" not found - see: minicode sessions list`)
+       process.exit(1)
+     }
+     if (asJsonl) for (const m of sess.messages) console.log(JSON.stringify(m))
+@@ -77,14 +77,14 @@ export async function handleSessions(
+     try {
+       const removed = purgeExpired(db)
+       const ttl = getSessionTtlDays()
+-      console.log(`[purge] ${removed} sesi dihapus (lebih tua dari ${ttl} hari)`)
++      console.log(`[purge] removed ${removed} sessions (older than ${ttl} days)`)
+     } finally {
+       db.close()
+     }
+     process.exit(0)
+   } else {
+     const asked = sub === "--help" || sub === "-h"
+-    if (!asked) console.error(`subcommand sessions tidak dikenal: ${sub}\n`)
++    if (!asked) console.error(`unknown sessions subcommand: ${sub}\n`)
+     console.log(SESSIONS_HELP)
+     process.exit(asked ? 0 : 1)
+   }
+diff --git a/cli/commands/skills.ts b/cli/commands/skills.ts
+index 0b31d96..64d7b92 100644
+--- a/cli/commands/skills.ts
++++ b/cli/commands/skills.ts
+@@ -2,12 +2,12 @@ import { findSkill, loadSkills } from "../../src/skills/loader.ts"
+ import { renderTable } from "../../src/ui/render/table.ts"
+ import { c } from "../../src/ui/render/theme.ts"
+ 
+-const SKILLS_HELP = `minicode skills — skill markdown di .minicode/skills/*.md
++const SKILLS_HELP = `minicode skills — markdown skills in .minicode/skills/*.md
+ 
+-  minicode skills list           daftar skill terpasang
+-  minicode skills show <nama>    tampilkan isi satu skill
++  minicode skills list           list installed skills
++  minicode skills show <name>    show one skill
+ 
+-  Di REPL, jalankan skill dengan /nama [argumen].`
++  In REPL, run a skill with /name [arguments].`
+ 
+ export async function handleSkills(
+   args: string[],
+@@ -18,19 +18,19 @@ export async function handleSkills(
+   if (sub === "list" || sub === undefined) {
+     const all = await loadSkills(cwdArg)
+     if (all.length === 0) {
+-      console.log(c.dim("(belum ada skill - tambahkan berkas markdown di .minicode/skills/*.md)"))
++      console.log(c.dim("(no skills yet - add markdown files in .minicode/skills/*.md)"))
+       process.exit(0)
+     }
+     const tableData = all.map((s) => ({
+       skill: c.yellow(`/${s.name}`),
+-      desc: s.description || "(tanpa deskripsi)",
++      desc: s.description || "(no description)",
+     }))
+     console.log(
+-      `\n${c.bold("Skill terpasang")}\n` +
++      `\n${c.bold("Installed Skills")}\n` +
+         renderTable(
+           [
+-            { header: "Perintah", key: "skill", width: 18 },
+-            { header: "Deskripsi", key: "desc", width: 56 },
++            { header: "Command", key: "skill", width: 18 },
++            { header: "Description", key: "desc", width: 56 },
+           ],
+           tableData,
+         ) +
+@@ -43,19 +43,19 @@ export async function handleSkills(
+     // bukan permintaan skill bernama "--cwd".
+     const name = args[2] && !args[2]!.startsWith("-") ? args[2] : undefined
+     if (!name) {
+-      console.error("usage: minicode skills show <nama>")
++      console.error("usage: minicode skills show <name>")
+       process.exit(1)
+     }
+     const s = await findSkill(name, cwdArg)
+     if (!s) {
+-      console.error(`skill "${name}" tidak ditemukan - lihat: minicode skills list`)
++      console.error(`skill "${name}" not found - see: minicode skills list`)
+       process.exit(1)
+     }
+-    console.log(`${c.bold(c.cyan("/" + s.name))} ${c.dim("- " + s.description)}\n\n${s.body}`)
++    console.log(`${c.bold(c.cyan(`/${s.name}`))} ${c.dim(`- ${s.description}`)}\n\n${s.body}`)
+     process.exit(0)
+   }
+   const asked = sub === "--help" || sub === "-h"
+-  if (!asked) console.error(`subcommand skills tidak dikenal: ${sub}\n`)
++  if (!asked) console.error(`unknown skills subcommand: ${sub}\n`)
+   console.log(SKILLS_HELP)
+   process.exit(asked ? 0 : 1)
+ }
+diff --git a/src/ui/approval/prompt.ts b/src/ui/approval/prompt.ts
+index 8899751..5cd677d 100644
+--- a/src/ui/approval/prompt.ts
++++ b/src/ui/approval/prompt.ts
+@@ -1,6 +1,7 @@
+ // View persetujuan tool — readline + warna, murni presentasi.
+ // Lapisan policy tidak mengimpor file ini; ia di-inject sebagai callback dari
+ // composition root (cli/setup.ts -> createMinicodeSession -> permission).
++import { askLine } from "../input/input.ts"
+ import { c } from "../render/theme.ts"
+ 
+ /** Subset struktural tool call yang dibutuhkan view — tanpa tipe kernel. */
+@@ -14,9 +15,6 @@ export async function promptAsk(call: ApprovalRequest): Promise<"allow" | "deny"
+   // Non-visual feedback bisa dimatikan untuk aksesibilitas/recording.
+   if (process.env.MINICODE_BELL !== "0") process.stdout.write("\x07")
+ 
+-  const { createInterface } = await import("node:readline")
+-  const rl = createInterface({ input: process.stdin, output: process.stdout })
+-
+   const toolName = call.name
+   const args = (call.args ?? {}) as Record<string, unknown>
+ 
+@@ -26,13 +24,12 @@ export async function promptAsk(call: ApprovalRequest): Promise<"allow" | "deny"
+   else if (args.query) actionSummary = `Query: ${String(args.query)}`
+   else actionSummary = `Args: ${JSON.stringify(args).slice(0, 100)}`
+ 
+-  process.stdout.write(`\n${c.warning(c.bold("Izin diperlukan"))}\n`)
++  process.stdout.write(`\n${c.warning(c.bold("Approval required"))}\n`)
+   process.stdout.write(`  ${c.bold("Tool:")} ${c.info(toolName)}\n`)
+   process.stdout.write(`  ${actionSummary}\n`)
+ 
+-  const promptText = `${c.bold("[y]")} Izinkan sekali  ${c.bold("[a]")} Selalu  ${c.bold("[n]")} Tolak: `
+-  const ans: string = await new Promise((resolve) => rl.question(promptText, resolve))
+-  rl.close()
++  const promptText = `${c.bold("[y]")} Allow once  ${c.bold("[a]")} Always  ${c.bold("[n]")} Deny: `
++  const ans = (await askLine({ prompt: promptText })) ?? ""
+ 
+   const a = ans.trim().toLowerCase()
+   if (a === "a" || a === "always") return "always"
+diff --git a/test/cli-handlers.test.ts b/test/cli-handlers.test.ts
+index 7bebbec..2292550 100644
+--- a/test/cli-handlers.test.ts
++++ b/test/cli-handlers.test.ts
+@@ -153,7 +153,7 @@ describe("sessions", () => {
+   test("list kosong memberi pesan, bukan tabel kosong", async () => {
+     const r = await runDispatch(["sessions", "list", "--cwd", tmp])
+     expect(r.code).toBe(0)
+-    expect(r.out).toContain("belum ada sesi")
++    expect(r.out).toContain("no recorded sessions yet")
+   })
+ 
+   test("export tanpa id = salah pakai (exit 1)", async () => {
+@@ -163,15 +163,15 @@ describe("sessions", () => {
+   })
+ 
+   test("export id tak dikenal = exit 1 dengan pesan jelas", async () => {
+-    const r = await runDispatch(["sessions", "export", "tidak-ada", "--cwd", tmp])
++    const r = await runDispatch(["sessions", "export", "not-found", "--cwd", tmp])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak ditemukan")
++    expect(r.out).toContain("not found")
+   })
+ 
+-  test("subcommand asing = exit 1 + help sessions", async () => {
++  test("unknown subcommand = exit 1 + sessions help", async () => {
+     const r = await runDispatch(["sessions", "bogus", "--cwd", tmp])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak dikenal")
++    expect(r.out).toContain("unknown sessions subcommand")
+     expect(r.out).toContain("minicode sessions")
+   })
+ 
+@@ -255,17 +255,17 @@ describe("skills", () => {
+     expect(r.out).toContain("usage:")
+   })
+ 
+-  test("show nama tak dikenal = exit 1 + arahkan ke list", async () => {
+-    const r = await runDispatch(["skills", "show", "hantu", "--cwd", tmp])
++  test("show unknown name = exit 1 + points to list", async () => {
++    const r = await runDispatch(["skills", "show", "ghost", "--cwd", tmp])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak ditemukan")
++    expect(r.out).toContain("not found")
+     expect(r.out).toContain("skills list")
+   })
+ 
+-  test("subcommand asing = exit 1", async () => {
++  test("unknown subcommand = exit 1", async () => {
+     const r = await runDispatch(["skills", "bogus", "--cwd", tmp])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak dikenal")
++    expect(r.out).toContain("unknown skills subcommand")
+   })
+ })
+ 
+@@ -278,10 +278,10 @@ describe("config", () => {
+     expect(r.out).not.toContain("GLOBAL HELP")
+   })
+ 
+-  test("subcommand asing = exit 1", async () => {
++  test("unknown subcommand = exit 1", async () => {
+     const r = await runDispatch(["config", "bogus"])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak dikenal")
++    expect(r.out).toContain("unknown subcommand")
+   })
+ 
+   test("mcp/lsp tanpa argumen memberi help masing-masing", async () => {
+@@ -318,10 +318,10 @@ describe("config", () => {
+     expect(r.out.toLowerCase()).toContain("http")
+   })
+ 
+-  test("mcp add menolak URL cacat", async () => {
+-    const r = await runDispatch(["config", "mcp", "add", "x", "--url", "bukan-url"])
++  test("mcp add rejects malformed URL", async () => {
++    const r = await runDispatch(["config", "mcp", "add", "x", "--url", "not-a-url"])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak valid")
++    expect(r.out).toContain("Invalid URL")
+   })
+ 
+   test("mcp add tanpa command maupun url = exit 1", async () => {
+@@ -345,18 +345,18 @@ describe("mcp", () => {
+     expect(r.out).not.toContain("GLOBAL HELP")
+   })
+ 
+-  test("subcommand asing = exit 1", async () => {
++  test("unknown subcommand = exit 1", async () => {
+     const r = await runDispatch(["mcp", "bogus"])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak dikenal")
++    expect(r.out).toContain("unknown mcp subcommand")
+   })
+ })
+ 
+ describe("pricing", () => {
+-  test("tanpa argumen default ke status", async () => {
++  test("no args defaults to status", async () => {
+     const r = await runDispatch(["pricing"])
+     expect(r.code).toBe(0)
+-    expect(r.out).toContain("Harga model")
++    expect(r.out).toContain("Model pricing")
+   })
+ 
+   test("--help memberi daftar subcommand", async () => {
+@@ -384,10 +384,10 @@ describe("pricing", () => {
+     expect(r.out).toContain("N/A")
+   })
+ 
+-  test("subcommand asing = exit 1", async () => {
++  test("unknown subcommand = exit 1", async () => {
+     const r = await runDispatch(["pricing", "bogus"])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak dikenal")
++    expect(r.out).toContain("unknown pricing subcommand")
+   })
+ })
+ 
+@@ -456,11 +456,11 @@ describe("providers & models", () => {
+     expect(r.out).toContain("beta")
+   })
+ 
+-  test("models <id> tak dikenal = exit 1", async () => {
++  test("models <id> unknown = exit 1", async () => {
+     writeConfig([])
+-    const r = await runDispatch(["models", "hantu", "--cwd", tmp])
++    const r = await runDispatch(["models", "ghost", "--cwd", tmp])
+     expect(r.code).toBe(1)
+-    expect(r.out).toContain("tidak ditemukan")
++    expect(r.out).toContain("not found")
+   })
+ 
+   test("models --match menyaring", async () => {
+@@ -478,11 +478,11 @@ describe("providers & models", () => {
+     expect(r.out).not.toContain("beta")
+   })
+ 
+-  test("models --match tanpa hasil memberi pesan", async () => {
++  test("models --match with no result shows message", async () => {
+     writeConfig([
+       { id: "p", baseUrl: "https://a/v1", apiKey: "k", models: ["alpha"], providerHint: "openai" },
+     ])
+     const r = await runDispatch(["models", "p", "--match", "zzz", "--cwd", tmp])
+-    expect(r.out).toContain("tidak ada yang cocok")
++    expect(r.out).toContain("no matches")
+   })
+ })
+diff --git a/test/cli-subcommands.test.ts b/test/cli-subcommands.test.ts
+index 9946a76..d2cf7cf 100644
+--- a/test/cli-subcommands.test.ts
++++ b/test/cli-subcommands.test.ts
+@@ -91,10 +91,11 @@ describe("cli: help kontekstual + exit code", () => {
+     ["auth", "bogus"],
+   ]
+   for (const args of unknown) {
+-    test(`${args.join(" ")} -> exit 1 + sebut yang tidak dikenal`, () => {
++    test(`${args.join(" ")} -> exit 1 + mentions unknown subcommand`, () => {
+       const r = run(args)
+       expect(r.code).toBe(1)
+-      expect(r.out.toLowerCase()).toContain("tidak dikenal")
++      expect(r.out.toLowerCase()).toContain("unknown")
++      expect(r.out.toLowerCase()).toContain("subcommand")
+     })
+   }
+ })
+@@ -146,7 +147,7 @@ describe("cli: perintah tanpa LLM tetap jalan", () => {
+       mkdirSync(join(tmp, ".minicode"), { recursive: true })
+       const r = run(["sessions", "list", "--cwd", tmp])
+       expect(r.code).toBe(0)
+-      expect(r.out).toContain("belum ada sesi")
++      expect(r.out).toContain("no recorded sessions yet")
+     } finally {
+       rmSync(tmp, { recursive: true, force: true })
+     }
+diff --git a/test/helpers/tui-harness.ts b/test/helpers/tui-harness.ts
+index 3356dce..e3c9c50 100644
+--- a/test/helpers/tui-harness.ts
++++ b/test/helpers/tui-harness.ts
+@@ -162,6 +162,12 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
+     setMaxListeners() {
+       return fakeStdin
+     },
++    listenerCount(_event: string) {
++      // `readline.emitKeypressEvents()` checks this before wiring internals.
++      // Fake stdin does not model keypress listeners, but returning 0 keeps
++      // the path compatible with Node/Bun expectations.
++      return 0
++    },
+     on(event: string, fn: (chunk: Buffer) => void) {
+       if (event === "data") {
+         dataListeners.push({ fn, raw: rawMode })
+@@ -169,6 +175,9 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
+       }
+       return fakeStdin
+     },
++    addListener(event: string, fn: (chunk: Buffer) => void) {
++      return fakeStdin.on(event, fn)
++    },
+     once(event: string, fn: (chunk: Buffer) => void) {
+       return fakeStdin.on(event, fn)
+     },
+diff --git a/test/provider-manager-flows.test.ts b/test/provider-manager-flows.test.ts
+index cfb2bd2..b7c7409 100644
+--- a/test/provider-manager-flows.test.ts
++++ b/test/provider-manager-flows.test.ts
+@@ -85,7 +85,10 @@ async function readConfig(
+ 
+ const visible = (t: FakeTty): string => stripAnsi(t.all())
+ 
+-async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 1200): Promise<void> {
++async function waitFor(
++  condition: () => boolean | Promise<boolean>,
++  timeoutMs = 1200,
++): Promise<void> {
+   const start = Date.now()
+   while (Date.now() - start < timeoutMs) {
+     if (await condition()) return
+@@ -317,7 +320,10 @@ describe.serial("provider-manager: edit (e)", () => {
+     const seq = tty.answerSequence(["https://baru.example/v1", ""])
+     await tty.send("e")
+     await seq
+-    const out = visible(tty)
++    const t = tty
++    if (!t) throw new Error("fake tty is missing")
++    await waitFor(() => visible(t).includes("updated"), 2000)
++    const out = visible(t)
+     expect(out).toContain('Edit provider "gw"')
+     expect(out).toContain("updated")
+     // Entri updated ditulis ke global (perilaku doEdit: global: true).
+@@ -357,7 +363,10 @@ describe.serial("provider-manager: edit (e)", () => {
+     const seq = tty.answerSequence(["https://baru.example/v1", ""])
+     await tty.send("e")
+     await seq
+-    expect(visible(tty)).toContain("updated")
++    const t = tty
++    if (!t) throw new Error("fake tty is missing")
++    await waitFor(() => visible(t).includes("updated"), 2000)
++    expect(visible(t)).toContain("updated")
+     expect(tty.failures()).toEqual([])
+     await mgr.close()
+   })

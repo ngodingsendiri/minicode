@@ -61,10 +61,10 @@ export class McpHttpTransport implements McpTransportLike {
     try {
       parsed = new URL(opts.url)
     } catch {
-      throw new Error(`MCP http: URL tidak valid: ${opts.url}`)
+      throw new Error(`MCP http: invalid URL: ${opts.url}`)
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      throw new Error(`MCP http: protokol tidak didukung: ${parsed.protocol}`)
+      throw new Error(`MCP http: unsupported protocol: ${parsed.protocol}`)
     }
     this.url = parsed
     this.extraHeaders = opts.headers ?? {}
@@ -75,7 +75,7 @@ export class McpHttpTransport implements McpTransportLike {
     // Validasi host sebelum request PERTAMA, bukan setelahnya.
     if (!this.allowPrivate && (await isPrivateHostWithDns(this.url.hostname))) {
       throw new Error(
-        `MCP http: host privat ditolak: ${this.url.hostname} (set allowPrivateHost untuk server lokal)`,
+        `MCP http: private host rejected: ${this.url.hostname} (set allowPrivateHost for local servers)`,
       )
     }
   }
@@ -97,7 +97,7 @@ export class McpHttpTransport implements McpTransportLike {
     params: Record<string, unknown> = {},
     timeoutMs: number = LIMITS.MCP_REQUEST_TIMEOUT_MS,
   ): Promise<unknown> {
-    if (this.closed) throw new Error("MCP http: transport sudah ditutup")
+    if (this.closed) throw new Error("MCP http: transport already closed")
     const id = ++this.seq
     const body = JSON.stringify({ jsonrpc: "2.0", id, method, params })
 
@@ -116,7 +116,7 @@ export class McpHttpTransport implements McpTransportLike {
       clearTimeout(timer)
       const msg = (e as Error).message
       throw new Error(
-        `MCP http: ${method} gagal: ${msg === "timeout" ? `timeout ${timeoutMs}ms` : msg}`,
+        `MCP http: ${method} failed: ${msg === "timeout" ? `timeout ${timeoutMs}ms` : msg}`,
       )
     }
 
@@ -126,7 +126,7 @@ export class McpHttpTransport implements McpTransportLike {
       if (sid) this.sessionId = sid
 
       if (res.status >= 300 && res.status < 400) {
-        throw new Error(`MCP http: redirect tidak diikuti (${res.status}) — periksa URL server`)
+        throw new Error(`MCP http: redirect not followed (${res.status}) — check the server URL`)
       }
       if (!res.ok) {
         const snippet = (await res.text().catch(() => "")).slice(0, 400)
@@ -138,7 +138,7 @@ export class McpHttpTransport implements McpTransportLike {
         ? await readSseResponse(res, id)
         : await readJsonResponse(res, id)
 
-      if (!payload) throw new Error(`MCP http: ${method} tidak mengembalikan balasan`)
+      if (!payload) throw new Error(`MCP http: ${method} returned no response`)
       if (payload.error) {
         throw new Error(
           `MCP http: ${method} → ${payload.error.message ?? JSON.stringify(payload.error)}`,
@@ -204,7 +204,7 @@ export async function readJsonResponse(
   try {
     parsed = JSON.parse(text) as JsonRpcResponse | JsonRpcResponse[]
   } catch {
-    throw new Error(`MCP http: balasan bukan JSON valid: ${text.slice(0, 200)}`)
+    throw new Error(`MCP http: response is not valid JSON: ${text.slice(0, 200)}`)
   }
   if (parsed === null) return null
   if (expectId !== undefined) return matchResponse(parsed, expectId)

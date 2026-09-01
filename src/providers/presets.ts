@@ -55,7 +55,7 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
   // Local & open-weight — OpenCode-style BYOK $0
   {
     id: "ollama",
-    label: "Ollama (lokal, gratis - tanpa API key)",
+    label: "Ollama (local, free - no API key)",
     baseUrl: "http://localhost:11434/v1",
     fallbackModels: ["llama3.1", "qwen2.5-coder", "deepseek-coder"],
   },

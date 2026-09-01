@@ -18,13 +18,13 @@ export const applyPatchTool: Tool = {
       path: { type: "string", description: "path file relatif terhadap cwd" },
       patches: {
         type: "array",
-        description: "Array of {search, replace} blocks. Diterapkan berurutan di konten yang sama.",
+        description: "Array of {search, replace} blocks. Applied sequentially to the same content.",
         items: {
           type: "object",
           properties: {
             search: {
               type: "string",
-              description: "blok kode yang akan diganti (match persis atau fuzzy)",
+              description: "code block to be replaced (exact or fuzzy match)",
             },
             replace: { type: "string", description: "blok kode baru" },
           },

@@ -77,7 +77,7 @@ describe("MCP http: transport dasar", () => {
     )
     const t = mk(url)
     await t.connect()
-    await expect(t.request("tools/list")).rejects.toThrow(/bukan JSON valid/)
+    await expect(t.request("tools/list")).rejects.toThrow(/not valid JSON/)
   })
 
   test("timeout dilaporkan sebagai timeout, bukan error jaringan generik", async () => {
@@ -170,7 +170,7 @@ describe("MCP http: aliran SSE", () => {
     )
     const t = mk(url)
     await t.connect()
-    await expect(t.request("orphan")).rejects.toThrow(/tidak mengembalikan balasan/)
+    await expect(t.request("orphan")).rejects.toThrow(/returned no response/)
   })
 })
 
@@ -267,7 +267,7 @@ describe("MCP http: sesi & protokol", () => {
     const t = mk(url)
     await t.connect()
     await t.close()
-    await expect(t.request("ping")).rejects.toThrow(/sudah ditutup/)
+    await expect(t.request("ping")).rejects.toThrow(/already closed/)
   })
 })
 
@@ -276,12 +276,12 @@ describe("MCP http: keamanan", () => {
     // Ini penjaga SSRF: server MCP yang menunjuk ke localhost / metadata
     // endpoint tidak boleh dihubungi hanya karena tertulis di config.
     const t = new McpHttpTransport({ url: "http://127.0.0.1:9/mcp" })
-    await expect(t.connect()).rejects.toThrow(/host privat ditolak/)
+    await expect(t.connect()).rejects.toThrow(/private host rejected/)
   })
 
   test("metadata endpoint cloud ditolak", async () => {
     const t = new McpHttpTransport({ url: "http://169.254.169.254/latest/meta-data" })
-    await expect(t.connect()).rejects.toThrow(/host privat ditolak/)
+    await expect(t.connect()).rejects.toThrow(/private host rejected/)
   })
 
   test("allowPrivateHost mengizinkan server lokal", async () => {
@@ -291,13 +291,13 @@ describe("MCP http: keamanan", () => {
 
   test("protokol non-http ditolak saat konstruksi", () => {
     expect(() => new McpHttpTransport({ url: "file:///etc/passwd" })).toThrow(
-      /protokol tidak didukung/,
+      /unsupported protocol/,
     )
-    expect(() => new McpHttpTransport({ url: "ftp://x/y" })).toThrow(/protokol tidak didukung/)
+    expect(() => new McpHttpTransport({ url: "ftp://x/y" })).toThrow(/unsupported protocol/)
   })
 
   test("URL tidak valid ditolak saat konstruksi", () => {
-    expect(() => new McpHttpTransport({ url: "bukan-url" })).toThrow(/tidak valid/)
+    expect(() => new McpHttpTransport({ url: "bukan-url" })).toThrow(/invalid URL/)
   })
 
   test("redirect TIDAK diikuti (permukaan SSRF)", async () => {
@@ -306,7 +306,7 @@ describe("MCP http: keamanan", () => {
     )
     const t = mk(url)
     await t.connect()
-    await expect(t.request("ping")).rejects.toThrow(/redirect tidak diikuti/)
+    await expect(t.request("ping")).rejects.toThrow(/redirect not followed/)
   })
 
   test("balasan raksasa dibatasi, bukan OOM", async () => {
@@ -390,7 +390,7 @@ describe("MCP http: balasan yang tak menjawab request", () => {
     )
     const t = mk(url)
     await t.connect()
-    await expect(t.request("ping")).rejects.toThrow(/tidak mengembalikan balasan/)
+    await expect(t.request("ping")).rejects.toThrow(/returned no response/)
   })
 
   test("server hanya mengirim notifikasi → error", async () => {
@@ -402,6 +402,6 @@ describe("MCP http: balasan yang tak menjawab request", () => {
     )
     const t = mk(url)
     await t.connect()
-    await expect(t.request("ping")).rejects.toThrow(/tidak mengembalikan balasan/)
+    await expect(t.request("ping")).rejects.toThrow(/returned no response/)
   })
 })

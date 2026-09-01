@@ -35,14 +35,14 @@ export async function writeTrace(cwd: string | undefined, trace: RunTrace): Prom
     const file = join(dir, "traces.jsonl")
     // prompt di-redact sebelum persist — bisa berisi secret/PII dari user
     const safe: RunTrace = { ...trace, prompt: scrubSecrets(trace.prompt) }
-    await appendFile(file, JSON.stringify(safe) + "\n", "utf8")
+    await appendFile(file, `${JSON.stringify(safe)}\n`, "utf8")
     await chmod(file, 0o600).catch(() => {})
     // Rotate: keep TRACE_MAX_LINES baris terakhir (tmp+rename agar anti-korupsi)
     try {
       const txt = await readFile(file, "utf8")
       const lines = txt.split("\n").filter(Boolean)
       if (lines.length > LIMITS.TRACE_MAX_LINES) {
-        await atomicWriteText(file, lines.slice(-LIMITS.TRACE_MAX_LINES).join("\n") + "\n")
+        await atomicWriteText(file, `${lines.slice(-LIMITS.TRACE_MAX_LINES).join("\n")}\n`)
       }
     } catch {}
   } catch {}

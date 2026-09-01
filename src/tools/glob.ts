@@ -51,7 +51,7 @@ function globToRegExp(glob: string): RegExp {
 export const globTool: Tool = {
   name: "glob",
   description:
-    "Search file with glob pattern (mis **/*.ts, src/**/*.js). Mengembalikan daftar path relatif.",
+    "Search files with a glob pattern (e.g. **/*.ts, src/**/*.js). Returns a list of relative paths.",
   parameters: {
     type: "object",
     properties: {

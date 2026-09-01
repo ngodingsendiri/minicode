@@ -225,7 +225,7 @@ export async function syncPricing(url: string = MODELS_DEV_URL): Promise<SyncRes
   }
   const models = extractPricing(payload)
   const count = Object.keys(models).length
-  if (count === 0) throw new Error("tidak ada harga yang bisa diekstrak dari models.dev")
+  if (count === 0) throw new Error("no prices could be extracted from models.dev")
 
   const cache: PricingCache = { fetchedAt: Date.now(), source: url, models }
   const serialized = JSON.stringify(cache)

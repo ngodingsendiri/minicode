@@ -74,7 +74,7 @@ class McpConnection {
     if (this.http) {
       await this.http.connect()
     } else {
-      if (!this.config.command) throw new Error("config MCP butuh `command` atau `url`")
+      if (!this.config.command) throw new Error("MCP config needs `command` or `url`")
       await this.stdio!.connect(this.config.command, this.config.args ?? [], this.config.env ?? {})
     }
 
@@ -158,7 +158,7 @@ class McpConnection {
       } else if (typeof item.blob === "string") {
         // Blob base64: jangan tumpahkan ribuan karakter base64 ke konteks model.
         parts.push(
-          `[binary ${String(item.mimeType ?? "application/octet-stream")}, ${item.blob.length} char base64 — dilewati]`,
+          `[binary ${String(item.mimeType ?? "application/octet-stream")}, ${item.blob.length} base64 chars — skipped]`,
         )
       }
     }

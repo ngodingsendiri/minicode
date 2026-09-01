@@ -82,7 +82,7 @@ function posTool(
       properties: {
         file: { type: "string", description: "path file relatif cwd" },
         symbol: { type: "string", description: "nama simbol di file (alternatif line/character)" },
-        line: { type: "number", description: "baris 0-based (opsional)" },
+        line: { type: "number", description: "0-based line (optional)" },
         character: { type: "number", description: "kolom 0-based (opsional)" },
       },
       required: ["file"],
@@ -113,7 +113,7 @@ function posTool(
 export const lspDiagnosticsTool: Tool = {
   name: "lsp_diagnostics",
   description:
-    "Diagnostik LSP untuk satu file (error/warning dari language server). Butuh server LSP terdaftar untuk ekstensi file.",
+    "LSP diagnostics for one file (errors/warnings from the language server). Requires a registered LSP server for the file extension.",
   parameters: {
     type: "object",
     properties: { file: { type: "string", description: "path file relatif cwd" } },
@@ -148,13 +148,13 @@ export const lspDiagnosticsTool: Tool = {
 export const lspDefinitionTool = posTool(
   "lsp_definition",
   "textDocument/definition",
-  "Lokasi definisi simbol (file + baris). Params: file + symbol atau line/character.",
+  "Location of a symbol definition (file + line). Params: file + symbol, or line/character.",
 )
 
 export const lspReferencesTool = posTool(
   "lsp_references",
   "textDocument/references",
-  "Semua referensi simbol di repo (file + baris). Params: file + symbol.",
+  "All references to a symbol in the repo (file + line). Params: file + symbol.",
   { context: { includeDeclaration: true } },
   100,
 )
@@ -227,10 +227,10 @@ export const lspSymbolsTool: Tool = {
 export const lspWorkspaceSymbolsTool: Tool = {
   name: "lsp_workspace_symbols",
   description:
-    "Search simbol di seluruh workspace via LSP (workspace/symbol). Query kosong = simbol populer. Butuh LSP server terkonfigurasi.",
+    "Search symbols across the workspace via LSP (workspace/symbol). An empty query returns popular symbols. Requires a configured LSP server.",
   parameters: {
     type: "object",
-    properties: { query: { type: "string", description: "kata kunci simbol, kosong untuk semua" } },
+    properties: { query: { type: "string", description: "symbol keyword, empty for all" } },
     required: [],
     additionalProperties: false,
   },

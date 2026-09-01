@@ -30,7 +30,7 @@ function todoPath(sessionId: string, cwd: string): string {
 
 /** Sanitasi + batasi daftar. Diekspor untuk test. */
 export function normalizeTodos(input: unknown): TodoItem[] {
-  if (!Array.isArray(input)) throw new Error("todos harus array")
+  if (!Array.isArray(input)) throw new Error("todos must be an array")
   const out: TodoItem[] = []
   for (const raw of input.slice(0, LIMITS.TODO_MAX_ITEMS)) {
     if (!raw || typeof raw !== "object") continue
@@ -42,7 +42,7 @@ export function normalizeTodos(input: unknown): TodoItem[] {
     const status = STATUSES.includes(r.status as TodoStatus) ? (r.status as TodoStatus) : "pending"
     out.push({ content, status })
   }
-  if (out.length === 0) throw new Error("todos kosong — beri minimal satu item dengan content")
+  if (out.length === 0) throw new Error("todos is empty — provide at least one item with content")
   // Satu in_progress saja: kalau model menandai beberapa, sisanya turun ke
   // pending supaya daftar tetap punya satu fokus yang jelas.
   let seenActive = false
@@ -88,13 +88,13 @@ export const todoSession = { id: "default", cwd: undefined as string | undefined
 export const todoWriteTool: Tool = {
   name: "todo_write",
   description:
-    "Tulis/ganti daftar todo untuk task ini. Kirim SELURUH daftar tiap kali (bukan delta). Pakai untuk task 3+ langkah: tandai satu item in_progress, tandai completed segera setelah selesai.",
+    "Write/replace the todo list for this task. Send the ENTIRE list every time (not a delta). Use for tasks with 3+ steps: mark one item in_progress, mark it completed as soon as it is done.",
   parameters: {
     type: "object",
     properties: {
       todos: {
         type: "array",
-        description: "daftar lengkap todo",
+        description: "full todo list",
         items: {
           type: "object",
           properties: {
@@ -123,13 +123,13 @@ export const todoWriteTool: Tool = {
 
 export const todoReadTool: Tool = {
   name: "todo_read",
-  description: "Baca daftar todo task ini (status terakhir yang ditulis todo_write).",
+  description: "Read the todo list for this task (the last state written by todo_write).",
   parameters: { type: "object", properties: {}, additionalProperties: false },
   async execute(_args, ctx) {
     ctx.signal.throwIfAborted()
     const cwd = todoSession.cwd ?? process.cwd()
     const list = await loadTodos(todoSession.id, cwd)
-    if (list.length === 0) return "(belum ada todo — pakai todo_write untuk membuat)"
+    if (list.length === 0) return "(no todos yet — use todo_write to create one)"
     return renderTodos(list)
   },
 }

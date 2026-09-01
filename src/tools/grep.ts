@@ -195,7 +195,7 @@ function runRipgrep(
 export const grepTool: Tool = {
   name: "grep",
   description:
-    "Search regex di file (memakai ripgrep bila tersedia, fallback walker internal). Mengembalikan file:line: content.",
+    "Search a regex across files (uses ripgrep when available, falls back to an internal walker). Returns file:line: content.",
   parameters: {
     type: "object",
     properties: {

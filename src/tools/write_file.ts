@@ -8,7 +8,8 @@ import { appendLspDiagnostics } from "../policy/verifier.ts"
 
 export const writeFileTool: Tool = {
   name: "write_file",
-  description: "Buat/timpa file dengan konten teks. Buat direktori induk otomatis.",
+  description:
+    "Create/overwrite a file with text content. Creates parent directories automatically.",
   parameters: {
     type: "object",
     properties: {

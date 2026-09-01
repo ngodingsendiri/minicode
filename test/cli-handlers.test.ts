@@ -118,8 +118,8 @@ describe("stats", () => {
   test("workspace tanpa trace: nol dan menyebut lokasi berkas", async () => {
     const r = await runDispatch(["stats", "--cwd", tmp])
     expect(r.code).toBe(0)
-    expect(r.out).toContain("Run: 0")
-    expect(r.out).toContain("belum ada trace")
+    expect(r.out).toContain("Runs: 0")
+    expect(r.out).toContain("no traces yet")
   })
 
   test("menghitung agregat dari traces.jsonl", async () => {
@@ -133,8 +133,8 @@ describe("stats", () => {
       "utf8",
     )
     const r = await runDispatch(["stats", "--cwd", tmp])
-    expect(r.out).toContain("Run: 2")
-    expect(r.out).toContain("Selesai: 1/2")
+    expect(r.out).toContain("Runs: 2")
+    expect(r.out).toContain("Resolved: 1/2")
     expect(r.out).toContain("in=150")
     expect(r.out).toContain("out=30")
     expect(r.out).toContain("$0.0300")
@@ -145,7 +145,7 @@ describe("stats", () => {
     writeFileSync(join(tmp, ".minicode", "traces.jsonl"), "{bukan json}\n", "utf8")
     const r = await runDispatch(["stats", "--cwd", tmp])
     expect(r.code).toBe(0)
-    expect(r.out).toContain("Run: 0")
+    expect(r.out).toContain("Runs: 0")
   })
 })
 

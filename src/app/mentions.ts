@@ -21,14 +21,14 @@ export async function resolveMentionContent(
 ): Promise<{ ok: true; content: string } | { ok: false; reason: string }> {
   const abs = isAbsolute(raw) ? resolve(raw) : resolve(cwd, raw)
   if (isPathOutsideRoot(abs, cwd) || isSensitive(abs))
-    return { ok: false, reason: "ditolak (jail)" }
+    return { ok: false, reason: "rejected (jail)" }
   try {
     const txt = await readFile(abs, "utf8")
     const rel = relative(cwd, abs).replace(/\\/g, "/")
-    const body = txt.length > MAX_INJECT ? txt.slice(0, MAX_INJECT) + "\n… (truncated)" : txt
+    const body = txt.length > MAX_INJECT ? `${txt.slice(0, MAX_INJECT)}\n… (truncated)` : txt
     return { ok: true, content: `\n[file: ${rel}]\n${body}\n[/file]\n` }
   } catch {
-    return { ok: false, reason: "file tidak ditemukan" }
+    return { ok: false, reason: "file not found" }
   }
 }
 

@@ -18,7 +18,7 @@ mkdirSync(".tmp-demo", { recursive: true })
 function log(msg: string) {
   console.log(msg)
   try {
-    appendFileSync(LOG, stripAnsi(msg) + "\n")
+    appendFileSync(LOG, `${stripAnsi(msg)}\n`)
   } catch {}
 }
 

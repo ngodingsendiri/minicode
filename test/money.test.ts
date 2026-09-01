@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { formatUsd } from "../src/ui/render/money.ts"
 
 // Regresi dari uji live: `--budget 0.001` dicetak `toFixed(2)` menjadi "$0.00",
-// sehingga pesan pemutusnya berbunyi "$0.0601 > $0.00 - lewat batas" dan user
+// sehingga pesan pemutusnya berbunyi "$0.0601 > $0.00 - over budget" dan user
 // membaca batas nol padahal ia menyetel seperseribu dolar.
 describe("formatUsd", () => {
   test("nilai kecil tetap terlihat, tidak dibulatkan jadi $0.00", () => {

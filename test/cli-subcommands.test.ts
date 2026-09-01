@@ -120,7 +120,7 @@ describe("cli: stats", () => {
     try {
       const r = run(["stats", "--cwd", tmp])
       expect(r.code).toBe(0)
-      expect(r.stdout).toContain("Run:")
+      expect(r.stdout).toContain("Runs:")
       expect(() => JSON.parse(r.stdout)).toThrow()
     } finally {
       rmSync(tmp, { recursive: true, force: true })

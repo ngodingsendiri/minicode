@@ -55,7 +55,7 @@ export async function buildProviderListAsync(cfg: MinicodeConfig): Promise<Model
     const token = await getValidAccessToken(p.id)
     if (!token) {
       process.stderr.write(
-        `[auth] provider "${p.id}" memakai OAuth tapi belum login (atau refresh gagal) — dilewati. Jalankan: minicode auth login ${p.id}\n`,
+        `[auth] provider "${p.id}" uses OAuth but is not logged in (or refresh failed) — skipped. Run: minicode auth login ${p.id}\n`,
       )
       continue
     }

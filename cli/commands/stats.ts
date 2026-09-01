@@ -37,8 +37,8 @@ export async function handleStats(getArg: (name: string) => string | undefined):
   }
   const dot = "\u00b7"
   console.log(
-    `Run: ${total} ${dot} Selesai: ${ok}/${total} ${dot} Token in=${inputTokens} out=${outputTokens} ${dot} Biaya: $${cost.toFixed(4)} ${dot} Rata-rata ${avgMs}ms`,
+    `Runs: ${total} ${dot} Resolved: ${ok}/${total} ${dot} Tokens in=${inputTokens} out=${outputTokens} ${dot} Cost: $${cost.toFixed(4)} ${dot} Avg ${avgMs}ms`,
   )
-  if (total === 0) console.log(c.dim(`  (belum ada trace di ${file})`))
+  if (total === 0) console.log(c.dim(`  (no traces yet in ${file})`))
   process.exit(0)
 }

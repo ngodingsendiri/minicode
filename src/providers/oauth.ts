@@ -106,7 +106,7 @@ async function postForm(url: string, body: Record<string, string>, timeoutMs: nu
     } catch {
       // Server yang membalas HTML (proxy, captive portal) tidak boleh muncul
       // sebagai "undefined is not an object" di layar user.
-      throw new Error(`balasan bukan JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
+      throw new Error(`response is not JSON (HTTP ${res.status}): ${text.slice(0, 200)}`)
     }
   }
   return { status: res.status, json }
@@ -132,15 +132,15 @@ export async function startDeviceFlow(spec: OAuthProviderSpec): Promise<DeviceCo
     expires_in?: number
   }
   if (raw.error) {
-    throw new Error(`device authorization ditolak: ${raw.error_description ?? raw.error}`)
+    throw new Error(`device authorization rejected: ${raw.error_description ?? raw.error}`)
   }
-  if (status >= 400) throw new Error(`device authorization gagal (HTTP ${status})`)
+  if (status >= 400) throw new Error(`device authorization failed (HTTP ${status})`)
   if (!raw.device_code || !raw.user_code) {
-    throw new Error("server tidak mengembalikan device_code/user_code")
+    throw new Error("server did not return device_code/user_code")
   }
   // Beberapa server memakai `verification_url` (non-standar, mis. Google lama).
   const uri = raw.verification_uri ?? raw.verification_url
-  if (!uri) throw new Error("server tidak mengembalikan verification_uri")
+  if (!uri) throw new Error("server did not return verification_uri")
 
   return {
     deviceCode: raw.device_code,
@@ -202,16 +202,16 @@ export async function pollDeviceTokenOnce(
       // RFC 8628 §3.5: klien WAJIB menaikkan interval, minimal +5 detik.
       return { state: "pending", nextIntervalSec: Math.min(currentIntervalSec + 5, 60) }
     case "access_denied":
-      return { state: "denied", message: json.error_description ?? "user menolak permintaan" }
+      return { state: "denied", message: json.error_description ?? "user denied the request" }
     case "expired_token":
-      return { state: "expired", message: json.error_description ?? "device code kedaluwarsa" }
+      return { state: "expired", message: json.error_description ?? "device code expired" }
     default:
       // Error tak dikenal: jangan diam-diam terus polling sampai timeout.
       return {
         state: "denied",
         message: json.error
           ? `${json.error}: ${json.error_description ?? ""}`.trim()
-          : `HTTP ${status} tanpa token`,
+          : `HTTP ${status} without a token`,
       }
   }
 }
@@ -237,20 +237,20 @@ export async function loginWithDeviceFlow(
   let interval = start.interval
   const t0 = Date.now()
   while (true) {
-    if (cb.signal?.aborted) throw new Error("login dibatalkan")
+    if (cb.signal?.aborted) throw new Error("login canceled")
     if (Date.now() >= start.expiresAt) {
-      throw new Error("device code kedaluwarsa — jalankan `minicode auth login` lagi")
+      throw new Error("device code expired — run `minicode auth login` again")
     }
     await sleep(interval * 1000)
-    if (cb.signal?.aborted) throw new Error("login dibatalkan")
+    if (cb.signal?.aborted) throw new Error("login canceled")
 
     const res = await pollDeviceTokenOnce(spec, start.deviceCode, interval)
     if (res.state === "success") {
       await saveAuth(spec.id, res.creds)
       return res.creds
     }
-    if (res.state === "denied") throw new Error(`login ditolak: ${res.message}`)
-    if (res.state === "expired") throw new Error(`login kedaluwarsa: ${res.message}`)
+    if (res.state === "denied") throw new Error(`login rejected: ${res.message}`)
+    if (res.state === "expired") throw new Error(`login expired: ${res.message}`)
     interval = res.nextIntervalSec
     cb.onPoll?.(Math.round((Date.now() - t0) / 1000))
   }

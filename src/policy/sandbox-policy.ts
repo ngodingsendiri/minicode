@@ -59,8 +59,8 @@ export function resolveSandbox(
       explicit: true,
       fallbackPermission: explicitPermission ? undefined : "allowlist",
       notice:
-        "[sandbox] docker diminta tapi daemon tidak tersedia — tanpa isolasi" +
-        (explicitPermission ? "" : "; permission diturunkan ke allowlist"),
+        "[sandbox] docker requested but the daemon is unavailable — running without isolation" +
+        (explicitPermission ? "" : "; permission lowered to allowlist"),
     }
   }
   if (req === "os" || req === "bwrap" || req === "seatbelt") {
@@ -70,9 +70,11 @@ export function resolveSandbox(
       explicit: true,
       fallbackPermission: explicitPermission ? undefined : "allowlist",
       notice:
-        `[sandbox] os sandbox tidak tersedia di ${platform}` +
-        (platform === "win32" ? " (bubblewrap/seatbelt hanya Linux/macOS)" : "") +
-        (explicitPermission ? " — tanpa isolasi" : " — permission diturunkan ke allowlist"),
+        `[sandbox] no OS sandbox available on ${platform}` +
+        (platform === "win32" ? " (bubblewrap/seatbelt are Linux/macOS only)" : "") +
+        (explicitPermission
+          ? " — running without isolation"
+          : " — permission diturunkan ke allowlist"),
     }
   }
   if (req === "none" || req === "off" || req === "0") {
@@ -83,7 +85,7 @@ export function resolveSandbox(
     return {
       mode: "none",
       explicit: false,
-      notice: `[sandbox] mode "${requested}" tidak dikenal — pakai docker|os|none`,
+      notice: `[sandbox] unknown mode "${requested}" — use docker|os|none`,
     }
   }
 
@@ -92,7 +94,7 @@ export function resolveSandbox(
     return {
       mode: "os",
       explicit: false,
-      notice: `[sandbox] aktif otomatis: ${osSandboxTypeName()} (--sandbox none untuk menonaktifkan)`,
+      notice: `[sandbox] enabled automatically: ${osSandboxTypeName()} (--sandbox none to disable)`,
     }
   }
   // Docker TIDAK dipakai otomatis: menarik image dan menjalankan container
@@ -103,7 +105,7 @@ export function resolveSandbox(
     fallbackPermission: explicitPermission ? undefined : "allowlist",
     notice: explicitPermission
       ? undefined
-      : `[sandbox] tidak ada OS sandbox di ${platform} — permission default = allowlist. ` +
-        "Pakai --allow-all / --ask untuk memilih sendiri, atau --sandbox docker untuk isolasi.",
+      : `[sandbox] no OS sandbox on ${platform} — default permission = allowlist. ` +
+        "Use --allow-all / --ask to choose yourself, or --sandbox docker for isolation.",
   }
 }

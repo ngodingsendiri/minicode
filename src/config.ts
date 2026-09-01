@@ -147,7 +147,7 @@ export async function saveMcpServer(
   opts: { global?: boolean; cwd?: string } = {},
 ) {
   if (!entry.id || (!entry.command && !entry.url))
-    throw new Error("mcp entry butuh id + (command untuk stdio atau url untuk http)")
+    throw new Error("mcp entry needs an id + (command for stdio or url for http)")
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
   let cfg: MinicodeConfig = { providers: [] }
   try {

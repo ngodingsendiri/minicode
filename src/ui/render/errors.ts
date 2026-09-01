@@ -124,7 +124,8 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
       return {
         message: withDetail("Context window exceeded"),
         fix:
-          hint ?? "Start a new session (/exit then minicode), or use a model with a larger context window.",
+          hint ??
+          "Start a new session (/exit then minicode), or use a model with a larger context window.",
       }
     case "content_filter":
       return {

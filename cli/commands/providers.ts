@@ -122,8 +122,8 @@ export async function handleProviders(
         console.log(`${p.id} (${p.baseUrl})${filter ? ` - matches "${filter}"` : ""}`)
         if (!list.length) console.log("  (no matches)")
         for (const m of list.slice(0, 10)) console.log(`  ${m}`)
-        if (filter && list.length > 10) console.log(`  … +${list.length - 10} lagi`)
-        if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} lagi`)
+        if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`)
+        if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} more`)
       }
     }
     process.exit(0)

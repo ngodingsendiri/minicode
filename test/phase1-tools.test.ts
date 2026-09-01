@@ -54,7 +54,7 @@ describe("read_file: paging + nomor baris", () => {
   })
 
   test("offset melewati akhir file memberi pesan jelas, bukan string kosong", () => {
-    expect(formatLines("a\nb", { offset: 99 }).text).toContain("melewati akhir file")
+    expect(formatLines("a\nb", { offset: 99 }).text).toContain("past the end of the file")
   })
 
   test("offset 0 / negatif dinormalisasi ke 1", () => {
@@ -162,7 +162,7 @@ describe("todo_write / todo_read", () => {
       { content: "satu", status: "completed" },
       { content: "dua", status: "pending" },
     ])
-    expect(() => normalizeTodos([])).toThrow(/kosong/)
+    expect(() => normalizeTodos([])).toThrow(/empty/)
     expect(() => normalizeTodos("bukan array" as never)).toThrow(/array/)
   })
 
@@ -230,7 +230,7 @@ describe("todo_write / todo_read", () => {
     todoSession.id = "sesi-belum-ada"
     todoSession.cwd = tmp
     try {
-      expect((await todoReadTool.execute({}, ctx)) as string).toContain("belum ada todo")
+      expect((await todoReadTool.execute({}, ctx)) as string).toContain("no todos yet")
     } finally {
       todoSession.id = prev.id
       todoSession.cwd = prev.cwd
@@ -288,18 +288,16 @@ describe("bash background", () => {
     const first = (await bashOutputTool.execute({ id }, ctx)) as string
     expect(first).toContain("halo-bg")
     const second = (await bashOutputTool.execute({ id }, ctx)) as string
-    expect(second).toContain("belum ada output baru")
+    expect(second).toContain("no new output yet")
   })
 
   test("bash_output pada id tak dikenal melempar dengan daftar job", async () => {
-    await expect(bashOutputTool.execute({ id: "bg_tidakada" }, ctx)).rejects.toThrow(
-      /tidak ditemukan/,
-    )
+    await expect(bashOutputTool.execute({ id: "bg_tidakada" }, ctx)).rejects.toThrow(/not found/)
   })
 
   test("bash_kill menghentikan job yang berjalan", async () => {
     const id = await startBg(sleepCmd)
-    expect((await bashKillTool.execute({ id }, ctx)) as string).toContain("dihentikan")
+    expect((await bashKillTool.execute({ id }, ctx)) as string).toContain("stopped")
   })
 
   test("background ditolak saat sandbox aktif (janji isolasi tak bisa dipenuhi)", async () => {
@@ -319,7 +317,7 @@ describe("bash background", () => {
     // pakai command berumur panjang supaya slot benar-benar terisi saat dicek
     for (let i = 0; i < LIMITS.BASH_BACKGROUND_MAX_JOBS; i++) await startBg(sleepCmd)
     await expect(bashTool.execute({ cmd: sleepCmd, background: true }, ctx)).rejects.toThrow(
-      /terlalu banyak background job/,
+      /too many background jobs/,
     )
   })
 

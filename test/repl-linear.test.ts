@@ -257,7 +257,7 @@ describe("REPL linier: interupsi busy", () => {
     // Tunggu turn benar-benar berjalan, lalu potong dengan Ctrl+C mentah.
     while (!busy) await new Promise((r) => setTimeout(r, 5))
     await tty.send("\x03", 30)
-    expect(visible(tty)).toContain("(dihentikan)")
+    expect(visible(tty)).toContain("(stopped)")
     // REPL masih hidup setelah pembatalan.
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
@@ -367,7 +367,7 @@ describe("REPL linier: budget", () => {
     await typeLine("prompt mahal")
     const out = visible(tty)
     expect(out).toContain("[budget]")
-    expect(out).toContain("ditolak")
+    expect(out).toContain("rejected")
     expect(h.ran).toEqual([])
     // Slash command tidak ikut diblokir.
     await typeLine("/status")

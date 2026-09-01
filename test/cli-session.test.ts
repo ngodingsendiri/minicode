@@ -246,7 +246,7 @@ describe("cli: --budget", () => {
     )
     expect(r.code).toBe(1)
     expect(r.stderr).toContain("[budget]")
-    expect(r.stderr).toContain("lewat batas")
+    expect(r.stderr).toContain("over budget")
   })
 
   test("di atas 80% -> peringatan tapi TIDAK memutus", async () => {
@@ -257,7 +257,7 @@ describe("cli: --budget", () => {
     )
     expect(r.code).toBe(0)
     expect(r.stderr).toContain("80% terpakai")
-    expect(r.stderr).not.toContain("lewat batas")
+    expect(r.stderr).not.toContain("over budget")
   })
 
   test("jauh di bawah batas -> tanpa pesan budget sama sekali", async () => {
@@ -548,7 +548,7 @@ describe("cli: --provider", () => {
       ["apa saja", "--provider", "tidak-ada"],
     )
     expect(r.code).toBe(0)
-    expect(r.stderr).toContain('--provider "tidak-ada" tidak ditemukan')
+    expect(r.stderr).toContain('--provider "tidak-ada" not found')
     expect(r.stdout).toContain("tetap jalan")
   })
 
@@ -558,7 +558,7 @@ describe("cli: --provider", () => {
       ["apa saja", "--provider", "fake"],
     )
     expect(r.code).toBe(0)
-    expect(r.stderr).not.toContain("tidak ditemukan")
+    expect(r.stderr).not.toContain("not found")
   })
 })
 

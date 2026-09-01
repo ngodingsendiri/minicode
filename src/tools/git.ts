@@ -59,7 +59,7 @@ export const gitStatusTool: Tool = {
 
 export const gitDiffTool: Tool = {
   name: "git_diff",
-  description: "git diff (unstaged) atau git diff --staged",
+  description: "git diff (unstaged) or git diff --staged",
   parameters: {
     type: "object",
     properties: {
@@ -83,7 +83,7 @@ export const gitLogTool: Tool = {
     type: "object",
     properties: {
       cwd: { type: "string" },
-      limit: { type: "number", description: "jumlah commit, default 20" },
+      limit: { type: "number", description: "number of commits, default 20" },
     },
     required: [],
     additionalProperties: false,
@@ -110,7 +110,7 @@ export const gitLogTool: Tool = {
 /** Nama file di argumen `paths` harus di dalam workspace. */
 function assertPaths(paths: unknown, cwd: string | undefined): string[] {
   if (paths == null) return []
-  if (!Array.isArray(paths)) throw new Error("paths harus array string")
+  if (!Array.isArray(paths)) throw new Error("paths must be an array of strings")
   const root = cwd ?? process.cwd()
   const out: string[] = []
   for (const p of paths) {
@@ -124,19 +124,19 @@ function assertPaths(paths: unknown, cwd: string | undefined): string[] {
 export const gitCommitTool: Tool = {
   name: "git_commit",
   description:
-    "Buat commit git. Stage path tertentu (paths) atau semua perubahan yang dilacak (all:true). Tidak mendukung push/amend/reset — itu di luar wewenang agent.",
+    "Create a git commit. Stage specific paths (paths) or all tracked changes (all:true). Does not support push/amend/reset — that is beyond the agent's authority.",
   parameters: {
     type: "object",
     properties: {
-      message: { type: "string", description: "pesan commit (baris pertama = subjek)" },
+      message: { type: "string", description: "commit message (first line = subject)" },
       paths: {
         type: "array",
         items: { type: "string" },
-        description: "file yang di-stage; kosongkan bila memakai all",
+        description: "files to stage; leave empty when using all",
       },
       all: {
         type: "boolean",
-        description: "stage semua file yang SUDAH dilacak git (setara git commit -a)",
+        description: "stage all files ALREADY tracked by git (equivalent to git commit -a)",
       },
       cwd: { type: "string" },
     },
@@ -148,19 +148,21 @@ export const gitCommitTool: Tool = {
     const c = cwd as string | undefined
     assertCwd(c)
     const msg = String(message ?? "").trim()
-    if (!msg) throw new Error("message wajib diisi")
+    if (!msg) throw new Error("message is required")
     if (msg.length > 4000) throw new Error("message terlalu panjang (max 4000 char)")
 
     const files = assertPaths(paths, c)
     if (files.length === 0 && all !== true) {
-      throw new Error("beri `paths` (file spesifik) atau `all: true` — commit kosong tidak berguna")
+      throw new Error(
+        "provide `paths` (specific files) or `all: true` — an empty commit is useless",
+      )
     }
 
     // Repo check dulu supaya errornya jelas, bukan "exit 128".
     const inside = await runGit(["rev-parse", "--is-inside-work-tree"], c, ctx.signal).catch(
       () => "",
     )
-    if (!inside.startsWith("true")) throw new Error("bukan repo git (git rev-parse gagal)")
+    if (!inside.startsWith("true")) throw new Error("not a git repository (git rev-parse failed)")
 
     if (files.length > 0) {
       // `--` memisahkan path dari opsi: nama file bernama `-f` tak jadi flag.
@@ -176,7 +178,7 @@ export const gitCommitTool: Tool = {
     // `git commit` keluar non-zero saat tak ada perubahan; runGit sudah
     // meneruskan teksnya, jadi model membaca alasan sebenarnya.
     if (/nothing to commit|no changes added/i.test(out)) {
-      return `tidak ada yang di-commit:\n${out}`
+      return `nothing to commit:\n${out}`
     }
     const head = await runGit(["log", "--oneline", "-1"], c, ctx.signal).catch(() => "")
     return `${out}${head ? `\n\nHEAD: ${head}` : ""}`

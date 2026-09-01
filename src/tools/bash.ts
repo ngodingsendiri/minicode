@@ -86,7 +86,7 @@ function startBackground(cmd: string, cwd: string | undefined): string {
   const live = [...jobs.values()].filter((j) => !j.done).length
   if (live >= LIMITS.BASH_BACKGROUND_MAX_JOBS) {
     throw new Error(
-      `terlalu banyak background job (${live}/${LIMITS.BASH_BACKGROUND_MAX_JOBS}) — hentikan dengan bash_kill dulu`,
+      `too many background jobs (${live}/${LIMITS.BASH_BACKGROUND_MAX_JOBS}) — stop one with bash_kill first`,
     )
   }
   const id = `bg_${randomUUID().slice(0, 8)}`
@@ -130,7 +130,7 @@ function startBackground(cmd: string, cwd: string | undefined): string {
 export const bashTool: Tool = {
   name: "bash",
   description:
-    "Run a shell command (timeout 30s). Set background:true untuk proses lama (dev server, watcher) lalu ambil output via bash_output.",
+    "Run a shell command (timeout 30s). Set background:true for long-running processes (dev server, watcher), then collect output via bash_output.",
   parameters: {
     type: "object",
     properties: {
@@ -139,7 +139,8 @@ export const bashTool: Tool = {
       timeoutMs: { type: "number" },
       background: {
         type: "boolean",
-        description: "jalankan tanpa menunggu selesai; return job id untuk bash_output/bash_kill",
+        description:
+          "run without waiting for completion; returns a job id for bash_output/bash_kill",
       },
     },
     required: ["cmd"],
@@ -157,11 +158,11 @@ export const bashTool: Tool = {
       // akan menyesatkan. Tolak eksplisit daripada diam-diam tanpa sandbox.
       if (process.env.MINICODE_SANDBOX) {
         throw new Error(
-          "background:true tidak didukung saat --sandbox aktif (proses harus hidup melewati turn)",
+          "background:true is not supported while --sandbox is active (the process must outlive the turn)",
         )
       }
       const id = startBackground(cmd as string, c)
-      return `background job dimulai: ${id}\ncmd: ${String(cmd).slice(0, 200)}\nambil output: bash_output({ id: "${id}" })`
+      return `background job started: ${id}\ncmd: ${String(cmd).slice(0, 200)}\ncollect output: bash_output({ id: "${id}" })`
     }
 
     // Docker sandbox mode — run in ephemeral isolated container
@@ -261,7 +262,7 @@ export const bashTool: Tool = {
 export const bashOutputTool: Tool = {
   name: "bash_output",
   description:
-    "Ambil output BARU dari background job (sejak pembacaan terakhir). Sertakan status exit bila sudah selesai.",
+    "Get NEW output from a background job (since the last read). Includes the exit status once it has finished.",
   parameters: {
     type: "object",
     properties: {
@@ -276,20 +277,20 @@ export const bashOutputTool: Tool = {
     if (!job) {
       const live = listBackgroundJobs()
       throw new Error(
-        `job "${id}" tidak ditemukan${live.length ? ` — aktif: ${live.map((j) => j.id).join(", ")}` : ""}`,
+        `job "${id}" not found${live.length ? ` — active: ${live.map((j) => j.id).join(", ")}` : ""}`,
       )
     }
     const fresh = job.chunks.slice(job.cursor)
     job.cursor = job.chunks.length
-    const status = job.done ? `selesai (exit ${job.exitCode ?? "?"})` : "berjalan"
-    if (fresh.length === 0) return `[${job.id}] ${status} — belum ada output baru`
+    const status = job.done ? `finished (exit ${job.exitCode ?? "?"})` : "running"
+    if (fresh.length === 0) return `[${job.id}] ${status} — no new output yet`
     return `[${job.id}] ${status}\n${fresh.join("")}`.slice(0, LIMITS.BASH_OUTPUT_MAX_CHARS)
   },
 }
 
 export const bashKillTool: Tool = {
   name: "bash_kill",
-  description: "Hentikan background job (SIGTERM lalu SIGKILL).",
+  description: "Stop a background job (SIGTERM then SIGKILL).",
   parameters: {
     type: "object",
     properties: { id: { type: "string", description: "job id" } },
@@ -299,8 +300,8 @@ export const bashKillTool: Tool = {
   async execute({ id }, ctx: ToolContext) {
     ctx.signal.throwIfAborted()
     const job = jobs.get(String(id))
-    if (!job) throw new Error(`job "${id}" tidak ditemukan`)
-    if (job.done) return `[${job.id}] sudah selesai (exit ${job.exitCode ?? "?"})`
+    if (!job) throw new Error(`job "${id}" not found`)
+    if (job.done) return `[${job.id}] already finished (exit ${job.exitCode ?? "?"})`
     try {
       job.proc.kill("SIGTERM")
     } catch {}
@@ -309,6 +310,6 @@ export const bashKillTool: Tool = {
         if (!job.done) job.proc.kill("SIGKILL")
       } catch {}
     }, 1000)
-    return `[${job.id}] dihentikan`
+    return `[${job.id}] stopped`
   },
 }

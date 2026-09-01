@@ -235,7 +235,7 @@ if (enterRepl) {
     if (b != null && u.cost != null) {
       if (u.cost > b) {
         process.stderr.write(
-          c.red(`[budget] ${formatUsd(u.cost)} > ${formatUsd(b)} - lewat batas, berhenti.\n`),
+          c.red(`[budget] ${formatUsd(u.cost)} > ${formatUsd(b)} - over budget, stopping.\n`),
         )
         overBudget = true
       } else if (u.cost > b * 0.8)

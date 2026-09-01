@@ -28,7 +28,7 @@ export async function createProviderLayer(opts: {
       providers = filtered
     } else {
       process.stderr.write(
-        `[warn] --provider "${opts.providerOverride}" tidak ditemukan, pakai urutan default\n`,
+        `[warn] --provider "${opts.providerOverride}" not found, using default order\n`,
       )
     }
   } else if (process.env.MINICODE_PROVIDER_ORDER) {

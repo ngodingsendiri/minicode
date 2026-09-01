@@ -131,12 +131,12 @@ export function flexibleMatch(content: string, needle: string): MatchResult | nu
 export const editTool: Tool = {
   name: "edit",
   description:
-    "Edit file dengan replacement string. oldString harus ada tepat sekali (didukung fuzzy tolerance untuk spasi/indentasi). newString menggantikannya.",
+    "Edit a file with a replacement string. oldString must appear exactly once (fuzzy tolerance for whitespace/indentation is supported). newString replaces it.",
   parameters: {
     type: "object",
     properties: {
       path: { type: "string" },
-      oldString: { type: "string", description: "teks lama yang akan diganti" },
+      oldString: { type: "string", description: "existing text to be replaced" },
       newString: { type: "string", description: "teks baru" },
     },
     required: ["path", "oldString", "newString"],

@@ -8,7 +8,7 @@ export const readMemoryTool: Tool = {
   parameters: {
     type: "object",
     properties: {
-      query: { type: "string", description: "query untuk search, kosong = baca semua MEMORY.md" },
+      query: { type: "string", description: "query for search, empty = read all of MEMORY.md" },
       topK: { type: "number" },
     },
     required: [],
@@ -56,7 +56,7 @@ export const readMemoryTool: Tool = {
 
 export const writeMemoryTool: Tool = {
   name: "write_memory",
-  description: "Tulis ke MEMORY.md + vector store (allow write, diizinkan langsung).",
+  description: "Write to MEMORY.md + vector store (allow write, permitted directly).",
   parameters: {
     type: "object",
     properties: { text: { type: "string", description: "memori baru, ringkas 1-2 kalimat" } },
@@ -96,7 +96,7 @@ export const writeMemoryTool: Tool = {
 
 export const forgetMemoryTool: Tool = {
   name: "forget_memory",
-  description: "Delete memory yang mengandung query dari vector store.",
+  description: "Delete memories matching the query from the vector store.",
   parameters: {
     type: "object",
     properties: { query: { type: "string" } },

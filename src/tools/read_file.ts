@@ -36,7 +36,7 @@ export function formatLines(
 
   if (from > totalLines) {
     return {
-      text: `(offset ${from} melewati akhir file — total ${totalLines} baris)`,
+      text: `(offset ${from} is past the end of the file — ${totalLines} lines total)`,
       totalLines,
       from,
       to: from,
@@ -60,9 +60,9 @@ export function formatLines(
   const remaining = totalLines - to
   const footer =
     remaining > 0
-      ? `\n… ${remaining} baris lagi (lanjut: offset=${to + 1})`
+      ? `\n… ${remaining} more lines (continue: offset=${to + 1})`
       : from > 1
-        ? "\n(akhir file)"
+        ? "\n(end of file)"
         : ""
   return { text: body + footer, totalLines, from, to }
 }
@@ -70,13 +70,13 @@ export function formatLines(
 export const readFileTool: Tool = {
   name: "read_file",
   description:
-    "Baca isi file teks dalam workspace, diberi nomor baris. Gunakan offset/limit untuk membaca file besar per bagian (default 2000 baris pertama).",
+    "Read a text file in the workspace, with line numbers. Use offset/limit to read large files in chunks (default: first 2000 lines).",
   parameters: {
     type: "object",
     properties: {
       path: { type: "string", description: "path relatif" },
-      offset: { type: "number", description: "baris awal (1-indexed, default 1)" },
-      limit: { type: "number", description: "jumlah baris (default 2000, max 5000)" },
+      offset: { type: "number", description: "starting line (1-indexed, default 1)" },
+      limit: { type: "number", description: "number of lines (default 2000, max 5000)" },
     },
     required: ["path"],
     additionalProperties: false,
@@ -101,7 +101,7 @@ export const readFileTool: Tool = {
     // memotong konteks yang model kira utuh.
     if (st.size > LIMITS.READ_FILE_MAX_BYTES && !paged) {
       throw new Error(
-        `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — baca per bagian dengan offset/limit`,
+        `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — read it in chunks with offset/limit`,
       )
     }
     const raw = await readFile(abs, "utf8")

@@ -196,7 +196,7 @@ describe("MCP client: mcp_read", () => {
     const { mcpReadTool } = await import("../src/tools/mcp_call.ts")
     const out = (await mcpReadTool.execute({ server: "s", uri: "bin://blob" }, ctx)) as string
     expect(out).toContain("[binary image/png")
-    expect(out).toContain("dilewati")
+    expect(out).toContain("skipped")
     expect(out).not.toContain("QUJDQUJD")
     expect(out.length).toBeLessThan(200)
   })
@@ -206,7 +206,7 @@ describe("MCP client: mcp_read", () => {
     await connectAll([{ id: "s", url, allowPrivateHost: true }])
     const { mcpReadTool } = await import("../src/tools/mcp_call.ts")
     const out = (await mcpReadTool.execute({ server: "s", uri: "empty://x" }, ctx)) as string
-    expect(out).toContain("kosong")
+    expect(out).toContain("is empty")
   })
 
   test("resource tak dikenal → pesan error server, bukan crash", async () => {
@@ -221,12 +221,14 @@ describe("MCP client: mcp_read", () => {
   test("server tak terhubung → pesan yang menyebut server terdaftar", async () => {
     const { mcpReadTool } = await import("../src/tools/mcp_call.ts")
     const out = (await mcpReadTool.execute({ server: "hantu", uri: "x://y" }, ctx)) as string
-    expect(out).toContain("tidak terhubung")
+    expect(out).toContain("is not connected")
   })
 
   test("uri kosong ditolak", async () => {
     const { mcpReadTool } = await import("../src/tools/mcp_call.ts")
-    await expect(mcpReadTool.execute({ server: "s", uri: "  " }, ctx)).rejects.toThrow(/uri wajib/)
+    await expect(mcpReadTool.execute({ server: "s", uri: "  " }, ctx)).rejects.toThrow(
+      /uri is required/,
+    )
   })
 })
 
@@ -266,7 +268,7 @@ describe("MCP client: mcp_prompt", () => {
   test("name kosong ditolak", async () => {
     const { mcpPromptTool } = await import("../src/tools/mcp_call.ts")
     await expect(mcpPromptTool.execute({ server: "s", name: "" }, ctx)).rejects.toThrow(
-      /name wajib/,
+      /name is required/,
     )
   })
 })
@@ -288,7 +290,7 @@ describe("MCP client: mcp_list menampilkan tiga kategori", () => {
   test("tanpa server terhubung memberi petunjuk", async () => {
     const { mcpListTool } = await import("../src/tools/mcp_call.ts")
     const out = (await mcpListTool.execute({}, ctx)) as string
-    expect(out).toContain("tidak ada MCP server terhubung")
+    expect(out).toContain("no MCP servers connected")
   })
 })
 

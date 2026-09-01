@@ -138,7 +138,7 @@ describe("OAuth: device authorization (langkah 1)", () => {
       port: 0,
       fetch: () => new Response("<html>login wifi dulu</html>", { status: 200 }),
     })
-    await expect(startDeviceFlow(spec(port()))).rejects.toThrow(/bukan JSON/)
+    await expect(startDeviceFlow(spec(port()))).rejects.toThrow(/not JSON/)
   })
 })
 
@@ -260,7 +260,7 @@ describe("OAuth: alur lengkap", () => {
       loginWithDeviceFlow(spec(port()), { onPrompt: () => {}, signal: ac.signal }, async () => {
         if (++n >= 2) ac.abort()
       }),
-    ).rejects.toThrow(/dibatalkan/)
+    ).rejects.toThrow(/canceled/)
   })
 
   test("device code kedaluwarsa menghentikan loop", async () => {
@@ -279,7 +279,7 @@ describe("OAuth: alur lengkap", () => {
     })
     await expect(
       loginWithDeviceFlow(spec(port()), { onPrompt: () => {} }, async () => {}),
-    ).rejects.toThrow(/kedaluwarsa/)
+    ).rejects.toThrow(/expired/)
   })
 })
 
@@ -362,14 +362,14 @@ describe.skipIf(!gitAvailable)("git_commit", () => {
 
   test("tanpa paths dan tanpa all ditolak (commit kosong tak berguna)", async () => {
     await expect(gitCommitTool.execute({ message: "kosong", cwd: repo }, ctx)).rejects.toThrow(
-      /paths.*atau.*all/,
+      /paths.*or.*all/,
     )
   })
 
   test("message kosong ditolak", async () => {
     await expect(
       gitCommitTool.execute({ message: "   ", all: true, cwd: repo }, ctx),
-    ).rejects.toThrow(/message wajib/)
+    ).rejects.toThrow(/message is required/)
   })
 
   test("tidak ada perubahan → pesan informatif, bukan exception", async () => {
@@ -377,7 +377,7 @@ describe.skipIf(!gitAvailable)("git_commit", () => {
       { message: "tak ada apa-apa", all: true, cwd: repo },
       ctx,
     )) as string
-    expect(out).toMatch(/tidak ada yang di-commit/i)
+    expect(out).toMatch(/nothing to commit/i)
   })
 
   test("path di luar workspace ditolak", async () => {

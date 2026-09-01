@@ -46,7 +46,8 @@ export async function saveAllowlist(entry: string, cwd?: string, opts: { global?
 export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
   const key = `${call.name}:${JSON.stringify(call.args).slice(0, 200)}`
   return allowlist.some((pat) => {
-    const re = new RegExp("^" + pat.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$")
+    const safe = pat.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
+    const re = new RegExp(`^${safe}$`)
     if (pat.includes(":")) return re.test(key)
     return re.test(call.name) || re.test(key)
   })

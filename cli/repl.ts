@@ -146,7 +146,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     await handleBuiltinCommand("/sessions", commandCtx)
     const rows = listSessions(cwd).slice(0, 25)
     if (rows.length === 0) return
-    const choice = await askLine({ prompt: "resume (nomor/id, kosong = batal) › " })
+    const choice = await askLine({ prompt: "resume (number/id, empty = cancel) › " })
     const pick = choice?.trim()
     if (!pick) return
     const asNum = Number(pick)
@@ -170,7 +170,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     if (budget != null && spent.cost != null && spent.cost > budget) {
       console.log(
         c.red(
-          `[budget] ${formatUsd(spent.cost)} > ${formatUsd(budget)} — lewat batas, prompt baru ditolak. /exit untuk keluar.`,
+          `[budget] ${formatUsd(spent.cost)} > ${formatUsd(budget)} — over budget, new prompts rejected. /exit to quit.`,
         ),
       )
       return
@@ -195,9 +195,9 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     process.stdin.on("data", onRawCtrlC)
     try {
       await runPromptWithVerify(prompt, ctrl.signal)
-      if (ctrl.signal.aborted) console.log(c.yellow("\n(dihentikan)"))
+      if (ctrl.signal.aborted) console.log(c.yellow("\n(stopped)"))
     } catch (e) {
-      if (ctrl.signal.aborted) console.log(c.yellow("\n(dihentikan)"))
+      if (ctrl.signal.aborted) console.log(c.yellow("\n(stopped)"))
       else throw e
     } finally {
       process.stdin.removeListener("data", onRawCtrlC)
@@ -280,7 +280,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const onSigint = () => abort?.abort()
   process.on("SIGINT", onSigint)
-  console.log(c.dim("minicode — /help daftar perintah · Ctrl+C 2x keluar"))
+  console.log(c.dim("minicode — /help for commands · Ctrl+C twice to exit"))
 
   let shouldExit = false
   // Akumulasi baris yang diakhiri `\` — shell-like continuation di driver

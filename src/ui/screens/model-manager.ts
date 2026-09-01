@@ -45,14 +45,21 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       const cut = (s: string) => truncateToWidth(s, w)
       const view = rows.slice(scroll, scroll + v)
       const lines: string[] = []
-      lines.push(cut(`${DIM}─ ${c.accent(c.bold("Models"))}${rows.length ? ` ${DIM}(${rows.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`))
+      lines.push(
+        cut(
+          `${DIM}─ ${c.accent(c.bold("Models"))}${rows.length ? ` ${DIM}(${rows.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
+        ),
+      )
       if (!rows.length) {
         lines.push(cut(`${DIM}  No models configured${RESTORE}`))
       } else {
         for (let i = 0; i < view.length; i++) {
           const row = view[i]!
           const picked = i === sel - scroll
-          const label = truncateToWidth(`${padToWidth(row.id, w - 14)}${row.active ? "  active" : ""}`, w - 4)
+          const label = truncateToWidth(
+            `${padToWidth(row.id, w - 14)}${row.active ? "  active" : ""}`,
+            w - 4,
+          )
           if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
           else lines.push(`   ${DIM}${label}${RESTORE}`)
         }
@@ -61,7 +68,11 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
         }
       }
       lines.push("")
-      lines.push(cut(`${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`))
+      lines.push(
+        cut(
+          `${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
+        ),
+      )
       return lines
     }
 

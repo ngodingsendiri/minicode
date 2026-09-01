@@ -235,7 +235,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
           process.stderr.write(
             c.red(`\n[verify] still failing after ${max} attempts - leaving for user\n`),
           )
-          process.stderr.write(v.output.slice(0, 1200) + "\n")
+          process.stderr.write(`${v.output.slice(0, 1200)}\n`)
         } else {
           process.stderr.write(
             c.yellow(`\n[verify] attempt ${cycle}/${max} failed - self-healing…\n`),

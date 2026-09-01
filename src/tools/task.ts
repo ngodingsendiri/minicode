@@ -67,7 +67,7 @@ export const delegateTaskTool: Tool = {
   parameters: {
     type: "object",
     properties: {
-      prompt: { type: "string", description: "instruksi untuk sub-agent" },
+      prompt: { type: "string", description: "instructions for the sub-agent" },
       mode: {
         type: "string",
         enum: ["explore", "plan"],
@@ -75,7 +75,7 @@ export const delegateTaskTool: Tool = {
       },
       maxSteps: {
         type: "number",
-        description: "max steps untuk sub-agent (default explore=5 plan=15)",
+        description: "max steps for the sub-agent (default explore=5 plan=15)",
       },
     },
     required: ["prompt"],

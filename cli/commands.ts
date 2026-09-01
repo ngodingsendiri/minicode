@@ -117,7 +117,7 @@ export async function handleBuiltinCommand(
     case "init": {
       const target = `${ctx.cwd ?? process.cwd()}\\AGENTS.md`
       if (require("node:fs").existsSync(target)) {
-        console.log(`\nAGENTS.md sudah ada - tidak ditimpa.\n`)
+        console.log(`\nAGENTS.md already exists - not overwritten.\n`)
         return { handled: true }
       }
       const { loadRepoMap } = await import("../src/repo/repomap.ts")
@@ -125,21 +125,21 @@ export async function handleBuiltinCommand(
       const body = [
         "# AGENTS.md",
         "",
-        "Petunjuk untuk agent yang bekerja di repo ini.",
+        "Instructions for agents working in this repo.",
         "",
         "## Struktur (repo-map)",
         "```",
-        map ?? "(repo-map kosong)",
+        map ?? "(repo-map empty)",
         "```",
         "",
         "## Konvensi",
         "- Ikuti gaya kode existing.",
-        "- Jalankan typecheck/test sebelum menyatakan selesai.",
+        "- Run typecheck/test before declaring done.",
         "",
       ].join("\n")
       const { atomicWriteText } = await import("../src/lib/atomic-write.ts")
       await atomicWriteText(target, body)
-      console.log(`\nAGENTS.md dibuat: ${target}\n`)
+      console.log(`\nAGENTS.md created: ${target}\n`)
       return { handled: true }
     }
 

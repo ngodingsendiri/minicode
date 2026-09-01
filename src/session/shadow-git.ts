@@ -216,7 +216,7 @@ export async function restoreTree(cwd: string, tree: string): Promise<RestoreRes
   const skipped: string[] = []
 
   const now = await ephemeralTree(cwd)
-  if (!now) return { applied, skipped: ["(gagal membaca state sekarang)"] }
+  if (!now) return { applied, skipped: ["(failed to read current state)"] }
   if (now === tree) return { applied, skipped: [] } // sudah identik
 
   const changes = await diffTrees(cwd, tree, now)
@@ -249,13 +249,13 @@ export async function restoreTree(cwd: string, tree: string): Promise<RestoreRes
 
   if (toCheckout.length > 0) {
     const dir = await gitDir(cwd)
-    if (!dir) return { applied, skipped: ["(bukan repo git)"] }
+    if (!dir) return { applied, skipped: ["(not a git repository)"] }
     const idx = join(dir, `minicode-restore-${Date.now()}`)
     const env = { GIT_INDEX_FILE: idx }
     try {
       const rt = await git(["read-tree", tree], cwd, { env })
       if (rt.code !== 0) {
-        skipped.push(`(read-tree gagal: ${rt.stderr.trim().slice(0, 120)})`)
+        skipped.push(`(read-tree failed: ${rt.stderr.trim().slice(0, 120)})`)
       } else {
         // checkout-index per batch: daftar path bisa panjang, dan Windows
         // punya batas panjang command line.
@@ -263,7 +263,7 @@ export async function restoreTree(cwd: string, tree: string): Promise<RestoreRes
           const batch = toCheckout.slice(i, i + LIMITS.SHADOW_GIT_PATH_BATCH)
           const co = await git(["checkout-index", "-f", "--", ...batch], cwd, { env })
           if (co.code === 0) applied.push(...batch.map((p) => `${p} (restored)`))
-          else skipped.push(...batch.map((p) => `${p} (checkout gagal)`))
+          else skipped.push(...batch.map((p) => `${p} (checkout failed)`))
         }
       }
     } finally {
