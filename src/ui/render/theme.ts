@@ -1,23 +1,9 @@
-import { resolveThemeName, THEMES, type Theme, type ThemeName } from "./themes.ts"
 import { displayWidth } from "./width.ts"
-/**
- * State tema aktif — MUTABLE, diubah oleh `applyTheme()`.
- *
- * JANGAN simpan turunannya ke `const` di module scope; lihat PLAN.md P0.1.
- * Baca `themeState.name` saat dipakai, bukan saat import.
- */
-export const themeState: { current: Theme; name: ThemeName } = {
-  current: THEMES.dark,
-  name: "dark",
-}
-export function applyTheme(name?: string): ThemeName {
-  const n = resolveThemeName(name)
-  themeState.current = THEMES[n]
-  themeState.name = n
-  return n
-}
+
 // Semantic color system - Ubuntu Server style.
-// Warna by function, bukan appearance. Auto-detect: NO_COLOR > truecolor > 256 > 16 > mono.
+// Warna by function, bukan appearance. Satu palet (dark); NO_COLOR > truecolor
+// > 256 > 16 > mono tetap auto-detect. Fitur tema (--theme, /theme, preset)
+// dihapus: tampilan tunggal, tidak ada state tema mutable.
 
 const isWindows = process.platform === "win32"
 
@@ -44,10 +30,7 @@ function supportsUtf8(): boolean {
 // Dievaluasi LAZY (bukan saat import) supaya perubahan NO_COLOR/COLORTERM di
 // runtime dan pengujian tetap berpengaruh; hasilnya murah karena hanya baca env.
 function noColorEnv(): boolean {
-  return (
-    (process.env.NO_COLOR != null && process.env.NO_COLOR !== "0") ||
-    process.env.MINICODE_THEME === "minimal"
-  )
+  return process.env.NO_COLOR != null && process.env.NO_COLOR !== "0"
 }
 function hasTruecolorEnv(): boolean {
   return process.env.COLORTERM === "truecolor" || process.env.COLORTERM === "24bit"
@@ -81,15 +64,23 @@ function paintFrom(code: string): Paint {
   return (s: string) => `\x1b[${code}m${s}\x1b[39m`
 }
 
-// ── Slot warna, dibangun per tema ──
+// ── Token palet tunggal (VS Code Dark+ inspired) ──
+const TOKENS = {
+  success: "38;2;137;209;133",
+  error: "38;2;244;135;113",
+  warning: "38;2;204;167;0",
+  info: "38;2;117;190;255",
+  accent: "38;2;0;122;204",
+}
+
+// ── Slot warna ──
 //
 // PENTING: slot ini WAJIB dievaluasi saat dipanggil, bukan saat modul di-import.
 // Versi sebelumnya menulis `success: trueWrap(tk("success"))` di module scope,
-// sehingga token tema dibekukan pada import pertama dan `applyTheme()` (dari
-// `/theme` maupun `--theme`) tidak pernah mengubah apa pun — termasuk tema
-// `mono` yang seharusnya menjadi jalur aksesibilitas. Slot kini getter yang
-// membaca `themeState`, dengan hasil per-tema di-cache supaya jalur render panas
-// tidak mengalokasi closure tiap panggilan.
+// sehingga token warna dibekukan pada import pertama — termasuk warna `mono`
+// yang seharusnya menjadi jalur aksesibilitas. Slot kini getter dengan hasil
+// di-cache per level warna supaya jalur render panas tidak mengalokasi closure
+// tiap panggilan.
 interface Palette {
   success: Paint
   error: Paint
@@ -113,34 +104,32 @@ interface Palette {
 
 const paletteCache = new Map<string, Palette>()
 
-function buildPalette(name: ThemeName): Palette {
-  const t = THEMES[name]
+function buildPalette(): Palette {
   const truecolor = hasTruecolorEnv()
-  const mono = name === "mono" || colorLevel() === 0
+  const mono = colorLevel() === 0
   // Aksen: 16-color fallback saat truecolor tak tersedia.
-  const accent = truecolor ? paintFrom(t.accent) : wrap(94, 39)
+  const accent = truecolor ? paintFrom(TOKENS.accent) : wrap(94, 39)
   return {
-    success: paintFrom(t.success),
-    error: paintFrom(t.error),
-    warning: paintFrom(t.warning),
-    info: paintFrom(t.info),
+    success: paintFrom(TOKENS.success),
+    error: paintFrom(TOKENS.error),
+    warning: paintFrom(TOKENS.warning),
+    info: paintFrom(TOKENS.info),
     accent,
-    accentAlt: truecolor ? paintFrom(t.info) : wrap(95, 39),
-    accentBold: truecolor ? paintFrom(`1;${t.accent}`) : wrap(94, 39),
-    // Pada tema mono, `gray` memakai dim (SGR 2) alih-alih bright-black (SGR 90):
-    // 90 adalah warna, dan `mono` adalah jalur aksesibilitas yang seharusnya
+    accentAlt: truecolor ? paintFrom(TOKENS.info) : wrap(95, 39),
+    accentBold: truecolor ? paintFrom(`1;${TOKENS.accent}`) : wrap(94, 39),
+    // Saat mono, `gray` memakai dim (SGR 2) alih-alih bright-black (SGR 90):
+    // 90 adalah warna, dan mono adalah jalur aksesibilitas yang seharusnya
     // monokrom. Dim tetap memberi hierarki visual tanpa memakai kanal warna.
     gray: mono ? attr(2, 22) : wrap(90, 39),
-    // Alias legacy: dipetakan ke token tema, bukan hex hardcoded. Inilah yang
-    // membuat `mono` benar-benar monokrom dan `light` benar-benar berubah.
-    red: paintFrom(t.error),
-    green: paintFrom(t.success),
-    yellow: paintFrom(t.warning),
-    cyan: paintFrom(t.info),
+    // Alias legacy: dipetakan ke token, bukan hex hardcoded.
+    red: paintFrom(TOKENS.error),
+    green: paintFrom(TOKENS.success),
+    yellow: paintFrom(TOKENS.warning),
+    cyan: paintFrom(TOKENS.info),
     blue: accent,
     magenta: mono ? identity : wrap(35, 39),
     white: mono ? identity : wrap(37, 39),
-    // Slot syntax highlight — pada tema mono semuanya jadi teks biasa.
+    // Slot syntax highlight — saat mono semuanya jadi teks biasa.
     brightYellow: mono ? identity : truecolor ? wrap("38;2;215;186;125", 39) : wrap(93, 39),
     brightMagenta: mono ? identity : truecolor ? wrap("38;2;197;134;192", 39) : wrap(95, 39),
     brightCyan: mono ? identity : truecolor ? wrap("38;2;78;201;176", 39) : wrap(96, 39),
@@ -150,10 +139,10 @@ function buildPalette(name: ThemeName): Palette {
 function palette(): Palette {
   // Kunci cache memuat level warna: NO_COLOR / COLORTERM bisa berubah antar
   // proses (dan antar test), dan palette mono vs truecolor berbeda isi.
-  const key = `${themeState.name}:${colorLevel()}:${hasTruecolorEnv() ? 1 : 0}`
+  const key = `${colorLevel()}:${hasTruecolorEnv() ? 1 : 0}`
   const cached = paletteCache.get(key)
   if (cached) return cached
-  const built = buildPalette(themeState.name)
+  const built = buildPalette()
   paletteCache.set(key, built)
   return built
 }
@@ -174,17 +163,17 @@ function attr(open: number, close: number): Paint {
  * Slot warna semantik.
  *
  * GETTER — JANGAN simpan ke `const` di module scope; lihat PLAN.md P0.1.
- * Setiap properti membaca `themeState` dan level warna saat DIPANGGIL. Menulis
+ * Setiap properti membaca level warna saat DIPANGGIL. Menulis
  * `const HEADER = c.dim(...)` di module scope membekukan hasilnya pada import
- * pertama, sehingga `applyTheme()` dari `/theme` maupun `--theme` tidak berefek.
- * Kesalahan ini sudah terjadi dua kali (V6). Dijaga oleh
+ * pertama (NO_COLOR, COLORTERM tidak lagi berpengaruh). Kesalahan ini sudah
+ * terjadi dua kali (V6, V8). Dijaga oleh
  * `test/no-frozen-runtime-value.test.ts`.
  *
  * Benar: `() => c.dim(x)`, `get header() { return c.dim(x) }`, atau baca di
  * dalam fungsi render.
  */
 export const c = {
-  // Text hierarchy — tidak bergantung tema.
+  // Text hierarchy — tidak bergantung warna.
   text: identity,
   get muted() {
     return attr(2, 22) // dim - secondary info, borders
@@ -227,7 +216,7 @@ export const c = {
     return palette().gray
   },
 
-  // Legacy compat (dipakai renderer lama) — kini mengikuti tema.
+  // Legacy compat (dipakai renderer lama) — kini mengikuti token.
   get red() {
     return palette().red
   },

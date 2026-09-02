@@ -98,7 +98,8 @@ export function parallelExecutor(
         if (typeof p !== "string" || !p) return null
         // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock
         try {
-          const abs = resolve(p)
+          const base = deps.cwd ?? process.cwd()
+          const abs = resolve(base, p)
           return process.platform === "win32" ? abs.toLowerCase() : abs
         } catch {
           return process.platform === "win32" ? p.toLowerCase() : p

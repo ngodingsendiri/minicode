@@ -15,7 +15,7 @@ import {
 } from "../src/ui/render/format.ts"
 import { decorateMarkdown, renderInline } from "../src/ui/render/markdown.ts"
 import { reasoning, setReasoningVisible } from "../src/ui/render/reasoning.ts"
-import { applyTheme, stripAnsi } from "../src/ui/render/theme.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
 import { formatWrapped, justifyLine, visibleLen, wordWrap } from "../src/ui/render/wrap.ts"
 import { registerStatusLine, runWithoutStatus } from "../src/ui/runtime/statusline.ts"
 import { createFakeBus, type FakeTty, installFakeTty } from "./helpers/tui-harness.ts"
@@ -161,7 +161,6 @@ describe("markdown: fence & inline", () => {
   const origColorterm = process.env.COLORTERM
   beforeEach(() => {
     process.env.COLORTERM = "truecolor"
-    applyTheme("dark")
   })
   afterEach(() => {
     if (origColorterm == null) delete process.env.COLORTERM
@@ -419,7 +418,6 @@ describe("simple logger (one-shot)", () => {
   afterEach(() => {
     tty?.restore()
     tty = undefined
-    applyTheme("dark")
     setCompactMode(false)
   })
 

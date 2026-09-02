@@ -418,7 +418,7 @@ describe("runPicker", () => {
     tty = installFakeTty({ rows: 16 })
     const p = runPicker({ title: "t", items, onPick: () => {}, onCancel: () => {} })
     await tty.ready()
-    expect(visible(tty)).toContain("lagi")
+    expect(visible(tty)).toContain("more")
     await tty.send(KEY.esc, 20)
     await p
   })

@@ -71,8 +71,9 @@ function pad(text: string, width: number): string {
  * Penanda hasil aksi yang seragam.
  *
  * Sebelumnya bercampur: `[OK]`/`[FAIL]` ASCII di /undo dan /model, kalimat biasa
- * di /theme dan /thinking, tanpa penanda di /sync. `glyphs` sudah punya fallback
- * ASCII untuk konsol legacy Windows, jadi memakainya aman di semua terminal.
+ * di /thinking dan /compact, tanpa penanda di /sync. `glyphs` sudah punya
+ * fallback ASCII untuk konsol legacy Windows, jadi memakainya aman di semua
+ * terminal.
  */
 // FUNGSI, bukan konstanta: `glyphs` adalah getter yang memeriksa dukungan UTF-8
 // saat dipakai. Menyimpannya ke `const` di module scope membekukan nilai pada

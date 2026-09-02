@@ -17,8 +17,9 @@
 // berupa pemeriksaan konvensi, bukan test perilaku: perilakunya benar sampai
 // seseorang memindahkan satu ekspresi ke module scope.
 //
-// Objek yang dijaga (`c`, `glyphs`, `themeState`) adalah getter/state mutable di
-// `src/ui/render/theme.ts`. Membacanya WAJIB terjadi saat pakai — di dalam fungsi,
+// Objek yang dijaga (`c`, `glyphs`) adalah getter di
+// `src/ui/render/theme.ts` (dulu termasuk `themeState` yang mutable).
+// Membacanya WAJIB terjadi saat pakai — di dalam fungsi,
 // arrow, atau getter — bukan saat import.
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
@@ -28,7 +29,7 @@ import { join } from "node:path"
 const repoRoot = process.cwd()
 
 /** Objek di `src/ui/render/theme.ts` yang nilainya bergantung state runtime. */
-const RUNTIME_OBJECTS = ["c", "glyphs", "themeState"] as const
+const RUNTIME_OBJECTS = ["c", "glyphs"] as const
 
 /**
  * Buang komentar dan isi string literal supaya penyebutan `glyphs.` di dalam
@@ -176,8 +177,8 @@ describe("detektor nilai beku (unit)", () => {
     expect(findFrozenRuntimeValues("x.ts", bad)).toHaveLength(1)
   })
 
-  test("menolak `const X = themeState.name`", () => {
-    expect(findFrozenRuntimeValues("x.ts", "const NAME = themeState.name\n")).toHaveLength(1)
+  test("menolak `const X = c.success` di module scope", () => {
+    expect(findFrozenRuntimeValues("x.ts", "const NAME = c.success\n")).toHaveLength(1)
   })
 
   test("menerima arrow yang menunda pembacaan", () => {

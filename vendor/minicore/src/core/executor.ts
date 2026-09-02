@@ -21,6 +21,7 @@ export interface ExecutorDeps {
   readonly signal: AbortSignal;
   readonly state: Readonly<SessionState>;
   readonly maxResultTokens: number;
+  readonly cwd?: string;
 }
 
 export interface ToolExecutor {
@@ -59,7 +60,12 @@ export async function runCall(call: ToolCall, deps: ExecutorDeps): Promise<ToolR
   if (!parsed.ok) return errorResult(safeCall, `invalid arguments: ${parsed.message}`);
   throwIfAborted(deps.signal);
 
-  const ctx = { signal: deps.signal, state: snapshotState(deps.state), emit: deps.events.emit };
+  const ctx = {
+    signal: deps.signal,
+    state: snapshotState(deps.state),
+    emit: deps.events.emit,
+    cwd: deps.cwd,
+  };
   // Started and completed events carry separate result objects so listeners
   // that retain the execution reference never observe later mutation.
   const started: Execution = { call: safeCall, result: { role: "tool", toolCallId: safeCall.id, name: safeCall.name, content: "" } };

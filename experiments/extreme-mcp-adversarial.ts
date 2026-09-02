@@ -177,7 +177,7 @@ async function main(): Promise<void> {
       } catch (e) {
         msg = (e as Error).message
       }
-      check(`redirect ke ${target.slice(0, 42)} ditolak`, /redirect tidak diikuti/.test(msg), msg.slice(0, 80))
+      check(`redirect ke ${target.slice(0, 42)} ditolak`, /redirect (tidak diikuti|not followed)/i.test(msg), msg.slice(0, 80))
       stop()
     }
   }
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       } catch (e) {
         msg = (e as Error).message
       }
-      check(`${h.slice(0, 40)} ditolak`, /host privat ditolak/.test(msg), msg.slice(0, 70))
+      check(`${h.slice(0, 40)} ditolak`, /host privat ditolak|private host rejected/i.test(msg), msg.slice(0, 70))
     }
   }
 
@@ -246,12 +246,12 @@ async function main(): Promise<void> {
   console.log("\n[8] balasan cacat")
   {
     const bad: [string, string, string][] = [
-      ["HTML", "<html>proxy</html>", "bukan JSON valid"],
-      ["JSON tak lengkap", '{"jsonrpc":"2.0","id":1,"resu', "bukan JSON valid"],
-      ["array kosong", "[]", "tidak mengembalikan balasan"],
-      ["null", "null", "tidak mengembalikan balasan"],
-      ["id salah", '{"jsonrpc":"2.0","id":999,"result":{}}', "tidak mengembalikan balasan"],
-      ["hanya method", '{"jsonrpc":"2.0","method":"notif"}', "tidak mengembalikan balasan"],
+      ["HTML", "<html>proxy</html>", "not valid JSON"],
+      ["JSON tak lengkap", '{"jsonrpc":"2.0","id":1,"resu', "not valid JSON"],
+      ["array kosong", "[]", "no response"],
+      ["null", "null", "no response"],
+      ["id salah", '{"jsonrpc":"2.0","id":999,"result":{}}', "no response"],
+      ["hanya method", '{"jsonrpc":"2.0","method":"notif"}', "no response"],
     ]
     for (const [label, body, expect] of bad) {
       const url = serve(

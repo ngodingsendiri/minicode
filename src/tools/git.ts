@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
@@ -29,9 +30,10 @@ function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): P
 }
 
 /** cwd tool harus di dalam workspace — sama seperti bash/glob/grep. */
-function assertCwd(cwd: string | undefined): void {
+function assertCwd(cwd: string | undefined, sessionRoot: string): void {
   if (!cwd) return
-  if (isCwdOutsideRoot(cwd, process.cwd()) || isPathOutsideRoot(cwd, process.cwd())) {
+  const abs = resolve(sessionRoot, cwd)
+  if (isCwdOutsideRoot(abs, sessionRoot) || isPathOutsideRoot(abs, sessionRoot)) {
     throw new Error(`cwd outside workspace: ${cwd}`)
   }
 }
@@ -47,11 +49,13 @@ export const gitStatusTool: Tool = {
   },
   async execute({ cwd }, ctx) {
     const c = cwd as string | undefined
-    assertCwd(c)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    assertCwd(c, sessionRoot)
+    const resolvedCwd = c ? resolve(sessionRoot, c) : sessionRoot
     const [a, b, d] = await Promise.all([
-      runGit(["status", "--porcelain"], c, ctx.signal),
-      runGit(["diff", "--stat"], c, ctx.signal),
-      runGit(["log", "--oneline", "-10"], c, ctx.signal),
+      runGit(["status", "--porcelain"], resolvedCwd, ctx.signal),
+      runGit(["diff", "--stat"], resolvedCwd, ctx.signal),
+      runGit(["log", "--oneline", "-10"], resolvedCwd, ctx.signal),
     ])
     return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${d || "(no log)"}`
   },
@@ -70,9 +74,13 @@ export const gitDiffTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd, staged }, ctx) {
-    assertCwd(cwd as string | undefined)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    assertCwd(cwd as string | undefined, sessionRoot)
+    const resolvedCwd = (cwd as string | undefined)
+      ? resolve(sessionRoot, cwd as string)
+      : sessionRoot
     const args = staged ? ["diff", "--staged"] : ["diff"]
-    return await runGit(args, cwd as string | undefined, ctx.signal)
+    return await runGit(args, resolvedCwd, ctx.signal)
   },
 }
 
@@ -89,9 +97,13 @@ export const gitLogTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cwd, limit }, ctx) {
-    assertCwd(cwd as string | undefined)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    assertCwd(cwd as string | undefined, sessionRoot)
+    const resolvedCwd = (cwd as string | undefined)
+      ? resolve(sessionRoot, cwd as string)
+      : sessionRoot
     const n = String(Math.min(Math.max((limit as number) ?? 20, 1), 100))
-    return await runGit(["log", "--oneline", `-${n}`], cwd as string | undefined, ctx.signal)
+    return await runGit(["log", "--oneline", `-${n}`], resolvedCwd, ctx.signal)
   },
 }
 
@@ -108,10 +120,10 @@ export const gitLogTool: Tool = {
 // yang tidak bisa menilai konteksnya.
 
 /** Nama file di argumen `paths` harus di dalam workspace. */
-function assertPaths(paths: unknown, cwd: string | undefined): string[] {
+function assertPaths(paths: unknown, cwd: string | undefined, sessionRoot: string): string[] {
   if (paths == null) return []
   if (!Array.isArray(paths)) throw new Error("paths must be an array of strings")
-  const root = cwd ?? process.cwd()
+  const root = cwd ? resolve(sessionRoot, cwd) : sessionRoot
   const out: string[] = []
   for (const p of paths) {
     if (typeof p !== "string" || !p.trim()) continue
@@ -146,12 +158,14 @@ export const gitCommitTool: Tool = {
   async execute({ message, paths, all, cwd }, ctx) {
     ctx.signal.throwIfAborted()
     const c = cwd as string | undefined
-    assertCwd(c)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    assertCwd(c, sessionRoot)
+    const resolvedCwd = c ? resolve(sessionRoot, c) : sessionRoot
     const msg = String(message ?? "").trim()
     if (!msg) throw new Error("message is required")
     if (msg.length > 4000) throw new Error("message terlalu panjang (max 4000 char)")
 
-    const files = assertPaths(paths, c)
+    const files = assertPaths(paths, c, sessionRoot)
     if (files.length === 0 && all !== true) {
       throw new Error(
         "provide `paths` (specific files) or `all: true` — an empty commit is useless",
@@ -159,14 +173,16 @@ export const gitCommitTool: Tool = {
     }
 
     // Repo check dulu supaya errornya jelas, bukan "exit 128".
-    const inside = await runGit(["rev-parse", "--is-inside-work-tree"], c, ctx.signal).catch(
-      () => "",
-    )
+    const inside = await runGit(
+      ["rev-parse", "--is-inside-work-tree"],
+      resolvedCwd,
+      ctx.signal,
+    ).catch(() => "")
     if (!inside.startsWith("true")) throw new Error("not a git repository (git rev-parse failed)")
 
     if (files.length > 0) {
       // `--` memisahkan path dari opsi: nama file bernama `-f` tak jadi flag.
-      await runGit(["add", "--", ...files], c, ctx.signal)
+      await runGit(["add", "--", ...files], resolvedCwd, ctx.signal)
     }
 
     // `-m` dengan pesan sebagai satu argumen: tak ada shell yang menginterpretasi
@@ -174,13 +190,13 @@ export const gitCommitTool: Tool = {
     const args = ["commit", "-m", msg]
     if (files.length === 0 && all === true) args.push("-a")
 
-    const out = await runGit(args, c, ctx.signal)
+    const out = await runGit(args, resolvedCwd, ctx.signal)
     // `git commit` keluar non-zero saat tak ada perubahan; runGit sudah
     // meneruskan teksnya, jadi model membaca alasan sebenarnya.
     if (/nothing to commit|no changes added/i.test(out)) {
       return `nothing to commit:\n${out}`
     }
-    const head = await runGit(["log", "--oneline", "-1"], c, ctx.signal).catch(() => "")
+    const head = await runGit(["log", "--oneline", "-1"], resolvedCwd, ctx.signal).catch(() => "")
     return `${out}${head ? `\n\nHEAD: ${head}` : ""}`
   },
 }

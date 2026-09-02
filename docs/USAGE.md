@@ -50,6 +50,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `--provider <id>` | Paksa provider id agnostik (tanpa ubah config; filter single) |
 | `--resume <id>` | Lanjutkan sesi sebelumnya (full history, bukan teks dump) |
 | `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
+| `--cwd <path>` | Workspace root untuk tool file & jail (diperbaiki 0.8.0 via ToolContext.cwd) |
 | `--interactive` | Paksa mode REPL |
 
 Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `allowlist`) dan benar-benar mengubah keputusan permission, bukan cuma label header.
@@ -72,8 +73,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
 | `MINICODE_PROVIDER_ORDER` | Urutkan provider agnostik tanpa edit config: `openai,anthropic,deepseek` |
 | `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
-| `MINICODE_THEME` | Tema aktif: `dark` \| `dim` \| `light` \| `mono` (juga lewat `--theme`) |
-| `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna (mengalahkan tema) |
+| `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna |
 | `MINICODE_ASCII` | `1` → paksa glyph ASCII (`[OK]`, `>`, `.`) untuk konsol tanpa UTF-8 |
 | `MINICODE_COMPACT` | `1` → tool call satu baris ringkas (default: expanded; juga `/compact`, Ctrl+O) |
 | `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
@@ -116,7 +116,6 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/status` | Info runtime (ID sesi, model, provider, tool aktif, skill) |
 | `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model |
 | `/init` | Buat `AGENTS.md` untuk proyek ini |
-| `/theme [nama]` | Ganti tema: `dark` \| `dim` \| `light` \| `mono` |
 | `/clear` | Bersihkan transkrip di layar |
 | `/exit` | Keluar |
 

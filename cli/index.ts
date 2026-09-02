@@ -105,7 +105,6 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--allowlist", desc: "bash allowlist only" },
           { flag: "--max-steps <n>", desc: "max tool steps (default 50)" },
           { flag: "--timeout <ms>", desc: "hard deadline per run" },
-          { flag: "--theme <name>", desc: "dark|dim|light|mono" },
           { flag: "--verify", desc: "auto-verify + self-heal" },
           { flag: "--sandbox <docker|os>", desc: "bash sandbox" },
           { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
@@ -163,8 +162,6 @@ if (budgetRaw && !Number.isFinite(budget))
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
 const ratelimitRaw = getArg("--ratelimit")
 const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
-const { applyTheme } = await import("../src/ui/render/theme.ts")
-applyTheme("dark")
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)

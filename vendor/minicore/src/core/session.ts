@@ -36,6 +36,7 @@ export interface SessionConfig {
   tools?: readonly Tool[];
   system?: string;
   model?: string;
+  cwd?: string;
   /**
    * Seed history untuk sesi baru (mis. resume dari storage). Messages akan
    * di-append ke ContextStore saat createSession, jadi `session.state.history`
@@ -121,6 +122,7 @@ export interface SessionInternal {
   readonly executor: ToolExecutor;
   readonly system?: string;
   readonly model?: string;
+  readonly cwd?: string;
   readonly budget: BudgetPolicy;
   readonly estimator: TokenEstimator;
   readonly compaction: CompactionStrategy;
@@ -159,6 +161,7 @@ export function createSession(config: SessionConfig): Session {
     executor: config.executor ?? sequentialExecutor(),
     system: config.system,
     model: config.model,
+    cwd: config.cwd,
     budget: config.budget ?? defaultBudgetPolicy,
     estimator: config.estimator ?? defaultTokenEstimator,
     compaction: config.compaction ?? mechanicalCompaction,

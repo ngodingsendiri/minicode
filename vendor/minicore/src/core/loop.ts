@@ -167,6 +167,7 @@ export async function executeTurn(
       signal,
       state: snapshotState(s.state),
       maxResultTokens: s.toolResultMaxTokens,
+      cwd: s.cwd,
     };
     let rawResults: readonly ToolResult[];
     try {

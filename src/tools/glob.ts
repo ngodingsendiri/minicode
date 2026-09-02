@@ -63,8 +63,10 @@ export const globTool: Tool = {
     additionalProperties: false,
   },
   async execute({ pattern, cwd, limit }, ctx) {
-    const root = (cwd as string) ?? "."
-    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    const rawRoot = (cwd as string) ?? "."
+    const root = resolve(sessionRoot, rawRoot)
+    if (isPathOutsideRoot(root, sessionRoot)) throw new Error(`cwd outside workspace: ${rawRoot}`)
     const lim = Math.min(
       Math.max((limit as number) ?? LIMITS.SEARCH_DEFAULT_LIMIT, 1),
       LIMITS.SEARCH_MAX_LIMIT,
@@ -73,8 +75,8 @@ export const globTool: Tool = {
     const out: string[] = []
     await walk(root, re, out, root, lim, ctx.signal)
     const st = await stat(root).catch(() => null)
-    if (!st) return `cwd not found: ${root}`
-    if (out.length === 0) return `no files match ${pattern} in ${root}`
+    if (!st) return `cwd not found: ${rawRoot}`
+    if (out.length === 0) return `no files match ${pattern} in ${rawRoot}`
     return out.slice(0, lim).join("\n")
   },
 }

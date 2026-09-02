@@ -1,9 +1,10 @@
+// Palet tunggal (dark, Ubuntu Server style) — fitur tema (--theme, /theme,
+// preset light/dim/mono) dihapus. Yang diuji: slot warna mengeluarkan SGR saat
+// truecolor, NO_COLOR mematikan semuanya, alias legacy konsisten dengan token
+// semantik, dan stripAnsi menangkap semua pola ANSI.
 import { afterAll, beforeEach, expect, test } from "bun:test"
-import { applyTheme, c, ESC, stripAnsi } from "../src/ui/render/theme.ts"
-import { THEMES } from "../src/ui/render/themes.ts"
+import { c, ESC, stripAnsi } from "../src/ui/render/theme.ts"
 
-// Deteksi warna dievaluasi lazy, jadi test bisa memaksa level warna lewat env.
-// Tanpa ini hasilnya bergantung apakah stdout runner tersambung ke TTY.
 const origColorterm = process.env.COLORTERM
 const origNoColor = process.env.NO_COLOR
 
@@ -13,91 +14,58 @@ beforeEach(() => {
 })
 
 afterAll(() => {
-  applyTheme("dark")
   if (origColorterm == null) delete process.env.COLORTERM
   else process.env.COLORTERM = origColorterm
   if (origNoColor == null) delete process.env.NO_COLOR
   else process.env.NO_COLOR = origNoColor
 })
 
-test("themes: 4 presets with all tokens", () => {
-  for (const [name, t] of Object.entries(THEMES)) {
-    expect(t.success).toBeTruthy()
-    expect(t.error).toBeTruthy()
-    expect(t.warning).toBeTruthy()
-    expect(t.info).toBeTruthy()
-    expect(t.accent).toBeTruthy()
-    expect(t.muted).toBeTruthy()
-    expect(name).toBeTypeOf("string")
+const COLOR_SLOTS = [
+  "success",
+  "error",
+  "warning",
+  "info",
+  "accent",
+  "accentAlt",
+  "accentBold",
+  "gray",
+  "red",
+  "green",
+  "yellow",
+  "cyan",
+  "blue",
+  "magenta",
+  "white",
+  "brightYellow",
+  "brightMagenta",
+  "brightCyan",
+] as const
+
+test("palet tunggal: semua slot warna mengeluarkan SGR saat truecolor", () => {
+  for (const slot of COLOR_SLOTS) {
+    expect(c[slot]("X"), slot).toContain(ESC)
   }
 })
 
-test("theme: applyTheme switches live", () => {
-  expect(applyTheme("mono")).toBe("mono")
-  expect(applyTheme("light")).toBe("light")
-  expect(applyTheme("bogus")).toBe("dark") // fallback
+test("palet tunggal: teks tetap utuh setelah strip", () => {
+  expect(stripAnsi(c.success("halo"))).toBe("halo")
+  expect(stripAnsi(c.accent(c.bold("halo")))).toBe("halo")
+  expect(stripAnsi(c.error(c.brightYellow("x")))).toBe("x")
 })
 
-// Regresi: `c` dulu membekukan token tema saat import (closure di module scope),
-// jadi applyTheme() mengubah state tapi TIDAK mengubah warna yang dihasilkan.
-// `/theme light` melapor sukses sambil tetap mencetak warna dark.
-test("theme: applyTheme benar-benar mengubah keluaran warna", () => {
-  const slots = ["success", "error", "warning", "info", "accent"] as const
-  applyTheme("dark")
-  const dark = slots.map((s) => c[s]("X"))
-  applyTheme("light")
-  const light = slots.map((s) => c[s]("X"))
-  for (let i = 0; i < slots.length; i++) {
-    expect(light[i]).not.toBe(dark[i])
-  }
+test("alias legacy memetakan ke token semantik yang sama", () => {
+  expect(c.red("X")).toBe(c.error("X"))
+  expect(c.green("X")).toBe(c.success("X"))
+  expect(c.yellow("X")).toBe(c.warning("X"))
+  expect(c.cyan("X")).toBe(c.info("X"))
 })
 
-test("theme: alias legacy (red/green/yellow/cyan) juga mengikuti tema", () => {
-  const slots = ["red", "green", "yellow", "cyan"] as const
-  applyTheme("dark")
-  const dark = slots.map((s) => c[s]("X"))
-  applyTheme("light")
-  const light = slots.map((s) => c[s]("X"))
-  for (let i = 0; i < slots.length; i++) {
-    expect(light[i]).not.toBe(dark[i])
+test("NO_COLOR mematikan semua warna", () => {
+  process.env.NO_COLOR = "1"
+  for (const slot of [...COLOR_SLOTS, "bold", "muted", "dim", "italic"] as const) {
+    expect(c[slot]("X"), slot).toBe("X")
   }
-})
-
-test("theme: mono tidak menghasilkan warna, hanya teks/atribut", () => {
-  applyTheme("mono")
-  // Pola dibangun dari ESC (String.fromCharCode) alih-alih literal \x1b supaya
-  // tidak menyisipkan control character mentah ke source.
-  const colorSgr = new RegExp(`${ESC}\\[(?:3[0-7]|9[0-7]|38;)`)
-  const colorSlots = [
-    "success",
-    "warning",
-    "info",
-    "accent",
-    "red",
-    "green",
-    "yellow",
-    "cyan",
-    // `gray` dulu selalu SGR 90 (bright-black) — itu warna, jadi tema mono tak
-    // pernah benar-benar monokrom. Terlihat lewat highlightCode: komentar tetap
-    // berwarna di tema mono. Sekarang jatuh ke dim (SGR 2).
-    "gray",
-    "brightYellow",
-    "brightMagenta",
-    "brightCyan",
-  ] as const
-  for (const slot of colorSlots) {
-    const out = c[slot]("X")
-    expect(out).not.toMatch(colorSgr)
-    expect(stripAnsi(out)).toBe("X")
-  }
-})
-
-test("theme: teks tetap utuh setelah strip untuk semua tema", () => {
-  for (const name of ["dark", "dim", "light", "mono"]) {
-    applyTheme(name)
-    expect(stripAnsi(c.success("halo"))).toBe("halo")
-    expect(stripAnsi(c.accent(c.bold("halo")))).toBe("halo")
-  }
+  delete process.env.NO_COLOR
 })
 
 test("stripAnsi: menangkap sekuens private-mode dan OSC", () => {
@@ -106,13 +74,5 @@ test("stripAnsi: menangkap sekuens private-mode dan OSC", () => {
   expect(stripAnsi("\x1b[?1049halt\x1b[?1049l")).toBe("alt")
   expect(stripAnsi("\x1b[1Mhapus")).toBe("hapus")
   expect(stripAnsi("\x1b[38;2;1;2;3mwarna\x1b[39m")).toBe("warna")
-})
-
-test("theme: NO_COLOR mematikan semua warna, mengalahkan tema", () => {
-  process.env.NO_COLOR = "1"
-  applyTheme("dark")
-  for (const slot of ["success", "error", "accent", "red", "bold", "muted"] as const) {
-    expect(c[slot]("X")).toBe("X")
-  }
-  delete process.env.NO_COLOR
+  expect(stripAnsi("\x1b]0;judul\x07teks")).toBe("teks")
 })

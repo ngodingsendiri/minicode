@@ -22,6 +22,7 @@ export interface ToolSchema {
 export interface ToolContext {
   readonly signal: AbortSignal;
   readonly state: Readonly<SessionState>;
+  readonly cwd?: string;
   emit(event: AgentEvent): void;
 }
 

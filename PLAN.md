@@ -31,7 +31,7 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 
 ---
 
-## Status eksekusi terbaru (update 2026-09-01)
+## Status eksekusi terbaru (update 2026-09-02)
 
 Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_REDESIGN_CLI_CONSTRAINED_2026-09-01.md):
 
@@ -40,7 +40,7 @@ Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_RED
 - ✅ Tahap 2 (overlay consolidation) selesai.
 - ✅ Tahap 3 (component family refactor) selesai.
 - ✅ Tahap 4 (runtime feedback harmonization) selesai.
-- 🟡 Tahap 5 (verification & hardening final) berjalan; tinggal penutupan gate coverage di host ini.
+- ✅ Tahap 5 (verification & hardening) selesai.
 
 Catatan eksekusi terbaru:
 - Primitive overlay shared sudah dipakai oleh picker/provider-manager/model-manager (`src/ui/screens/overlay.ts`).
@@ -49,10 +49,14 @@ Catatan eksekusi terbaru:
 - Sinkronisasi assertion test selesai: `test/phase2-security.test.ts` diperbarui agar sesuai microcopy English baru (`automatically`, `unknown mode`).
 - Flake `cli-session` yang memicu timeout hook afterEach/afterAll ditutup dengan menonaktifkan cleanup rekursif temp workspace di `test/cli-session.test.ts` (housekeeping diserahkan ke OS).
 - `scripts/coverage-gate.ts` diperbaiki agar memanggil runtime Bun via `process.execPath` (bukan perintah `bun` di PATH), untuk lingkungan yang tidak menaruh bun di PATH.
+- Penghapusan fitur tema tuntas: `src/ui/render/themes.ts` dihapus, `src/ui/render/theme.ts` jadi palet tunggal (satu set TOKENS dark, auto-detect NO_COLOR>COLORTERM>truecolor>mono), flag `--theme` & slash `/theme` & env `MINICODE_THEME`/`themeState`/`applyTheme` dihapus dari `cli/index.ts`, HELP, dan test. Dijaga oleh `test/no-frozen-runtime-value.test.ts` & `test/theme.test.ts` baru.
+- Sisa inkonsistensi plan .verdent dibersihkan: `test/cli-session.test.ts:604` blok `describe("cli: --theme")` dihapus, komentar `themeState` di `test/no-frozen-runtime-value.test.ts:20` diperbaiki, `bun.lock` divalidasi `bun install` + `--frozen-lockfile` hijau, `experiments/extreme-mcp-adversarial.ts` diselaraskan ke English ("private host rejected", "redirect not followed", "not valid JSON").
+- Gate di host ini (Win32, Bun 1.4.0, 2026-09-02): `tsc` PASS, `lint` PASS (17 warn), `bun test` 1168 pass 0 fail, `gate:coverage` 82.79% funcs / 85.22% lines (min 81/83 PASS), `gate:pack` 22/22 PASS, `gate:bash` 0/38 bypass 0/15 over-block di kedua mode, `extreme-bash-fuzz` 0 bypass (2582 varian), `extreme-mcp` 67/67 PASS. `extreme-shadow-git` masih timeout 300s di Windows (unit `shadow-git.test.ts` 22 pass — hambatan I/O skala 2000 file, bukan regresi fungsional).
+- `vendor/minicore` sinkron ulang (`19 file, be68c07aa4ae8cb6`) via `bun run vendor:minicore`.
 
 Next action (urut eksekusi):
-1. Tutup eksekusi `bun run gate:coverage` sampai selesai pada host ini (runtime panjang di mode coverage).
-2. Setelah gate coverage hijau, tandai Tahap 5 selesai penuh.
+1. P1.1–P1.3 masih terbuka (coverage `cli/setup.ts` 0%, provider-manager harness, highlight), dan P2.1 `cwd` jail butuh keputusan arsitektur A/B/C — lihat §P1/P2.
+2. Publish npm (P2.2) menunggu bump `package.json` + `CHANGELOG.md` release note + kredensial.
 
 ---
 

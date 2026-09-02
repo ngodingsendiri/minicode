@@ -208,8 +208,10 @@ export const grepTool: Tool = {
     additionalProperties: false,
   },
   async execute({ pattern, cwd, include, limit }, ctx) {
-    const root = (cwd as string) ?? "."
-    if (isPathOutsideRoot(root, process.cwd())) throw new Error(`cwd outside workspace: ${root}`)
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    const rawRoot = (cwd as string) ?? "."
+    const root = resolve(sessionRoot, rawRoot)
+    if (isPathOutsideRoot(root, sessionRoot)) throw new Error(`cwd outside workspace: ${rawRoot}`)
     const lim = Math.min(
       Math.max((limit as number) ?? LIMITS.SEARCH_DEFAULT_LIMIT, 1),
       LIMITS.SEARCH_MAX_LIMIT,
@@ -225,7 +227,7 @@ export const grepTool: Tool = {
     }
 
     const noMatch = () =>
-      `no matches for /${pat}/ in ${root}${include ? ` (include ${include})` : ""}`
+      `no matches for /${pat}/ in ${rawRoot}${include ? ` (include ${include})` : ""}`
 
     if (process.env.MINICODE_GREP_ENGINE !== "js" && ripgrepAvailable()) {
       try {

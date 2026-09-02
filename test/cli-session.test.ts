@@ -110,8 +110,6 @@ async function run(
       HOME: fakeHome,
       USERPROFILE: fakeHome,
       NO_COLOR: "1",
-      // Jangan biarkan env mesin pengembang mengubah hasil.
-      MINICODE_THEME: "",
       MINICODE_TELEMETRY: "1",
       DEEPSEEK_API_KEY: "",
       OPENAI_API_KEY: "",
@@ -600,15 +598,5 @@ describe("cli: notice sandbox", () => {
       ["apa saja", "--sandbox", "bogus"],
     )
     expect(r.stderr).toContain("docker|os|none")
-  })
-})
-
-describe("cli: --theme", () => {
-  test("tema tidak valid tidak menggagalkan run", async () => {
-    const { run: r } = await runWithProvider(
-      [{ kind: "text", text: "ok" }],
-      ["apa saja", "--theme", "tidak-ada"],
-    )
-    expect(r.code).toBe(0)
   })
 })

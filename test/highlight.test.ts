@@ -9,7 +9,7 @@
 // test lolos tanpa benar-benar menjalankan cabang pewarnaan.
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
 import { formatCodeBlock, highlightCode } from "../src/ui/render/highlight.ts"
-import { applyTheme, stripAnsi } from "../src/ui/render/theme.ts"
+import { stripAnsi } from "../src/ui/render/theme.ts"
 
 const origColorterm = process.env.COLORTERM
 const origNoColor = process.env.NO_COLOR
@@ -17,11 +17,9 @@ const origNoColor = process.env.NO_COLOR
 beforeEach(() => {
   process.env.COLORTERM = "truecolor"
   delete process.env.NO_COLOR
-  applyTheme("dark")
 })
 
 afterAll(() => {
-  applyTheme("dark")
   if (origColorterm == null) delete process.env.COLORTERM
   else process.env.COLORTERM = origColorterm
   if (origNoColor == null) delete process.env.NO_COLOR
@@ -328,15 +326,6 @@ describe("highlight: masukan adversarial", () => {
   test("CRLF tidak menghasilkan CR ganda", () => {
     const input = "const a = 1\r\nconst b = 2"
     expect(stripAnsi(highlightCode(input, "ts"))).toBe(input)
-  })
-
-  test("tema mono tidak menyisipkan warna apa pun", () => {
-    applyTheme("mono")
-    const code = 'const a = "x" // y'
-    const colorSgr = new RegExp(`${ESC}\\[(?:3[0-7]|9[0-7]|38;)`)
-    for (const lang of languages) {
-      expect(highlightCode(code, lang)).not.toMatch(colorSgr)
-    }
   })
 
   test("NO_COLOR mematikan pewarnaan di semua bahasa", () => {

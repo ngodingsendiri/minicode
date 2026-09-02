@@ -28,9 +28,7 @@ export const defaultRecoveryPolicy: RecoveryPolicy = {
   },
 };
 
-const RETRY_AFTER_MAX_MS = 30_000;
-
 function backoffDelay(attempt: number, retryAfter?: number): number {
-  if (retryAfter != null) return Math.min(retryAfter, RETRY_AFTER_MAX_MS);
+  if (retryAfter != null) return retryAfter;
   return Math.min(1_000 * 2 ** (attempt - 1), 8_000);
 }

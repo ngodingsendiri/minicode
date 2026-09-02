@@ -22,7 +22,7 @@ export const writeFileTool: Tool = {
   async execute({ path, content }, ctx) {
     ctx.signal.throwIfAborted()
     const p = path as string
-    const root = process.cwd()
+    const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
     if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
     if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)

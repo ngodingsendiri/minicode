@@ -93,5 +93,6 @@ export async function createMinicodeSession(
       concurrency: concurrency ?? LIMITS.EXECUTOR_CONCURRENCY,
       writeConcurrency: writeConcurrency ?? LIMITS.EXECUTOR_WRITE_CONCURRENCY,
     }),
+    cwd,
   })
 }

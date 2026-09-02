@@ -539,7 +539,7 @@ test("21 formatError memetakan AgentError ke pesan yang bisa ditindaklanjuti", (
   // nama kode internal, bukan sesuatu yang berguna bagi user.
   const e = new AgentError("budget_exceeded", "context too big")
   const out = formatError(e)
-  expect(out.toLowerCase()).toContain("biaya")
+  expect(out.toLowerCase()).toContain("budget")
   expect(out).toContain("--budget") // saran tindakan disertakan
   expect(out).not.toContain("budget_exceeded") // nama kode tidak dibocorkan
   expect(formatError(undefined as unknown)).toBe("undefined")

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0] - 2026-09-02 — Penghapusan tema + perbaikan cwd jail (P2.1) + hardening lanjutan
+
+### Fixed
+- **P2.1 `cwd` jail tuntas (P0 keamanan):** semua tool file (`write_file`, `read_file`, `edit`, `apply_patch`, `glob`, `grep`, `bash`, `git_*`) sebelumnya memakai `process.cwd()` sehingga `--cwd` menyesatkan dan `isPathOutsideRoot` ter-anchor ke direktori yang salah. Ditambah seam aditif `cwd?: string` di `vendor/minicore/src/core/tool.ts:22` + `executor.ts` + `session.ts` + `loop.ts`, diteruskan dari `src/app/session.ts:96` → kernel, dan `src/tools/*` kini memakai `ctx.cwd ?? process.cwd()` dengan `resolve(sessionRoot, raw)` + file-lock per-cwd. `vendor/minicore` sinkron (`19 file, 4591de2f578d9f4c`), `vendor/minicore` source di `D:\git\minicore` juga diperbarui.
+- **Penghapusan fitur tema:** `src/ui/render/themes.ts` dihapus, `src/ui/render/theme.ts` jadi palet tunggal TOKENS dark, flag `--theme`/`/theme`/`MINICODE_THEME`/`themeState`/`applyTheme` dihapus dari `cli/index.ts` & HELP, test `theme.test.ts` disesuaikan (palet tunggal, NO_COLOR), `cli-session` block `--theme` dihapus, `no-frozen` komentar diperbaiki, `extreme-mcp` diselaraskan ke English.
+- **Lint & lockfile:** `bun.lock` dinormalisasi via `bun install`, 9 file terhapus dari `outputs/` (audit lama) + `.verdent` plan diarsipkan, `package-lock.json` ganda dihapus, `import-convention` & `extreme-mcp` lolos setelah English-only.
+
+### Changed
+- `AGENTS.md` Jebakan ditambah catatan `ToolContext.cwd` + versi badge `v0.8.0` di `docs/ARCHITECTURE.html`.
+
+### Test & Gate
+- `1168 pass 0 fail`, `gate:coverage` 82.79%/85.22%, `gate:pack` 22/22, `gate:bash` 0 bypass, `extreme-bash-fuzz` 0/2582, `extreme-mcp` 67/67. `extreme-shadow-git` skala 2000 file masih timeout 300s di Windows (unit `shadow-git.test.ts` 22 pass — hambatan I/O Windows, bukan regresi).
+
 ## [Unreleased] — Audit UI/UX (V6) + uji live multi-provider (V7) + bug hunter UI (V8)
 
 ### V8 — bug hunter UI/UX: 31 temuan dari tiga ronde

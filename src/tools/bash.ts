@@ -147,8 +147,9 @@ export const bashTool: Tool = {
     additionalProperties: false,
   },
   async execute({ cmd, cwd, timeoutMs, background }, ctx) {
+    const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
     const c = cwd as string | undefined
-    if (c && (isCwdOutsideRoot(c, process.cwd()) || isPathOutsideRoot(c, process.cwd())))
+    if (c && (isCwdOutsideRoot(c, sessionRoot) || isPathOutsideRoot(c, sessionRoot)))
       throw new Error(`cwd outside workspace: ${c}`)
     const timeout = timeoutMs ?? LIMITS.BASH_DEFAULT_TIMEOUT_MS
 
@@ -168,7 +169,7 @@ export const bashTool: Tool = {
     // Docker sandbox mode — run in ephemeral isolated container
     if (process.env.MINICODE_SANDBOX === "docker") {
       if (dockerAvailable()) {
-        const res = await runInDocker(cmd as string, c ?? process.cwd(), {
+        const res = await runInDocker(cmd as string, c ?? sessionRoot, {
           timeoutMs: timeout,
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
@@ -187,7 +188,7 @@ export const bashTool: Tool = {
       process.env.MINICODE_SANDBOX === "bwrap"
     ) {
       if (osSandboxAvailable()) {
-        const res = await runInOsSandbox(cmd as string, c ?? process.cwd(), {
+        const res = await runInOsSandbox(cmd as string, c ?? sessionRoot, {
           timeoutMs: timeout,
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })

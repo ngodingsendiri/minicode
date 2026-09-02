@@ -284,7 +284,7 @@
   <div class="brand">
     <div class="name">mini<b>code</b></div>
     <div class="sub">Peta struktur untuk developer</div>
-    <span class="vbadge">v0.7.0 · Bun-only · 0 deps</span>
+    <span class="vbadge">v0.8.0 · Bun-only · 0 deps</span>
   </div>
   <nav id="nav">
     <div class="sec-label">Peta</div>
@@ -567,7 +567,7 @@
       <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: whitelist flag, bentuk <code>--f v</code> &amp; <code>--f=v</code>, baca stdin.</div><div class="exports">getArg · promptFromArgs · readPrompt</div></div>
       <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">Composition root: rakit config + kernel session + tools + permission; inject wizard (setupWhenEmpty) dan approval (ask) ke lapisan logika.</div><div class="exports">createCliSession · CliSession</div></div>
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div><div class="exports">dispatch</div></div>
-      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya.</div><div class="exports">handleBuiltinCommand · /help /provider /model /sync /status /sessions /init /exit /theme /thinking</div></div>
+      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya.</div><div class="exports">handleBuiltinCommand · /help /provider /model /sync /status /sessions /init /exit /thinking</div></div>
       <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver.</div><div class="exports">runRepl</div></div>
       <div class="mod"><div class="fname">commands/ — 9 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats</div></div>
       <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/.</div></div>
@@ -641,7 +641,7 @@
     <summary><span class="chip c1">L1</span> src/ui/ <span class="role">— presentation mandiri · DILARANG impor cli/ · src/ non-ui · #minicore</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">contract.ts</div><div class="fdesc">Satu-satunya bentuk data yang mengalir ke UI; EventBus kernel kompatibel struktural.</div><div class="exports">UiBus · UiEvent · UiEventType · UiStep · UiExecution · UiToolCallRef</div></div>
-      <div class="mod"><div class="fname">render/theme.ts · themes.ts</div><div class="fdesc">Warna &amp; glyph sebagai GETTER runtime (tema, UTF-8, NO_COLOR) — jangan bekukan ke const. Auto-detect: NO_COLOR &gt; truecolor &gt; 256 &gt; 16 &gt; mono.</div></div>
+      <div class="mod"><div class="fname">render/theme.ts</div><div class="fdesc">Warna &amp; glyph sebagai GETTER runtime (UTF-8, NO_COLOR) — jangan bekukan ke const. Palet tunggal; auto-detect: NO_COLOR &gt; truecolor &gt; 256 &gt; 16 &gt; mono. Fitur tema (--theme, /theme, preset) dihapus.</div></div>
       <div class="mod"><div class="fname">render/sanitize.ts</div><div class="fdesc">sanitizeAnsi — hanya loloskan SGR; wajib untuk teks tak terpercaya.</div><div class="exports">sanitizeAnsi</div></div>
       <div class="mod"><div class="fname">render/width.ts · wrap.ts</div><div class="fdesc">Ukur teks dalam KOLOM (CJK/emoji = 2); pembungkus + justify.</div><div class="exports">displayWidth · truncateToWidth · padToWidth</div></div>
       <div class="mod"><div class="fname">render/markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
@@ -827,9 +827,8 @@ export const kalkulatorTool: Tool = {
     <tr><td>MINICODE_REPOMAP</td><td><code>regex</code> → skip LSP, repo-map pakai regex (lebih cepat)</td><td>src/repo/repomap.ts:406</td></tr>
     <tr><td>MINICODE_SESSION_TTL_DAYS</td><td>retensi sesi (default 30; <code>0</code> = simpan selamanya)</td><td>src/session/persistence.ts:190</td></tr>
     <tr><td>MINICODE_TELEMETRY</td><td><code>0</code>/<code>false</code>/<code>off</code> → tidak menulis trace sama sekali</td><td>src/telemetry/trace.ts:24</td></tr>
-    <tr><td>MINICODE_THEME</td><td><code>minimal</code> → palet minim (runtime, bisa diganti /theme)</td><td>src/ui/render/theme.ts:48</td></tr>
-    <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts:32</td></tr>
-    <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts:47</td></tr>
+    <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts:18</td></tr>
+    <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts:32</td></tr>
     <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts:7</td></tr>
     <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts:93</td></tr>
     <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (juga ditulis ulang oleh /thinking)</td><td>src/ui/render/reasoning.ts:7</td></tr>
@@ -886,7 +885,7 @@ bun run bench            # benchmark loop agen</pre>
     <li><b>Batas lapisan itu kode, bukan harapan.</b> Matriks §1 dieksekusi sebagai test (<code>test/ui-boundary.test.ts</code>) — tambah modul baru berarti periksa ulang arahnya.</li>
     <li><b>Teks tak terpercaya → sanitizeAnsi.</b> Output model, hasil tool, dan isi berkas wajib disanitasi sebelum render; tanpa itu model bisa membersihkan layar atau keluar alternate screen.</li>
     <li><b>Lebar diukur dalam kolom.</b> Pakai <code>displayWidth</code>/<code>truncateToWidth</code>/<code>padToWidth</code> (<code>src/ui/render/width.ts</code>), bukan <code>.length</code>/<code>.slice()</code> — CJK &amp; emoji 2 kolom.</li>
-    <li><b><code>c</code> &amp; <code>glyphs</code> adalah getter</b> di <code>src/ui/render/theme.ts</code> yang membaca state runtime (tema, UTF-8, NO_COLOR). Menyimpannya ke const module scope membekukan nilai saat import — jebakan yang sudah tiga kali terulang.</li>
+    <li><b><code>c</code> &amp; <code>glyphs</code> adalah getter</b> di <code>src/ui/render/theme.ts</code> yang membaca state runtime (dukungan UTF-8, NO_COLOR; palet tunggal sejak fitur tema dihapus). Menyimpannya ke const module scope membekukan nilai saat import — jebakan yang sudah tiga kali terulang.</li>
     <li><b>Flag tak dikenal = kata prompt.</b> <code>cli/args.ts</code> hanya mengenali whitelist flag; <code>--typo</code> tidak error tetapi ikut masuk teks prompt (args.ts:62). Tambah flag baru = daftarkan di whitelist.</li>
     <li><b>Jail mendahului segala mode.</b> Tidak ada jalur eksekusi tool yang boleh mem-bypass <code>src/policy/jail.ts</code>, termasuk allow-all dan tool MCP.</li>
     <li><b>Tool tidak mengimpor lapisan app/sesi.</b> Kebutuhan lintas-lapisan (mis. sesi sub-agen untuk <code>delegate_task</code>) disuntikkan dari composition root via setter DI; tanpa injeksi tool fail-closed. Arah <code>providers → config</code> juga satu arah sejak provisioning dipisah ke <code>providers/provision.ts</code>.</li>
@@ -894,9 +893,7 @@ bun run bench            # benchmark loop agen</pre>
     <li><b>Peta ini harus hidup.</b> Setiap perubahan struktur (tambah/hapus/pindah modul atau lapisan) WAJIB memperbarui <code>docs/ARCHITECTURE.html</code> dalam perubahan yang sama — lihat AGENTS.md.</li>
   </ul>
   <footer>
-    Minicode v0.7.0 · Peta struktur hidup — diperbarui untuk REPL linier: fullscreen/screen/runPanel
-    dihapus, output append-only di scrollback (cli/repl.ts + assistant/simple.ts), tool call
-    expanded by default (MINICODE_COMPACT / /compact / Ctrl+O).
+    Minicode v0.8.0 · Peta struktur hidup — penghapusan tema tuntas (theme.ts palet tunggal), cwd jail diperbaiki via ToolContext.cwd (0.8.0), REPL linier append-only (cli/repl.ts + assistant/simple.ts), tool call expanded by default.
   </footer>
 </section>
 

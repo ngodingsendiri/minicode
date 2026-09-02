@@ -188,9 +188,10 @@ bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun r
 ## Jebakan yang sudah tiga kali terulang
 
 `c` dan `glyphs` di `src/ui/render/theme.ts` adalah **getter** yang membaca state
-runtime (tema aktif, dukungan UTF-8, `NO_COLOR`). Menyimpannya ke `const` di
-module scope membekukan nilainya saat import — `/theme` pernah tidak berefek
-apa pun karena ini, dua kali. Lihat PLAN.md P0.1.
+runtime (dukungan UTF-8, `NO_COLOR`; palet tunggal — fitur tema `--theme`,
+`/theme`, `MINICODE_THEME` sudah dihapus, jangan dihidupkan lagi). Menyimpannya
+ke `const` di module scope membekukan nilainya saat import — dulu `/theme`
+pernah tidak berefek apa pun karena ini, dua kali. Lihat PLAN.md P0.1.
 
 Lebar teks di terminal diukur dalam **kolom**, bukan karakter: pakai
 `displayWidth`/`truncateToWidth`/`padToWidth` dari `src/ui/render/width.ts`, jangan
@@ -199,3 +200,5 @@ Lebar teks di terminal diukur dalam **kolom**, bukan karakter: pakai
 Teks dari model, hasil tool, dan isi berkas adalah masukan **tidak terpercaya**:
 lewatkan `sanitizeAnsi` (`src/ui/render/sanitize.ts`) sebelum ditampilkan. Tanpa itu
 model bisa membersihkan layar atau keluar dari alternate screen.
+
+`cwd` workspace untuk tool file **wajib** dari `ToolContext.cwd` (`vendor/minicore/src/core/tool.ts:22`), bukan `process.cwd()`. Sebelum 0.8.0 semua tool (`write_file`, `read_file`, `edit`, `patch`, `glob`, `grep`, `bash`, `git_*`) memakai `process.cwd()` sehingga `--cwd` menyesatkan dan jail ter-anchor salah (P2.1). Diperbaiki 0.8.0 via seam aditif `cwd?:string` di kernel + executor. Jangan kembalikan `process.cwd()` di tool baru.
