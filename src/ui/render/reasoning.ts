@@ -1,16 +1,20 @@
 // Satu sumber state "tampilkan reasoning".
 //
-// Sebelumnya ada DUA state terpisah dan nol konsumen: cli/commands.ts menulis
-// process.env.MINICODE_SHOW_THINKING sementara renderer lama menulis
-// showThinking.ref — tidak ada yang membaca yang lain, dan tidak ada renderer
-// yang membaca keduanya. `/thinking` melaporkan sukses tanpa mengubah apa pun.
-export const reasoning = { visible: process.env.MINICODE_SHOW_THINKING === "1" }
+// Getter — jangan simpan `reasoning.visible` ke const di module scope; lihat
+// detail.ts. Perubahan env (mis. /thinking) harus terbaca saat pakai.
+export const reasoning = {
+  get visible(): boolean {
+    return process.env.MINICODE_SHOW_THINKING === "1"
+  },
+  set visible(v: boolean) {
+    process.env.MINICODE_SHOW_THINKING = v ? "1" : "0"
+  },
+}
 
 /** Set eksplisit (on/off) atau toggle bila `next` tidak diberikan. */
 export function setReasoningVisible(next?: boolean): boolean {
-  reasoning.visible = next ?? !reasoning.visible
-  // Env tetap disinkronkan supaya sub-proses (respawn /resume, plan re-exec)
-  // mewarisi pilihan user.
-  process.env.MINICODE_SHOW_THINKING = reasoning.visible ? "1" : "0"
-  return reasoning.visible
+  const cur = reasoning.visible
+  const nextVal = next ?? !cur
+  reasoning.visible = nextVal
+  return nextVal
 }

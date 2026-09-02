@@ -17,8 +17,8 @@
 // berupa pemeriksaan konvensi, bukan test perilaku: perilakunya benar sampai
 // seseorang memindahkan satu ekspresi ke module scope.
 //
-// Objek yang dijaga (`c`, `glyphs`) adalah getter di
-// `src/ui/render/theme.ts` (dulu termasuk `themeState` yang mutable).
+// Objek yang dijaga (`c`, `glyphs`, `detail`, `reasoning`) adalah getter di
+// `src/ui/render/{theme,detail,reasoning}.ts` (dulu termasuk `themeState`).
 // Membacanya WAJIB terjadi saat pakai — di dalam fungsi,
 // arrow, atau getter — bukan saat import.
 import { describe, expect, test } from "bun:test"
@@ -28,8 +28,8 @@ import { join } from "node:path"
 
 const repoRoot = process.cwd()
 
-/** Objek di `src/ui/render/theme.ts` yang nilainya bergantung state runtime. */
-const RUNTIME_OBJECTS = ["c", "glyphs"] as const
+/** Objek yang nilainya bergantung state runtime (theme.ts + detail/reasoning). */
+const RUNTIME_OBJECTS = ["c", "glyphs", "detail", "reasoning"] as const
 
 /**
  * Buang komentar dan isi string literal supaya penyebutan `glyphs.` di dalam

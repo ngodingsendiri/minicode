@@ -48,6 +48,7 @@ export function clearTransientOverlay(prevRows: number): number {
       process.stdout.write(CLEAR)
       process.stdout.write("\x1b[1M")
     }
+    process.stdout.write("\x1b[1A")
   }
   process.stdout.write(SYNC_END)
   return 0

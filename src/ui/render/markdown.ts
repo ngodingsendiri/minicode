@@ -31,13 +31,32 @@ export function decorateMarkdown(text: string): string {
   const out: string[] = []
   let inFence = false
   let fenceLang = ""
+  let fenceChar = ""
+  let fenceLen = 0
 
   for (const line of lines) {
-    // Code fence handling
+    // Code fence handling — catat char & panjang pembuka, hanya tutup bila cocok.
     const fence = /^\s*(```+|~~~+)([A-Za-z0-9_+.-]*)\s*$/.exec(line)
     if (fence) {
-      inFence = !inFence
-      fenceLang = inFence ? (fence[2] ?? "") : ""
+      const char = fence[1]![0]!
+      const len = fence[1]!.length
+      if (!inFence) {
+        inFence = true
+        fenceChar = char
+        fenceLen = len
+        fenceLang = fence[2] ?? ""
+      } else {
+        if (char === fenceChar && len >= fenceLen) {
+          inFence = false
+          fenceChar = ""
+          fenceLen = 0
+          fenceLang = ""
+        } else {
+          // fence di dalam fence dengan char/len berbeda → anggap konten
+          out.push(`  ${fenceLang ? highlightCode(line, fenceLang) : line}`)
+          continue
+        }
+      }
       continue
     }
 

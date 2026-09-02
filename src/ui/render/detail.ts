@@ -2,13 +2,21 @@
 //
 // Posisi MiniCode = agentic Unix shell: tool call transparan di aliran output,
 // jadi DEFAULT adalah expanded. `MINICODE_COMPACT=1` atau `/compact` memilih
-// ringkas. Pola identik dengan reasoning.ts: env dibaca saat import dan
-// disinkronkan balik saat toggle supaya sub-proses (respawn /resume) mewarisi.
-export const detail = { compact: process.env.MINICODE_COMPACT === "1" }
+// ringkas. Getter — jangan simpan `detail.compact` ke const di module scope;
+// baca saat pakai supaya perubahan env (mis. /compact) langsung berlaku.
+export const detail = {
+  get compact(): boolean {
+    return process.env.MINICODE_COMPACT === "1"
+  },
+  set compact(v: boolean) {
+    process.env.MINICODE_COMPACT = v ? "1" : "0"
+  },
+}
 
 /** Set eksplisit (on/off) atau toggle bila `next` tidak diberikan. */
 export function setCompactMode(next?: boolean): boolean {
-  detail.compact = next ?? !detail.compact
-  process.env.MINICODE_COMPACT = detail.compact ? "1" : "0"
-  return detail.compact
+  const cur = detail.compact
+  const nextVal = next ?? !cur
+  detail.compact = nextVal
+  return nextVal
 }

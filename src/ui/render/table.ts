@@ -1,4 +1,5 @@
-import { c } from "./theme.ts"
+import { sanitizeAnsiLine } from "./sanitize.ts"
+import { c, getTerminalWidth } from "./theme.ts"
 import { displayWidth, padToWidth, truncateToWidth } from "./width.ts"
 
 export interface ColumnDef {
@@ -22,8 +23,10 @@ const AUTO_MAX = 50
  */
 function sanitizeCell(v: unknown): string {
   const s = v == null ? "" : String(v)
-  // Sekuens ANSI (untuk warna) dipertahankan; hanya kontrol tata letak dibuang.
-  return s.replace(/\r\n|\r|\n/g, " ").replace(/[\t\v\f\u0085\u2028\u2029]/g, " ")
+  // Sekuens non-SGR dibuang, SGR dipertahankan — sel tabel bisa berisi data tidak terpercaya.
+  return sanitizeAnsiLine(s)
+    .replace(/[\t\v\f\u0085\u2028\u2029]/g, " ")
+    .replace(/\r/g, " ")
 }
 
 // Table minimal - kolom aligned + separator header, tanpa border.
@@ -37,6 +40,7 @@ export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[
   // (CJK/emoji dihitung dua). Sebelumnya ia hanya MINIMUM dan diukur per
   // karakter, sehingga satu nilai panjang mendorong kolom melebar dan header
   // berhenti berbaris dengan body.
+  const termW = getTerminalWidth()
   const widths = columns.map((col, i) => {
     // Nilai negatif/NaN dari pemanggil tidak boleh membuat "".repeat() melempar.
     if (col.width != null && Number.isFinite(col.width)) return Math.max(0, Math.trunc(col.width))
@@ -45,7 +49,9 @@ export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[
       const w = displayWidth(row[i] ?? "")
       if (w > max) max = w
     }
-    return Math.min(max, AUTO_MAX)
+    // AUTO_MAX dihormati, tapi di terminal sempit kurangi agar tidak overflow.
+    const budget = Math.max(10, Math.floor((termW - columns.length * 3) / columns.length))
+    return Math.min(max, Math.min(AUTO_MAX, budget))
   })
 
   const cell = (text: string, width: number, align: "left" | "right" = "left"): string =>

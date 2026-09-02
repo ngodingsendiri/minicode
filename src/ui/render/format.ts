@@ -2,6 +2,7 @@
 // "apa yang ditampilkan" konsisten antar konsumen (tidak dobel logika).
 import type { UiToolCallRef } from "../contract.ts"
 import { formatFriendly, friendlyFromCategory } from "./errors.ts"
+import { formatUsd } from "./money.ts"
 
 export function formatArgsPreview(args: unknown): string {
   try {
@@ -49,5 +50,5 @@ export function formatProviderError(e: { category?: string; message?: string }):
 }
 
 export function formatCost(cost?: number): string {
-  return cost != null ? `$${cost.toFixed(4)}` : "N/A"
+  return cost != null ? formatUsd(cost) : "N/A"
 }

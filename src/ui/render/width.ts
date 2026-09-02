@@ -124,6 +124,14 @@ export function escapeLength(s: string, i: number): number {
     if (st !== -1) return st - i + 2
     return s.length - i
   }
+  if (next === "P" || next === "_" || next === "^" || next === "X") {
+    // DCS/APC/PM/SOS: ESC P/_/^/X ... BEL | ESC \
+    const bel = s.indexOf("\u0007", i + 2)
+    const st = s.indexOf("\x1b\\", i + 2)
+    if (bel !== -1 && (st === -1 || bel < st)) return bel - i + 1
+    if (st !== -1) return st - i + 2
+    return s.length - i
+  }
   // ESC ( B, ESC ) 0, ESC # 8 — charset & DEC line size, 3 byte.
   if (next === "(" || next === ")" || next === "#") return 3
   // ESC diikuti byte final tunggal (ESC 7, ESC =, ESC M, …) = 2 byte.

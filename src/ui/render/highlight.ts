@@ -256,7 +256,7 @@ export function formatCodeBlock(code: string, lang: string = "", maxLines?: numb
   const bottomBorder = c.muted("──")
 
   const formattedLines = displayLines.map((l, i) => {
-    const lineNum = c.muted(String(i + 1).padStart(3, " ") + "  ")
+    const lineNum = c.muted(String(i + 1).padStart(4, " ") + " ")
     return `${lineNum}${l}`
   })
 

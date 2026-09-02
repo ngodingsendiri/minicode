@@ -94,7 +94,8 @@ export function formatWrapped(text: string, width: number, justify = true): stri
   const lines = wrapped.split("\n")
   return lines
     .map((line, i) => {
-      if (/^\s*(```|#|[-*] |>\s)/.test(line) || /^\s*$/.test(line)) return line
+      const plain = stripAnsi(line)
+      if (/^\s*(```|#|[-*] |>\s)/.test(plain) || /^\s*$/.test(plain)) return line
       // Baris terakhir, atau baris tepat sebelum baris kosong (= akhir paragraf).
       const isParagraphEnd = i === lines.length - 1 || /^\s*$/.test(lines[i + 1] ?? "")
       if (isParagraphEnd) return line

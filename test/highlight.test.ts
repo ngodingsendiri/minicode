@@ -226,8 +226,8 @@ describe("formatCodeBlock", () => {
     const out = formatCodeBlock("const a = 1\nconst b = 2", "TypeScript")
     const plain = stripAnsi(out)
     expect(plain).toContain("typescript")
-    expect(plain).toContain("  1  const a = 1")
-    expect(plain).toContain("  2  const b = 2")
+    expect(plain).toContain("   1 const a = 1")
+    expect(plain).toContain("   2 const b = 2")
   })
 
   test("tanpa bahasa memakai label 'code'", () => {
@@ -240,8 +240,8 @@ describe("formatCodeBlock", () => {
     expect(plain).toContain("... (7 more lines)")
     expect(plain).not.toContain("baris 9")
     // 3 baris kode + 1 baris keterangan, masing-masing bernomor.
-    expect(plain).toContain("  4  ")
-    expect(plain).not.toContain("  5  ")
+    expect(plain).toContain("   4 ")
+    expect(plain).not.toContain("   5 ")
   })
 
   test("maxLines lebih besar dari jumlah baris tidak memotong", () => {
@@ -252,9 +252,9 @@ describe("formatCodeBlock", () => {
   test("nomor baris rata kanan sampai 3 digit", () => {
     const code = Array.from({ length: 100 }, () => "x").join("\n")
     const plain = stripAnsi(formatCodeBlock(code, "ts"))
-    expect(plain).toContain("  1  x")
-    expect(plain).toContain(" 10  x")
-    expect(plain).toContain("100  x")
+    expect(plain).toContain("   1 x")
+    expect(plain).toContain("  10 x")
+    expect(plain).toContain(" 100 x")
   })
 })
 
@@ -334,7 +334,7 @@ describe("highlight: masukan adversarial", () => {
     for (const lang of languages) {
       expect(highlightCode(code, lang)).toBe(code)
     }
-    expect(stripAnsi(formatCodeBlock("a\nb", "ts"))).toContain("  1  a")
+    expect(stripAnsi(formatCodeBlock("a\nb", "ts"))).toContain("   1 a")
     delete process.env.NO_COLOR
   })
 
