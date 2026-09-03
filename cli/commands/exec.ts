@@ -19,7 +19,7 @@ export async function handleExec(
   // benar mengirim "tes gorouter 60000" ke model, dan model membalas dengan
   // menebak-nebak soal "gorouter" dan "60000".
   const prompt = promptFromArgs(args.slice(1)) || (rawGetArg(args, "--prompt") ?? "")
-  const jsonMode = args.includes("--json") || args.includes("--output-format=json")
+  const jsonMode = args.includes("--json") || rawGetArg(args, "--output-format") === "json"
   const cwdRaw = getArg("--cwd")
   const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
   const modelOverride = getArg("--model")

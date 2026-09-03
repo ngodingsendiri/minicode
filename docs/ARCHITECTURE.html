@@ -468,7 +468,7 @@
 
   <table class="matrix">
     <tr><th>pengimpor ↓ · mengimpor →</th><th><code>cli/</code></th><th><code>src/</code> non-ui</th><th><code>src/ui/</code></th><th><code>#minicore</code></th></tr>
-    <tr><td><b><code>cli/</code></b> <span class="chip c1">L1</span></td><td class="na">—</td><td class="ok">boleh</td><td class="ok">boleh</td><td class="ok">hanya tipe<small>cli/setup.ts:5</small></td></tr>
+    <tr><td><b><code>cli/</code></b> <span class="chip c1">L1</span></td><td class="na">—</td><td class="ok">boleh</td><td class="ok">boleh</td><td class="ok">hanya tipe<small>cli/setup.ts</small></td></tr>
     <tr><td><b><code>src/</code> non-ui</b> <span class="chip c2">L2</span></td><td class="no">DILARANG</td><td class="ok">boleh</td><td class="no">DILARANG</td><td class="ok">boleh</td></tr>
     <tr><td><b><code>src/ui/</code></b> <span class="chip c1">L1</span></td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="ok">internal</td><td class="no">DILARANG</td></tr>
     <tr><td><b><code>vendor/minicore/</code></b> <span class="chip c3">L3</span></td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="ok">internal</td></tr>
@@ -813,31 +813,31 @@ export const kalkulatorTool: Tool = {
   <p class="lede">22 variabel <code>MINICODE_*</code> + <code>NO_COLOR</code> yang benar-benar dibaca kode, dengan titik bacanya. Nilai contoh bersifat ilustratif; sumber kebenaran tetap file yang tercantum.</p>  <div class="tscroll">
   <table>
     <tr><th>Variabel</th><th>Fungsi</th><th>Dibaca di</th></tr>
-    <tr><td>MINICODE_TIMEOUT_MS</td><td>timeout turn: <small>--timeout &gt; env &gt; 15 menit; 0 = tanpa batas</small></td><td>cli/setup.ts:100</td></tr>
-    <tr><td>MINICODE_VERIFY_CMD</td><td>perintah verifikasi <code>--verify</code>: <small>env &gt; config &gt; deteksi otomatis</small></td><td>cli/setup.ts:218</td></tr>
-    <tr><td>MINICODE_PLAN</td><td><code>1</code> ≡ flag <code>--plan</code></td><td>cli/index.ts:121</td></tr>
-    <tr><td>MINICODE_PERMISSION</td><td><code>allowlist</code> → mode izin allowlist</td><td>cli/index.ts:122</td></tr>
-    <tr><td>MINICODE_BASH_ALLOWLIST</td><td>daftar allow bash dari env (git/bun/npm aman)</td><td>src/policy/permission.ts:137</td></tr>
-    <tr><td>MINICODE_SANDBOX</td><td>mode sandbox: <code>docker</code> / <code>os</code> / <code>none</code></td><td>cli/index.ts:143 · cli/commands/exec.ts:36</td></tr>
-    <tr><td>MINICODE_SANDBOX_IMAGE</td><td>image docker (default <code>node:22-alpine</code>)</td><td>src/sandbox/docker.ts:49</td></tr>
-    <tr><td>MINICODE_SANDBOX_MEMORY</td><td>batas memori container (default <code>512m</code>)</td><td>src/sandbox/docker.ts:71</td></tr>
-    <tr><td>MINICODE_PROVIDER_ORDER</td><td>reorder provider, mis. <code>openai,anthropic,deepseek</code>, tanpa edit config</td><td>src/app/provider-layer.ts:36</td></tr>
-    <tr><td>MINICODE_EMBED_MODEL</td><td>model embedding (default <code>text-embedding-3-small</code>)</td><td>src/memory/vector.ts:84</td></tr>
-    <tr><td>MINICODE_GREP_ENGINE</td><td><code>js</code> → paksa engine JS, lewati ripgrep</td><td>src/tools/grep.ts:230</td></tr>
-    <tr><td>MINICODE_REPOMAP</td><td><code>regex</code> → skip LSP, repo-map pakai regex (lebih cepat)</td><td>src/repo/repomap.ts:406</td></tr>
-    <tr><td>MINICODE_SESSION_TTL_DAYS</td><td>retensi sesi (default 30; <code>0</code> = simpan selamanya)</td><td>src/session/persistence.ts:190</td></tr>
-    <tr><td>MINICODE_TELEMETRY</td><td><code>0</code>/<code>false</code>/<code>off</code> → tidak menulis trace sama sekali</td><td>src/telemetry/trace.ts:24</td></tr>
-    <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts:18</td></tr>
-    <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts:32</td></tr>
-    <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts:7</td></tr>
-    <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts:93</td></tr>
-    <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (juga ditulis ulang oleh /thinking)</td><td>src/ui/render/reasoning.ts:7</td></tr>
-    <tr><td>MINICODE_THINKING</td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td>vendor/minicore/src/providers/openai-compat.ts:63</td></tr>
-    <tr><td>MINICODE_HOOKS</td><td><code>1</code> → opt-in jalankan hook eksternal</td><td>src/hooks/run.ts:33</td></tr>
-    <tr><td>MINICODE_LIVE</td><td><code>1</code> → izinkan test live ber-secrets (di-set oleh <code>bun run test:live</code>)</td><td>test/extreme-live.test.ts:8</td></tr>
+    <tr><td>MINICODE_TIMEOUT_MS</td><td>timeout turn: <small>--timeout &gt; env &gt; 15 menit; 0 = tanpa batas</small></td><td>cli/setup.ts</td></tr>
+    <tr><td>MINICODE_VERIFY_CMD</td><td>perintah verifikasi <code>--verify</code>: <small>env &gt; config &gt; deteksi otomatis</small></td><td>cli/setup.ts</td></tr>
+    <tr><td>MINICODE_PLAN</td><td><code>1</code> ≡ flag <code>--plan</code></td><td>cli/index.ts</td></tr>
+    <tr><td>MINICODE_PERMISSION</td><td><code>allowlist</code> → mode izin allowlist</td><td>cli/index.ts</td></tr>
+    <tr><td>MINICODE_BASH_ALLOWLIST</td><td>daftar allow bash dari env (git/bun/npm aman)</td><td>src/policy/permission.ts</td></tr>
+    <tr><td>MINICODE_SANDBOX</td><td>mode sandbox: <code>docker</code> / <code>os</code> / <code>none</code></td><td>cli/index.ts · cli/commands/exec.ts</td></tr>
+    <tr><td>MINICODE_SANDBOX_IMAGE</td><td>image docker (default <code>node:22-alpine</code>)</td><td>src/sandbox/docker.ts</td></tr>
+    <tr><td>MINICODE_SANDBOX_MEMORY</td><td>batas memori container (default <code>512m</code>)</td><td>src/sandbox/docker.ts</td></tr>
+    <tr><td>MINICODE_PROVIDER_ORDER</td><td>reorder provider, mis. <code>openai,anthropic,deepseek</code>, tanpa edit config</td><td>src/app/provider-layer.ts</td></tr>
+    <tr><td>MINICODE_EMBED_MODEL</td><td>model embedding (default <code>text-embedding-3-small</code>)</td><td>src/memory/vector.ts</td></tr>
+    <tr><td>MINICODE_GREP_ENGINE</td><td><code>js</code> → paksa engine JS, lewati ripgrep</td><td>src/tools/grep.ts</td></tr>
+    <tr><td>MINICODE_REPOMAP</td><td><code>regex</code> → skip LSP, repo-map pakai regex (lebih cepat)</td><td>src/repo/repomap.ts</td></tr>
+    <tr><td>MINICODE_SESSION_TTL_DAYS</td><td>retensi sesi (default 30; <code>0</code> = simpan selamanya)</td><td>src/session/persistence.ts</td></tr>
+    <tr><td>MINICODE_TELEMETRY</td><td><code>0</code>/<code>false</code>/<code>off</code> → tidak menulis trace sama sekali</td><td>src/telemetry/trace.ts</td></tr>
+    <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts</td></tr>
+    <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts</td></tr>
+    <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts</td></tr>
+    <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts</td></tr>
+    <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (juga ditulis ulang oleh /thinking)</td><td>src/ui/render/reasoning.ts</td></tr>
+    <tr><td>MINICODE_THINKING</td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td>vendor/minicore/src/providers/openai-compat.ts</td></tr>
+    <tr><td>MINICODE_HOOKS</td><td><code>1</code> → opt-in jalankan hook eksternal</td><td>src/hooks/run.ts</td></tr>
+    <tr><td>MINICODE_LIVE</td><td><code>1</code> → izinkan test live ber-secrets (di-set oleh <code>bun run test:live</code>)</td><td>test/extreme-live.test.ts</td></tr>
   </table>
   </div>
-  <p class="lede" style="margin-top:8px">Variabel internal (di-set aplikasi, bukan untuk dikonfigurasikan): <code>MINICODE_HOOK_CTX</code> — payload JSON ke skrip hook (src/hooks/run.ts:38); <code>MINICODE_RESUME_NEW</code> — tanda sesi resume hasil spawn (cli/commands.ts:223).</p>
+  <p class="lede" style="margin-top:8px">Variabel internal (di-set aplikasi, bukan untuk dikonfigurasikan): <code>MINICODE_HOOK_CTX</code> — payload JSON ke skrip hook (src/hooks/run.ts); <code>MINICODE_RESUME_NEW</code> — tanda sesi resume hasil spawn (cli/commands.ts).</p>
 
   <h2 style="margin-top:26px"><span class="hn">›</span> Perintah developer</h2>
 <pre class="kod">bun run dev              # jalankan dari sumber (bun cli/index.ts) — tanpa build step
