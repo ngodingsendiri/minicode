@@ -4,6 +4,8 @@ import type { ContextStore } from "#minicore/core/history.ts"
 import type { ModelProvider } from "#minicore/core/provider.ts"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { LIMITS } from "../constants.ts"
+import { isPrivateHostWithDns } from "../lib/net.ts"
+import { scrubSecrets } from "./scrub.ts"
 
 export interface LlmCompactionOptions {
   provider?: ModelProvider
@@ -114,11 +116,18 @@ export async function compactWithLlm(
   if (kept >= messages.length) return messages
   const prefix = messages.slice(0, messages.length - kept)
 
+  const baseUrl = opts.baseUrl ?? "https://api.deepseek.com/v1"
+  try {
+    const hostname = new URL(baseUrl).hostname
+    if (await isPrivateHostWithDns(hostname)) throw new Error(`private host rejected: ${hostname}`)
+  } catch (e) {
+    if ((e as Error).message.includes("private host")) throw e
+  }
   const provider =
     opts.provider ??
     (opts.apiKey
       ? createOpenAICompatProvider({
-          baseUrl: opts.baseUrl ?? "https://api.deepseek.com/v1",
+          baseUrl,
           apiKey: opts.apiKey!,
           models: [opts.model ?? "deepseek-chat"],
           defaultModel: opts.model ?? "deepseek-chat",
@@ -152,7 +161,8 @@ export async function compactWithLlm(
           : ""
     return `- tool(${m.name}): ${head(raw, 250)}`
   }
-  const summaryPrompt = `Summarize this conversation prefix for compaction. KEEP FACTS: exact file paths, function signatures, key code snippets, tool results (grep/bash/test output), error messages, and next steps. Include structured facts: files modified, functions added, test results. Be concise (max 600 tokens). Prefix:\n${prefix.map(lineFor).join("\n").slice(0, 6000)}`
+  const scrubbedPrefix = scrubSecrets(prefix.map(lineFor).join("\n").slice(0, 6000))
+  const summaryPrompt = `Summarize this conversation prefix for compaction. KEEP FACTS: exact file paths, function signatures, key code snippets, tool results (grep/bash/test output), error messages, and next steps. Include structured facts: files modified, functions added, test results. Be concise (max 600 tokens). Prefix:\n${scrubbedPrefix}`
 
   let summary = ""
   try {

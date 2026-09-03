@@ -9,14 +9,21 @@ import { join, resolve } from "node:path"
  * - selain itu → global ~/.minicode/<filename>
  */
 export function resolveDbPath(filename: string, cwd?: string): string {
-  const local = resolve(cwd ?? process.cwd(), ".minicode", filename)
-  const localDir = resolve(cwd ?? process.cwd(), ".minicode")
+  if (filename.includes("/") || filename.includes("\\") || filename.includes(".."))
+    throw new Error(`invalid filename: ${filename}`)
+  const baseCwd = cwd ?? process.cwd()
+  const local = resolve(baseCwd, ".minicode", filename)
+  const localDir = resolve(baseCwd, ".minicode")
   if (existsSync(local)) return local
   if (existsSync(localDir)) {
-    mkdirSync(localDir, { recursive: true })
+    try {
+      mkdirSync(localDir, { recursive: true, mode: 0o700 })
+    } catch {}
     return local
   }
   const global = join(homedir(), ".minicode", filename)
-  mkdirSync(join(global, ".."), { recursive: true })
+  try {
+    mkdirSync(join(global, ".."), { recursive: true, mode: 0o700 })
+  } catch {}
   return global
 }

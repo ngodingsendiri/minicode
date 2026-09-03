@@ -15,6 +15,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
+import { isPrivateHostWithDns } from "../lib/net.ts"
 
 export interface ModelPrice {
   /** USD per 1 juta token. */
@@ -210,13 +211,28 @@ export interface SyncResult {
  * HANYA dipanggil dari perintah eksplisit — bukan dari jalur run biasa.
  */
 export async function syncPricing(url: string = MODELS_DEV_URL): Promise<SyncResult> {
+  try {
+    const hostname = new URL(url).hostname
+    if (await isPrivateHostWithDns(hostname)) throw new Error(`private host rejected: ${hostname}`)
+  } catch (e) {
+    if ((e as Error).message.includes("private host")) throw e
+  }
   const res = await fetch(url, {
     signal: AbortSignal.timeout(LIMITS.PRICING_FETCH_TIMEOUT_MS * 4),
     headers: { accept: "application/json" },
-    redirect: "follow",
+    redirect: "manual",
   })
+  if (res.status >= 300 && res.status < 400)
+    throw new Error(`models.dev → redirect ${res.status} not followed`)
   if (!res.ok) throw new Error(`models.dev → HTTP ${res.status}`)
-  const text = await res.text()
+  // Hard-cap agar payload spoof tidak OOM (asli 4.4 MB, cap 2 MB cukup)
+  const text = await res
+    .text()
+    .then((t) =>
+      t.length > LIMITS.WEB_FETCH_BODY_HARD_CAP_CHARS
+        ? t.slice(0, LIMITS.WEB_FETCH_BODY_HARD_CAP_CHARS)
+        : t,
+    )
   let payload: ModelsDevPayload
   try {
     payload = JSON.parse(text) as ModelsDevPayload

@@ -11,9 +11,9 @@ import { dirname } from "node:path"
  *   MOVEFILE_REPLACE_EXISTING sehingga menimpa target lama.
  */
 export async function atomicWriteText(path: string, data: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true }).catch(() => {})
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 }).catch(() => {})
   for (let attempt = 0; attempt < 2; attempt++) {
-    const entropy = attempt === 0 ? 8 : 16
+    const entropy = 16
     const tmp = `${path}.tmp.${process.pid}.${randomUUID().slice(0, entropy)}`
     let fh: FileHandle | undefined
     try {
@@ -24,6 +24,7 @@ export async function atomicWriteText(path: string, data: string): Promise<void>
     }
     try {
       await fh.writeFile(data, "utf8")
+      await fh.sync().catch(() => {})
       await chmod(tmp, 0o600).catch(() => {})
       // Windows: rename menimpa target yang baru saja ditulis penulis lain
       // bisa EPERM/EBUSY/EACCES sesaat (lock AV / replace window) → backoff.

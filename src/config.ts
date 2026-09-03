@@ -3,6 +3,29 @@ import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { atomicWriteText } from "./lib/atomic-write.ts"
 
+// In-process lock per path untuk mencegah lost-update saat Pool(3) sub-agent
+// menulis config yang sama secara paralel. Untuk lintas proses, atomicWriteText
+// sudah cegah torn write, tapi tanpa CAS tetap last-wins; lock ini menutup
+// kasus 99% (same-process) dengan biaya nol.
+const configLocks = new Map<string, Promise<void>>()
+
+async function withConfigLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = configLocks.get(path) ?? Promise.resolve()
+  let release!: () => void
+  const next = new Promise<void>((res) => (release = res))
+  configLocks.set(
+    path,
+    prev.then(() => next),
+  )
+  await prev
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (configLocks.get(path) === next) configLocks.delete(path)
+  }
+}
+
 export interface ProviderEntry {
   id: string
   baseUrl: string
@@ -149,25 +172,58 @@ export async function saveMcpServer(
   if (!entry.id || (!entry.command && !entry.url))
     throw new Error("mcp entry needs an id + (command for stdio or url for http)")
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  cfg.mcpServers ??= []
-  const idx = cfg.mcpServers.findIndex((m) => m.id === entry.id)
-  if (idx >= 0) cfg.mcpServers[idx] = entry
-  else cfg.mcpServers.push(entry)
-  await writeConfigAtomic(path, cfg)
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    let raw = ""
+    try {
+      raw = await readFile(path, "utf8")
+      cfg = normalizeConfig(JSON.parse(raw))
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+        cfg = { providers: [] }
+      } else if ((e as Error).message?.includes("config corrupt")) {
+        throw e
+      } else if ((e as NodeJS.ErrnoException).code) {
+        throw e
+      } else {
+        cfg = { providers: [] }
+      }
+    }
+    cfg.mcpServers ??= []
+    const idx = cfg.mcpServers.findIndex((m) => m.id === entry.id)
+    if (idx >= 0) cfg.mcpServers[idx] = entry
+    else cfg.mcpServers.push(entry)
+    await writeConfigAtomic(path, cfg)
+  })
 }
 
 export async function removeMcpServer(id: string, opts: { global?: boolean; cwd?: string } = {}) {
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  cfg.mcpServers = (cfg.mcpServers ?? []).filter((m) => m.id !== id)
-  await writeConfigAtomic(path, cfg)
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    let raw = ""
+    try {
+      raw = await readFile(path, "utf8")
+      cfg = normalizeConfig(JSON.parse(raw))
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") cfg = { providers: [] }
+      else if ((e as Error).message?.includes("config corrupt")) throw e
+      else if ((e as NodeJS.ErrnoException).code) throw e
+      else cfg = { providers: [] }
+    }
+    cfg.mcpServers = (cfg.mcpServers ?? []).filter((m) => m.id !== id)
+    await writeConfigAtomic(path, cfg)
+  })
 }
 
 function normalizeExt(ext: string): string {
@@ -180,24 +236,52 @@ export async function saveLspServer(
 ) {
   if (!entry.ext || !entry.command) throw new Error("lsp ext/command required")
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  cfg.lspServers ??= []
-  const ext = normalizeExt(entry.ext)
-  const idx = cfg.lspServers.findIndex((l) => l.ext.toLowerCase() === ext)
-  if (idx >= 0) cfg.lspServers[idx] = { ...entry, ext }
-  else cfg.lspServers.push({ ...entry, ext })
-  await writeConfigAtomic(path, cfg)
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    let raw = ""
+    try {
+      raw = await readFile(path, "utf8")
+      cfg = normalizeConfig(JSON.parse(raw))
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") cfg = { providers: [] }
+      else if ((e as Error).message?.includes("config corrupt")) throw e
+      else if ((e as NodeJS.ErrnoException).code) throw e
+      else cfg = { providers: [] }
+    }
+    cfg.lspServers ??= []
+    const ext = normalizeExt(entry.ext)
+    const idx = cfg.lspServers.findIndex((l) => l.ext.toLowerCase() === ext)
+    if (idx >= 0) cfg.lspServers[idx] = { ...entry, ext }
+    else cfg.lspServers.push({ ...entry, ext })
+    await writeConfigAtomic(path, cfg)
+  })
 }
 
 export async function removeLspServer(ext: string, opts: { global?: boolean; cwd?: string } = {}) {
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  cfg.lspServers = (cfg.lspServers ?? []).filter((l) => l.ext.toLowerCase() !== normalizeExt(ext))
-  await writeConfigAtomic(path, cfg)
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    let raw = ""
+    try {
+      raw = await readFile(path, "utf8")
+      cfg = normalizeConfig(JSON.parse(raw))
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") cfg = { providers: [] }
+      else if ((e as Error).message?.includes("config corrupt")) throw e
+      else if ((e as NodeJS.ErrnoException).code) throw e
+      else cfg = { providers: [] }
+    }
+    cfg.lspServers = (cfg.lspServers ?? []).filter((l) => l.ext.toLowerCase() !== normalizeExt(ext))
+    await writeConfigAtomic(path, cfg)
+  })
 }

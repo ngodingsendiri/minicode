@@ -3,6 +3,8 @@ import { Buffer } from "node:buffer"
 import { randomUUID } from "node:crypto"
 import { LIMITS } from "../constants.ts"
 import { resolveDbPath } from "../lib/db-path.ts"
+import { isPrivateHostWithDns } from "../lib/net.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
 
 const dbPath = (cwd?: string) => resolveDbPath("vector.db", cwd)
 
@@ -71,6 +73,13 @@ async function embedTexts(
   model?: string,
 ): Promise<number[][] | null> {
   if (!apiKey || !baseUrl) return null
+  try {
+    const hostname = new URL(baseUrl).hostname
+    if (await isPrivateHostWithDns(hostname)) {
+      process.stderr.write(`[vector] private host rejected: ${hostname}\n`)
+      return null
+    }
+  } catch {}
   const urls = [
     `${baseUrl.replace(/\/+$/, "")}/embeddings`,
     `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`,
@@ -148,16 +157,22 @@ export async function addMemory(
   text: string,
   opts: { baseUrl?: string; apiKey?: string; cwd?: string } = {},
 ) {
-  const db = open(opts.cwd)
-  const id = randomUUID()
+  const clean = scrubSecrets(text)
   let embedding: Buffer | null = null
   if (opts.baseUrl && opts.apiKey) {
-    const vecs = await embedTexts(opts.baseUrl, opts.apiKey, [text])
+    const vecs = await embedTexts(opts.baseUrl, opts.apiKey, [clean])
     if (vecs && vecs[0]) embedding = toBlob(vecs[0])
   }
-  // fallback: store null embedding, will use keyword only
+  const id = randomUUID()
+  const db = open(opts.cwd)
+  // chmod 600 untuk vector.db agar secret tidak world-readable
+  try {
+    const { chmodSync } = require("node:fs") as typeof import("node:fs")
+    const p = dbPath(opts.cwd)
+    chmodSync(p, 0o600)
+  } catch {}
   const ins = db.prepare("INSERT INTO memory (id, text, embedding, created_at) VALUES (?, ?, ?, ?)")
-  withBusyRetry(() => ins.run(id, text, embedding, Date.now()))
+  withBusyRetry(() => ins.run(id, clean, embedding, Date.now()))
   db.close()
   return id
 }

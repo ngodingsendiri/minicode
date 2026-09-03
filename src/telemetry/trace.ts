@@ -31,10 +31,15 @@ export async function writeTrace(cwd: string | undefined, trace: RunTrace): Prom
   if (!telemetryEnabled()) return
   try {
     const dir = resolve(cwd ?? ".", ".minicode")
-    await mkdir(dir, { recursive: true })
+    await mkdir(dir, { recursive: true, mode: 0o700 }).catch(() => {})
     const file = join(dir, "traces.jsonl")
-    // prompt di-redact sebelum persist — bisa berisi secret/PII dari user
-    const safe: RunTrace = { ...trace, prompt: scrubSecrets(trace.prompt) }
+    // prompt/error/model di-redact sebelum persist — bisa berisi secret/PII
+    const safe: RunTrace = {
+      ...trace,
+      prompt: scrubSecrets(trace.prompt.slice(0, 2000)),
+      ...(trace.error ? { error: scrubSecrets(trace.error.slice(0, 1000)) } : {}),
+      ...(trace.model ? { model: scrubSecrets(trace.model) } : {}),
+    }
     await appendFile(file, `${JSON.stringify(safe)}\n`, "utf8")
     await chmod(file, 0o600).catch(() => {})
     // Rotate: keep TRACE_MAX_LINES baris terakhir (tmp+rename agar anti-korupsi)

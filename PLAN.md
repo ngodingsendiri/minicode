@@ -233,6 +233,28 @@ OpenAI Responses API dan Gemini native belum ada; Gemini masih lewat shim `/v1be
 
 ---
 
+## P4 — Lapisan Data: data-at-rest, consistency, SSRF, pricing
+
+Audit 2026-09-03 menemukan 3 Critical race `read→modify→write` tanpa lock, 2 High symlink-escape `mkdir`, `Atomics.wait` yang block event-loop, serta debt `scrub`/PII/`isPrivateHost` fail-open. Detail lengkap & langkah prioritas ada di `.verdent/plans/Data_Layer_Hardening-0903.plan.md` (ringkas di bawah).
+
+**P0 — Data loss & hang (sebelum rilis):**
+- **P0.1 Lock `config.json` & `manifest.json`:** `src/config.ts:145` `saveMcp/Lsp/Provider` dan `src/session/checkpoint.ts:65` read-modify-write tanpa `mtime` CAS → lost-update di `Pool(3)`. Tambah `proper-lockfile` atau `mtime` retry loop + `Pool(1)` per path. Test: 2 proses paralel `saveMcpServer` id berbeda → kedua harus ada.
+- **P0.2 Jangan overwrite corrupt:** `src/config.ts:154` `catch{}` reset → timpa file corrupt dengan `{providers:[]}`. Backup `.corrupt.<ts>` + throw, `loadCheckpointManifest:44` jangan `return empty` diam.
+- **P0.3 Leak handle:** `src/session/persistence.ts:217` `loadSession` tanpa `finally db.close()` → `database is locked` permanen di Windows. Bungkus `try/finally`, `Atomics.wait` → `Bun.sleep` async.
+
+**P1 — Keamanan data-at-rest & SSRF:**
+- **P1.1 `mkdir` 0o700 + symlink jail:** `atomic-write.ts:13`, `db-path.ts:11`, `persistence.ts:14` `mkdir({recursive:true})` ikut symlink → `realpath` + `isPathOutsideRoot` + `chmod 600` untuk `.db-wal/-shm`.
+- **P1.2 Scrub & PII:** `memory/files.ts:24`, `vector.ts:158`, `compaction.ts:55`, `trace.ts:36` `scrubSecrets` sebelum prompt/INSERT + `tildePath` untuk homedir + `chmod 600`.
+- **P1.3 SSRF lengkap:** `vector.ts:67`, `pricing.ts:212` `fetchWithSsrfGuard` (`isPrivateHostWithDns` + `redirect:"manual"` + cap 2M) + `compaction` jangan ke DeepSeek bila primary bukan DeepSeek.
+- **P1.4 `Atomics.wait` → `Bun.sleep`:** `persistence.ts:76` & `vector.ts:108` jadi async.
+- **P1.5 `usage.ts` multi-model:** `cacheIncluded` global + reprice seluruh history dengan model terakhir → akumulasi `session.cost += segmentCost` per-turn.
+
+**P2 — Reliability & perf (backlog):** `trace` rotate lock, `memory/files` truncate `atomicWriteText`, `net.ts:38` `isPrivateHostWithDns` opsi `strict`, `pricing` pre-sort, `vector` FTS5, `shadow-git` `inside` case-insensitive + tolak symlink.
+
+**Selesai bila:** `P0.1` race test hijau di `Pool(3)`, `P1.2` scrub test hijau, `isPrivateHost` fuzz `0x/0177` pass, `bun x tsc --noEmit && bun test && bun run gate:coverage && bun run gate:pack` hijau, `MIN_LINES/MIN_FUNCS` dinaikkan bila naik.
+
+---
+
 ## Yang sengaja TIDAK dikerjakan
 
 Agar cakupan jelas dan tidak melebar diam-diam:

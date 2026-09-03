@@ -68,6 +68,9 @@ export function createUsageCollector(bus: EventBus, model?: string) {
   // diganti objek baru oleh reset() supaya pemanggil yang menyimpan hasil lama
   // tidak ikut ternol.
   const session: Usage = emptyUsage()
+  // cacheIncluded bisa beda per provider (Anthropic true, OpenAI false).
+  // Simpan per-event, akumulasi cost per segmen, bukan recompute dari total
+  // dengan flag global yang terakhir.
   let cacheIncluded = true
   // Cost attribution: kalau router fallback menyubstitusi model, harga harus
   // dihitung pakai model EFEKTIF yang benar-benar dipakai.
@@ -76,6 +79,12 @@ export function createUsageCollector(bus: EventBus, model?: string) {
   // Model efektif terakhir yang dipakai dalam sesi — tetap dikenang setelah
   // reset() supaya biaya sesi tidak kehilangan basis harganya.
   let sessionModel: string | undefined
+  // Akumulasi biaya per segmen (bukan recompute total dengan model terakhir)
+  // untuk sesi multi-model: gpt-4o-mini → claude-opus tidak di-reprice 100×.
+  let turnCost = 0
+  let sessionCost = 0
+  let turnHasCost = false
+  let sessionHasCost = false
 
   bus.on("provider:extension", (e) => {
     if (e.kind === "effective-model") {
@@ -94,10 +103,20 @@ export function createUsageCollector(bus: EventBus, model?: string) {
         cacheWriteTokens?: number
         cacheIncluded?: boolean
       }
-      const input = d.inputTokens ?? 0
-      const output = d.outputTokens ?? 0
-      const cRead = d.cacheReadTokens ?? 0
-      const cWrite = d.cacheWriteTokens ?? 0
+      const input =
+        Number.isFinite(d.inputTokens) && (d.inputTokens ?? 0) >= 0 ? (d.inputTokens ?? 0) : 0
+      const output =
+        Number.isFinite(d.outputTokens) && (d.outputTokens ?? 0) >= 0 ? (d.outputTokens ?? 0) : 0
+      const cRead =
+        Number.isFinite(d.cacheReadTokens) && (d.cacheReadTokens ?? 0) >= 0
+          ? (d.cacheReadTokens ?? 0)
+          : 0
+      const cWrite =
+        Number.isFinite(d.cacheWriteTokens) && (d.cacheWriteTokens ?? 0) >= 0
+          ? (d.cacheWriteTokens ?? 0)
+          : 0
+      const segCacheIncluded =
+        typeof d.cacheIncluded === "boolean" ? d.cacheIncluded : cacheIncluded
       if (typeof d.cacheIncluded === "boolean") cacheIncluded = d.cacheIncluded
 
       for (const acc of [turn, session]) {
@@ -107,10 +126,25 @@ export function createUsageCollector(bus: EventBus, model?: string) {
         acc.cacheReadTokens = (acc.cacheReadTokens ?? 0) + cRead
         acc.cacheWriteTokens = (acc.cacheWriteTokens ?? 0) + cWrite
       }
+      // Akumulasi biaya per segmen dengan model efektif saat itu
+      const segModel = effectiveModel ?? model
+      if (segModel) {
+        const segCost = costFor(segModel, input, output, cRead, cWrite, segCacheIncluded)
+        if (segCost !== undefined) {
+          turnCost += segCost
+          sessionCost += segCost
+          turnHasCost = true
+          sessionHasCost = true
+        }
+      }
     }
   })
 
   const withCost = (base: Usage, priceModel?: string): Usage => {
+    // Akumulasi per-segmen akurat untuk multi-model; recompute hanya fallback
+    // bila belum ada segmen (mis. test tanpa bus) atau untuk override eksplisit.
+    if (base === turn && turnHasCost) return { ...base, cost: turnCost }
+    if (base === session && sessionHasCost) return { ...base, cost: sessionCost }
     if (!priceModel) return { ...base }
     return {
       ...base,
@@ -132,10 +166,12 @@ export function createUsageCollector(bus: EventBus, model?: string) {
      * Pemakaian KUMULATIF seluruh sesi — dipakai `/cost`, header REPL, dan
      * pemeriksaan `--budget`. Tidak terpengaruh reset().
      */
-    getSession: (m?: string) => withCost(session, effectiveModel ?? sessionModel ?? m ?? model),
+    getSession: (m?: string) => withCost(session, m ?? effectiveModel ?? sessionModel ?? model),
     modelUsed: () => ({ effective: effectiveModel, provider: effectiveProvider }),
     reset: () => {
       turn = emptyUsage()
+      turnCost = 0
+      turnHasCost = false
       effectiveModel = undefined
       effectiveProvider = undefined
     },

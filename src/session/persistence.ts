@@ -15,6 +15,12 @@ function open(cwd?: string): Database {
       `PRAGMA journal_mode=WAL; PRAGMA busy_timeout=${LIMITS.SQLITE_BUSY_TIMEOUT_MS}; PRAGMA synchronous=NORMAL; PRAGMA journal_size_limit=${LIMITS.SQLITE_WAL_SIZE_LIMIT_BYTES}; PRAGMA wal_autocheckpoint=${LIMITS.SQLITE_WAL_AUTOCHECKPOINT_PAGES};`,
     )
     initializedSessionPaths.add(p)
+    // File DB dibuat dengan 644 default; ubah ke 600 agar history tidak world-readable
+    try {
+      const { chmodSync } = require("node:fs") as typeof import("node:fs")
+      chmodSync(p, 0o600)
+      // WAL/SHM akan dibuat dengan mode yang sama pada checkpoint berikutnya
+    } catch {}
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, created_at INTEGER, cwd TEXT, system TEXT);
@@ -219,43 +225,48 @@ export function loadSession(
   cwd?: string,
 ): { messages: unknown[]; system?: string; cwd?: string } | null {
   const db = open(cwd)
-  const sess = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
-    system: string
-    cwd: string
-  } | null
-  if (!sess) {
+  try {
+    const sess = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
+      system: string
+      cwd: string
+    } | null
+    if (!sess) {
+      return null
+    }
+    const rows = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY seq").all(id) as {
+      role: string
+      content: string
+      toolCalls: string
+      toolCallId: string | null
+      name: string | null
+    }[]
+    const messages = rows.map((r) => ({
+      role: r.role,
+      content: parseContent(r.content),
+      ...(r.toolCalls && r.toolCalls !== "null" ? { toolCalls: parseContent(r.toolCalls) } : {}),
+      ...(r.toolCallId ? { toolCallId: r.toolCallId } : {}),
+      ...(r.name ? { name: r.name } : {}),
+    }))
+    return { messages, system: sess.system, cwd: sess.cwd }
+  } finally {
     db.close()
-    return null
   }
-  const rows = db.prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY seq").all(id) as {
-    role: string
-    content: string
-    toolCalls: string
-    toolCallId: string | null
-    name: string | null
-  }[]
-  const messages = rows.map((r) => ({
-    role: r.role,
-    content: parseContent(r.content),
-    ...(r.toolCalls && r.toolCalls !== "null" ? { toolCalls: parseContent(r.toolCalls) } : {}),
-    ...(r.toolCallId ? { toolCallId: r.toolCallId } : {}),
-    ...(r.name ? { name: r.name } : {}),
-  }))
-  db.close()
-  return { messages, system: sess.system, cwd: sess.cwd }
 }
 
 export function listSessions(
   cwd?: string,
 ): { id: string; created_at: number; updated_at?: number; cwd: string }[] {
   const db = open(cwd)
-  const rows = db
-    .prepare(
-      "SELECT id, created_at, updated_at, cwd FROM sessions ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 50",
-    )
-    .all() as { id: string; created_at: number; updated_at: number | null; cwd: string }[]
-  db.close()
-  return rows.map((r) => ({ ...r, updated_at: r.updated_at ?? r.created_at }))
+  try {
+    const rows = db
+      .prepare(
+        "SELECT id, created_at, updated_at, cwd FROM sessions ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 50",
+      )
+      .all() as { id: string; created_at: number; updated_at: number | null; cwd: string }[]
+    return rows.map((r) => ({ ...r, updated_at: r.updated_at ?? r.created_at }))
+  } finally {
+    db.close()
+  }
 }
 
 export function deleteSession(id: string, cwd?: string) {

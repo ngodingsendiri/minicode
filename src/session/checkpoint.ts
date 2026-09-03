@@ -7,6 +7,36 @@ import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
 import { restoreTree, snapshotTree } from "./shadow-git.ts"
 
+function sanitizeSessionId(id: string): string {
+  return (
+    id
+      .replace(/[^A-Za-z0-9._-]/g, "-")
+      .replace(/\.\.+/g, "-")
+      .slice(0, 60) || "default"
+  )
+}
+
+// In-process lock per manifest path untuk mencegah lost-update checkpoint
+// saat turn paralel (mis. Pool(3) sub-agent).
+const checkpointLocks = new Map<string, Promise<void>>()
+
+async function withCheckpointLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = checkpointLocks.get(path) ?? Promise.resolve()
+  let release!: () => void
+  const next = new Promise<void>((res) => (release = res))
+  checkpointLocks.set(
+    path,
+    prev.then(() => next),
+  )
+  await prev
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (checkpointLocks.get(path) === next) checkpointLocks.delete(path)
+  }
+}
+
 const MAX_CHECKPOINTS = 20
 
 export interface FileSnapshot {
@@ -34,7 +64,7 @@ export interface CheckpointManifest {
 }
 
 function getCheckpointDir(sessionId: string, cwd: string = process.cwd()): string {
-  return resolve(cwd, ".minicode", "checkpoints", sessionId)
+  return resolve(cwd, ".minicode", "checkpoints", sanitizeSessionId(sessionId))
 }
 
 function getManifestPath(sessionId: string, cwd: string = process.cwd()): string {
@@ -48,17 +78,31 @@ export async function loadCheckpointManifest(
   const path = getManifestPath(sessionId, cwd)
   try {
     const raw = await readFile(path, "utf8")
-    return JSON.parse(raw) as CheckpointManifest
+    try {
+      return JSON.parse(raw) as CheckpointManifest
+    } catch (e) {
+      if (e instanceof SyntaxError) {
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        process.stderr.write(
+          `[warn] checkpoint: manifest corrupt — backup to ${backup}: ${(e as Error).message} — starting empty\n`,
+        )
+      }
+      throw e
+    }
   } catch (e) {
-    // manifest hilang = kondisi normal utk sesi baru; manifest KORUP = data
-    // riwayat checkpoint hilang diam-diam — minimal beri tahu user.
+    // manifest hilang = kondisi normal utk sesi baru; manifest KORUP sudah di-backup di atas
+    // lalu akan jatuh ke sini sebagai SyntaxError — tetap return empty tapi sudah backup
     const code = (e as NodeJS.ErrnoException).code
-    if (code !== "ENOENT") {
+    if (code !== "ENOENT" && !(e instanceof SyntaxError)) {
       process.stderr.write(
         `[warn] checkpoint: manifest unreadable (${(e as Error).message}) — starting empty\n`,
       )
     }
-    return { sessionId, currentIndex: -1, checkpoints: [] }
+    if (e instanceof SyntaxError) {
+      // already backed up, return empty
+    }
+    return { sessionId: sanitizeSessionId(sessionId), currentIndex: -1, checkpoints: [] }
   }
 }
 
@@ -162,26 +206,29 @@ export async function recordCheckpointFromTrees(
   // Tak ada perubahan → tak ada yang perlu di-undo. Ini juga mencegah manifest
   // dipenuhi checkpoint kosong dari turn yang hanya membaca.
   if (treeAfter && treeAfter === treeBefore) return null
-  const manifest = await loadCheckpointManifest(sessionId, cwd)
-  const cp: Checkpoint = {
-    id: `cp_${Date.now()}_${randomUUID().slice(0, 6)}`,
-    turn,
-    timestamp: new Date().toISOString(),
-    description,
-    snapshots: [],
-    treeBefore,
-    ...(treeAfter ? { treeAfter } : {}),
-  }
-  if (manifest.currentIndex < manifest.checkpoints.length - 1) {
-    manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1)
-  }
-  manifest.checkpoints.push(cp)
-  if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
-    manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS)
-  }
-  manifest.currentIndex = manifest.checkpoints.length - 1
-  await saveCheckpointManifest(manifest, cwd)
-  return cp
+  const manifestPath = getManifestPath(sessionId, cwd)
+  return withCheckpointLock(manifestPath, async () => {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    const cp: Checkpoint = {
+      id: `cp_${Date.now()}_${randomUUID().slice(0, 6)}`,
+      turn,
+      timestamp: new Date().toISOString(),
+      description,
+      snapshots: [],
+      treeBefore,
+      ...(treeAfter ? { treeAfter } : {}),
+    }
+    if (manifest.currentIndex < manifest.checkpoints.length - 1) {
+      manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1)
+    }
+    manifest.checkpoints.push(cp)
+    if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
+      manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS)
+    }
+    manifest.currentIndex = manifest.checkpoints.length - 1
+    await saveCheckpointManifest(manifest, cwd)
+    return cp
+  })
 }
 
 export async function recordCheckpoint(
@@ -211,30 +258,33 @@ export async function recordCheckpointFromSnapshots(
   redoSnapshots?: FileSnapshot[],
 ): Promise<Checkpoint | null> {
   if (snapshots.length === 0) return null
-  const manifest = await loadCheckpointManifest(sessionId, cwd)
-  const cp: Checkpoint = {
-    id: `cp_${Date.now()}_${randomUUID().slice(0, 6)}`,
-    turn,
-    timestamp: new Date().toISOString(),
-    description,
-    snapshots,
-    ...(redoSnapshots?.length ? { redoSnapshots } : {}),
-  }
+  const manifestPath = getManifestPath(sessionId, cwd)
+  return withCheckpointLock(manifestPath, async () => {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    const cp: Checkpoint = {
+      id: `cp_${Date.now()}_${randomUUID().slice(0, 6)}`,
+      turn,
+      timestamp: new Date().toISOString(),
+      description,
+      snapshots,
+      ...(redoSnapshots?.length ? { redoSnapshots } : {}),
+    }
 
-  // Truncate any redo branches if new action is taken
-  if (manifest.currentIndex < manifest.checkpoints.length - 1) {
-    manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1)
-  }
+    // Truncate any redo branches if new action is taken
+    if (manifest.currentIndex < manifest.checkpoints.length - 1) {
+      manifest.checkpoints = manifest.checkpoints.slice(0, manifest.currentIndex + 1)
+    }
 
-  manifest.checkpoints.push(cp)
-  // Cap manifest agar tidak membengkak tanpa batas (keep N terakhir)
-  if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
-    manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS)
-  }
-  manifest.currentIndex = manifest.checkpoints.length - 1
+    manifest.checkpoints.push(cp)
+    // Cap manifest agar tidak membengkak tanpa batas (keep N terakhir)
+    if (manifest.checkpoints.length > MAX_CHECKPOINTS) {
+      manifest.checkpoints = manifest.checkpoints.slice(-MAX_CHECKPOINTS)
+    }
+    manifest.currentIndex = manifest.checkpoints.length - 1
 
-  await saveCheckpointManifest(manifest, cwd)
-  return cp
+    await saveCheckpointManifest(manifest, cwd)
+    return cp
+  })
 }
 
 // Terapkan snapshot dengan jail path: path di luar workspace dilewati.
@@ -279,42 +329,48 @@ export async function undoLastCheckpoint(
   sessionId: string,
   cwd: string = process.cwd(),
 ): Promise<{ success: boolean; restoredFiles: string[]; message: string }> {
-  const manifest = await loadCheckpointManifest(sessionId, cwd)
-  if (manifest.currentIndex < 0 || manifest.checkpoints.length === 0) {
-    return { success: false, restoredFiles: [], message: "no checkpoints to undo" }
-  }
+  const manifestPath = getManifestPath(sessionId, cwd)
+  return withCheckpointLock(manifestPath, async () => {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    if (manifest.currentIndex < 0 || manifest.checkpoints.length === 0) {
+      return { success: false, restoredFiles: [], message: "no checkpoints to undo" }
+    }
 
-  const targetCp = manifest.checkpoints[manifest.currentIndex]!
-  const restoredFiles = await applyCheckpoint(targetCp, "undo", cwd)
+    const targetCp = manifest.checkpoints[manifest.currentIndex]!
+    const restoredFiles = await applyCheckpoint(targetCp, "undo", cwd)
 
-  manifest.currentIndex -= 1
-  await saveCheckpointManifest(manifest, cwd)
+    manifest.currentIndex -= 1
+    await saveCheckpointManifest(manifest, cwd)
 
-  return {
-    success: true,
-    restoredFiles,
-    message: `undid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
-  }
+    return {
+      success: true,
+      restoredFiles,
+      message: `undid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
+    }
+  })
 }
 
 export async function redoLastCheckpoint(
   sessionId: string,
   cwd: string = process.cwd(),
 ): Promise<{ success: boolean; reappliedFiles: string[]; message: string }> {
-  const manifest = await loadCheckpointManifest(sessionId, cwd)
-  if (manifest.currentIndex >= manifest.checkpoints.length - 1) {
-    return { success: false, reappliedFiles: [], message: "no undone checkpoints to redo" }
-  }
+  const manifestPath = getManifestPath(sessionId, cwd)
+  return withCheckpointLock(manifestPath, async () => {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    if (manifest.currentIndex >= manifest.checkpoints.length - 1) {
+      return { success: false, reappliedFiles: [], message: "no undone checkpoints to redo" }
+    }
 
-  manifest.currentIndex += 1
-  const targetCp = manifest.checkpoints[manifest.currentIndex]!
-  const reappliedFiles = await applyCheckpoint(targetCp, "redo", cwd)
+    manifest.currentIndex += 1
+    const targetCp = manifest.checkpoints[manifest.currentIndex]!
+    const reappliedFiles = await applyCheckpoint(targetCp, "redo", cwd)
 
-  await saveCheckpointManifest(manifest, cwd)
+    await saveCheckpointManifest(manifest, cwd)
 
-  return {
-    success: true,
-    reappliedFiles,
-    message: `redid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
-  }
+    return {
+      success: true,
+      reappliedFiles,
+      message: `redid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
+    }
+  })
 }
