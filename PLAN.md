@@ -272,6 +272,23 @@ Audit 2026-09-04 menemukan duplikat `turnCount`, `NaN` budget/timeout, checkpoin
 
 **Selesai bila:** resume `turnCount`/`cost` kontinu, `NaN` tidak diteruskan, non-repo `bash` undo, hook tidak block >5s, gate hijau.
 
+## P6 — Tool Layer: jail, bash-guard, scrub, atomik
+
+Audit 2026-09-04 menemukan 8 High: OOM paged, TOCTOU symlink di 7 tool, ripgrep leak, `bash` cwd, MCP/LSP/todo scrub, `allow-all` bypass, `SENSITIVE` inkonsistensi, DNS `fail-open`. Detail di `.verdent/plans/Tool_Layer_Hardening-0904.plan.md`.
+
+**P0 — Rilis blocker:**
+- **P0.1 Streaming paged read + TOCTOU:** `read_file:107` `paged=true` tetap `readFile` 1GB → OOM, 7 tool `isPathOutsideRoot(real, resolve(root))` tanpa `realpath(root)`. Pakai `createReadStream` + `O_NOFOLLOW` + `realpath` ulang setelah `open`.
+- **P0.2 Edit/patch uniqueness + ripgrep leak + bash cwd:** `edit:193` hanya `exact/crlf` → `trimmed/fuzzy` edit salah, `grep:92` `rg` tanpa `realpath` bocor symlink, `bash:84` `spawn({cwd:c})` tidak `resolve(sessionRoot,c)`.
+- **P0.3 MCP/LSP/todo scrub + jail:** `mcp_call:71` tidak `scrubSecrets`, `lsp:19` `process.cwd()` + tanpa `isSensitive`, `todo:27` `sessionId` traversal → sanitasi `replace(/[^a-zA-Z0-9_-]/g,"_")` + `scrub` + `ctx.cwd`.
+
+**P1 — Guard konsistensi:**
+- **P1.1 `SENSITIVE_TARGET = SENSITIVE_RE` + `net:38` `strict` fail-closed + tanpa cache untuk `web_fetch`/MCP, `permission:177` `allow-all` tetap `bashDenied` untuk `STATIC_DENY`/`RM_DANGEROUS`, `web_fetch:45` whitelist `http/https` + `readCapped` error path.
+- **P1.2 Allowlist & scrub:** `npx` keluar dari default allowlist (RCE), `allowlist:46` trunc 200 → hash, `scrub:58` tambah `PAT` + `KEY`.
+
+**P2 — Reliability:** `globToRegExp` → `picomatch`, `limit NaN` clamp, `atomic` entropy `replaceAll("-","").slice(0,16)` + `EXDEV` fallback, `bash` marker + reap interval, `write_file` `Buffer.byteLength`.
+
+**Selesai bila:** `P0.1` paged 1GB tidak OOM, symlink dir `outside` → `outside workspace`, `edit` duplicate `trimmed` → `multiple times`, `grep` symlink `rg` → block, `bash` `cwd` resolve, `sk-` dari MCP → `[REDACTED]`, `fuzz 0x/0177` pass, gate hijau.
+
 ---
 
 ## Yang sengaja TIDAK dikerjakan

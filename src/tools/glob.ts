@@ -67,10 +67,10 @@ export const globTool: Tool = {
     const rawRoot = (cwd as string) ?? "."
     const root = resolve(sessionRoot, rawRoot)
     if (isPathOutsideRoot(root, sessionRoot)) throw new Error(`cwd outside workspace: ${rawRoot}`)
-    const lim = Math.min(
-      Math.max((limit as number) ?? LIMITS.SEARCH_DEFAULT_LIMIT, 1),
-      LIMITS.SEARCH_MAX_LIMIT,
-    )
+    const rawLim = limit as number | undefined
+    const lim = Number.isFinite(rawLim)
+      ? Math.min(Math.max(Math.floor(rawLim!), 1), LIMITS.SEARCH_MAX_LIMIT)
+      : LIMITS.SEARCH_DEFAULT_LIMIT
     const re = globToRegExp(pattern as string)
     const out: string[] = []
     await walk(root, re, out, root, lim, ctx.signal)

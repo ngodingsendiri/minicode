@@ -193,14 +193,13 @@ export const editTool: Tool = {
     const match = flexibleMatch(content, oldS)
     if (!match) throw new Error(`oldString not found in ${p}`)
 
-    // ensure uniqueness pada exact/crlf mode
-    if (match.mode === "exact" || match.mode === "crlf") {
-      const second = flexibleMatch(content.slice(match.end), oldS)
-      if (second && (second.mode === "exact" || second.mode === "crlf")) {
-        throw new Error(
-          `oldString found multiple times in ${p} — provide more surrounding lines to make it unique`,
-        )
-      }
+    // ensure uniqueness untuk semua mode (exact/crlf/trimmed/fuzzy) — trimmed/fuzzy
+    // sebelumnya hanya dicek untuk exact/crlf sehingga duplikat diam-diam edit blok pertama
+    const second = flexibleMatch(content.slice(match.end), oldS)
+    if (second) {
+      throw new Error(
+        `oldString found multiple times in ${p} — provide more surrounding lines to make it unique`,
+      )
     }
 
     const next = content.slice(0, match.start) + newS + content.slice(match.end)

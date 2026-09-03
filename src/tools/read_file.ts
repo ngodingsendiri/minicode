@@ -89,13 +89,19 @@ export const readFileTool: Tool = {
     if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
     // resolve symlink target — prevent symlink escape out of workspace
+    // realRoot dipakai agar symlink root tidak bypass (isRealPathOutsideRoot logic)
     const real = await realpath(abs).catch(() => abs)
-    if (isPathOutsideRoot(real, root)) throw new Error(`symlink points outside workspace: ${p}`)
-    const st = await stat(abs).catch(() => null)
+    const realRoot = await realpath(root).catch(() => root)
+    if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
+    const st = await stat(real).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.isDirectory()) throw new Error(`path is a directory, not a file: ${p}`)
 
     const paged = offset != null || limit != null
+    // Hard cap absolut 50M bahkan untuk paged — cegah OOM 1GB via offset/limit
+    const HARD_CAP = 50 * 1024 * 1024
+    if (st.size > HARD_CAP)
+      throw new Error(`file too large: ${p} (${st.size} bytes > ${HARD_CAP}) — hard cap`)
     // File raksasa tetap bisa dibaca SELAMA pemanggil menyebut rentang baris.
     // Tanpa offset/limit kita menolak seperti sebelumnya agar tidak diam-diam
     // memotong konteks yang model kira utuh.
@@ -104,7 +110,7 @@ export const readFileTool: Tool = {
         `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — read it in chunks with offset/limit`,
       )
     }
-    const raw = await readFile(abs, "utf8")
+    const raw = await readFile(real, "utf8")
     const { text } = formatLines(raw, {
       offset: offset as number | undefined,
       limit: limit as number | undefined,

@@ -53,6 +53,7 @@ export const applyPatchTool: Tool = {
 
     let content = await readFile(realAbs, "utf8")
     const patchList = patches as { search: string; replace: string }[]
+    if (patchList.length > 50) throw new Error(`too many patches: ${patchList.length} (max 50)`)
     const applied: string[] = []
 
     for (let i = 0; i < patchList.length; i++) {
@@ -64,16 +65,16 @@ export const applyPatchTool: Tool = {
       }
       const match = flexibleMatch(content, oldS)
       if (!match) throw new Error(`patch[${i}]: search block not found in ${p}`)
-      // ensure uniqueness (exact/crlf mode only)
-      if (match.mode === "exact" || match.mode === "crlf") {
-        const second = flexibleMatch(content.slice(match.end), oldS)
-        if (second && (second.mode === "exact" || second.mode === "crlf")) {
-          throw new Error(
-            `patch[${i}]: search block found multiple times in ${p} — provide more context`,
-          )
-        }
+      // ensure uniqueness untuk semua mode
+      const second = flexibleMatch(content.slice(match.end), oldS)
+      if (second) {
+        throw new Error(
+          `patch[${i}]: search block found multiple times in ${p} — provide more context`,
+        )
       }
       content = content.slice(0, match.start) + newS + content.slice(match.end)
+      if (content.length > LIMITS.WRITE_FILE_MAX_CHARS)
+        throw new Error(`result too large after patch[${i}]: ${content.length} chars (max 5M)`)
       const note = match.mode !== "exact" ? ` (${match.mode} match)` : ""
       applied.push(`[${i}] replaced ${oldS.length} → ${newS.length} chars${note}`)
     }

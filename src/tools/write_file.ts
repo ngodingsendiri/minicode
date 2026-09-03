@@ -27,14 +27,18 @@ export const writeFileTool: Tool = {
     if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
     // resolve symlink to prevent symlink escape (parent dir + file itself)
+    const realRoot = await realpath(root).catch(() => root)
     const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
     const fileReal = await realpath(abs).catch(() => null)
     const realAbs = fileReal ?? resolve(realDir, basename(abs))
-    if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
-    // guard large write
+    if (isPathOutsideRoot(realAbs, realRoot))
+      throw new Error(`symlink points outside workspace: ${p}`)
+    // guard large write — chars vs bytes (emoji/CJK 4x)
     const c = content as string
     if (c.length > LIMITS.WRITE_FILE_MAX_CHARS)
       throw new Error(`content too large: ${c.length} chars (max 5M)`)
+    if (Buffer.byteLength(c, "utf8") > LIMITS.WRITE_FILE_MAX_CHARS * 4)
+      throw new Error(`content too large: ${Buffer.byteLength(c, "utf8")} bytes > ~20M`)
     // atomic: write tmp (O_EXCL + randomUUID) then rename — anti-hijack & atomic
     await atomicWriteText(realAbs, c)
     const st = await stat(realAbs).catch(() => null)
