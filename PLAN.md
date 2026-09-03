@@ -78,8 +78,8 @@ Catatan eksekusi terbaru:
 Next action (urut eksekusi):
 1. Publish npm 0.8.2 (CHANGELOG [0.8.2] sudah siap + `gate:pack` hijau).
 2. Extreme shadow Windows (`.verdent/plans/Extreme_Shadow…`): profiling `snapshotTree` 200/1000/5000 file → batch `--stdin-paths` atau `rows-` adaptif (tracked lokal, tidak block rilis).
-3. P1 asli `cli/setup.ts` 0% — tertutup sebagian via `test/cli-setup-coverage.test.ts` 12 test direct import (1180 pass); `spawnSync` harness terpisah tetap backlog `P4-P2`.
-4. P4 Data Layer P2 (trace rotate lock, FTS5, `net` strict) + P5 Session P1.2 postEditSnapshots leak & P1.3 buildSystemPrompt timeout — backlog sprint depan.
+3. P1 asli `cli/setup.ts` — tertutup via `test/cli-setup-coverage.test.ts` 12 test direct import (`setup.ts:61.54%/70%`), P1.2 `answerSequence` & P1.3 `highlight` 99% sudah (backlog `spawnSync` harness terpisah tetap ada tapi tidak block).
+4. P2–P7 backlog: `P4 P2` trace lock/FTS5/`net` strict + `P5 P1.2` leak & `P1.3` timeout + `P6` sisa `P0.3` MCP/LSP/todo + `P1` guard — sprint depan; `P7` P2 polish `ARCH` line numbers.
 
 ---
 
@@ -140,7 +140,9 @@ Tidak bisa dites dengan harness fake-TTY (butuh proses nyata). Pendekatan yang s
 | Trace tertulis dengan model terisi | periksa `.minicode/traces.jsonl` |
 | `--verify` menjalankan self-heal | proyek dengan `typecheck` yang gagal lalu berhasil |
 
-**Selesai bila:** `cli/index.ts` dan `cli/setup.ts` ≥50% lines, dan gate coverage dinaikkan ke angka baru yang terukur.
+  **Selesai bila:** `cli/index.ts` dan `cli/setup.ts` ≥50% lines, dan gate coverage dinaikkan ke angka baru yang terukur.
+
+  > **Update 2026-09-03:** `cli/setup.ts` kini `61.54% funcs / 70% lines` via `test/cli-setup-coverage.test.ts` 12 test direct import (bukan `Bun.spawn` yang tidak terhitung di `gate:coverage`). `cli/index.ts` top-level `process.exit` tetap via `spawn` di `test/cli-session.test.ts` + `readVersion` via `readFile`. `provider-manager` 95%/90% & `highlight` 99% sudah, gate `81.17%/83.45%` tetap hijau.
 
 ### P1.2 Perluas harness untuk prompt berantai (`provider-manager` alur a/d/e)
 
@@ -253,7 +255,9 @@ Audit 2026-09-03 menemukan 3 Critical race `read→modify→write` tanpa lock, 2
 
 **P2 — Reliability & perf (backlog):** `trace` rotate lock, `memory/files` truncate `atomicWriteText`, `net.ts:38` `isPrivateHostWithDns` opsi `strict`, `pricing` pre-sort, `vector` FTS5, `shadow-git` `inside` case-insensitive + tolak symlink.
 
-**Selesai bila:** `P0.1` race test hijau di `Pool(3)`, `P1.2` scrub test hijau, `isPrivateHost` fuzz `0x/0177` pass, `bun x tsc --noEmit && bun test && bun run gate:coverage && bun run gate:pack` hijau, `MIN_LINES/MIN_FUNCS` dinaikkan bila naik.
+  **Selesai bila:** `P0.1` race test hijau di `Pool(3)`, `P1.2` scrub test hijau, `isPrivateHost` fuzz `0x/0177` pass, `bun x tsc --noEmit && bun test && bun run gate:coverage && bun run gate:pack` hijau, `MIN_LINES/MIN_FUNCS` dinaikkan bila naik.
+
+  > **Update 2026-09-03:** `P0.1-P1.5` sudah di-commit `9a09012` (lock `config`/`manifest`, corrupt backup, `try/finally db.close` + `chmod 600`, `mkdir 0o700`, scrub `memory/files:24` + `vector:158` + `compaction:55` + `trace:36`, SSRF `vector:67`/`pricing:212`/`compaction:127`, `usage.ts` per-segmen), gate `81.17%/83.45%` hijau. Sisa `P2` backlog.
 
 ## P5 — Session: turnCount, NaN, checkpoint, hook
 
@@ -270,7 +274,9 @@ Audit 2026-09-04 menemukan duplikat `turnCount`, `NaN` budget/timeout, checkpoin
 - **P1.2 postEditSnapshots leak:** `setup.ts:195` `turn:aborted` handler clear map.
 - **P1.3 buildSystemPrompt timeout:** `app/session.ts:54` teruskan `signal` + 5s fallback.
 
-**Selesai bila:** resume `turnCount`/`cost` kontinu, `NaN` tidak diteruskan, non-repo `bash` undo, hook tidak block >5s, gate hijau.
+  **Selesai bila:** resume `turnCount`/`cost` kontinu, `NaN` tidak diteruskan, non-repo `bash` undo, hook tidak block >5s, gate hijau.
+
+  > **Update 2026-09-03:** `P0.1-P1.3` sudah di-commit `6d8662f` (seed `turnCount` via `vendor/session:40`, `NaN` guard `index:134`/`setup:99`, `snapshotWorkspace` penuh untuk non-repo, hook 5s, `didCompact`, `buildSystemPrompt` signal), gate `81.28%/83.26%` hijau.
 
 ## P6 — Tool Layer: jail, bash-guard, scrub, atomik
 
@@ -287,7 +293,9 @@ Audit 2026-09-04 menemukan 8 High: OOM paged, TOCTOU symlink di 7 tool, ripgrep 
 
 **P2 — Reliability:** `globToRegExp` → `picomatch`, `limit NaN` clamp, `atomic` entropy `replaceAll("-","").slice(0,16)` + `EXDEV` fallback, `bash` marker + reap interval, `write_file` `Buffer.byteLength`.
 
-**Selesai bila:** `P0.1` paged 1GB tidak OOM, symlink dir `outside` → `outside workspace`, `edit` duplicate `trimmed` → `multiple times`, `grep` symlink `rg` → block, `bash` `cwd` resolve, `sk-` dari MCP → `[REDACTED]`, `fuzz 0x/0177` pass, gate hijau.
+  **Selesai bila:** `P0.1` paged 1GB tidak OOM, symlink dir `outside` → `outside workspace`, `edit` duplicate `trimmed` → `multiple times`, `grep` symlink `rg` → block, `bash` `cwd` resolve, `sk-` dari MCP → `[REDACTED]`, `fuzz 0x/0177` pass, gate hijau.
+
+  > **Update 2026-09-04:** `P0.1-P0.2` sudah di-commit `44e0684` (hard cap 50M + `realRoot`, `edit` uniqueness semua mode, `patch` limit 50, `glob/grep` `NaN` clamp 1..500), gate `80.98%/83.25%` hijau. Sisa `P0.3` MCP/LSP/todo + `P1` guard jadi `P7` berikutnya (sudah dieksekusi `78f6ac1`).
 
 ## P7 — Env Var & Perintah: dokumentasi & konsistensi
 
@@ -306,7 +314,9 @@ Audit 2026-09-04 menemukan 38 env unik (22 `MINICODE_*`), 22 flags, 31 tools, 15
 
 **P2 — Polish:** `args.ts` ` --output-format`/`--prompt` shadow flag hapus/implement, `ARCH` line numbers tanpa angka.
 
-**Selesai bila:** `HELP` vs code `900000` sinkron, `/undo` → `success` (atau `USAGE` bersih), `web_search` di `plan` → `allow`, `promptFromArgs` tidak bocor `--match`, `USAGE.md` vs `process.env` 38 vars sinkron, gate hijau.
+  **Selesai bila:** `HELP` vs code `900000` sinkron, `/undo` → `success` (atau `USAGE` bersih), `web_search` di `plan` → `allow`, `promptFromArgs` tidak bocor `--match`, `USAGE.md` vs `process.env` 38 vars sinkron, gate hijau.
+
+  > **Update 2026-09-04:** P0-P1 `P7` sudah di-commit `78f6ac1` (`HELP` 900000, `DRIVER_COMMANDS` `/undo`/`redo`/`cost`/`resume`/`clear`, `web_search` READONLY, `VALUE_FLAGS` +12 subcommand, USAGE `+8` flags/`+7` env, `scrub` `_PAT\b`) + `bf9009f` polish (`exec` `getArg` + `ARCH` tanpa `:line`), gate `80.98%/83.25%` `1180p` hijau.
 
 ---
 
