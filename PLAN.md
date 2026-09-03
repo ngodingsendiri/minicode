@@ -318,6 +318,25 @@ Audit 2026-09-04 menemukan 38 env unik (22 `MINICODE_*`), 22 flags, 31 tools, 15
 
   > **Update 2026-09-04:** P0-P1 `P7` sudah di-commit `78f6ac1` (`HELP` 900000, `DRIVER_COMMANDS` `/undo`/`redo`/`cost`/`resume`/`clear`, `web_search` READONLY, `VALUE_FLAGS` +12 subcommand, USAGE `+8` flags/`+7` env, `scrub` `_PAT\b`) + `bf9009f` polish (`exec` `getArg` + `ARCH` tanpa `:line`), gate `80.98%/83.25%` `1180p` hijau.
 
+## P8 — CLI Command: router, phantom, budget, mention, hook
+
+Audit 2026-09-04 menemukan 38 temuan: flag-injection via prompt, plan re-exec `MINICODE_PLAN` loop + prematur `process.exit(0)`, `resumeId` tanpa sanitasi, `router` global flag sebelum subcommand, `@mention` tanpa `realpath`, checkpoint buta `bash` non-git (sudah P5), `hook` tanpa timeout. Detail di `.verdent/plans/Cli_Command_Hardening-0904.plan.md`.
+
+**P0 — Rilis blocker:**
+- **P0.1 Flag-parser:** `args.ts:52` + `index.ts:77,129` `args.includes("--allow-all")` → prompt `"review --allow-all"` aktifkan sandbox. Buat `isFlag(token)` via `flagNameOf` + posisi, `getArg` hanya scan sebelum prompt text pertama.
+- **P0.2 Plan re-exec:** `index.ts:341` `MINICODE_PLAN` loop + `process.exit(0)` ganda → `env MINICODE_PLAN="0"` + `await child.on("exit")` tanpa ganda, fallback `entry ?? resolvePath`.
+- **P0.3 Sanitasi `resumeId`:** `index.ts:138` `resumeId` sanitasi `replace(/[^A-Za-z0-9._-]/g,"-")` sama `sessionId`.
+- **P0.4 Router global flag:** `router.ts:6` `cmd = args[0]` → `minicode --cwd /tmp providers` jadi prompt. Scan subcommand pertama yang bukan flag (skip `VALUE_FLAGS` + nilainya).
+
+**P1 — Konsistensi:**
+- **P1.1 `@mention` realpath:** `repl.ts:190` `isRealPathOutsideRoot` di `mentions.ts:23`
+- **P1.2 Budget/timeout validasi:** `index.ts:140` `NaN` guard sudah P0.2 session, perluas ke `exec.ts` + `maxSteps` cap 200
+- **P1.3 Stats/providers/exec:** `stats.ts:15` `process.argv` → `args`, `providers.ts:17` per-line `try JSON.parse`, `exec.ts:27` `sessionId` sanitasi + `budget` `isFinite`
+
+**P2 — Polish:** `args.ts:52` `getArg` izinkan `-5`, `readPrompt` tanpa timer 500ms, `commands.ts:119` `join` hard-coded `\\`, `repl.ts:115` `cycleMode` support `allow-all`.
+
+**Selesai bila:** `prompt "a --allow-all"` tidak aktifkan, plan re-exec env `0` + no prematur exit, `resumeId` traversal → sanitasi, `--cwd /tmp providers` → `exit 0`, gate hijau.
+
 ---
 
 ## Yang sengaja TIDAK dikerjakan
