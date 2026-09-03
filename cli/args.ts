@@ -39,10 +39,22 @@ const VALUE_FLAGS = new Set([
   "--global",
   "--local",
 ])
+export const valueFlags = VALUE_FLAGS
+export { flagNameOf }
+
+export function hasFlag(argv: string[], name: string): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]
+    if (token === "--") return false
+    if (token === name || token?.startsWith(`${name}=`)) return true
+    if (token && valueFlags.has(token) && !token.includes("=")) i++
+  }
+  return false
+}
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help", "-v", "--version"])
 
 /** `--flag` atau `--flag=value` -> normalisasi ke nama flag murni. */
-function flagNameOf(token: string): string | null {
+export function flagNameOf(token: string): string | null {
   if (!token.startsWith("-")) return null
   const eq = token.indexOf("=")
   const name = eq === -1 ? token : token.slice(0, eq)
@@ -56,9 +68,10 @@ export function getArg(argv: string[], name: string): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === undefined) break
+    if (a === "--") break
     if (a === name) {
       const v = argv[i + 1]
-      if (v !== undefined && !v.startsWith("-")) found = v
+      if (v !== undefined && (v === "-" || !v.startsWith("-"))) found = v
     } else if (a.startsWith(`${name}=`)) {
       const v = a.slice(name.length + 1)
       if (v !== "") found = v
@@ -69,9 +82,18 @@ export function getArg(argv: string[], name: string): string | undefined {
 
 export function promptFromArgs(argv: string[]): string {
   const out: string[] = []
+  let afterSeparator = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === undefined) break
+    if (a === "--") {
+      afterSeparator = true
+      continue
+    }
+    if (afterSeparator) {
+      out.push(a)
+      continue
+    }
     const fname = flagNameOf(a)
     if (fname === null) {
       out.push(a) // prompt word / unknown flag dibiarkan (perilaku lama utk kata)

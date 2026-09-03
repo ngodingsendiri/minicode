@@ -1,9 +1,26 @@
+import { flagNameOf, valueFlags } from "./args.ts"
+
 export async function dispatch(
   args: string[],
   getArg: (name: string) => string | undefined,
   HELP: string,
 ): Promise<boolean> {
-  const cmd = args[0]
+  let cmdIndex = -1
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (!token) continue
+    if (token === "--") break
+    const flag = flagNameOf(token)
+    if (flag) {
+      if (valueFlags.has(flag) && !token.includes("=")) i++
+      continue
+    }
+    if (!token.startsWith("-")) {
+      cmdIndex = i
+      break
+    }
+  }
+  const cmd = cmdIndex >= 0 ? args[cmdIndex] : undefined
   if (!cmd) return false
 
   if (cmd === "stats") {

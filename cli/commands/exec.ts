@@ -3,7 +3,7 @@ import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
 import { formatError } from "../../src/ui/assistant/simple.ts"
-import { promptFromArgs, getArg as rawGetArg } from "../args.ts"
+import { hasFlag, promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
 
 export async function handleExec(
@@ -19,16 +19,17 @@ export async function handleExec(
   // benar mengirim "tes gorouter 60000" ke model, dan model membalas dengan
   // menebak-nebak soal "gorouter" dan "60000".
   const prompt = promptFromArgs(args.slice(1)) || (rawGetArg(args, "--prompt") ?? "")
-  const jsonMode = args.includes("--json") || rawGetArg(args, "--output-format") === "json"
+  const jsonMode = hasFlag(args, "--json") || rawGetArg(args, "--output-format") === "json"
   const cwdRaw = getArg("--cwd")
   const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
   const modelOverride = getArg("--model")
   const providerOverride = getArg("--provider")
-  const sessionId = getArg("--session") ?? randomUUID().slice(0, 8)
-  const allowAll = args.includes("--allow-all")
-  const ask = args.includes("--ask")
-  const plan = args.includes("--plan")
-  const allowlistFlag = args.includes("--allowlist")
+  const sessionId =
+    getArg("--session")?.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || randomUUID().slice(0, 8)
+  const allowAll = hasFlag(args, "--allow-all")
+  const ask = hasFlag(args, "--ask")
+  const plan = hasFlag(args, "--plan")
+  const allowlistFlag = hasFlag(args, "--allowlist")
   // Sama seperti jalur interaktif: OS sandbox otomatis, dan tanpa isolasi nyata
   // permission default turun ke allowlist. Headless CI justru paling butuh ini —
   // di sana tak ada manusia yang bisa menyetujui prompt.
@@ -41,7 +42,8 @@ export async function handleExec(
   if (sandbox.notice) process.stderr.write(`${sandbox.notice}\n`)
   const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
   const budgetRaw = getArg("--budget")
-  const budget = budgetRaw ? Number(budgetRaw) : undefined
+  const parsedBudget = budgetRaw ? Number(budgetRaw) : undefined
+  const budget = parsedBudget !== undefined && Number.isFinite(parsedBudget) && parsedBudget >= 0 ? parsedBudget : undefined
   const ratelimitRaw = getArg("--ratelimit")
   const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 
@@ -65,7 +67,7 @@ export async function handleExec(
     ask,
     plan,
     allowlist,
-    verify: args.includes("--verify"),
+    verify: hasFlag(args, "--verify"),
     budget,
     rateLimiter,
   })

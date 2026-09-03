@@ -12,14 +12,20 @@ interface TraceRow {
 
 export async function handleStats(getArg: (name: string) => string | undefined): Promise<never> {
   const cwdArg = getArg("--cwd")
-  const asJson = process.argv.includes("--json")
+  const asJson = getArg("--json") !== undefined || process.argv.includes("--json")
   const file = resolve(cwdArg ?? ".", ".minicode", "traces.jsonl")
   let traces: TraceRow[] = []
   try {
     traces = readFileSync(file, "utf8")
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as TraceRow)
+      .flatMap((l) => {
+        try {
+          return [JSON.parse(l) as TraceRow]
+        } catch {
+          return []
+        }
+      })
   } catch {}
   const total = traces.length
   const ok = traces.filter((t) => t.ok).length

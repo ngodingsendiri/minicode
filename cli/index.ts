@@ -11,7 +11,7 @@ import { setSubAgentSessionFactory } from "../src/tools/task.ts"
 import { formatError } from "../src/ui/assistant/simple.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
-import { promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
+import { hasFlag, promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
 
@@ -74,7 +74,7 @@ setSubAgentSessionFactory(createMinicodeSession)
 // dispatch subcommands via registry (handlers call process.exit internally)
 await dispatch(args, getArg, HELP)
 
-if (args.includes("-v") || args.includes("--version")) {
+if (hasFlag(args, "--version") || args.includes("-v")) {
   console.log(readVersion())
   process.exit(0)
 }
@@ -126,16 +126,16 @@ if (args.includes("-h") || args.includes("--help")) {
 }
 
 // -- flag parsing --
-const verbose = args.includes("--verbose")
-const allowAll = args.includes("--allow-all")
-const ask = args.includes("--ask")
-const interactive = args.includes("--interactive")
-const plan = args.includes("--plan") || process.env.MINICODE_PLAN === "1"
-const allowlist = args.includes("--allowlist") || process.env.MINICODE_PERMISSION === "allowlist"
-const verify = args.includes("--verify")
+const verbose = hasFlag(args, "--verbose")
+const allowAll = hasFlag(args, "--allow-all")
+const ask = hasFlag(args, "--ask")
+const interactive = hasFlag(args, "--interactive")
+const plan = hasFlag(args, "--plan") || process.env.MINICODE_PLAN === "1"
+const allowlist = hasFlag(args, "--allowlist") || process.env.MINICODE_PERMISSION === "allowlist"
+const verify = hasFlag(args, "--verify")
 const cwdRaw = getArg("--cwd")
 const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
-const resumeId = getArg("--resume")
+const resumeId = getArg("--resume")?.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64)
 const modelOverride = getArg("--model")
 const providerOverride = getArg("--provider")
 const rawSessionId = getArg("--session") ?? randomUUID().slice(0, 8)
@@ -181,7 +181,7 @@ else process.env.MINICODE_SANDBOX = sandbox.mode
 // Notice sandbox hanya relevan bila sesi ini berpotensi menjalankan perintah.
 // Sebelumnya ia dicetak untuk SETIAP invokasi di Windows, termasuk yang tidak
 // menyentuh tool sama sekali — kebisingan di setiap baris perintah.
-const willRunTools = !args.includes("--plan")
+const willRunTools = !plan
 if (sandbox.notice && willRunTools) process.stderr.write(`${sandbox.notice}\n`)
 const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
@@ -347,18 +347,16 @@ if (enterRepl) {
     rl.close()
     if (ans.trim().toLowerCase() === "y") {
       const { spawn } = await import("node:child_process")
-      const entry = process.argv[1]
-      if (!entry) {
-        process.stderr.write("[plan] cannot re-exec: argv[1] missing\n")
-        process.exit(1)
-      }
+      const entry = process.argv[1] ?? resolvePath(import.meta.dir, "index.ts")
       const filtered = args.filter((a) => a !== "--plan")
-      const child = spawn(process.execPath, [entry, ...filtered], { stdio: "inherit" })
+      const child = spawn(process.execPath, [entry, ...filtered], {
+        stdio: "inherit",
+        env: { ...process.env, MINICODE_PLAN: "0" },
+      })
       child.on("exit", (code: number | null) => process.exit(code ?? 0))
       process.stdin.resume()
     } else {
       process.exit(0)
     }
-    process.exit(0)
   }
 }

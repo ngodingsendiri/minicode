@@ -18,7 +18,13 @@ function readTraces(cwd?: string): TraceRow[] {
     return readFileSync(resolve(cwd ?? ".", ".minicode", "traces.jsonl"), "utf8")
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as TraceRow)
+      .flatMap((l) => {
+        try {
+          return [JSON.parse(l) as TraceRow]
+        } catch {
+          return []
+        }
+      })
   } catch {
     return []
   }
