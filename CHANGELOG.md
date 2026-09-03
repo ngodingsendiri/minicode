@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.2] - 2026-09-03 — Session P0-P1: resume turnCount, NaN guard, checkpoint bash, hook timeout, compacted flag
+
+### Fixed
+- `cli/setup.ts:114` resume `turnCount` dari `persistence.ts: MAX(turn_idx)+1` → seed `SessionConfig.turnCount` (vendor `session.ts:40` + `app/session.ts`); `cli/index.ts:134` sanitasi `sessionId` + `setup.ts:99` `Number.isFinite` fallback untuk `--budget/--timeout/--max-steps` (NaN → warn + undefined, budget mati → fixed)
+- `cli/setup.ts:183` checkpoint non-git: `post` `snapshotWorkspace` penuh (bash/git) bukan hanya `edit/write` → undo di non-repo kini kembalikan file dari `bash`
+- `src/hooks/run.ts:35` timeout 5s `SIGTERM→SIGKILL` untuk hook gantung
+- `vendor/loop.ts:38` `compactStore → boolean didCompact` (hanya `compacted=true` bila panjang berubah) + `vendor/session.ts:40` `turnCount/stepCount` di `SessionConfig`
+
+### Test & Gate
+- `1180 pass 0 fail` (12 baru `cli-setup-coverage`), `gate:coverage` 81.17%/83.45% (min81/83), `lint` 17 warn, `tsc` PASS. `P2.1` cwd jail sudah 0.8.0, UI P0-P2 sudah 0.8.1.
+
 ## [0.8.1] - 2026-09-03 — UI P0-P2: approval sanitize, grapheme, streaming paste/mouse/UTF-8, fence & inline code, highlight, SGR
 
 ### Fixed (P0 — keamanan/hang)

@@ -72,12 +72,14 @@ Catatan eksekusi terbaru:
   - P2.4 `askSecret` grapheme backspace + sanitasi paste + `decodeKeysStream`
   - P2.5 `wizard.ts:73` `readline` → `askLine` (satu stack sanitasi/width/history)
   - P2.6 `diff.ts:12` dokumentasi O(n·m) heuristik & cap
-- Gate di host ini (Win32, Bun 1.4.0, 2026-09-03): `tsc` PASS, `lint` PASS (17 warn), `bun test` 1168 pass 0 fail, `gate:coverage` 82.66%/84.88% (min 81/83 PASS), `gate:pack` 22/22 PASS.
+  - **Session P0-P1 (0.8.2)**: resume `turnCount` (`persistence.ts:223` + `vendor/session.ts:40` + `setup.ts:114`), `NaN` guard (`cli/index.ts:134`, `setup.ts:99`), checkpoint bash non-git (`setup.ts:216` `snapshotWorkspace` penuh), hook timeout 5s (`hooks/run.ts:35`), compacted `didCompact` (`vendor/loop.ts:38`)
+- Gate di host ini (Win32, Bun 1.4.0, 2026-09-03): `tsc` PASS, `lint` PASS (17 warn), `bun test` 1180 pass (12 baru `cli-setup-coverage`) / 8 skip 0 fail, `gate:coverage` 81.17%/83.45% (min81/83 PASS), `gate:pack` 22/22 PASS.
 
 Next action (urut eksekusi):
-1. Publish npm 0.8.x (butuh bump `CHANGELOG.md` [0.8.1] + `npm publish`).
+1. Publish npm 0.8.2 (CHANGELOG [0.8.2] sudah siap + `gate:pack` hijau).
 2. Extreme shadow Windows (`.verdent/plans/Extreme_Shadow…`): profiling `snapshotTree` 200/1000/5000 file → batch `--stdin-paths` atau `rows-` adaptif (tracked lokal, tidak block rilis).
-3. P1 asli `cli/setup.ts` 0% (coverage `bun --coverage` tidak ukur subprocess `Bun.spawn` — tetap butuh `spawnSync` harness terpisah, bukan aggregate; dokumentasi batas ini sudah ada di coverage.txt).
+3. P1 asli `cli/setup.ts` 0% — tertutup sebagian via `test/cli-setup-coverage.test.ts` 12 test direct import (1180 pass); `spawnSync` harness terpisah tetap backlog `P4-P2`.
+4. P4 Data Layer P2 (trace rotate lock, FTS5, `net` strict) + P5 Session P1.2 postEditSnapshots leak & P1.3 buildSystemPrompt timeout — backlog sprint depan.
 
 ---
 
