@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.9.0] - 2026-09-06 — P9 Memory/RAG hardening (P0-P2) + P8 CLI flag-injection hardening
+
+### Fixed — CLI flag-injection (P8)
+- `cli/args.ts:53` `hasFlag`/`getArg`/`promptFromArgs` kini berhenti di prompt word pertama: prompt `"review --allow-all"` tidak lagi mengaktifkan flag, flag dikenal setelah prompt dianggap bagian prompt (anti injection). Nilai numerik negatif (`-5`) tetap diterima sebagai value.
+- `cli/router.ts:8` scan subcommand pertama yang bukan flag (skip `VALUE_FLAGS` + nilainya) → `minicode --cwd /tmp providers` kini rute benar.
+- `cli/index.ts:138` sanitasi `resumeId` + `sessionId` (`[^A-Za-z0-9._-]` → `-`, slice 64); plan re-exec `env MINICODE_PLAN="0"` + `await child.on("exit")` tanpa `process.exit(0)` ganda.
+- `src/app/mentions.ts:23` `@mention` pakai `isRealPathOutsideRoot` (symlink-aware); `cli/commands/exec.ts:27` sanitasi `sessionId` + guard `budget` `isFinite`; `cli/repl.ts:115` `cycleMode` kenal `allow-all` tanpa mengaktifkannya diam-diam; `cli/commands.ts:119` `join` tanpa hard-code `\\`.
+- **Batasan jujur (pre-existing, repo-wide):** `--cwd`/value-flag setelah nama subcommand tidak terparse `getArg` bersama (token subcommand = batas prompt) — terbukti `sessions list`/`providers` mengabaikan `--cwd`. Command baru `memory` parse lokal dari `args[1..]` agar flag-nya honored; perbaikan global ditunda agar tidak merusak boundary anti-injeksi.
+
+### Fixed — Memory/RAG P0 (rilis blocker)
+- `src/tools/memory.ts:17` `read/write/forget_memory` pakai `ctx.cwd ?? process.cwd()` (sebelumnya hardcode `process.cwd()` → `--cwd` bocor, regresi pola 0.8.0).
+- `src/memory/vector.ts:137` + `src/session/persistence.ts:82` `withBusyRetry` `Atomics.wait` sync → `async` + `await Bun.sleep` (freeze event-loop ≤175ms saat `Pool(3)` busy).
+- `src/memory/vector.ts:245` threshold `MIN_SCORE` (`0.20` hybrid / `0.25` keyword-only, `LIMITS` baru) — skor `0.05` tidak lagi di-inject ke system prompt.
+
+### Added — Memory/RAG P1 (kualitas & keamanan)
+- **P1.1 FTS5/index:** `memory_fts` virtual (`porter unicode61`) + trigger sync + `idx_memory_text_lower`; `searchHybrid` pakai `MATCH … ORDER BY rank` dengan fallback LIKE (escape `%_\\`).
+- **P1.2 TTL/MAX_ROWS:** `LIMITS.MEMORY_TTL_DAYS 90` + `MEMORY_MAX_ROWS 5000` + prune + `VACUUM` periodik di `addMemory`.
+- **P1.3 Embedding meta:** kolom `model,dim` (migrasi best-effort); dim-mismatch → warn sekali + fallback keyword-only (sebelumnya skor 0 senyap).
+- **P1.4 SSRF strict:** `isPrivateHostWithDns(host, {strict, timeoutMs, noCache})` (`src/lib/net.ts:38`); `embedTexts` fail-close + `redirect:"manual"` max 2 hop dengan cek tiap hop.
+
+### Added — Memory/RAG P2 (polish)
+- **P2.1 MMR:** `mmrRerank` (dedup cosine >0.92 + MMR λ=0.7, fallback Jaccard tanpa vektor); `MemoryHit.createdAt`; display `(score 0.82, 2026-09-01)` di RAG + tool.
+- **P2.2 Chunking:** `splitMemoryChunks` (2000 char + overlap 200), kolom `parent`, embed batch 1 call, return parent id (ganti truncate).
+- **P2.3 Observabilitas:** `chmod 600` untuk `vector.db-wal/-shm`; `memoryHits` di `RunTrace` → `createRagLayer` → `CliSession` → kedua `writeTrace`.
+- **P2.4 Command:** `minicode memory status [--json]` baru (`cli/commands/memory.ts` + rute router + entri help JSON; `getMemoryStats`): rows, bytes DB/WAL/SHM, sebaran model/dim, range tanggal, hit-rate RAG dari traces.
+- **Bug nyata saat verifikasi:** `deleteMemoryByQuery` return 7 untuk 1 baris — `sqlite3_changes()` ikut menghitung tulis trigger FTS. Kini hitung-dulu-sebelum-DELETE.
+
+### Test & Gate
+- `1199 pass 0 fail` (8 baru `memory-p1`, 8 baru `memory-p2` — test MMR terbukti gagal tanpa fix, 3 baru `cli-subcommands` memory), `gate:coverage` 81.23%/83.18% (min81/83 — funcs min dinaikkan 80→81), `lint` 9 warn (pre-existing), `tsc` PASS, `gate:pack` 22/22.
+- Flake TUI `provider/model-manager-flows` berpindah tiap run (pre-existing, di luar jalur memory — hijau saat run isolasi).
+
 ## [0.8.2] - 2026-09-03 — Session P0-P1: resume turnCount, NaN guard, checkpoint bash, hook timeout, compacted flag
 
 ### Fixed

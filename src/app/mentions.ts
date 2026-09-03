@@ -1,5 +1,4 @@
-import { readFile } from "node:fs/promises"
-import { realpath } from "node:fs/promises"
+import { readFile, realpath } from "node:fs/promises"
 import { isAbsolute, relative, resolve } from "node:path"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 

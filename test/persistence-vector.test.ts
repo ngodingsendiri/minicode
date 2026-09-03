@@ -18,7 +18,7 @@ afterAll(async () => {
 test("persistence roundtrip + delete", async () => {
   await mkdir(tmpDir, { recursive: true })
   const id = `t-${randomUUID().slice(0, 6)}`
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -32,7 +32,7 @@ test("persistence roundtrip + delete", async () => {
   const loaded = loadSession(id, tmp)
   expect(loaded?.messages.length).toBe(3)
   expect((loaded!.messages[1] as { toolCalls?: unknown[] }).toolCalls?.length).toBe(1)
-  deleteSession(id, tmp)
+  await deleteSession(id, tmp)
   expect(loadSession(id, tmp)).toBeNull()
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
 })
@@ -41,7 +41,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
   await mkdir(tmpDir, { recursive: true })
   const id = `i-${randomUUID().slice(0, 6)}`
   // turn 1: 2 pesan
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -53,7 +53,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
   )
   expect(loadSession(id, tmp)?.messages.length).toBe(2)
   // turn 2: 4 pesan (2 baru + 2 lama)
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -67,7 +67,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
   )
   expect(loadSession(id, tmp)?.messages.length).toBe(4)
   // turn 3: 5 pesan (1 baru)
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -89,7 +89,7 @@ test("persistence incremental: append-only pada turn ke-2", async () => {
 test("persistence Uint8Array content disimpan sebagai placeholder", async () => {
   await mkdir(tmpDir, { recursive: true })
   const id = `b-${randomUUID().slice(0, 6)}`
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -111,7 +111,7 @@ test("persistence compaction (history menyusut) tulis ulang penuh", async () => 
   await mkdir(tmpDir, { recursive: true })
   const id = `c-${randomUUID().slice(0, 6)}`
   // simulate 3 turns
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -127,7 +127,7 @@ test("persistence compaction (history menyusut) tulis ulang penuh", async () => 
   )
   expect(loadSession(id, tmp)?.messages.length).toBe(6)
   // compaction: hanya 2 pesan terakhir
-  saveSession(
+  await saveSession(
     id,
     tmp,
     "sys",
@@ -169,7 +169,7 @@ test("deleteMemoryByQuery SQL removes matching memories", async () => {
   await addMemory(`${marker} alpha`, { cwd: tmp })
   await addMemory(`${marker} beta`, { cwd: tmp })
   await addMemory("keep-this-note", { cwd: tmp })
-  const deleted = deleteMemoryByQuery(marker, tmp)
+  const deleted = await deleteMemoryByQuery(marker, tmp)
   expect(deleted).toBe(2)
   const after = await searchHybrid(marker, { cwd: tmp })
   expect(after.some((h) => h.text.includes(marker))).toBe(false)
@@ -192,7 +192,7 @@ test("resume: loadSession preserves toolCallId/name dan bisa di-seed ke sesi", a
     { role: "tool", toolCallId: "c1", name: "read_file", content: "a-content" },
     { role: "assistant", content: "done" },
   ] as never
-  saveSession(id, tmp, "sys", msgs, {})
+  await saveSession(id, tmp, "sys", msgs, {})
   const loaded = loadSession(id, tmp)
   const toolMsg = loaded?.messages[2] as {
     role: string

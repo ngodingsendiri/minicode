@@ -1,5 +1,6 @@
 ﻿import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
+import { resolve as resolvePath } from "node:path"
 import type { Tool, ToolContext } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
@@ -151,6 +152,8 @@ export const bashTool: Tool = {
     const c = cwd as string | undefined
     if (c && (isCwdOutsideRoot(c, sessionRoot) || isPathOutsideRoot(c, sessionRoot)))
       throw new Error(`cwd outside workspace: ${c}`)
+    const resolvedCwd = c ? resolvePath(sessionRoot, c) : undefined
+    const effectiveCwd = resolvedCwd ?? sessionRoot
     const timeout = timeoutMs ?? LIMITS.BASH_DEFAULT_TIMEOUT_MS
 
     if (background === true) {
@@ -162,14 +165,14 @@ export const bashTool: Tool = {
           "background:true is not supported while --sandbox is active (the process must outlive the turn)",
         )
       }
-      const id = startBackground(cmd as string, c)
+      const id = startBackground(cmd as string, resolvedCwd)
       return `background job started: ${id}\ncmd: ${String(cmd).slice(0, 200)}\ncollect output: bash_output({ id: "${id}" })`
     }
 
     // Docker sandbox mode — run in ephemeral isolated container
     if (process.env.MINICODE_SANDBOX === "docker") {
       if (dockerAvailable()) {
-        const res = await runInDocker(cmd as string, c ?? sessionRoot, {
+        const res = await runInDocker(cmd as string, effectiveCwd, {
           timeoutMs: timeout,
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
@@ -188,7 +191,7 @@ export const bashTool: Tool = {
       process.env.MINICODE_SANDBOX === "bwrap"
     ) {
       if (osSandboxAvailable()) {
-        const res = await runInOsSandbox(cmd as string, c ?? sessionRoot, {
+        const res = await runInOsSandbox(cmd as string, effectiveCwd, {
           timeoutMs: timeout,
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
@@ -204,7 +207,7 @@ export const bashTool: Tool = {
     return await new Promise((resolveOut, reject) => {
       const p = spawn(cmd as string, {
         shell: true,
-        cwd: c,
+        cwd: resolvedCwd,
         env: sanitizeSpawnEnv(process.env),
         signal: ctx.signal,
       })

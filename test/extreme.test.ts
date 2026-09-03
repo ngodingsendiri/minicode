@@ -100,9 +100,9 @@ test("03 persistence updated_at sorts most recent first", async () => {
   await mkdir(`${d}/.minicode`, { recursive: true })
   const a = `t-a-${randomUUID().slice(0, 6)}`
   const b = `t-b-${randomUUID().slice(0, 6)}`
-  saveSession(a, d, "s", [{ role: "user", content: "a" }] as any, {})
+  await saveSession(a, d, "s", [{ role: "user", content: "a" }] as any, {})
   await new Promise((r) => setTimeout(r, 10))
-  saveSession(b, d, "s", [{ role: "user", content: "b" }] as any, {})
+  await saveSession(b, d, "s", [{ role: "user", content: "b" }] as any, {})
   const list = listSessions(d)
   expect(list[0]?.id).toBe(b)
   await rm(d, { recursive: true, force: true }).catch(() => {})
@@ -450,7 +450,7 @@ test("12 vector add/search/forget + dim mismatch cosine", async () => {
   await addMemory(`unique ${marker} marker`, { cwd: d })
   const hits = await searchHybrid("marker", { cwd: d, topK: 3 })
   expect(hits.some((h) => h.text.includes(marker))).toBe(true)
-  const del = deleteMemoryByQuery(marker, d)
+  const del = await deleteMemoryByQuery(marker, d)
   expect(del).toBe(1)
   await rm(d, { recursive: true, force: true }).catch(() => {})
 })

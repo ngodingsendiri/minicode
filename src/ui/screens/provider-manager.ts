@@ -193,7 +193,7 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
           baseUrl = preset.baseUrl
         } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
           const url = await askLine({ prompt: "Base URL > " })
-          if (!url || !url.trim()) {
+          if (!url?.trim()) {
             console.log("Base URL is required.")
             return
           }
@@ -255,8 +255,8 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         console.log(`\nEdit provider "${target.id}"\n`)
         const newUrl = await askLine({ prompt: `Base URL [${defaults.baseUrl}]: ` })
         const newKey = await askSecret("API key [****]: ")
-        const baseUrl = newUrl && newUrl.trim() ? newUrl.trim() : defaults.baseUrl
-        const apiKey = newKey && newKey.trim() ? newKey.trim() : defaults.apiKey
+        const baseUrl = newUrl?.trim() ? newUrl.trim() : defaults.baseUrl
+        const apiKey = newKey?.trim() ? newKey.trim() : defaults.apiKey
         if (baseUrl === defaults.baseUrl && apiKey === defaults.apiKey) {
           console.log("No changes.")
         } else {

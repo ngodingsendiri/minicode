@@ -62,7 +62,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       // Format "providerId::modelName" → paksa provider spesifik
       let target: ModelProvider | undefined
       let model: string | undefined = request.model
-      if (model && model.includes("::")) {
+      if (model?.includes("::")) {
         const sep = model.indexOf("::")
         const pid = model.slice(0, sep)
         const m = model.slice(sep + 2)

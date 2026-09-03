@@ -40,17 +40,6 @@ const VALUE_FLAGS = new Set([
   "--local",
 ])
 export const valueFlags = VALUE_FLAGS
-export { flagNameOf }
-
-export function hasFlag(argv: string[], name: string): boolean {
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i]
-    if (token === "--") return false
-    if (token === name || token?.startsWith(`${name}=`)) return true
-    if (token && valueFlags.has(token) && !token.includes("=")) i++
-  }
-  return false
-}
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help", "-v", "--version"])
 
 /** `--flag` atau `--flag=value` -> normalisasi ke nama flag murni. */
@@ -61,6 +50,33 @@ export function flagNameOf(token: string): string | null {
   return KNOWN_FLAGS.has(name) ? name : null
 }
 
+export function hasFlag(argv: string[], name: string): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]
+    if (!token) continue
+    if (token === "--") return false
+    const flag = flagNameOf(token)
+    if (flag) {
+      if (token === name || token.startsWith(`${name}=`)) return true
+      if (valueFlags.has(flag) && !token.includes("=")) i++
+      continue
+    }
+    if (token.startsWith("-")) {
+      // unknown flag seperti "-5" untuk nilai numerik sudah di-skip sebagai value di atas
+      // bila sampai sini, itu prompt atau flag tak dikenal -> hentikan scan
+      if (/^-?\d+(\.\d+)?$/.test(token)) {
+        // "-5" tanpa flag sebelumnya bukan flag, anggap prompt
+        return false
+      }
+      // unknown flag -> prompt boundary, bukan flag global
+      return false
+    }
+    // prompt word pertama -> sisa argv adalah prompt, bukan flag
+    return false
+  }
+  return false
+}
+
 export function getArg(argv: string[], name: string): string | undefined {
   // dukung bentuk --name value DAN --name=value; ambil kemunculan terakhir
   // (flag berulang -> yang terakhir menang, konsisten dengan CLI umum)
@@ -69,13 +85,28 @@ export function getArg(argv: string[], name: string): string | undefined {
     const a = argv[i]
     if (a === undefined) break
     if (a === "--") break
-    if (a === name) {
-      const v = argv[i + 1]
-      if (v !== undefined && (v === "-" || !v.startsWith("-"))) found = v
-    } else if (a.startsWith(`${name}=`)) {
-      const v = a.slice(name.length + 1)
-      if (v !== "") found = v
+    const flag = flagNameOf(a)
+    if (flag) {
+      if (a === name) {
+        const v = argv[i + 1]
+        if (v !== undefined && (v === "-" || !v.startsWith("-") || /^-?\d+(\.\d+)?$/.test(v)))
+          found = v
+        if (valueFlags.has(flag) && !a.includes("=")) i++
+        continue
+      } else if (a.startsWith(`${name}=`)) {
+        const v = a.slice(name.length + 1)
+        if (v !== "") found = v
+        continue
+      }
+      if (valueFlags.has(flag) && !a.includes("=")) i++
+      continue
     }
+    if (a.startsWith("-")) {
+      if (/^-?\d+(\.\d+)?$/.test(a)) return found
+      return found
+    }
+    // prompt word pertama -> hentikan scan, sisa adalah prompt
+    return found
   }
   return found
 }
@@ -83,6 +114,7 @@ export function getArg(argv: string[], name: string): string | undefined {
 export function promptFromArgs(argv: string[]): string {
   const out: string[] = []
   let afterSeparator = false
+  let seenPrompt = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === undefined) break
@@ -96,11 +128,27 @@ export function promptFromArgs(argv: string[]): string {
     }
     const fname = flagNameOf(a)
     if (fname === null) {
-      out.push(a) // prompt word / unknown flag dibiarkan (perilaku lama utk kata)
+      // bukan flag dikenal -> prompt word; setelah ini semua token jadi prompt
+      seenPrompt = true
+      out.push(a)
+      continue
+    }
+    if (seenPrompt) {
+      // flag dikenal setelah prompt pertama -> anggap bagian prompt (anti injection)
+      out.push(a)
+      // untuk value flag dengan "=" sudah push sebagai satu token prompt
+      // untuk bentuk terpisah, nilai berikutnya juga prompt jika ada
+      if (valueFlags.has(fname) && !a.includes("=")) {
+        const v = argv[i + 1]
+        if (v !== undefined) {
+          out.push(v)
+          i++
+        }
+      }
       continue
     }
     if (BOOLEAN_FLAGS.has(fname)) continue
-    // value flag: lewati flag-nya dan nilai terpisahnya (bila bukan bentuk =)
+    // value flag sebelum prompt: lewati flag + nilainya
     if (!a.includes("=")) i++
   }
   return out.join(" ")

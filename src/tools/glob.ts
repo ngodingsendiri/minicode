@@ -45,7 +45,7 @@ function globToRegExp(glob: string): RegExp {
   esc = esc.replace(/\*/g, "[^/]*")
   esc = esc.replace(/§§/g, ".*")
   esc = esc.replace(/\?/g, ".")
-  return new RegExp("^" + esc + "$")
+  return new RegExp(`^${esc}$`)
 }
 
 export const globTool: Tool = {

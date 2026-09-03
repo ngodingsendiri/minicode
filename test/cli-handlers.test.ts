@@ -183,14 +183,16 @@ describe("sessions", () => {
 
   test("list menampilkan sesi yang tersimpan", async () => {
     const { saveSession } = await import("../src/session/persistence.ts")
-    saveSession("sesi-uji", tmp, undefined, [{ role: "user", content: "hai" }], { inputTokens: 1 })
+    await saveSession("sesi-uji", tmp, undefined, [{ role: "user", content: "hai" }], {
+      inputTokens: 1,
+    })
     const r = await runDispatch(["sessions", "list", "--cwd", tmp])
     expect(r.out).toContain("sesi-uji")
   })
 
   test("export mengeluarkan JSON yang bisa di-parse", async () => {
     const { saveSession } = await import("../src/session/persistence.ts")
-    saveSession("sesi-json", tmp, undefined, [{ role: "user", content: "hai" }], {})
+    await saveSession("sesi-json", tmp, undefined, [{ role: "user", content: "hai" }], {})
     const r = await runDispatch(["sessions", "export", "sesi-json", "--cwd", tmp])
     expect(r.code).toBe(0)
     expect(() => JSON.parse(r.out)).not.toThrow()
@@ -198,7 +200,7 @@ describe("sessions", () => {
 
   test("export --jsonl satu baris per pesan", async () => {
     const { saveSession } = await import("../src/session/persistence.ts")
-    saveSession(
+    await saveSession(
       "sesi-jsonl",
       tmp,
       undefined,

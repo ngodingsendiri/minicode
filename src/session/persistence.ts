@@ -76,10 +76,8 @@ function safeContent(value: unknown): string {
 
 // SQLITE_BUSY / database-is-locked bisa muncul saat Pool(3) sub-agent menulis
 // bersamaan meski WAL+busy_timeout aktif (terutama Windows). Retry singkat
-// sinkron — call site saveSession/deleteSession memang sinkron.
-// Fase 0: ganti busy-spin CPU 100% → Atomics.wait (block tanpa spin)
-// TODO Fase 1: jadikan async + await Bun.sleep untuk tidak block event-loop
-function withBusyRetry<T>(fn: () => T, attempts = 3): T {
+// P0.2: async + Bun.sleep agar tidak block event-loop (sebelumnya Atomics.wait freeze 175ms).
+async function withBusyRetry<T>(fn: () => T, attempts = 3): Promise<T> {
   let last: unknown
   for (let i = 0; i < attempts; i++) {
     try {
@@ -88,13 +86,13 @@ function withBusyRetry<T>(fn: () => T, attempts = 3): T {
       const msg = String((e as Error).message ?? e)
       if (!msg.includes("SQLITE_BUSY") && !msg.includes("database is locked")) throw e
       last = e
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * 2 ** i)
+      await Bun.sleep(25 * 2 ** i)
     }
   }
   throw last
 }
 
-export function saveSession(
+export async function saveSession(
   id: string,
   cwd: string | undefined,
   system: string | undefined,
@@ -185,7 +183,7 @@ export function saveSession(
     }
   })
   try {
-    withBusyRetry(() => txn())
+    await withBusyRetry(() => txn())
   } finally {
     db.close()
   }
@@ -273,7 +271,7 @@ export function listSessions(
   }
 }
 
-export function deleteSession(id: string, cwd?: string) {
+export async function deleteSession(id: string, cwd?: string) {
   const db = open(cwd)
   const txn = db.transaction(() => {
     db.prepare("DELETE FROM messages WHERE session_id = ?").run(id)
@@ -281,7 +279,7 @@ export function deleteSession(id: string, cwd?: string) {
     db.prepare("DELETE FROM sessions WHERE id = ?").run(id)
   })
   try {
-    withBusyRetry(() => txn())
+    await withBusyRetry(() => txn())
   } finally {
     db.close()
   }

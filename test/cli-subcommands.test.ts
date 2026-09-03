@@ -128,6 +128,43 @@ describe("cli: stats", () => {
   })
 })
 
+describe("cli: memory", () => {
+  test("--json menghasilkan JSON valid dengan rows/bytes/models", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "minicode-mem-"))
+    try {
+      mkdirSync(join(tmp, ".minicode"), { recursive: true })
+      const r = run(["memory", "--json", "--cwd", tmp])
+      expect(r.code).toBe(0)
+      const parsed = JSON.parse(r.stdout) as Record<string, unknown>
+      expect(parsed.rows).toBe(0)
+      expect(parsed).toHaveProperty("dbBytes")
+      expect(parsed).toHaveProperty("models")
+      expect(parsed).toHaveProperty("avgMemoryHits")
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test("tanpa --json memberi ringkasan yang bisa dibaca", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "minicode-mem-"))
+    try {
+      mkdirSync(join(tmp, ".minicode"), { recursive: true })
+      const r = run(["memory", "--cwd", tmp])
+      expect(r.code).toBe(0)
+      expect(r.stdout).toContain("Memory")
+      expect(() => JSON.parse(r.stdout)).toThrow()
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  test("subcommand tak dikenal = exit 1", () => {
+    const r = run(["memory", "bogus"])
+    expect(r.code).toBe(1)
+    expect(r.out.toLowerCase()).toContain("unknown")
+  })
+})
+
 describe("cli: perintah tanpa LLM tetap jalan", () => {
   test("providers pada workspace kosong tidak crash", () => {
     const tmp = mkdtempSync(join(tmpdir(), "minicode-empty-"))

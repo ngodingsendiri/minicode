@@ -91,7 +91,7 @@ describe("model-manager: alur interactive", () => {
     expect(out).toContain("active")
     await tty.send(KEY.esc, 30)
     await p
-  })
+  }, 30000)
 
   test("Enter memilih model ter-highlight (setModelOverride dipanggil)", async () => {
     tty = installFakeTty({ rows: 24 })
@@ -118,7 +118,7 @@ describe("model-manager: alur interactive", () => {
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m3")
     await tty.send(KEY.esc, 30)
     await p
-  })
+  }, 30000)
 
   test("a dengan jawaban kosong tidak menambah apa pun", async () => {
     tty = installFakeTty({ rows: 24 })

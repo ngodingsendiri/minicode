@@ -248,10 +248,13 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
 describe("cli/index helpers via args", () => {
   test("getArg & promptFromArgs ter-cover via import", async () => {
     const { getArg, promptFromArgs } = await import("../cli/args.ts")
-    const args = ["--model", "gpt-4o", "hello", "world", "--cwd", "/tmp"]
+    const args = ["--model", "gpt-4o", "--cwd", "/tmp", "hello", "world"]
     expect(getArg(args, "--model")).toBe("gpt-4o")
     expect(getArg(args, "--cwd")).toBe("/tmp")
     expect(promptFromArgs(args)).toBe("hello world")
+    // flags after prompt are treated as prompt (anti injection)
+    expect(getArg(["hello", "world", "--cwd", "/tmp"], "--cwd")).toBeUndefined()
+    expect(promptFromArgs(["hello", "world", "--cwd", "/tmp"])).toBe("hello world --cwd /tmp")
     expect(promptFromArgs(["--verbose", "hi"])).toBe("hi")
     expect(promptFromArgs(["--model=gpt-4o", "hi"])).toBe("hi")
   })

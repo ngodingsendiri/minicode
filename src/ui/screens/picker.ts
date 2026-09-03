@@ -32,7 +32,7 @@ const DIM = "\x1b[2m",
 
 export async function runPicker(opts: PickerOptions): Promise<void> {
   if (!process.stdin.isTTY) {
-    console.log("\n" + opts.title)
+    console.log(`\n${opts.title}`)
     for (const [i, it] of opts.items.entries()) console.log(`  [${i}] ${it.provider}::${it.name}`)
     console.log("")
     return

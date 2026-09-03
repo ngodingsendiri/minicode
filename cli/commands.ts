@@ -116,7 +116,7 @@ export async function handleBuiltinCommand(
     }
 
     case "init": {
-      const target = `${ctx.cwd ?? process.cwd()}\\AGENTS.md`
+      const target = resolvePath(ctx.cwd ?? process.cwd(), "AGENTS.md")
       if (require("node:fs").existsSync(target)) {
         console.log(`\nAGENTS.md already exists - not overwritten.\n`)
         return { handled: true }

@@ -98,7 +98,7 @@ it("E2E-2: Memory RAG — write_memory then read_memory", async () => {
   expect(results.length).toBeGreaterThan(0)
   // Cleanup
   const { deleteMemoryByQuery } = await import("../src/memory/vector.ts")
-  deleteMemoryByQuery(marker)
+  await deleteMemoryByQuery(marker)
 }, 30_000)
 
 it("E2E-3: Checkpoint — undo restores pre-edit state", async () => {
@@ -135,7 +135,7 @@ it("E2E-4: Repo-map generates symbol overview", async () => {
 it("E2E-5: Session persistence — save/load roundtrip", async () => {
   const { saveSession, loadSession, deleteSession } = await import("../src/session/persistence.ts")
   const id = `e2e-sess-${Date.now()}`
-  saveSession(
+  await saveSession(
     id,
     undefined,
     "sys",
@@ -149,7 +149,7 @@ it("E2E-5: Session persistence — save/load roundtrip", async () => {
   expect(loaded).not.toBeNull()
   expect(loaded!.messages[0]).toMatchObject({ role: "user", content: "hello e2e" })
   expect((loaded!.messages[1] as { content?: string }).content).toBe("response")
-  deleteSession(id)
+  await deleteSession(id)
   expect(loadSession(id)).toBeNull()
 })
 

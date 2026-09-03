@@ -57,7 +57,7 @@ test("commands: /help, /status, /model, /exit are handled", async () => {
 
 test("commands: /sessions lists saved sessions with cwd", async () => {
   const tmp = mkdtempSync(join(tmpdir(), "minicode-sess-"))
-  saveSession("sess-1", tmp, undefined, [{ role: "user", content: "hi" }], { inputTokens: 1 })
+  await saveSession("sess-1", tmp, undefined, [{ role: "user", content: "hi" }], { inputTokens: 1 })
   const ctx = { ...dummyCtx(), cwd: tmp }
   const res = await handleBuiltinCommand("/sessions", ctx)
   expect(res.handled).toBe(true)

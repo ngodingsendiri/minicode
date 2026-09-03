@@ -90,7 +90,7 @@ if (args.includes("-h") || args.includes("--help")) {
           "minicode",
           'minicode "prompt" [options]',
           'minicode exec "prompt" [--json]',
-          "minicode providers|models|sync|config|mcp|skills|sessions|stats",
+          "minicode providers|models|sync|config|mcp|skills|sessions|stats|memory",
         ],
         options: [
           { flag: "--version", desc: "show version" },
@@ -135,7 +135,9 @@ const allowlist = hasFlag(args, "--allowlist") || process.env.MINICODE_PERMISSIO
 const verify = hasFlag(args, "--verify")
 const cwdRaw = getArg("--cwd")
 const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
-const resumeId = getArg("--resume")?.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64)
+const resumeId = getArg("--resume")
+  ?.replace(/[^A-Za-z0-9._-]/g, "-")
+  .slice(0, 64)
 const modelOverride = getArg("--model")
 const providerOverride = getArg("--provider")
 const rawSessionId = getArg("--session") ?? randomUUID().slice(0, 8)
@@ -315,6 +317,7 @@ if (enterRepl) {
       cost: u.cost,
       model: traceModel,
       ok: true,
+      memoryHits: ctx.memoryHits,
     })
   } catch (e) {
     process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`)
@@ -331,6 +334,7 @@ if (enterRepl) {
       model: usage.modelUsed().effective ?? modelRef.current ?? ctx.effectiveInitialModel,
       ok: false,
       error: formatError(e),
+      memoryHits: ctx.memoryHits,
     })
     await close()
     process.exit(1)

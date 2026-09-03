@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises"
-import { resolve as resolvePath } from "node:path"
+import { isAbsolute, resolve as resolvePath } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Tool } from "#minicore"
 import {
@@ -9,6 +9,8 @@ import {
   lspDiagnostics,
   workspaceSymbols,
 } from "../lsp/client.ts"
+import { isPathOutsideRoot, isRealPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
 
 const SEVERITY = ["Error", "Warn", "Info", "Hint"]
 
@@ -16,8 +18,11 @@ function toUri(abs: string): string {
   return pathToFileURL(abs).href
 }
 
-async function readTarget(file: string): Promise<{ abs: string; text: string }> {
-  const abs = resolvePath(process.cwd(), file)
+async function readTarget(file: string, cwd: string): Promise<{ abs: string; text: string }> {
+  if (isPathOutsideRoot(file, cwd)) throw new Error(`path outside workspace: ${file}`)
+  if (isSensitive(file)) throw new Error(`blocked sensitive file: ${file}`)
+  const abs = isAbsolute(file) ? resolvePath(file) : resolvePath(cwd, file)
+  if (isRealPathOutsideRoot(abs, cwd)) throw new Error(`path outside workspace: ${file}`)
   const text = await readFile(abs, "utf8")
   return { abs, text }
 }
@@ -45,10 +50,11 @@ interface PosArgs {
 
 async function resolvePosition(
   args: PosArgs,
+  cwd: string,
 ): Promise<{ abs: string; text: string; position: { line: number; character: number } } | string> {
   if (getConfiguredExts().length === 0)
     return "(no LSP servers configured — add via minicode config lsp add)"
-  const { abs, text } = await readTarget(args.file)
+  const { abs, text } = await readTarget(args.file, cwd)
   let position: { line: number; character: number } | null = null
   if (args.line != null) position = { line: args.line, character: args.character ?? 0 }
   else if (args.symbol) position = findSymbolPosition(text, args.symbol)
@@ -90,8 +96,9 @@ function posTool(
     },
     async execute(args, ctx) {
       ctx.signal.throwIfAborted()
+      const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
       try {
-        const resolved = await resolvePosition(args as PosArgs)
+        const resolved = await resolvePosition(args as PosArgs, cwd)
         if (typeof resolved === "string") return resolved
         const { abs, text, position } = resolved
         const result = await lspCall(abs, text, method, {
@@ -100,11 +107,12 @@ function posTool(
           ...extraParams,
         })
         if (!result || (Array.isArray(result) && result.length === 0)) return "(not found)"
-        if (method === "textDocument/hover") return formatHover(result)
-        if (Array.isArray(result)) return result.map(formatPos).slice(0, limit).join("\n")
-        return formatPos(result)
+        if (method === "textDocument/hover") return scrubSecrets(formatHover(result))
+        if (Array.isArray(result))
+          return scrubSecrets(result.map(formatPos).slice(0, limit).join("\n"))
+        return scrubSecrets(formatPos(result))
       } catch (e) {
-        return `[lsp] ${(e as Error).message}`
+        return `[lsp] ${scrubSecrets((e as Error).message)}`
       }
     },
   }
@@ -122,25 +130,28 @@ export const lspDiagnosticsTool: Tool = {
   },
   async execute({ file }, ctx) {
     ctx.signal.throwIfAborted()
+    const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     try {
-      const { abs, text } = await readTarget(String(file))
+      const { abs, text } = await readTarget(String(file), cwd)
       const { items } = await lspDiagnostics(abs, text)
       if (!items.length) return "(no diagnostics)"
-      return items
-        .map((d) => {
-          const dd = d as {
-            range?: { start?: { line?: number; character?: number } }
-            severity?: number
-            message?: string
-            source?: string
-          }
-          const sev = SEVERITY[(dd.severity ?? 1) - 1] ?? "?"
-          const pos = `${(dd.range?.start?.line ?? 0) + 1}:${(dd.range?.start?.character ?? 0) + 1}`
-          return `${pos} [${sev}] ${dd.message}${dd.source ? ` (${dd.source})` : ""}`
-        })
-        .join("\n")
+      return scrubSecrets(
+        items
+          .map((d) => {
+            const dd = d as {
+              range?: { start?: { line?: number; character?: number } }
+              severity?: number
+              message?: string
+              source?: string
+            }
+            const sev = SEVERITY[(dd.severity ?? 1) - 1] ?? "?"
+            const pos = `${(dd.range?.start?.line ?? 0) + 1}:${(dd.range?.start?.character ?? 0) + 1}`
+            return `${pos} [${sev}] ${dd.message}${dd.source ? ` (${dd.source})` : ""}`
+          })
+          .join("\n"),
+      )
     } catch (e) {
-      return `[lsp] ${(e as Error).message}`
+      return `[lsp] ${scrubSecrets((e as Error).message)}`
     }
   },
 }
@@ -176,8 +187,9 @@ export const lspSymbolsTool: Tool = {
   },
   async execute({ file }, ctx) {
     ctx.signal.throwIfAborted()
+    const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     try {
-      const { abs, text } = await readTarget(String(file))
+      const { abs, text } = await readTarget(String(file), cwd)
       const result = await lspCall(abs, text, "textDocument/documentSymbol", {
         textDocument: { uri: toUri(abs) },
       })
@@ -210,16 +222,18 @@ export const lspSymbolsTool: Tool = {
         "Operator",
         "TypeParameter",
       ]
-      return result
-        .map((s) => {
-          const sym = s as { name?: string; kind?: number; range?: { start?: { line?: number } } }
-          const kind = KIND[(sym.kind ?? 1) - 1] ?? "?"
-          const line = (sym.range?.start?.line ?? 0) + 1
-          return `${line}: [${kind}] ${sym.name}`
-        })
-        .join("\n")
+      return scrubSecrets(
+        result
+          .map((s) => {
+            const sym = s as { name?: string; kind?: number; range?: { start?: { line?: number } } }
+            const kind = KIND[(sym.kind ?? 1) - 1] ?? "?"
+            const line = (sym.range?.start?.line ?? 0) + 1
+            return `${line}: [${kind}] ${sym.name}`
+          })
+          .join("\n"),
+      )
     } catch (e) {
-      return `[lsp] ${(e as Error).message}`
+      return `[lsp] ${scrubSecrets((e as Error).message)}`
     }
   },
 }

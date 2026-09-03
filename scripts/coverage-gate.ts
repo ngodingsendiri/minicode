@@ -30,7 +30,7 @@ function getArg(name: string, fallback: number): number {
 // Ambil sedikit di bawah hasil terukur agar gate tetap tahan flake, tetapi
 // naik dari baseline lama supaya coverage tidak bisa mundur diam-diam.
 const MIN_LINES = getArg("--lines", 83)
-const MIN_FUNCS = getArg("--funcs", 80)
+const MIN_FUNCS = getArg("--funcs", 81)
 
 const res = spawnSync(
   process.execPath,

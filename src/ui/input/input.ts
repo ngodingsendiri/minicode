@@ -41,7 +41,7 @@ export async function appendHistory(entry: string): Promise<void> {
     filtered.push(clean)
     const capped = filtered.slice(-MAX_HISTORY)
     await mkdir(join(homedir(), ".minicode"), { recursive: true }).catch(() => {})
-    await writeFile(HISTORY_FILE, capped.join("\n") + "\n", "utf8")
+    await writeFile(HISTORY_FILE, `${capped.join("\n")}\n`, "utf8")
   } catch {}
 }
 
@@ -199,7 +199,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       const view = scrollableLine(spec.inputLine, spec.cursorCol)
       const inputLine = view.text
 
-      process.stdout.write("\r" + CLEAR + inputLine)
+      process.stdout.write(`\r${CLEAR}${inputLine}`)
 
       if (maxRows > 0) {
         process.stdout.write("\r\n")
@@ -208,7 +208,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           if (k < maxRows - 1) process.stdout.write("\r\n")
         }
         process.stdout.write(`\x1b[${maxRows}A`)
-        process.stdout.write("\r" + inputLine)
+        process.stdout.write(`\r${inputLine}`)
       }
 
       if (spec.rows.length > 0) {
@@ -239,7 +239,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           process.stdout.write(`${CLEAR + DIM}    … ${spec.moreCount} more${RESTORE}`)
         }
         process.stdout.write(`\x1b[${spec.totalRows}A`)
-        process.stdout.write("\r" + inputLine)
+        process.stdout.write(`\r${inputLine}`)
       }
 
       // Kursor sungguhan di posisi logis — bukan selalu di ujung baris.
@@ -258,9 +258,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       // Jika memakai .length, CJK/emoji meninggalkan jejak saat baris memendek.
       const contentW = displayWidth(content)
       const pad = printedW - contentW
-      process.stdout.write(
-        "\r" + " ".repeat(printedW) + "\r" + content + (pad > 0 ? " ".repeat(pad) : ""),
-      )
+      process.stdout.write(`\r${" ".repeat(printedW)}\r${content}${pad > 0 ? " ".repeat(pad) : ""}`)
       printedW = contentW
     }
 
@@ -342,9 +340,9 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           if (ansi) {
             clearOverlay()
             const shown = scrollableLine(`${promptOf()}${state.line}`, 0).text
-            process.stdout.write("\r" + CLEAR + shown + "\r\n")
+            process.stdout.write(`\r${CLEAR}${shown}\r\n`)
           } else {
-            process.stdout.write("\r" + CLEAR + `${promptOf()}${state.line}` + "\r\n")
+            process.stdout.write(`\r${CLEAR}${promptOf()}${state.line}\r\n`)
           }
           finish(v)
           return

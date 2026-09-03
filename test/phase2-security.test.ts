@@ -236,10 +236,11 @@ describe("permission: integrasi guard di tiap mode", () => {
     // penting — perintah destruktif tak boleh jadi gratis hanya karena flag.
     const h = mk("allow-all")
     const verdict = await check(h, "rm -rf /")
-    // Catatan: allow-all memang mengembalikan "allow" untuk bash (by design);
-    // yang dijamin adalah guard tetap mengklasifikasikannya sebagai berbahaya.
     expect(inspectBashCommand("rm -rf /").denied).toBe(true)
-    expect(verdict).toBe("allow")
+    expect(verdict).toBe("deny")
+    // perintah aman tetap allow di allow-all
+    expect(await check(h, "git status")).toBe("allow")
+    expect(await check(h, "echo hello")).toBe("allow")
   })
 })
 

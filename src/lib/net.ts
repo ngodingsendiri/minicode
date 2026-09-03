@@ -33,15 +33,22 @@ export function isPrivateHost(host: string): boolean {
 }
 
 // DNS pinning untuk tutup DNS rebinding: resolve hostname → cek IP private
-// timeout 400ms, fail-open agar tidak block availability bila DNS lambat; cache 30s per host
+// default timeout 400ms fail-open (web_fetch butuh availability); mode strict
+// fail-close untuk embedding/MCP (P1.4) agar DNS timeout tidak jadi SSRF bypass.
 const dnsCache = new Map<string, { addrs: string[]; at: number }>()
-export async function isPrivateHostWithDns(hostname: string): Promise<boolean> {
+export async function isPrivateHostWithDns(
+  hostname: string,
+  opts: { strict?: boolean; timeoutMs?: number; noCache?: boolean } = {},
+): Promise<boolean> {
   if (isPrivateHost(hostname)) return true
   if (/^[\d.]+$/.test(hostname) || hostname.includes(":")) return false
-  const cached = dnsCache.get(hostname)
-  if (cached && Date.now() - cached.at < 30_000) {
-    for (const a of cached.addrs) if (isPrivateHost(a) || isPrivateIPv4(a)) return true
-    return false
+  const timeoutMs = opts.timeoutMs ?? (opts.strict ? 1000 : 400)
+  if (!opts.noCache) {
+    const cached = dnsCache.get(hostname)
+    if (cached && Date.now() - cached.at < 30_000) {
+      for (const a of cached.addrs) if (isPrivateHost(a) || isPrivateIPv4(a)) return true
+      return false
+    }
   }
   try {
     const addrs = (await Promise.race([
@@ -49,13 +56,15 @@ export async function isPrivateHostWithDns(hostname: string): Promise<boolean> {
         if (Array.isArray(r)) return (r as { address: string }[]).map((x) => x.address)
         return [(r as { address: string }).address]
       }),
-      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("dns timeout")), 400)),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("dns timeout")), timeoutMs)),
     ])) as string[]
-    dnsCache.set(hostname, { addrs, at: Date.now() })
+    if (!opts.noCache) dnsCache.set(hostname, { addrs, at: Date.now() })
     for (const a of addrs) if (isPrivateHost(a) || isPrivateIPv4(a)) return true
   } catch {
-    // lookup gagal/timeout → tidak block, fail-open; cache kosong agar tidak spam lookup
-    dnsCache.set(hostname, { addrs: [], at: Date.now() })
+    // lookup gagal/timeout → strict fail-close (embedding/MCP), default fail-open
+    // agar web_fetch tidak block availability bila DNS lambat
+    if (!opts.noCache) dnsCache.set(hostname, { addrs: [], at: Date.now() })
+    if (opts.strict) return true
   }
   return false
 }

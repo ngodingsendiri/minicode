@@ -30,6 +30,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode pricing status\|sync\|show <model>\|clear` | Tabel harga untuk estimasi biaya |
 | `minicode skills list` | Daftar skill terpasang |
 | `minicode sessions list` | Riwayat sesi |
+| `minicode memory status [--json]` | Statistik vector RAG store (rows, size, hit-rate) |
 | `minicode mcp serve` | Ekspos minicode sebagai MCP server |
 
 ## Flags
@@ -402,6 +403,10 @@ Jaminannya:
 
 Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk daftar. `--resume <id>` untuk melanjutkan dengan history penuh (termasuk `toolCallId`/`name`). Sesi basi dihapus otomatis setelah **30 hari** (`MINICODE_SESSION_TTL_DAYS=0` = simpan selamanya; nilai lain dalam hari). `minicode sessions purge` untuk menghapus manually.
 
+## Memory
+
+Memori lintas sesi dua lapis: `MEMORY.md` (hierarki global → lokal → root → `CLAUDE.md` → `.minicode/rules/*.md`) selalu dimuat ke system prompt, plus index vektor hybrid (`vector.db`, cosine 0.7 + keyword 0.3) yang di-inject sebagai `# Relevant memory` bila skor ≥ ambang (0.20 hybrid / 0.25 keyword-only). Ranking memakai MMR (λ 0.7) agar prompt tidak dipenuhi parafrase yang sama; entri >2000 char dipecah jadi chunk overlap 200. Retensi **90 hari** / maks **5000 baris**, prune otomatis tiap tulis. `minicode memory status [--json]` untuk rows, ukuran DB/WAL, sebaran model/dim, dan hit-rate RAG dari traces.
+
 ## Repo Intelligence
 
 System prompt otomatis memuat repo-map berbasis **regex** (9 bahasa) dengan fallback LSP `workspace/symbol`. Cache di `.minicode/repomap.json` (sig mtime). File diurutkan import-graph (60 files, 2.5k chars). `MINICODE_REPOMAP=regex` untuk skip LSP. Hashline edit `src/tools/hashline.ts` deterministik.
@@ -433,7 +438,7 @@ Format `tasks.json` (SWE-bench-format):
 
 ## Telemetry
 
-`.minicode/traces.jsonl` — satu baris JSON per run (sessionId, timestamp, prompt, steps, tokens, cost, ok/error). Rotate keep 1000 baris (atomic tmp+rename). Prompt di-redact via secret scrubber sebelum disimpan; file chmod 600. **Opt-out:** set `MINICODE_TELEMETRY=0` — tidak ada file yang ditulis.
+`.minicode/traces.jsonl` — satu baris JSON per run (sessionId, timestamp, prompt, steps, tokens, cost, ok/error, memoryHits). Rotate keep 1000 baris (atomic tmp+rename). Prompt di-redact via secret scrubber sebelum disimpan; file chmod 600. **Opt-out:** set `MINICODE_TELEMETRY=0` — tidak ada file yang ditulis.
 
 ## Pengujian
 

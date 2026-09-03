@@ -25,7 +25,9 @@ export async function handleExec(
   const modelOverride = getArg("--model")
   const providerOverride = getArg("--provider")
   const sessionId =
-    getArg("--session")?.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || randomUUID().slice(0, 8)
+    getArg("--session")
+      ?.replace(/[^A-Za-z0-9._-]/g, "-")
+      .slice(0, 64) || randomUUID().slice(0, 8)
   const allowAll = hasFlag(args, "--allow-all")
   const ask = hasFlag(args, "--ask")
   const plan = hasFlag(args, "--plan")
@@ -43,7 +45,10 @@ export async function handleExec(
   const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
   const budgetRaw = getArg("--budget")
   const parsedBudget = budgetRaw ? Number(budgetRaw) : undefined
-  const budget = parsedBudget !== undefined && Number.isFinite(parsedBudget) && parsedBudget >= 0 ? parsedBudget : undefined
+  const budget =
+    parsedBudget !== undefined && Number.isFinite(parsedBudget) && parsedBudget >= 0
+      ? parsedBudget
+      : undefined
   const ratelimitRaw = getArg("--ratelimit")
   const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 

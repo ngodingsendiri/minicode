@@ -111,7 +111,7 @@ export class McpTransport {
     if (!this.proc?.stdin) throw new Error("transport not connected")
     let line: string
     try {
-      line = JSON.stringify(msg) + "\n"
+      line = `${JSON.stringify(msg)}\n`
     } catch {
       throw new Error("circular JSON in MCP message")
     }

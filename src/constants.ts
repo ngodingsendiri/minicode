@@ -29,6 +29,17 @@ export const LIMITS = {
   VECTOR_SEARCH_LIMIT: 500,
   VECTOR_RECENT_LIMIT: 300,
   VECTOR_KEYWORD_LIMIT: 200,
+  MEMORY_MIN_SCORE_HYBRID: 0.2,
+  MEMORY_MIN_SCORE_KEYWORD: 0.25,
+  MEMORY_TTL_DAYS: 90,
+  MEMORY_MAX_ROWS: 5000,
+  /** P2 MMR: bobot relevansi vs diversitas + ambang dedup near-duplikat */
+  MEMORY_MMR_LAMBDA: 0.7,
+  MEMORY_MMR_CANDIDATES: 50,
+  MEMORY_DEDUP_COSINE: 0.92,
+  /** P2 chunking: entri panjang dipecah per baris ini dengan overlap */
+  MEMORY_CHUNK_CHARS: 2000,
+  MEMORY_CHUNK_OVERLAP: 200,
   WORKSPACE_SNAPSHOT_LIMIT: 200,
   CHECKPOINT_MAX_COUNT: 20,
   /** Checkpoint shadow-git: operasi git punya deadline sendiri agar turn tak

@@ -8,6 +8,7 @@ import {
   mcpInventory,
   readMcpResource,
 } from "../mcp/client.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
 
 export const mcpListTool: Tool = {
   name: "mcp_list",
@@ -83,9 +84,9 @@ export const mcpCallTool: Tool = {
     try {
       const result = await callMcpTool(sid, tn, a)
       const content = extractMcpText(result)
-      return content.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
+      return scrubSecrets(content.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
     } catch (e) {
-      return `[mcp] error: ${(e as Error).message}`
+      return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }
   },
 }
@@ -118,9 +119,9 @@ export const mcpReadTool: Tool = {
     try {
       const text = await readMcpResource(sid, u)
       if (!text) return `[mcp] resource '${u}' is empty or returned no text`
-      return text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
+      return scrubSecrets(text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
     } catch (e) {
-      return `[mcp] error: ${(e as Error).message}`
+      return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }
   },
 }
@@ -152,9 +153,9 @@ export const mcpPromptTool: Tool = {
     try {
       const text = await getMcpPrompt(sid, pn, (args as Record<string, unknown>) ?? {})
       if (!text) return `[mcp] prompt '${pn}' returned no message`
-      return text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
+      return scrubSecrets(text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
     } catch (e) {
-      return `[mcp] error: ${(e as Error).message}`
+      return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }
   },
 }

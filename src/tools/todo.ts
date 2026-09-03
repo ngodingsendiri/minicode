@@ -24,8 +24,13 @@ const GLYPH: Record<TodoStatus, string> = {
   cancelled: "[-]",
 }
 
+function sanitizeTodoId(id: string): string {
+  return id.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64) || "default"
+}
+
 function todoPath(sessionId: string, cwd: string): string {
-  return resolve(cwd, ".minicode", "todos", `${sessionId}.json`)
+  const safe = sanitizeTodoId(sessionId)
+  return resolve(cwd, ".minicode", "todos", `${safe}.json`)
 }
 
 /** Sanitasi + batasi daftar. Diekspor untuk test. */

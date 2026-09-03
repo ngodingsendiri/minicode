@@ -68,5 +68,10 @@ export async function dispatch(
     await handleExec(args, getArg)
     return true
   }
+  if (cmd === "memory") {
+    const { handleMemory } = await import("./commands/memory.ts")
+    await handleMemory(args, getArg)
+    return true
+  }
   return false
 }

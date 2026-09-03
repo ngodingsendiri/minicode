@@ -133,7 +133,7 @@ describe("truncateToWidth", () => {
   })
 
   test("atribut ANSI ditutup setelah dipotong", () => {
-    const out = truncateToWidth("\x1b[32m" + "x".repeat(50), 10)
+    const out = truncateToWidth(`\x1b[32m${"x".repeat(50)}`, 10)
     expect(out).toContain("\x1b[0m")
   })
 

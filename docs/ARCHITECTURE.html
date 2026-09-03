@@ -284,7 +284,7 @@
   <div class="brand">
     <div class="name">mini<b>code</b></div>
     <div class="sub">Peta struktur untuk developer</div>
-    <span class="vbadge">v0.8.2 · Bun-only · 0 deps</span>
+    <span class="vbadge">v0.9.0 · Bun-only · 0 deps</span>
   </div>
   <nav id="nav">
     <div class="sec-label">Peta</div>
@@ -569,7 +569,7 @@
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div><div class="exports">dispatch</div></div>
       <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya.</div><div class="exports">handleBuiltinCommand · /help /provider /model /sync /status /sessions /init /exit /thinking</div></div>
       <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver.</div><div class="exports">runRepl</div></div>
-      <div class="mod"><div class="fname">commands/ — 9 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats</div></div>
+      <div class="mod"><div class="fname">commands/ — 10 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts · memory.ts (status RAG: rows/size/hit-rate)</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats · handleMemory</div></div>
       <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/.</div></div>
     </div>
   </details>
@@ -580,7 +580,7 @@
       <div class="mod"><div class="fname">app/session.ts</div><div class="fdesc">Sambungkan kernel session dengan permission handler, recovery, event.</div><div class="exports">createMinicodeSession · PermissionControl</div></div>
       <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Rakit provider dari config ke bentuk kernel; first-run via callback setupWhenEmpty.</div></div>
       <div class="mod"><div class="fname">app/tool-layer.ts</div><div class="fdesc">Rakit daftar tool bawaan + MCP.</div></div>
-      <div class="mod"><div class="fname">app/rag-layer.ts</div><div class="fdesc">Lapisan RAG/memory untuk konteks.</div></div>
+      <div class="mod"><div class="fname">app/rag-layer.ts</div><div class="fdesc">Lapisan RAG/memory untuk konteks; lapor memoryHits (jumlah hit ter-inject) untuk trace.</div></div>
       <div class="mod"><div class="fname">app/mentions.ts</div><div class="fdesc">Ekspansi @mention berkas dalam prompt (lewat cek jail path sensitif).</div><div class="exports">parseMentions · resolveMentionContent · expandMentions</div></div>
     </div>
   </details>
@@ -663,12 +663,12 @@
       <div class="mod"><div class="fname">mcp/ (client · server · transport · http-transport)</div><div class="fdesc">Klien &amp; server MCP; transport stdio/HTTP (SSRF-protected). server.ts = minicode jadi MCP server.</div><div class="exports">mcpInventory · listMcpResources · listMcpPrompts · extractMcpText · getMcpServerIds · McpServerConfig</div></div>
       <div class="mod"><div class="fname">lsp/client.ts</div><div class="fdesc">Klien LSP: diagnostics, posisi symbol, server per ekstensi.</div><div class="exports">LspConnection · configureServers · lspDiagnostics · languageIdFor</div></div>
       <div class="mod"><div class="fname">hooks/run.ts</div><div class="fdesc">Eksekusi hook eksternal opt-in (MINICODE_HOOKS=1). Allowlist pindah ke policy/allowlist.ts.</div><div class="exports">findRunHooks · runRunHooks</div></div>
-      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor (embedding).</div></div>
+      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor (embedding): FTS5 + idx lower(text), ranking MMR λ=0.7 + dedup cosine 0.92, chunk 2000/overlap 200 (kolom parent), TTL 90 hari + cap 5000 baris, kolom model/dim, SSRF strict.</div><div class="exports">addMemory · searchHybrid · deleteMemoryByQuery · clearAllMemory · getMemoryStats · splitMemoryChunks · MemoryHit · MemoryStats</div></div>
       <div class="mod"><div class="fname">skills/loader.ts</div><div class="fdesc">Muat &amp; render skill — slash /nama-skill.</div></div>
       <div class="mod"><div class="fname">repo/repomap.ts</div><div class="fdesc">Peta ringkas struktur repo untuk konteks (LSP atau regex).</div></div>
       <div class="mod"><div class="fname">sandbox/docker.ts · sandbox/os.ts</div><div class="fdesc">Eksekusi terisolasi Docker/OS di bawah kebijakan sandbox-policy.</div></div>
       <div class="mod"><div class="fname">agents/pool.ts</div><div class="fdesc">Pool sub-agen untuk tool task.</div></div>
-      <div class="mod"><div class="fname">telemetry/trace.ts</div><div class="fdesc">Trace jsonl per request provider — bahan /stats &amp; gate telemetry.</div><div class="exports">RunTrace</div></div>
+      <div class="mod"><div class="fname">telemetry/trace.ts</div><div class="fdesc">Trace jsonl per request provider — bahan /stats &amp; gate telemetry; catat memoryHits untuk hit-rate RAG (`memory status`).</div><div class="exports">RunTrace</div></div>
       <div class="mod"><div class="fname">config.ts · constants.ts</div><div class="fdesc">IO config murni: muat/simpan (global + proyek, merge per-key) + CRUD MCP/LSP; LIMITS konstan pemotongan. Provisioning provider dipisah ke providers/provision.ts — arah dependensi satu arah: providers → config.</div><div class="exports">loadConfig · normalizeConfig · writeConfigAtomic · GLOBAL · LOCAL · saveMcpServer · removeMcpServer · saveLspServer · removeLspServer · MinicodeConfig · ProviderEntry · McpServerEntry · LspServerEntry · LIMITS</div></div>
       <div class="mod"><div class="fname">lib/atomic-write.ts · lib/db-path.ts · lib/net.ts</div><div class="fdesc">Tulis atomik (tmp+rename); resolusi path database; penjaga SSRF bersama (host privat + DNS pinning) — dipakai web_fetch, web_search, dan transport MCP HTTP.</div><div class="exports">atomicWriteText · isPrivateHost · isPrivateHostWithDns</div></div>
     </div>
@@ -893,7 +893,7 @@ bun run bench            # benchmark loop agen</pre>
     <li><b>Peta ini harus hidup.</b> Setiap perubahan struktur (tambah/hapus/pindah modul atau lapisan) WAJIB memperbarui <code>docs/ARCHITECTURE.html</code> dalam perubahan yang sama — lihat AGENTS.md.</li>
   </ul>
   <footer>
-    Minicode v0.8.2 · Peta struktur hidup — Session P0-P1: resume turnCount, NaN guard, checkpoint bash, hook timeout, compacted flag + UI P0-P2 (0.8.1).
+    Minicode v0.9.0 · Peta struktur hidup — P9 Memory/RAG: FTS5 + MMR + chunking + `memory status` · P8 CLI flag-injection hardening · Session P0-P1 + UI P0-P2.
   </footer>
 </section>
 

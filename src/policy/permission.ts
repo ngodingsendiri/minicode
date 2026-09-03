@@ -265,7 +265,15 @@ export function createPermissionHandler(
       }
 
       const mode = state.mode
-      if (mode === "allow-all") return "allow"
+      if (mode === "allow-all") {
+        // allow-all tetap menolak bash berbahaya (STATIC_DENY / RM_DANGEROUS)
+        // — izin penuh bukan berarti mengizinkan `rm -rf /` atau fork bomb.
+        if (call.name === "bash") {
+          const cmd = (earlyArgs?.cmd as string) ?? ""
+          if (cmd.trim() && bashDenied(cmd)) return "deny"
+        }
+        return "allow"
+      }
 
       return handlers[state.mode](call, earlyArgs)
     },

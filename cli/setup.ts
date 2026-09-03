@@ -67,6 +67,8 @@ export interface CliSession {
   allLoadedSkills: Skill[]
   usage: ReturnType<typeof createUsageCollector>
   budget?: number
+  /** P2.3: jumlah hit RAG memory yang di-inject ke system prompt sesi ini. */
+  memoryHits: number
   detachSimple: () => void
   persistCurrent: (usageData: unknown) => Promise<void>
   runPromptWithVerify: (prompt: string, signal?: AbortSignal) => Promise<void>
@@ -115,7 +117,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     providerOverride,
     setupWhenEmpty: runSetupWizard,
   })
-  const { systemExtra, skills: allLoadedSkills } = await createRagLayer({ cfg, prompt, cwd })
+  const {
+    systemExtra,
+    skills: allLoadedSkills,
+    memoryHits,
+  } = await createRagLayer({ cfg, prompt, cwd })
 
   // resume: load full history from DB -> seed into kernel ContextStore
   let initialMessages: readonly Message[] | undefined
@@ -123,7 +129,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   if (resumeId) {
     try {
       const prev = loadSession(resumeId, cwd)
-      if (prev && prev.messages.length) {
+      if (prev?.messages.length) {
         initialMessages = prev.messages as readonly Message[]
         resumeTurnCount = prev.turnCount
         console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`))
@@ -294,8 +300,8 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   async function persistCurrent(usageData: unknown) {
     try {
-      saveSession(sessionId, cwd, undefined, session.state.history, usageData)
-      if (resumeId) saveSession(resumeId, cwd, undefined, session.state.history, usageData)
+      await saveSession(sessionId, cwd, undefined, session.state.history, usageData)
+      if (resumeId) await saveSession(resumeId, cwd, undefined, session.state.history, usageData)
     } catch {}
   }
 
@@ -321,6 +327,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     allLoadedSkills,
     usage,
     budget,
+    memoryHits,
     detachSimple,
     persistCurrent,
     runPromptWithVerify,

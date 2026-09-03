@@ -25,6 +25,34 @@ function open(cwd?: string): Database {
     CREATE INDEX IF NOT EXISTS idx_memory_created ON memory(created_at);
     CREATE INDEX IF NOT EXISTS idx_memory_text ON memory(text);
   `)
+  // P1.3: kolom model/dim untuk deteksi embedding-mismatch (best-effort migrasi)
+  // P2.2: kolom parent untuk chunk entri panjang (chunk berbagi parent id)
+  try {
+    const cols = db.prepare(`PRAGMA table_info(memory)`).all() as { name: string }[]
+    if (!cols.some((c) => c.name === "model")) db.exec(`ALTER TABLE memory ADD COLUMN model TEXT`)
+    if (!cols.some((c) => c.name === "dim")) db.exec(`ALTER TABLE memory ADD COLUMN dim INTEGER`)
+    if (!cols.some((c) => c.name === "parent")) db.exec(`ALTER TABLE memory ADD COLUMN parent TEXT`)
+  } catch {}
+  // P1.1: expression index + FTS5 untuk keyword pre-filter (10-50× vs instr scan)
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_memory_text_lower ON memory(lower(text));`)
+  } catch {}
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(text, content='memory', content_rowid='rowid', tokenize='porter unicode61');
+      CREATE TRIGGER IF NOT EXISTS memory_ai AFTER INSERT ON memory BEGIN INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text); END;
+      CREATE TRIGGER IF NOT EXISTS memory_ad AFTER DELETE ON memory BEGIN INSERT INTO memory_fts(memory_fts, rowid, text) VALUES('delete', old.rowid, old.text); END;
+      CREATE TRIGGER IF NOT EXISTS memory_au AFTER UPDATE ON memory BEGIN INSERT INTO memory_fts(memory_fts, rowid, text) VALUES('delete', old.rowid, old.text); INSERT INTO memory_fts(rowid, text) VALUES (new.rowid, new.text); END;
+    `)
+    // populate FTS untuk DB lama yang sudah ada sebelum trigger
+    const cnt =
+      (db.prepare(`SELECT count(*) as c FROM memory_fts`).get() as { c: number } | null)?.c ?? 0
+    const total =
+      (db.prepare(`SELECT count(*) as c FROM memory`).get() as { c: number } | null)?.c ?? 0
+    if (cnt === 0 && total > 0) {
+      db.exec(`INSERT INTO memory_fts(memory_fts) VALUES('rebuild')`)
+    }
+  } catch {}
   return db
 }
 
@@ -66,6 +94,60 @@ function keywordScore(query: string, text: string): number {
   return hits / q.length
 }
 
+async function fetchEmbeddingsOnce(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<{ data?: { embedding: number[] }[] } | null> {
+  // P1.4: redirect manual max 2 hop, tiap hop dicek SSRF strict (fail-close,
+  // tanpa cache agar DNS rebinding tidak lolos via cache basi).
+  let current = url
+  for (let hop = 0; hop <= 2; hop++) {
+    try {
+      const hostname = new URL(current).hostname
+      if (await isPrivateHostWithDns(hostname, { strict: true, timeoutMs: 1000, noCache: true })) {
+        process.stderr.write(`[vector] private host rejected: ${hostname}\n`)
+        return null
+      }
+    } catch {
+      return null
+    }
+    let res: Response
+    try {
+      res = await fetch(current, {
+        method: "POST",
+        headers,
+        body,
+        redirect: "manual",
+        signal: AbortSignal.timeout(LIMITS.EMBEDDING_TIMEOUT_MS),
+      })
+    } catch (e) {
+      // fallback keyword-only tetap berjalan, tapi jangan senyap total
+      process.stderr.write(`[warn] vector: embedding attempt failed: ${(e as Error).message}\n`)
+      return null
+    }
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location")
+      if (!loc || hop === 2) return null
+      try {
+        current = new URL(loc, current).toString()
+        const proto = new URL(current).protocol
+        if (proto !== "https:" && proto !== "http:") return null
+        continue
+      } catch {
+        return null
+      }
+    }
+    if (!res.ok) return null
+    try {
+      return (await res.json()) as { data?: { embedding: number[] }[] }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 async function embedTexts(
   baseUrl: string,
   apiKey: string,
@@ -75,11 +157,13 @@ async function embedTexts(
   if (!apiKey || !baseUrl) return null
   try {
     const hostname = new URL(baseUrl).hostname
-    if (await isPrivateHostWithDns(hostname)) {
+    if (await isPrivateHostWithDns(hostname, { strict: true, timeoutMs: 1000, noCache: true })) {
       process.stderr.write(`[vector] private host rejected: ${hostname}\n`)
       return null
     }
-  } catch {}
+  } catch {
+    return null
+  }
   const urls = [
     `${baseUrl.replace(/\/+$/, "")}/embeddings`,
     `${baseUrl.replace(/\/+$/, "")}/v1/embeddings`,
@@ -95,29 +179,16 @@ async function embedTexts(
   })
   for (const headers of headersList) {
     for (const url of urls) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: headers as Record<string, string>,
-          body,
-          signal: AbortSignal.timeout(LIMITS.EMBEDDING_TIMEOUT_MS),
-        })
-        if (!res.ok) continue
-        const json = (await res.json()) as { data?: { embedding: number[] }[] }
-        if (json.data && Array.isArray(json.data)) return json.data.map((d) => d.embedding)
-      } catch (e) {
-        // fallback keyword-only tetap berjalan, tapi jangan senyap total
-        process.stderr.write(`[warn] vector: embedding attempt failed: ${(e as Error).message}\n`)
-      }
+      const json = await fetchEmbeddingsOnce(url, headers as Record<string, string>, body)
+      if (json?.data && Array.isArray(json.data)) return json.data.map((d) => d.embedding)
     }
   }
   return null
 }
 
 // Retry singkat utk SQLITE_BUSY saat beberapa sub-agent menulis bersamaan.
-// Fase 0: ganti busy-spin CPU 100% → Atomics.wait (block tanpa spin, tidak bakar CPU)
-// TODO Fase 1: jadikan async + await Bun.sleep untuk tidak block event-loop sama sekali
-function withBusyRetry<T>(fn: () => T, attempts = 3): T {
+// P0.2: async + Bun.sleep agar tidak block event-loop (sebelumnya Atomics.wait freeze 175ms).
+async function withBusyRetry<T>(fn: () => T, attempts = 3): Promise<T> {
   let last: unknown
   for (let i = 0; i < attempts; i++) {
     try {
@@ -126,55 +197,235 @@ function withBusyRetry<T>(fn: () => T, attempts = 3): T {
       const msg = String((e as Error).message ?? e)
       if (!msg.includes("SQLITE_BUSY") && !msg.includes("database is locked")) throw e
       last = e
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * 2 ** i)
+      await Bun.sleep(25 * 2 ** i)
     }
   }
   throw last
 }
 
-export function deleteMemoryByQuery(query: string, cwd?: string): number {
+// Escape nilai untuk LIKE: % _ \ jadi literal (dipakai dengan ESCAPE '\').
+function escapeLike(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
+}
+
+export async function deleteMemoryByQuery(query: string, cwd?: string): Promise<number> {
   const db = open(cwd)
   try {
-    // full scan dulu (SELECT semua lalu filter di JS) → pakai SQL instr() langsung
-    const stmt = db.prepare("DELETE FROM memory WHERE instr(lower(text), lower(?)) > 0")
-    const info = withBusyRetry(() => stmt.run(query.toLowerCase()))
-    return info.changes
+    const pattern = escapeLike(query.toLowerCase())
+    // Hitung dulu: sqlite3_changes() ikut menghitung tulis trigger FTS,
+    // jadi info.changes DELETE bukan jumlah baris memory yang terhapus.
+    const before = db
+      .prepare(
+        "SELECT count(*) as c FROM memory WHERE lower(text) LIKE '%' || ? || '%' ESCAPE '\\'",
+      )
+      .get(pattern) as { c: number } | null
+    const n = before?.c ?? 0
+    if (n === 0) return 0
+    await withBusyRetry(() =>
+      db
+        .prepare("DELETE FROM memory WHERE lower(text) LIKE '%' || ? || '%' ESCAPE '\\'")
+        .run(pattern),
+    )
+    return n
   } finally {
     db.close()
   }
 }
 
-export function clearAllMemory(cwd?: string): void {
+export async function clearAllMemory(cwd?: string): Promise<void> {
   const db = open(cwd)
-  withBusyRetry(() => {
-    db.exec("DELETE FROM memory")
-    db.exec("VACUUM")
-  })
-  db.close()
+  try {
+    await withBusyRetry(() => {
+      db.exec("DELETE FROM memory")
+      db.exec("VACUUM")
+    })
+  } finally {
+    db.close()
+  }
+}
+
+// P2.2: pecah teks panjang jadi chunk ber-overlap agar embedding mean-pool
+// tidak menghilangkan detail catatan panjang. Tiap chunk satu baris DB.
+export function splitMemoryChunks(text: string): string[] {
+  const size = LIMITS.MEMORY_CHUNK_CHARS
+  const overlap = LIMITS.MEMORY_CHUNK_OVERLAP
+  if (text.length <= size) return [text]
+  const out: string[] = []
+  let start = 0
+  while (start < text.length) {
+    out.push(text.slice(start, start + size))
+    if (start + size >= text.length) break
+    start += size - overlap
+  }
+  return out
 }
 
 export async function addMemory(
   text: string,
-  opts: { baseUrl?: string; apiKey?: string; cwd?: string } = {},
+  opts: { baseUrl?: string; apiKey?: string; cwd?: string; embeddingModel?: string } = {},
 ) {
   const clean = scrubSecrets(text)
-  let embedding: Buffer | null = null
+  const chunks = splitMemoryChunks(clean)
+  const embedModel =
+    opts.embeddingModel ?? process.env.MINICODE_EMBED_MODEL ?? "text-embedding-3-small"
+  // Satu panggilan batch untuk semua chunk — hemat round-trip embedding.
+  let vecs: number[][] | null = null
   if (opts.baseUrl && opts.apiKey) {
-    const vecs = await embedTexts(opts.baseUrl, opts.apiKey, [clean])
-    if (vecs && vecs[0]) embedding = toBlob(vecs[0])
+    vecs = await embedTexts(opts.baseUrl, opts.apiKey, chunks, embedModel)
   }
-  const id = randomUUID()
+  const parentId = randomUUID()
+  const now = Date.now()
   const db = open(opts.cwd)
-  // chmod 600 untuk vector.db agar secret tidak world-readable
+  // chmod 600 untuk vector.db (+ -wal/-shm) agar secret tidak world-readable
   try {
     const { chmodSync } = require("node:fs") as typeof import("node:fs")
     const p = dbPath(opts.cwd)
-    chmodSync(p, 0o600)
+    for (const f of [p, `${p}-wal`, `${p}-shm`]) {
+      try {
+        chmodSync(f, 0o600)
+      } catch {}
+    }
   } catch {}
-  const ins = db.prepare("INSERT INTO memory (id, text, embedding, created_at) VALUES (?, ?, ?, ?)")
-  withBusyRetry(() => ins.run(id, clean, embedding, Date.now()))
-  db.close()
-  return id
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      const v = vecs?.[i]
+      const embedding = v ? toBlob(v) : null
+      const id = i === 0 ? parentId : randomUUID()
+      await withBusyRetry(() =>
+        db
+          .prepare(
+            "INSERT INTO memory (id, text, embedding, created_at, model, dim, parent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          )
+          .run(
+            id,
+            chunks[i]!,
+            embedding,
+            now,
+            embedding ? embedModel : null,
+            v?.length ?? null,
+            parentId,
+          ),
+      )
+    }
+    // P1.2: prune TTL 90d + cap MAX_ROWS 5000 (best-effort, jangan gagalkan write)
+    try {
+      const ttlMs = LIMITS.MEMORY_TTL_DAYS * 24 * 60 * 60 * 1000
+      if (ttlMs > 0) {
+        await withBusyRetry(() =>
+          db.prepare("DELETE FROM memory WHERE created_at < ?").run(now - ttlMs),
+        )
+      }
+      const cnt =
+        (db.prepare("SELECT count(*) as c FROM memory").get() as { c: number } | null)?.c ?? 0
+      if (cnt > LIMITS.MEMORY_MAX_ROWS) {
+        await withBusyRetry(() =>
+          db
+            .prepare(
+              `DELETE FROM memory WHERE id IN (SELECT id FROM memory ORDER BY created_at DESC LIMIT -1 OFFSET ${LIMITS.MEMORY_MAX_ROWS})`,
+            )
+            .run(),
+        )
+      }
+      if (cnt % 1000 === 0) {
+        try {
+          db.exec("VACUUM")
+        } catch {}
+      }
+    } catch (e) {
+      process.stderr.write(`[warn] vector: prune failed: ${(e as Error).message}\n`)
+    }
+  } finally {
+    db.close()
+  }
+  return parentId
+}
+
+type MemoryRow = {
+  text: string
+  embedding: Buffer | null
+  dim: number | null
+  model: string | null
+  created_at: number
+}
+
+export interface MemoryHit {
+  text: string
+  score: number
+  createdAt: number
+}
+
+// Kemiripan teks Jaccard untuk MMR bila pasangan tanpa vektor: cegah 5 hits
+// parafrase ("prefer bun over npm" ×3) menghabiskan budget prompt.
+function textSim(a: string, b: string): number {
+  const ta = new Set(a.toLowerCase().split(/\W+/).filter(Boolean))
+  const tb = new Set(b.toLowerCase().split(/\W+/).filter(Boolean))
+  if (ta.size === 0 || tb.size === 0) return 0
+  let inter = 0
+  for (const w of ta) if (tb.has(w)) inter++
+  return inter / (ta.size + tb.size - inter)
+}
+
+// P2.1: buang near-duplikat (cosine > MEMORY_DEDUP_COSINE) + MMR λ untuk
+// diversitas. Tanpa vektor hanya dedup teks eksak (Map) + MMR via textSim.
+function mmrRerank(
+  cands: { text: string; score: number; vec: number[] | null }[],
+  topK: number,
+): { text: string; score: number }[] {
+  const lambda = LIMITS.MEMORY_MMR_LAMBDA
+  // 1. near-dedup: kandidat skor-rendah yang nyaris identik dengan yang
+  //    skor-lebih-tinggi dibuang (tak ada gunanya di prompt dua-duanya).
+  const kept: typeof cands = []
+  for (const c of cands) {
+    let dup = false
+    for (const k of kept) {
+      if (c.vec && k.vec) {
+        if (c.vec.length === k.vec.length && cosine(c.vec, k.vec) > LIMITS.MEMORY_DEDUP_COSINE) {
+          dup = true
+          break
+        }
+      } else if (c.text === k.text) {
+        dup = true
+        break
+      }
+    }
+    if (!dup) kept.push(c)
+  }
+  // 2. MMR: tiap putaran pilih kandidat dengan λ*relevansi − (1−λ)*maxSimTerpilih.
+  const selected: typeof cands = []
+  const rest = [...kept]
+  while (rest.length > 0 && selected.length < topK) {
+    let best = 0
+    let bestVal = -Infinity
+    for (let i = 0; i < rest.length; i++) {
+      const c = rest[i]!
+      let maxSim = 0
+      for (const s of selected) {
+        const sim =
+          c.vec && s.vec && c.vec.length === s.vec.length
+            ? cosine(c.vec, s.vec)
+            : textSim(c.text, s.text)
+        if (sim > maxSim) maxSim = sim
+      }
+      const val = lambda * c.score - (1 - lambda) * maxSim
+      if (val > bestVal) {
+        bestVal = val
+        best = i
+      }
+    }
+    selected.push(rest.splice(best, 1)[0]!)
+  }
+  return selected.map(({ text, score }) => ({ text, score }))
+}
+
+// Peringatan dim-mismatch cukup sekali per dimensi agar tidak spam stderr tiap hit.
+const dimMismatchWarned = new Set<string>()
+
+// Bangun query FTS5 aman: tiap keyword di-quote ("...") agar karakter khusus
+// FTS (*, :, ", -) tidak jadi operator. Return null bila tidak ada keyword valid.
+function buildFtsQuery(query: string): string | null {
+  const kws = query.toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5)
+  if (kws.length === 0) return null
+  return kws.map((k) => `"${k.replace(/"/g, '""')}"`).join(" OR ")
 }
 
 export async function searchHybrid(
@@ -186,53 +437,150 @@ export async function searchHybrid(
     topK?: number
     embeddingModel?: string
   } = {},
-): Promise<{ text: string; score: number }[]> {
+): Promise<MemoryHit[]> {
   const db = open(opts.cwd)
-  // Hybrid: keyword pre-filter via SQL instr() to retrieve old relevant memories beyond recent 500
-  const keywords = query.toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5)
-  let rows: { text: string; embedding: Buffer | null }[]
-  if (keywords.length > 0) {
-    const likeClauses = keywords.map(() => `instr(lower(text), lower(?)) > 0`).join(" OR ")
-    const recentRows = db
-      .prepare(
-        `SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_RECENT_LIMIT}`,
-      )
-      .all() as { text: string; embedding: Buffer | null }[]
-    const keywordRows = db
-      .prepare(
-        `SELECT text, embedding FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
-      )
-      .all(...keywords) as { text: string; embedding: Buffer | null }[]
-    const merged = new Map<string, { text: string; embedding: Buffer | null }>()
-    for (const r of [...recentRows, ...keywordRows]) if (!merged.has(r.text)) merged.set(r.text, r)
-    rows = [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
-  } else {
-    rows = db
-      .prepare(
-        `SELECT text, embedding FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_SEARCH_LIMIT}`,
-      )
-      .all() as { text: string; embedding: Buffer | null }[]
+  let rows: MemoryRow[]
+  try {
+    // Hybrid: keyword pre-filter via FTS5 MATCH (pakai rank) → fallback LIKE
+    // dengan idx_memory_text_lower bila FTS tidak tersedia/DB lama.
+    const keywords = query.toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5)
+    const escKeywords = keywords.map((k) =>
+      k.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_"),
+    )
+    if (keywords.length > 0) {
+      const recentRows = db
+        .prepare(
+          `SELECT text, embedding, dim, model, created_at FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_RECENT_LIMIT}`,
+        )
+        .all() as MemoryRow[]
+      let keywordRows: MemoryRow[] = []
+      const ftsQ = buildFtsQuery(query)
+      if (ftsQ) {
+        try {
+          keywordRows = db
+            .prepare(
+              `SELECT m.text as text, m.embedding as embedding, m.dim as dim, m.model as model, m.created_at as created_at FROM memory_fts f JOIN memory m ON m.rowid = f.rowid WHERE memory_fts MATCH ? ORDER BY rank LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
+            )
+            .all(ftsQ) as MemoryRow[]
+        } catch {
+          keywordRows = []
+        }
+      }
+      if (keywordRows.length === 0) {
+        const likeClauses = keywords
+          .map(() => `lower(text) LIKE '%' || lower(?) || '%' ESCAPE '\\'`)
+          .join(" OR ")
+        keywordRows = db
+          .prepare(
+            `SELECT text, embedding, dim, model, created_at FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
+          )
+          .all(...escKeywords) as MemoryRow[]
+      }
+      const merged = new Map<string, MemoryRow>()
+      for (const r of [...recentRows, ...keywordRows])
+        if (!merged.has(r.text)) merged.set(r.text, r)
+      rows = [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
+    } else {
+      rows = db
+        .prepare(
+          `SELECT text, embedding, dim, model, created_at FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_SEARCH_LIMIT}`,
+        )
+        .all() as MemoryRow[]
+    }
+  } finally {
+    db.close()
   }
-  db.close()
   if (rows.length === 0) return []
 
   let queryVec: number[] | null = null
   if (opts.baseUrl && opts.apiKey) {
     const vecs = await embedTexts(opts.baseUrl, opts.apiKey, [query], opts.embeddingModel)
-    if (vecs && vecs[0]) queryVec = vecs[0]
+    if (vecs?.[0]) queryVec = vecs[0]
   }
 
   const scored = rows.map((r) => {
+    let vec: number[] | null = null
     let vecScore = 0
     if (queryVec && r.embedding) {
-      const vec = fromBlob(r.embedding)
-      vecScore = cosine(queryVec, vec)
+      vec = fromBlob(r.embedding)
+      if (vec.length !== queryVec.length) {
+        // P1.3: dim mismatch (ganti MINICODE_EMBED_MODEL) → vecScore 0 + warn sekali
+        const key = `${r.dim ?? vec.length}->${queryVec.length}`
+        if (!dimMismatchWarned.has(key)) {
+          dimMismatchWarned.add(key)
+          process.stderr.write(
+            `[warn] vector: dim mismatch (stored ${r.dim ?? vec.length} vs query ${queryVec.length}, model ${r.model ?? "?"}) — fallback keyword-only untuk hit ini\n`,
+          )
+        }
+        vec = null
+      } else {
+        vecScore = cosine(queryVec, vec)
+      }
     }
     const kw = keywordScore(query, r.text)
     // hybrid 0.7 vector + 0.3 keyword, if no vector -> keyword only
     const score = queryVec ? vecScore * 0.7 + kw * 0.3 : kw
-    return { text: r.text, score }
+    return { text: r.text, score, vec, createdAt: r.created_at }
   })
-  scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, opts.topK ?? 5)
+  const minScore = queryVec ? LIMITS.MEMORY_MIN_SCORE_HYBRID : LIMITS.MEMORY_MIN_SCORE_KEYWORD
+  const filtered = scored.filter((s) => s.score >= minScore)
+  filtered.sort((a, b) => b.score - a.score)
+  // P2.1: MMR di atas kandidat teratas agar prompt tidak dipenuhi parafrase sama.
+  const pool = filtered.slice(0, LIMITS.MEMORY_MMR_CANDIDATES)
+  const ranked = mmrRerank(pool, opts.topK ?? 5)
+  const createdByText = new Map(pool.map((p) => [p.text, p.createdAt] as const))
+  return ranked.map((h) => ({ ...h, createdAt: createdByText.get(h.text) ?? Date.now() }))
+}
+
+export interface MemoryStats {
+  rows: number
+  dbBytes: number
+  walBytes: number
+  shmBytes: number
+  models: { model: string; count: number }[]
+  dims: { dim: number; count: number }[]
+  oldest: number | null
+  newest: number | null
+}
+
+// P2.4: observabilitas untuk `minicode memory status` — tanpa embedding, murni SQL.
+export function getMemoryStats(cwd?: string): MemoryStats {
+  const db = open(cwd)
+  try {
+    const rows =
+      (db.prepare("SELECT count(*) as c FROM memory").get() as { c: number } | null)?.c ?? 0
+    const bounds = db
+      .prepare("SELECT min(created_at) as oldest, max(created_at) as newest FROM memory")
+      .get() as { oldest: number | null; newest: number | null } | null
+    const models = db
+      .prepare(
+        "SELECT coalesce(model, '(keyword-only)') as model, count(*) as count FROM memory GROUP BY model ORDER BY count DESC",
+      )
+      .all() as { model: string; count: number }[]
+    const dims = db
+      .prepare(
+        "SELECT coalesce(dim, 0) as dim, count(*) as count FROM memory GROUP BY dim ORDER BY count DESC",
+      )
+      .all() as { dim: number; count: number }[]
+    const p = dbPath(cwd)
+    const sizeOf = (f: string): number => {
+      try {
+        return (require("node:fs") as typeof import("node:fs")).statSync(f).size
+      } catch {
+        return 0
+      }
+    }
+    return {
+      rows,
+      dbBytes: sizeOf(p),
+      walBytes: sizeOf(`${p}-wal`),
+      shmBytes: sizeOf(`${p}-shm`),
+      models,
+      dims,
+      oldest: bounds?.oldest ?? null,
+      newest: bounds?.newest ?? null,
+    }
+  } finally {
+    db.close()
+  }
 }

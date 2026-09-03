@@ -21,7 +21,7 @@ function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): P
     p.stderr.on("data", (d) => (err += d))
     p.on("error", reject)
     p.on("close", (code) => {
-      const text = (out + (err ? "\n" + err : "")).trim()
+      const text = (out + (err ? `\n${err}` : "")).trim()
       if (code !== 0 && !text) reject(new Error(`git ${args.join(" ")} exit ${code}`))
       else resolve(text || `(exit ${code})`)
     })

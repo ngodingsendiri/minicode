@@ -28,7 +28,7 @@ import { c, glyphs } from "../src/ui/render/theme.ts"
 import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"
 import type { CliSession } from "./setup.ts"
 
-const MODES = ["auto", "ask", "plan", "allowlist"] as const
+const MODES = ["auto", "ask", "plan", "allowlist", "allow-all"] as const
 
 // Perintah REPL yang ditangani driver sendiri (bukan builtin commands.ts).
 // Ikut ditawarkan di dropdown supaya bisa ditemukan.
@@ -114,7 +114,11 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const cycleMode = () => {
     const idx = MODES.indexOf(mode as (typeof MODES)[number])
-    mode = MODES[(idx + 1) % MODES.length]!
+    // allow-all hanya via flag --allow-all, tidak di-cycle Shift+Tab
+    // — mencegah aktivasi tak sengaja mode paling permisif.
+    let next = MODES[(idx + 1) % MODES.length]!
+    if (next === "allow-all") next = MODES[(idx + 2) % MODES.length]!
+    mode = next
     if (permissions) permissions.setMode(mode as (typeof MODES)[number])
     else mode = permissionMode ?? mode // tak ada handle: jangan tampilkan label palsu
   }

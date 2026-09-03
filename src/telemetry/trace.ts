@@ -17,6 +17,8 @@ export interface RunTrace {
   model?: string
   ok: boolean
   error?: string
+  /** P2.3: jumlah hit RAG memory yang di-inject ke system prompt run ini. */
+  memoryHits?: number
 }
 
 // Opt-out privasi: MINICODE_TELEMETRY=0/false/off → tidak ada file ditulis.

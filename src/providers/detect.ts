@@ -74,7 +74,7 @@ export async function detectModels(
   for (const h of hybridHeaders(apiKey)) {
     if (sig.aborted) break
     const models = await tryFetchModels(baseUrl, h, sig)
-    if (models && models.length) {
+    if (models?.length) {
       // Prioritas: baseUrl (anthropic.com → anthropic) → nama model (claude/gpt)
       // Gateway seperti b.ai, OpenRouter: baseUrl TIDAK anthropic → openai-compat
       const hint = baseUrl.includes("anthropic") ? "anthropic" : "openai"

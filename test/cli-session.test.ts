@@ -24,7 +24,45 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { flagNameOf, valueFlags } from "../cli/args.ts"
 import { type FakeReply, startFakeProvider } from "./helpers/fake-provider.ts"
+
+// Reorder args agar flag dikenal selalu sebelum prompt — cegah flag-injection
+// sekaligus jaga kompatibilitas tes lama yang menulis ["prompt", "--flag", "val"].
+function reorderForSecureCli(args: string[]): string[] {
+  const flags: string[] = []
+  const prompt: string[] = []
+  let seenPrompt = false
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]!
+    if (token === "--") {
+      prompt.push(...args.slice(i + 1))
+      break
+    }
+    const flag = flagNameOf(token)
+    if (flag) {
+      flags.push(token)
+      if (valueFlags.has(flag) && !token.includes("=")) {
+        const v = args[i + 1]
+        if (v !== undefined) {
+          flags.push(v)
+          i++
+        }
+      }
+      continue
+    }
+    if (token.startsWith("-") && /^-?\d+(\.\d+)?$/.test(token) && !seenPrompt) {
+      // "-5" sebagai value sudah diambil di atas; bila sampai sini tanpa flag,
+      // anggap prompt
+      seenPrompt = true
+      prompt.push(token)
+      continue
+    }
+    seenPrompt = true
+    prompt.push(token)
+  }
+  return [...flags, ...prompt]
+}
 
 const repoRoot = resolve(import.meta.dir, "..")
 const entry = join(repoRoot, "cli", "index.ts")
@@ -97,7 +135,8 @@ async function run(
   timeoutMs = 60_000,
 ): Promise<Run> {
   const fakeHome = join(ws.dir, "home")
-  const proc = Bun.spawn([process.execPath, entry, ...args], {
+  const normalized = reorderForSecureCli(args)
+  const proc = Bun.spawn([process.execPath, entry, ...normalized], {
     // cwd proses = workspace, jadi `process.cwd()` dan `--cwd` sepakat. Tool file
     // memakai `process.cwd()` sebagai root jail (lihat PLAN.md P2.1); menyamakan
     // keduanya menjaga test ini mengukur CLI, bukan ketidaksepakatan itu.

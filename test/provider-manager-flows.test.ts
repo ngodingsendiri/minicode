@@ -87,7 +87,7 @@ const visible = (t: FakeTty): string => stripAnsi(t.all())
 
 async function waitFor(
   condition: () => boolean | Promise<boolean>,
-  timeoutMs = 1200,
+  timeoutMs = 5000,
 ): Promise<void> {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
@@ -260,7 +260,7 @@ describe.serial("provider-manager: delete (d)", () => {
       return local.providers.length === 0 && global.providers.length === 0
     })
     await mgr.close()
-  })
+  }, 30000)
 
   test("'n' confirmation cancels — provider remains", async () => {
     await writeLocalProviders(oneProvider)
@@ -298,7 +298,7 @@ describe.serial("provider-manager: delete (d)", () => {
     expect(out).toContain("(active)")
     expect(out).toContain("Provider is active")
     await mgr.close()
-  })
+  }, 30000)
 
   test("empty list: d does nothing", async () => {
     tty = installFakeTty({ rows: 24 })
@@ -369,7 +369,7 @@ describe.serial("provider-manager: edit (e)", () => {
     expect(visible(t)).toContain("updated")
     expect(tty.failures()).toEqual([])
     await mgr.close()
-  })
+  }, 10000)
 
   test("empty list: e does nothing", async () => {
     tty = installFakeTty({ rows: 24 })

@@ -337,6 +337,29 @@ Audit 2026-09-04 menemukan 38 temuan: flag-injection via prompt, plan re-exec `M
 
 **Selesai bila:** `prompt "a --allow-all"` tidak aktifkan, plan re-exec env `0` + no prematur exit, `resumeId` traversal → sanitasi, `--cwd /tmp providers` → `exit 0`, gate hijau.
 
+## P9 — Memory / RAG: isolation, freeze, scan, noise
+
+Audit 2026-09-05 menemukan 4 kritis: `process.cwd()` bocor `--cwd` di 3 tool memory, `Atomics.wait` freeze 175ms, `instr(lower())` full scan tanpa FTS5, injeksi noise tanpa threshold — plus 8 medium (dedup, dim mismatch, global leak, TTL, SSRF, trunc, chunking, fileLocks). Detail di `.verdent/plans/Memory_RAG_Hardening-0905.plan.md`.
+
+**P0 — Rilis blocker:**
+- **P0.1 `ctx.cwd` isolation:** `tools/memory.ts:20,25,70,110` `process.cwd()` → `ctx.cwd ?? process.cwd()` (seperti `read_file` 0.8.0). Test `memory-cwd-isolation` — write di `ctx.cwd=/tmp/A` tidak muncul di `process.cwd()` atau `/tmp/B`.
+- **P0.2 `Atomics.wait` → `Bun.sleep` async:** `vector.ts:129` + `persistence.ts:91` `25*2^i` sync → `await Bun.sleep(25<<i)` + `try/finally db.close()` di `searchHybrid:216`. Test `grep Atomics.wait` 0 + `Pool(3) 20 writes` <500ms.
+- **P0.3 Threshold + no-inject:** `vector.ts:237` `slice(0,5)` tanpa `MIN_SCORE` → `0.05` tetap inject. Filter `>=0.20` hybrid / `0.25` keyword, bila 0 jangan `# Relevant memory`. Test `score 0.05` tidak masuk, `0.8` masuk.
+
+**P1 — Kualitas & keamanan:**
+- **P1.1 FTS5/index:** `vector.ts:24` `memory(text)` `instr` full scan → `idx_memory_text_lower` expr index atau `memory_fts` virtual + triggers, benchmark 5000 rows <50ms
+- **P1.2 TTL/MAX_ROWS:** `LIMITS.MEMORY_TTL_DAYS 90` `MAX_ROWS 5000` + prune `created_at<now-TTL` + `VACUUM` periodik di `addMemory`
+- **P1.3 Embedding meta:** `model,dim` kolom + dim mismatch `cosine 0` → warn + re-embed background
+- **P1.4 SSRF strict:** `vector.ts:77` `isPrivateHostWithDns` `strict:true` fail-close + `redirect:manual` 2 hop
+
+**P2 — Polish:** MMR `λ=0.7` dedup `cosine>0.92`, chunk 2000+overlap 200, `vector.db-wal/-shm` `chmod 600`, `minicode memory stats`.
+
+**Selesai bila:** `write_memory` via `ctx.cwd` isolasi, `grep Atomics.wait` 0, `score 0.05` tidak inject, `keywordRows` <50ms, `COUNT(*)<=5000`, gate hijau.
+
+> **Update 2026-09-05:** `P0.1-P0.3` + `P1.1-P1.4` sudah dieksekusi (8 test baru `test/memory-p1.test.ts`, gate `tsc` PASS + `lint` 9 warn + `1186 pass` + `coverage 80.96/83.18` + `pack 22/22`). Catatan: `deleteMemoryByQuery` kini hitung-dulu-sebelum-DELETE — `sqlite3_changes()` ikut menghitung tulis trigger FTS sehingga `info.changes` membengkak (terukur 7 untuk 1 baris). Sisa `P2` backlog + flake TUI `provider/model-manager-flows` yang berpindah tiap run (pre-existing, di luar jalur memory — lolos saat run isolasi).
+>
+> **Update 2026-09-06 (P2 tuntas):** MMR λ=0.7 + dedup cosine 0.92 (`mmrRerank`, terbukti: test gagal tanpa MMR), chunk 2000/overlap 200 kolom `parent` (return parent id), `createdAt` di `MemoryHit` + display `(score, tanggal)` di RAG/tool, `chmod 600` db-wal/-shm, `memoryHits` di `RunTrace` + `createRagLayer` + `CliSession`, subcommand baru `minicode memory status [--json]` (`cli/commands/memory.ts`, `getMemoryStats`), 8 test `test/memory-p2.test.ts` + 3 test `cli-subcommands`, docs `USAGE.md` + `ARCHITECTURE.html` sinkron.
+
 ---
 
 ## Yang sengaja TIDAK dikerjakan

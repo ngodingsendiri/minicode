@@ -2,14 +2,17 @@ import { expect, test } from "bun:test"
 import { getArg, promptFromArgs } from "../cli/args.ts"
 
 test("getArg returns value after flag", () => {
-  expect(getArg(["refactor", "--cwd", "src"], "--cwd")).toBe("src")
+  expect(getArg(["--cwd", "src", "refactor"], "--cwd")).toBe("src")
+  expect(getArg(["refactor", "--cwd", "src"], "--cwd")).toBeUndefined()
   expect(getArg(["refactor", "--cwd"], "--cwd")).toBeUndefined()
   expect(getArg(["refactor"], "--cwd")).toBeUndefined()
 })
 
 test("promptFromArgs removes boolean flags", () => {
-  expect(promptFromArgs(["refactor", "src", "--verbose"])).toBe("refactor src")
-  expect(promptFromArgs(["refactor", "--allow-all", "--plan"])).toBe("refactor")
+  expect(promptFromArgs(["--verbose", "refactor", "src"])).toBe("refactor src")
+  expect(promptFromArgs(["--allow-all", "--plan", "refactor"])).toBe("refactor")
+  expect(promptFromArgs(["refactor", "src", "--verbose"])).toBe("refactor src --verbose")
+  expect(promptFromArgs(["refactor", "--allow-all"])).toBe("refactor --allow-all")
   expect(promptFromArgs([])).toBe("")
 })
 
@@ -28,8 +31,9 @@ test("-v/--version dikenali sebagai flag, bukan prompt", () => {
 
 test("promptFromArgs removes value flags + their values", () => {
   expect(promptFromArgs(["--cwd", "src", "refactor", "help"])).toBe("refactor help")
-  expect(promptFromArgs(["build", "--model", "gpt-4o-mini", "--timeout", "1000"])).toBe("build")
-  expect(promptFromArgs(["refactor", "--max-steps", "5"])).toBe("refactor")
+  expect(promptFromArgs(["--model", "gpt-4o-mini", "--timeout", "1000", "build"])).toBe("build")
+  expect(promptFromArgs(["refactor", "--max-steps", "5"])).toBe("refactor --max-steps 5")
+  expect(promptFromArgs(["--max-steps", "5", "refactor"])).toBe("refactor")
 })
 
 test("promptFromArgs keeps prompt words resembling negative numbers", () => {
@@ -39,24 +43,28 @@ test("promptFromArgs keeps prompt words resembling negative numbers", () => {
 // ── C12 regressions ──────────────────────────────────────────────────────────
 
 test("--verify is a known boolean flag, not prompt text", () => {
-  expect(promptFromArgs(["fix bugs", "--verify"])).toBe("fix bugs")
+  expect(promptFromArgs(["fix bugs", "--verify"])).toBe("fix bugs --verify")
   expect(promptFromArgs(["--verify", "fix bugs"])).toBe("fix bugs")
 })
 
 test("supports --flag=value form in prompt filtering", () => {
-  expect(promptFromArgs(["hi", "--model=gpt-4o", "--cwd=src"])).toBe("hi")
+  expect(promptFromArgs(["hi", "--model=gpt-4o", "--cwd=src"])).toBe("hi --model=gpt-4o --cwd=src")
+  expect(promptFromArgs(["--model=gpt-4o", "--cwd=src", "hi"])).toBe("hi")
 })
 
 test("getArg supports --flag=value form", () => {
-  expect(getArg(["run", "--model=gpt-4o"], "--model")).toBe("gpt-4o")
-  expect(getArg(["run", "--budget=5"], "--budget")).toBe("5")
+  expect(getArg(["--model=gpt-4o", "run"], "--model")).toBe("gpt-4o")
+  expect(getArg(["--budget=5", "run"], "--budget")).toBe("5")
+  expect(getArg(["run", "--model=gpt-4o"], "--model")).toBeUndefined()
   expect(getArg(["run", "--model="], "--model")).toBeUndefined()
 })
 
 test("repeated value flags are all filtered from the prompt", () => {
   expect(promptFromArgs(["--cwd", "a", "--cwd", "b", "do it"])).toBe("do it")
+  expect(promptFromArgs(["do it", "--cwd", "a"])).toBe("do it --cwd a")
   // last occurrence wins (konsisten dgn getArg baru)
   expect(getArg(["--cwd", "a", "--cwd", "b"], "--cwd")).toBe("b")
+  expect(getArg(["do it", "--cwd", "a"], "--cwd")).toBeUndefined()
 })
 
 // Regresi: `exec` dulu menyaring prompt dengan `a !== getArg("--model")`, yang
@@ -66,8 +74,6 @@ test("repeated value flags are all filtered from the prompt", () => {
 test("nilai SEMUA value flag dibuang dari prompt, bukan hanya --model/--cwd", () => {
   expect(
     promptFromArgs([
-      "ulangi",
-      "persis",
       "--provider",
       "gorouter",
       "--session",
@@ -86,17 +92,28 @@ test("nilai SEMUA value flag dibuang dari prompt, bukan hanya --model/--cwd", ()
       "8000",
       "--resume",
       "abc",
+      "ulangi",
+      "persis",
     ]),
   ).toBe("ulangi persis")
+  expect(promptFromArgs(["ulangi", "persis", "--provider", "gorouter", "--timeout", "60000"])).toBe(
+    "ulangi persis --provider gorouter --timeout 60000",
+  )
 })
 
 test("flag khusus exec (--json, --output-format, --prompt) tidak masuk prompt", () => {
-  expect(promptFromArgs(["tes", "--json"])).toBe("tes")
-  expect(promptFromArgs(["tes", "--output-format", "json"])).toBe("tes")
-  expect(promptFromArgs(["tes", "--output-format=json"])).toBe("tes")
+  expect(promptFromArgs(["--json", "tes"])).toBe("tes")
+  expect(promptFromArgs(["tes", "--json"])).toBe("tes --json")
+  expect(promptFromArgs(["--output-format", "json", "tes"])).toBe("tes")
+  expect(promptFromArgs(["tes", "--output-format", "json"])).toBe("tes --output-format json")
+  expect(promptFromArgs(["tes", "--output-format=json"])).toBe("tes --output-format=json")
   expect(promptFromArgs(["--prompt", "dari-flag"])).toBe("")
+  expect(promptFromArgs(["--output-format=json", "tes"])).toBe("tes")
 })
 
 test("bentuk --flag=value juga dibuang untuk semua value flag", () => {
-  expect(promptFromArgs(["kerjakan", "--provider=gorouter", "--timeout=1000"])).toBe("kerjakan")
+  expect(promptFromArgs(["--provider=gorouter", "--timeout=1000", "kerjakan"])).toBe("kerjakan")
+  expect(promptFromArgs(["kerjakan", "--provider=gorouter", "--timeout=1000"])).toBe(
+    "kerjakan --provider=gorouter --timeout=1000",
+  )
 })

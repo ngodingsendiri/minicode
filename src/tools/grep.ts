@@ -57,7 +57,7 @@ function includeToRegExp(include: string): RegExp | null {
   esc = esc.replace(/\*/g, "[^/]*")
   esc = esc.replace(/§§/g, ".*")
   esc = esc.replace(/\?/g, ".")
-  return new RegExp("^" + esc + "$")
+  return new RegExp(`^${esc}$`)
 }
 
 // ── ripgrep ──

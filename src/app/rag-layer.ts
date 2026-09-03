@@ -6,8 +6,17 @@ export async function createRagLayer(opts: {
   cfg: MinicodeConfig
   prompt: string
   cwd?: string
-}): Promise<{ systemExtra?: string; skills: Skill[] }> {
+}): Promise<{ systemExtra?: string; skills: Skill[]; memoryHits: number }> {
   let systemExtra: string | undefined
+  let memoryHits = 0
+  // P2.1: cantumkan skor + tanggal agar model bisa menimbang kesegaran memori.
+  const fmtDate = (ts: number): string => {
+    try {
+      return new Date(ts).toISOString().slice(0, 10)
+    } catch {
+      return "?"
+    }
+  }
   try {
     const candidates: { baseUrl: string; apiKey: string }[] = []
     for (const p of opts.cfg.providers)
@@ -24,7 +33,7 @@ export async function createRagLayer(opts: {
         apiKey: opts.cfg.providers[0]?.apiKey ?? process.env.OPENAI_API_KEY ?? "",
       })
     }
-    let hits: { text: string; score: number }[] = []
+    let hits: { text: string; score: number; createdAt: number }[] = []
     for (const c of candidates) {
       if (!c.apiKey) continue
       try {
@@ -37,13 +46,17 @@ export async function createRagLayer(opts: {
         if (hits.length) break
       } catch {}
     }
-    if (hits.length)
-      systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`
+    if (hits.length) {
+      memoryHits = hits.length
+      systemExtra = `\n# Relevant memory (hybrid vector+keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)}, ${fmtDate(h.createdAt)})`).join("\n")}`
+    }
     if (!hits.length && candidates.length === 0) {
       try {
         hits = await searchHybrid(opts.prompt, { cwd: opts.cwd, topK: 5 })
-        if (hits.length)
-          systemExtra = `\n# Relevant memory (keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)})`).join("\n")}`
+        if (hits.length) {
+          memoryHits = hits.length
+          systemExtra = `\n# Relevant memory (keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)}, ${fmtDate(h.createdAt)})`).join("\n")}`
+        }
       } catch {}
     }
   } catch {}
@@ -54,5 +67,5 @@ export async function createRagLayer(opts: {
     if (skillPrompt) systemExtra = (systemExtra ?? "") + skillPrompt
   } catch {}
 
-  return { systemExtra, skills }
+  return { systemExtra, skills, memoryHits }
 }
