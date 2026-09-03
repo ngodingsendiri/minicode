@@ -223,7 +223,7 @@ function parseContent(s: string): unknown {
 export function loadSession(
   id: string,
   cwd?: string,
-): { messages: unknown[]; system?: string; cwd?: string } | null {
+): { messages: unknown[]; system?: string; cwd?: string; turnCount?: number } | null {
   const db = open(cwd)
   try {
     const sess = db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
@@ -247,7 +247,11 @@ export function loadSession(
       ...(r.toolCallId ? { toolCallId: r.toolCallId } : {}),
       ...(r.name ? { name: r.name } : {}),
     }))
-    return { messages, system: sess.system, cwd: sess.cwd }
+    const turnRow = db
+      .prepare("SELECT MAX(turn_idx) as m FROM turns WHERE session_id = ?")
+      .get(id) as { m: number | null } | null
+    const turnCount = turnRow?.m != null ? turnRow.m + 1 : 0
+    return { messages, system: sess.system, cwd: sess.cwd, turnCount }
   } finally {
     db.close()
   }

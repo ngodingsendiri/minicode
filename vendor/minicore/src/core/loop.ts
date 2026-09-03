@@ -40,9 +40,11 @@ export async function executeTurn(
       limitTokens: s.contextWindowTokens,
     });
     if (s.budget.shouldCompact(pressure)) {
-      await compactStore(s, signal);
-      compacted = true;
-      s.events.emit({ type: "context:compacted", reason: `pressure:${pressure}` });
+      const didCompact = await compactStore(s, signal);
+      if (didCompact) {
+        compacted = true;
+        s.events.emit({ type: "context:compacted", reason: `pressure:${pressure}` });
+      }
       pressure = s.budget.evaluate({
         usedTokens: contextTokens(s),
         limitTokens: s.contextWindowTokens,
@@ -291,17 +293,20 @@ function contextTokens(s: SessionInternal): number {
 // The single compaction seam. Prefers the strategy's optional async method
 // (LLM summary) and always falls back to the sync strategy on failure — an
 // async compactor must never be able to crash the loop.
-async function compactStore(s: SessionInternal, signal: AbortSignal): Promise<void> {
+async function compactStore(s: SessionInternal, signal: AbortSignal): Promise<boolean> {
+  const before = s.store.messages.length
   const opts = { keepRecentTurns: s.keepRecentTurns };
   if (s.compaction.compactAsync) {
     try {
       const messages = await s.compaction.compactAsync(s.store, opts, signal);
       s.store.replace(0, s.store.messages.length, messages);
-      return;
+      return s.store.messages.length !== before
     } catch (error) {
       if (signal.aborted) throw abortError(signal);
       // fall through to sync mechanical compaction
     }
   }
-  s.store.replace(0, s.store.messages.length, s.compaction.compact(s.store, opts));
+  const compacted = s.compaction.compact(s.store, opts)
+  s.store.replace(0, s.store.messages.length, compacted)
+  return s.store.messages.length !== before
 }

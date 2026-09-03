@@ -5,7 +5,7 @@ Salinan kernel MiniCore agar `bun install` tidak membutuhkan clone sibling
 
 - source commit: `05fc595ad07ccbf3c85d9645948a0621bdce0353`
 - files: 19
-- hash: `4591de2f578d9f4c`
+- hash: `f7312a1d69e90fb8`
 
 Perbarui dengan `bun run vendor:minicore` (butuh `../minicore`).
 CI memverifikasi kesinkronan lewat `bun run vendor:check`.

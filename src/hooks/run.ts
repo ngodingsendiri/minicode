@@ -38,8 +38,24 @@ export async function runRunHooks(phase: "pre" | "post", ctx: RunHookCtx): Promi
         env: { ...process.env, MINICODE_HOOK_CTX: JSON.stringify(ctx) },
         stdio: "ignore",
       })
-      p.on("error", () => {})
-      p.on("exit", () => res())
+      const timer = setTimeout(() => {
+        try {
+          p.kill("SIGTERM")
+          setTimeout(() => {
+            try {
+              p.kill("SIGKILL")
+            } catch {}
+          }, 1000)
+        } catch {}
+      }, 5000)
+      p.on("error", () => {
+        clearTimeout(timer)
+        res()
+      })
+      p.on("exit", () => {
+        clearTimeout(timer)
+        res()
+      })
     })
   }
 }

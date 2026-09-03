@@ -253,6 +253,23 @@ Audit 2026-09-03 menemukan 3 Critical race `read→modify→write` tanpa lock, 2
 
 **Selesai bila:** `P0.1` race test hijau di `Pool(3)`, `P1.2` scrub test hijau, `isPrivateHost` fuzz `0x/0177` pass, `bun x tsc --noEmit && bun test && bun run gate:coverage && bun run gate:pack` hijau, `MIN_LINES/MIN_FUNCS` dinaikkan bila naik.
 
+## P5 — Session: turnCount, NaN, checkpoint, hook
+
+Audit 2026-09-04 menemukan duplikat `turnCount`, `NaN` budget/timeout, checkpoint buta `bash` di non-repo, resume tanpa `turnCount`/`cost`, lock lintas-proses. Detail di `.verdent/plans/Session_Hardening-0904.plan.md`.
+
+**P0 — Rilis blocker:**
+- **P0.1 Resume continuity:** `persistence.ts:223` `loadSession` → kembalikan `turns` + `sessionMeta`, seed `turnState.turnCount` & `usage.sessionCost` di `setup.ts:114`. Test: resume 2 turn → `turnCount===2` & `cost 0.3`.
+- **P0.2 Validasi NaN:** `index.ts:140` & `setup.ts:99` `Number.isFinite` + warn + fallback `undefined`, jangan teruskan `NaN`.
+- **P0.3 Checkpoint bash:** `setup.ts:183` `postEditSnapshots` hanya `edit/write/patch` → perluas ke `bash` via `snapshotWorkspace` diff untuk non-repo.
+- **P0.4 Hook timeout:** `hooks/run.ts:35` `Promise.race` 5s + `kill`.
+
+**P1 — Konsistensi:**
+- **P1.1 Compacted flag:** `loop.ts:44` `compactStore` return `didCompact` baru `compacted=true`.
+- **P1.2 postEditSnapshots leak:** `setup.ts:195` `turn:aborted` handler clear map.
+- **P1.3 buildSystemPrompt timeout:** `app/session.ts:54` teruskan `signal` + 5s fallback.
+
+**Selesai bila:** resume `turnCount`/`cost` kontinu, `NaN` tidak diteruskan, non-repo `bash` undo, hook tidak block >5s, gate hijau.
+
 ---
 
 ## Yang sengaja TIDAK dikerjakan

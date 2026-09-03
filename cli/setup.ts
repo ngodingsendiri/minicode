@@ -19,6 +19,7 @@ import {
   beginTurnSnapshot,
   recordCheckpointFromSnapshots,
   recordCheckpointFromTrees,
+  snapshotWorkspace,
 } from "../src/session/checkpoint.ts"
 import { loadSession, saveSession } from "../src/session/persistence.ts"
 import { snapshotTree } from "../src/session/shadow-git.ts"
@@ -49,6 +50,8 @@ export interface CliSessionOptions {
   contextWindowTokens?: number
   timeoutMs?: number
   rateLimiter?: RateLimiter
+  concurrency?: number
+  writeConcurrency?: number
 }
 
 export interface CliSession {
@@ -97,8 +100,12 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   // Timeout default: --timeout > MINICODE_TIMEOUT_MS env > 15 min. 0 = Infinity.
   const envTimeout = process.env.MINICODE_TIMEOUT_MS
-  const effectiveTimeoutMs =
+  let effectiveTimeoutMs =
     timeoutMs ?? (envTimeout != null && envTimeout !== "" ? Number(envTimeout) : 900_000)
+  if (!Number.isFinite(effectiveTimeoutMs) || effectiveTimeoutMs < 0) {
+    process.stderr.write(`[warn] invalid timeout ${effectiveTimeoutMs}, fallback to 900000\n`)
+    effectiveTimeoutMs = 900_000
+  }
 
   const { cfg, router } = await createProviderLayer({
     cwd,
@@ -112,15 +119,21 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
 
   // resume: load full history from DB -> seed into kernel ContextStore
   let initialMessages: readonly Message[] | undefined
+  let resumeTurnCount: number | undefined
   if (resumeId) {
-    const prev = loadSession(resumeId, cwd)
-    if (prev && prev.messages.length) {
-      initialMessages = prev.messages as readonly Message[]
-      console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`))
-    } else {
-      console.error(
-        c.yellow(`[resume] session ${resumeId} not found - starting new ${sessionId}\n`),
-      )
+    try {
+      const prev = loadSession(resumeId, cwd)
+      if (prev && prev.messages.length) {
+        initialMessages = prev.messages as readonly Message[]
+        resumeTurnCount = prev.turnCount
+        console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`))
+      } else {
+        console.error(
+          c.yellow(`[resume] session ${resumeId} not found - starting new ${sessionId}\n`),
+        )
+      }
+    } catch (e) {
+      process.stderr.write(`[warn] resume failed: ${(e as Error).message}\n`)
     }
   }
 
@@ -149,6 +162,15 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
           : "auto"
 
   let permissions: PermissionControl | undefined
+  // Validasi concurrency: 0, NaN, Infinity → fallback ke default (jangan teruskan 0 ke executor)
+  const safeConcurrency = (() => {
+    const v = opts.concurrency
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : undefined
+  })()
+  const safeWriteConcurrency = (() => {
+    const v = opts.writeConcurrency
+    return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : undefined
+  })()
   const session = await createMinicodeSession({
     provider: router,
     tools: sessionTools,
@@ -161,8 +183,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       permissions = ctl
     },
     ...(initialMessages ? { initialMessages } : {}),
+    ...(resumeTurnCount !== undefined ? { turnCount: resumeTurnCount } : {}),
     ...(maxSteps ? { maxSteps } : {}),
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
+    ...(safeConcurrency ? { concurrency: safeConcurrency } : {}),
+    ...(safeWriteConcurrency ? { writeConcurrency: safeWriteConcurrency } : {}),
     timeoutMs: effectiveTimeoutMs === 0 ? Infinity : effectiveTimeoutMs,
     ...(compaction ? { compaction } : {}),
   })
@@ -207,9 +232,15 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       return
     }
     if (pre.snapshots.length === 0) return
-    recordCheckpointFromSnapshots(sessionId, turn, pre.snapshots, desc, cwd, redoSnapshots).catch(
-      () => {},
-    )
+    // Non-git: redo harus menangkap SEMUA perubahan termasuk bash/git,
+    // bukan hanya edit/write_file. Ambil snapshot penuh post-turn.
+    let redo = redoSnapshots
+    try {
+      const { LIMITS } = await import("../src/constants.ts")
+      const post = await snapshotWorkspace(cwd ?? ".", LIMITS.WORKSPACE_SNAPSHOT_LIMIT)
+      if (post.length) redo = post
+    } catch {}
+    recordCheckpointFromSnapshots(sessionId, turn, pre.snapshots, desc, cwd, redo).catch(() => {})
   })
 
   // ── Auto-verify & self-heal ──

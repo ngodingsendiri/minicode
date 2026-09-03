@@ -42,6 +42,8 @@ export async function createMinicodeSession(
     permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
     concurrency?: number
     writeConcurrency?: number
+    turnCount?: number
+    stepCount?: number
     /** Menerima handle kontrol mode permission. Kernel tidak mengekspos
      * `config`, jadi satu-satunya cara mengubah mode saat runtime (mis.
      * Shift+Tab di TUI) adalah menangkap handler di sini. */
@@ -58,6 +60,7 @@ export async function createMinicodeSession(
   const system = await buildSystemPrompt({
     cwd: opts.cwd,
     extra: (opts.systemExtra ?? "") + planHint,
+    signal: (opts as unknown as { signal?: AbortSignal }).signal,
   })
   const {
     concurrency,
@@ -68,6 +71,8 @@ export async function createMinicodeSession(
     provider,
     onPermissions,
     ask,
+    turnCount,
+    stepCount,
     ...rest
   } = opts
   if (!provider) throw new Error("createMinicodeSession: provider is required")
@@ -94,5 +99,7 @@ export async function createMinicodeSession(
       writeConcurrency: writeConcurrency ?? LIMITS.EXECUTOR_WRITE_CONCURRENCY,
     }),
     cwd,
+    ...(turnCount !== undefined ? { turnCount } : {}),
+    ...(stepCount !== undefined ? { stepCount } : {}),
   })
 }

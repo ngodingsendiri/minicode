@@ -43,6 +43,8 @@ export interface SessionConfig {
    * langsung memuatnya dan turn berikutnya meneruskan konteks penuh.
    */
   initialMessages?: readonly Message[];
+  turnCount?: number;
+  stepCount?: number;
   executor?: ToolExecutor;
   budget?: BudgetPolicy;
   estimator?: TokenEstimator;
@@ -149,8 +151,8 @@ export function createSession(config: SessionConfig): Session {
   const sessionAbort = new AbortController();
   const state: SessionState = {
     history: store.messages,
-    turnCount: 0,
-    stepCount: 0,
+    turnCount: config.turnCount ?? 0,
+    stepCount: config.stepCount ?? 0,
     model: config.model,
   };
 

@@ -131,13 +131,34 @@ const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
 const resumeId = getArg("--resume")
 const modelOverride = getArg("--model")
 const providerOverride = getArg("--provider")
-const sessionId = getArg("--session") ?? randomUUID().slice(0, 8)
+const rawSessionId = getArg("--session") ?? randomUUID().slice(0, 8)
+const sessionId =
+  rawSessionId.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64) || randomUUID().slice(0, 8)
 const maxStepsRaw = getArg("--max-steps")
-const maxSteps = maxStepsRaw ? Number(maxStepsRaw) : undefined
+let maxSteps = maxStepsRaw ? Number(maxStepsRaw) : undefined
+if (maxStepsRaw && (!Number.isFinite(maxSteps) || (maxSteps as number) <= 0)) {
+  process.stderr.write(`[warn] --max-steps requires a positive number, ignoring "${maxStepsRaw}"\n`)
+  maxSteps = undefined
+}
 const ctxWindowRaw = getArg("--context-window")
-const contextWindowTokens = ctxWindowRaw ? Number(ctxWindowRaw) : undefined
+let contextWindowTokens = ctxWindowRaw ? Number(ctxWindowRaw) : undefined
+if (
+  ctxWindowRaw &&
+  (!Number.isFinite(contextWindowTokens) || (contextWindowTokens as number) <= 0)
+) {
+  process.stderr.write(
+    `[warn] --context-window requires a positive number, ignoring "${ctxWindowRaw}"\n`,
+  )
+  contextWindowTokens = undefined
+}
 const timeoutRaw = getArg("--timeout")
-const timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined
+let timeoutMs = timeoutRaw ? Number(timeoutRaw) : undefined
+if (timeoutRaw && (!Number.isFinite(timeoutMs) || (timeoutMs as number) < 0)) {
+  process.stderr.write(
+    `[warn] --timeout requires a non-negative number, ignoring "${timeoutRaw}"\n`,
+  )
+  timeoutMs = undefined
+}
 
 // Sandbox: OS-native dipakai otomatis bila tersedia. Bila tidak ada isolasi
 // nyata dan user belum memilih mode permission sendiri, default diturunkan ke
@@ -157,11 +178,23 @@ const willRunTools = !args.includes("--plan")
 if (sandbox.notice && willRunTools) process.stderr.write(`${sandbox.notice}\n`)
 const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
-const budget = budgetRaw ? Number(budgetRaw) : undefined
-if (budgetRaw && !Number.isFinite(budget))
+let budget = budgetRaw ? Number(budgetRaw) : undefined
+if (budgetRaw && (!Number.isFinite(budget) || (budget as number) < 0)) {
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
+  budget = undefined
+}
 const ratelimitRaw = getArg("--ratelimit")
-const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
+let rateLimiter: ReturnType<typeof createRateLimiter> | undefined
+if (ratelimitRaw) {
+  const rpm = Number(ratelimitRaw)
+  if (!Number.isFinite(rpm) || rpm <= 0) {
+    process.stderr.write(
+      `[warn] --ratelimit requires a positive number, ignoring "${ratelimitRaw}"\n`,
+    )
+  } else {
+    rateLimiter = createRateLimiter(rpm)
+  }
+}
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
