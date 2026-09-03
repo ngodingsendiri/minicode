@@ -333,8 +333,8 @@
   <div class="meta">
     <span class="badge blue">entry: cli/index.ts</span>
     <span class="badge">31 tool bawaan</span>
-    <span class="badge">kernel pin 1eceea9e</span>
-    <span class="badge dim">sinkron HEAD cf44c8e</span>
+    <span class="badge">kernel pin 4591de2f</span>
+    <span class="badge dim">sinkron HEAD 95528b9</span>
   </div>
 
   <div class="diagram" style="margin-top:24px">
@@ -369,7 +369,7 @@
     <rect class="box b1" x="230" y="116" width="500" height="88"></rect>
     <text class="t t1" x="480" y="142" text-anchor="middle">LAPISAN 1 — CLI &amp; UI <tspan class="d" style="font-weight:400">(antarmuka)</tspan></text>
     <text class="p" x="480" y="161" text-anchor="middle">cli/ · src/ui/</text>
-    <text class="d" x="480" y="180" text-anchor="middle">REPL fullscreen · routing slash &amp; skill · tema · markdown · sanitizeAnsi</text>
+    <text class="d" x="480" y="180" text-anchor="middle">REPL linier · routing slash &amp; skill · sanitizeAnsi · kolom-aware</text>
 
     <path class="edge" d="M480,204 V248" marker-end="url(#arw)"></path>
     <text class="e" x="492" y="230">createCliSession() — komposisi di cli/setup.ts</text>
@@ -461,7 +461,7 @@
     <div class="layer l3">
       <div class="lnum">3</div>
       <div class="ltitle">Kernel MiniCore <span class="chip c3">L3</span></div>
-      <div class="lpath">vendor/minicore/ · pin 1eceea9e</div>
+      <div class="lpath">vendor/minicore/ · pin 4591de2f</div>
       <div class="ldesc">Loop agen inti. Beku: hanya seam aditif yang boleh diubah (<code>compactAsync</code>, <code>initialMessages</code>, <code>cwd</code>); sinkron via <code>bun run vendor:minicore</code>, cek via <code>bun run vendor:check</code>.</div>
     </div>
   </div>
@@ -648,7 +648,7 @@
       <div class="mod"><div class="fname">render/format.ts · diff.ts · table.ts · money.ts · reasoning.ts</div><div class="fdesc">Format event (tipe lokal), render diff, tabel, biaya, toggle reasoning.</div><div class="exports">reasoning (visible)</div></div>
       <div class="mod"><div class="fname">render/errors.ts</div><div class="fdesc">Format error provider jadi bahasa ramah user.</div><div class="exports">friendlyError · formatFriendly</div></div>
       <div class="mod"><div class="fname">runtime/spinner.ts · statusline.ts</div><div class="fdesc">Animasi spinner (wizard), koordinasi baris status vs printer linier.</div></div>
-      <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni &amp; teruji: state, dekode CSI/UTF-8, render spec; history, askLine (+ onKey), askSecret.</div><div class="exports">createState · applyKey · buildRenderSpec · decodeKeys · askLine · askSecret</div></div>
+      <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni &amp; teruji: grapheme (Intl.Segmenter), state, dekode CSI/UTF-8 streaming, render spec; history, askLine (+ onKey), askSecret.</div><div class="exports">createState · applyKey · buildRenderSpec · decodeKeys · decodeKeysStream · toGraphemes · MAX_VISIBLE · askLine · askSecret</div></div>
       <div class="mod"><div class="fname">assistant/simple.ts · turn-status.ts</div><div class="fdesc">Printer linier (satu-satunya renderer, one-shot &amp; REPL): output append-only di scrollback, tool call inline EXPANDED by default (compact via MINICODE_COMPACT / /compact / Ctrl+O); spinner turn satu baris.</div><div class="exports">attachSimpleLogger · formatError · attachTurnStatus</div></div>
       <div class="mod"><div class="fname">approval/prompt.ts</div><div class="fdesc">View persetujuan tool call [y/a/n]; di-inject ke permission handler oleh cli/setup.ts.</div><div class="exports">promptAsk · ApprovalRequest</div></div>
       <div class="mod"><div class="fname">screens/overlay.ts</div><div class="fdesc">Primitive overlay transient bersama: redraw + clear delete-line yang konsisten untuk semua layar interaktif (tetap shell-like, tanpa panel permanen).</div><div class="exports">renderTransientOverlay · clearTransientOverlay</div></div>
