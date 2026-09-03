@@ -15,6 +15,7 @@
 
 import { resolve as resolvePath } from "node:path"
 import { expandMentions } from "../src/app/mentions.ts"
+import { redoLastCheckpoint, undoLastCheckpoint } from "../src/session/checkpoint.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
 import { formatError } from "../src/ui/assistant/simple.ts"
@@ -31,7 +32,16 @@ const MODES = ["auto", "ask", "plan", "allowlist"] as const
 
 // Perintah REPL yang ditangani driver sendiri (bukan builtin commands.ts).
 // Ikut ditawarkan di dropdown supaya bisa ditemukan.
-const DRIVER_COMMANDS = ["/mode", "/compact", "/thinking"]
+const DRIVER_COMMANDS = [
+  "/mode",
+  "/compact",
+  "/thinking",
+  "/undo",
+  "/redo",
+  "/cost",
+  "/resume",
+  "/clear",
+]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
@@ -255,6 +265,53 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         console.log(c.muted(`reasoning: ${visible ? "on" : "off"}`))
         return false
       }
+      if (name === "undo") {
+        const res = await undoLastCheckpoint(sessionId, cwd)
+        console.log(res.message)
+        if (res.restoredFiles.length) console.log(res.restoredFiles.join("\n"))
+        return false
+      }
+      if (name === "redo") {
+        const res = await redoLastCheckpoint(sessionId, cwd)
+        console.log(res.message)
+        if (res.reappliedFiles.length) console.log(res.reappliedFiles.join("\n"))
+        return false
+      }
+      if (name === "cost" || name === "usage") {
+        const u = usage.getSession(modelRef.current)
+        console.log(`Cost: ${u.cost != null ? formatUsd(u.cost) : "N/A"} · ${u.totalTokens} tokens`)
+        return false
+      }
+      if (name === "resume") {
+        if (!args) {
+          console.log("Usage: /resume <id>")
+          return false
+        }
+        const sess = loadSession(args, cwd)
+        if (!sess?.messages.length) {
+          console.log(`Session "${args}" not found or empty.`)
+          return false
+        }
+        await respawnWithResume(args)
+        return false
+      }
+      if (name === "clear") {
+        console.clear()
+        return false
+      }
+      if (name === "quit" || name === "q") {
+        console.log("Sampai jumpa.")
+        return true
+      }
+      if (name === "history") {
+        const { loadHistory } = await import("../src/ui/input/input.ts")
+        console.log((await loadHistory()).slice(-20).join("\n"))
+        return false
+      }
+      if (name === "models")
+        return handleBuiltinCommand("/model", commandCtx).then((r) => !!r.shouldExit)
+      if (name === "providers")
+        return handleBuiltinCommand("/provider", commandCtx).then((r) => !!r.shouldExit)
       if (name === "sessions" && !args) {
         await pickSession()
         return false

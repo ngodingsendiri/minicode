@@ -23,6 +23,21 @@ const VALUE_FLAGS = new Set([
   "--budget",
   "--output-format", // `exec --output-format=json`
   "--prompt",
+  // subcommand flags — harus dikenal agar tidak bocor ke prompt one-shot
+  "--baseUrl",
+  "--apiKey",
+  "--id",
+  "--command",
+  "--args",
+  "--env",
+  "--header",
+  "--allow-private",
+  "--url",
+  "--match",
+  "--jsonl",
+  "--all-tools",
+  "--global",
+  "--local",
 ])
 const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS, "-h", "--help", "-v", "--version"])
 

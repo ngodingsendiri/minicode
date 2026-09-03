@@ -56,7 +56,7 @@ export function scrubLine(line: string): string {
 // vendor hanya bila diikuti/didahului penanda rahasia. Prinsipnya sama —
 // jangan wariskan secret — tapi tanpa memakan variabel yang jelas bukan secret.
 const CREDENTIAL_WORD =
-  "(?:API[_-]?KEYS?|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|SECRET[_-]?KEY|CREDENTIALS?|AUTH|BEARER|SESSION[_-]?KEY|ENCRYPTION[_-]?KEY|SIGNING[_-]?KEY|CLIENT[_-]?SECRET|REFRESH[_-]?TOKEN|DSN|CONNECTION[_-]?STRING)"
+  "(?:API[_-]?KEYS?|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|PASSPHRASE|PRIVATE[_-]?KEY|ACCESS[_-]?KEY|SECRET[_-]?KEY|CREDENTIALS?|AUTH|BEARER|SESSION[_-]?KEY|ENCRYPTION[_-]?KEY|SIGNING[_-]?KEY|CLIENT[_-]?SECRET|REFRESH[_-]?TOKEN|DSN|CONNECTION[_-]?STRING|_PAT\\b)"
 
 // Nama provider LLM: variabel apa pun yang diawali ini praktis selalu kunci
 // (mis. `OPENAI_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `DEEPSEEK_API_KEY`).

@@ -26,6 +26,7 @@ const READONLY_TOOLS = new Set([
   "git_diff",
   "git_log",
   "web_fetch",
+  "web_search",
   "read_memory",
   "todo_read",
   "mcp_list",

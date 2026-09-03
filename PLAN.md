@@ -289,6 +289,25 @@ Audit 2026-09-04 menemukan 8 High: OOM paged, TOCTOU symlink di 7 tool, ripgrep 
 
 **Selesai bila:** `P0.1` paged 1GB tidak OOM, symlink dir `outside` → `outside workspace`, `edit` duplicate `trimmed` → `multiple times`, `grep` symlink `rg` → block, `bash` `cwd` resolve, `sk-` dari MCP → `[REDACTED]`, `fuzz 0x/0177` pass, gate hijau.
 
+## P7 — Env Var & Perintah: dokumentasi & konsistensi
+
+Audit 2026-09-04 menemukan 38 env unik (22 `MINICODE_*`), 22 flags, 31 tools, 15 slash — 5 `MINICODE_*` undocumented, drift `HELP` timeout `600000→900000`, 7 phantom slash (`/undo` `/redo` `/cost` `/resume` `/clear` + alias), `web_search` tidak `READONLY`, `KNOWN_FLAGS` vs subcommand flags, `SECRET_ENV_RE` kurang `PAT`. Detail di `.verdent/plans/Env_Command_Hardening-0904.plan.md`.
+
+**P0 — Rilis blocker:**
+- **P0.1 `HELP` timeout:** `cli/index.ts:50` `600000` → `900000` (sinkron `setup.ts:104` + `USAGE.md:52`)
+- **P0.2 Phantom slash:** pilih A (implement `undo/redo/cost/resume/clear` + `hidden:true` alias) atau B (hapus 7 baris dari `USAGE.md` + `ARCHITECTURE.html:570`) — B sesuai `test/cli-help-language:47` saat ini
+- **P0.3 `web_search` READONLY:** `permission.ts:21` tambah `"web_search"` ke `READONLY_TOOLS`
+- **P0.4 `KNOWN_FLAGS` vs subcommand:** `args.ts:24` `SUBCOMMAND_FLAGS` atau pindah `promptFromArgs` setelah `dispatch`
+
+**P1 — Docs & discoverability:**
+- **P1.1 USAGE tabel:** tambah `--verbose`, `--max-steps`, `--context-window`, `--session` + `help --json` (`index.ts:94`) 4 entry
+- **P1.2 `MINICODE_*` 5 vars + `AGENT_*`/`TAVILY`:** `USAGE.md:62` `BELL`, `SHOW_THINKING`, `THINKING`, `EMBED_MODEL`, `AGENT_*`/`DEEPSEEK_BASE_URL`
+- **P1.3 `SECRET_ENV_RE` PAT:** `scrub.ts:58` `CREDENTIAL_WORD` tambah `PAT`, test `env-strip` `GITHUB_PAT`
+
+**P2 — Polish:** `args.ts` ` --output-format`/`--prompt` shadow flag hapus/implement, `ARCH` line numbers tanpa angka.
+
+**Selesai bila:** `HELP` vs code `900000` sinkron, `/undo` → `success` (atau `USAGE` bersih), `web_search` di `plan` → `allow`, `promptFromArgs` tidak bocor `--match`, `USAGE.md` vs `process.env` 38 vars sinkron, gate hijau.
+
 ---
 
 ## Yang sengaja TIDAK dikerjakan

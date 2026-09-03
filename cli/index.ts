@@ -47,7 +47,7 @@ Options:
   --allowlist         bash allowlist only (git/bun/npm safe cmds; via MINICODE_BASH_ALLOWLIST)
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
-  --timeout <ms>      hard deadline per run (default 600000 = 10min; 0 = Infinity)
+  --timeout <ms>      hard deadline per run (default 900000 = 15min; 0 = Infinity)
   --interactive       REPL loop (linear)
   --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
   --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
@@ -99,16 +99,23 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--resume <id>", desc: "resume session id" },
           { flag: "--model <name>", desc: "override model (provider::model)" },
           { flag: "--provider <id>", desc: "force provider id" },
+          { flag: "--session <id>", desc: "session id" },
+          { flag: "--max-steps <n>", desc: "max tool steps (default 50)" },
+          { flag: "--context-window <n>", desc: "context window tokens" },
+          {
+            flag: "--timeout <ms>",
+            desc: "hard deadline per run (default 900000 = 15min; 0 = Infinity)",
+          },
           { flag: "--allow-all", desc: "allow all tools (no sandbox)" },
           { flag: "--ask", desc: "ask per tool" },
           { flag: "--plan", desc: "read-only plan mode" },
           { flag: "--allowlist", desc: "bash allowlist only" },
-          { flag: "--max-steps <n>", desc: "max tool steps (default 50)" },
-          { flag: "--timeout <ms>", desc: "hard deadline per run" },
+          { flag: "--interactive", desc: "REPL loop" },
           { flag: "--verify", desc: "auto-verify + self-heal" },
           { flag: "--sandbox <docker|os>", desc: "bash sandbox" },
           { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
           { flag: "--budget <usd>", desc: "session cost limit" },
+          { flag: "--json", desc: "JSON output (help/exec)" },
         ],
       }),
     )

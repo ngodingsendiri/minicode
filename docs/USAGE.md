@@ -36,6 +36,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 
 | Flag | Deskripsi |
 |---|---|
+| `--verbose` | Tampilkan reasoning & usage |
 | `--verify` | Auto-verify + self-heal (detect: typecheck → test → tsconfig) |
 | `--sandbox docker` | Eksekusi bash dalam container ephemeral (`--network none`) |
 | `--sandbox none` | Matikan sandbox otomatis (opt-out sadar, tanpa downgrade permission) |
@@ -52,6 +53,9 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
 | `--cwd <path>` | Workspace root untuk tool file & jail (diperbaiki 0.8.0 via ToolContext.cwd) |
 | `--interactive` | Paksa mode REPL |
+| `--max-steps <n>` | Batas langkah tool (default 50) |
+| `--context-window <n>` | Ukuran jendela konteks (token) |
+| `--session <id>` | ID sesi (default random, disanitasi) |
 
 Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `allowlist`) dan benar-benar mengubah keputusan permission, bukan cuma label header.
 
@@ -78,6 +82,14 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_COMPACT` | `1` → tool call satu baris ringkas (default: expanded; juga `/compact`, Ctrl+O) |
 | `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
 | `MINICODE_DROPDOWN` | `0` → matikan floating dropdown, pakai hint inline (konsol legacy) |
+| `MINICODE_BELL` | `0` → matikan bell `\x07` saat approval (aksesibilitas) |
+| `MINICODE_SHOW_THINKING` | `1` → tampilkan reasoning model (`/thinking` on) |
+| `MINICODE_THINKING` | `off` → kirim `enable_thinking:false` ke OpenAI-compat (DeepSeek) |
+| `MINICODE_EMBED_MODEL` | Model embedding untuk memory/vector (default `text-embedding-3-small`) |
+| `TAVILY_API_KEY` | API key untuk Tavily web_search (fallback DuckDuckGo bila kosong) |
+| `AGENT_API_KEY`, `AGENT_BASE_URL`, `AGENT_MODEL` | Fallback generik OpenAI-compat (dipakai provider-layer, memory, task) |
+| `DEEPSEEK_BASE_URL` | Base URL DeepSeek (default `https://api.deepseek.com/v1`, untuk compaction) |
+| `ANTHROPIC_MODEL` | Model Anthropic default (`claude-sonnet-4`) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY` | Fallback API key |
 
 ## Config `.minicode/config.json`
