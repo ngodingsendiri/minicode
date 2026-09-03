@@ -1,6 +1,6 @@
 # Minicode
 
-Coding agent built on **MiniCore** (kernel di-vendor ke `vendor/minicore`, seam additif `compactAsync` + `initialMessages`).
+Coding agent built on **MiniCore** (kernel di-vendor ke `vendor/minicore`, seam additif `compactAsync` + `initialMessages` + `cwd`).
 
 MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satunya patch = seam additif backward-compatible). Minicode = layer agencode: tools FS/bash/git/memory/todo/MCP/LSP, sub-agents, skills, hooks ask, CLI shell-first pure ANSI (output linier di scrollback, tanpa Ink/React), memory hybrid RAG, sessions sqlite, repo-map, verifier.
 
@@ -10,7 +10,7 @@ MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satuny
 
 ## Hubungan
 ```
-vendor/minicore (zero-dep — inti di-freeze; hanya seam additif `compactAsync` + `initialMessages` yang dibuka)
+vendor/minicore (zero-dep — inti di-freeze; hanya seam additif `compactAsync` + `initialMessages` + `cwd` yang dibuka)
    ↑ di-resolve lewat subpath imports `#minicore` (bukan dependency)
 minicode (coding-agent — self-contained, tanpa sibling clone)
   ├─ src/tools/     → Tool fs/bash/git/memory/todo/task/mcp/lsp + symlink jail defense-in-depth
@@ -145,7 +145,7 @@ web_fetch         → redirect manual ≤5 hop, DNS pinning per-hop, body hard-c
 - **Benchmark**: `bun run bench` (butuh provider) / `bun run bench:smoke` (fake, untuk CI) → `bench/results.json` (resolve rate, steps, token, cost).
 
 ## Aturan
-- Jangan mengubah perilaku `vendor/minicore/src/core/*` — direktori itu hasil sync, bukan tempat mengedit. Satu-satunya pengecualian: seam **additif & backward-compatible** (mis. field opsional `compactAsync`) yang dibuka dari repo `minicore` lalu di-sync ulang. Kalau butuh primitive baru, buktikan dulu tidak bisa sebagai Tool/Provider/Policy.
+- Jangan mengubah perilaku `vendor/minicore/src/core/*` — direktori itu hasil sync, bukan tempat mengedit. Satu-satunya pengecualian: seam **additif & backward-compatible** (mis. field opsional `compactAsync`, `initialMessages`, `cwd`) yang dibuka dari repo `minicore` lalu di-sync ulang. Kalau butuh primitive baru, buktikan dulu tidak bisa sebagai Tool/Provider/Policy.
 - P2/C4/C5 sisa minicore ditangani di sini sebagai policy/adapter agencode, bukan patch core.
 
 ## Pengujian

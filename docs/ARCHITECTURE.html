@@ -462,7 +462,7 @@
       <div class="lnum">3</div>
       <div class="ltitle">Kernel MiniCore <span class="chip c3">L3</span></div>
       <div class="lpath">vendor/minicore/ · pin 1eceea9e</div>
-      <div class="ldesc">Loop agen inti. Beku: hanya seam aditif yang boleh diubah (<code>compactAsync</code>, <code>initialMessages</code>); sinkron via <code>bun run vendor:minicore</code>, cek via <code>bun run vendor:check</code>.</div>
+      <div class="ldesc">Loop agen inti. Beku: hanya seam aditif yang boleh diubah (<code>compactAsync</code>, <code>initialMessages</code>, <code>cwd</code>); sinkron via <code>bun run vendor:minicore</code>, cek via <code>bun run vendor:check</code>.</div>
     </div>
   </div>
 
@@ -771,7 +771,7 @@ export const kalkulatorTool: Tool = {
       <ol>
         <li><code>bun run vendor:minicore</code> — tarik upstream ke vendor/.</li>
         <li><code>bun run vendor:check</code> — pastikan vendor == pin di dokumentasi.</li>
-        <li>Hanya seam aditif yang boleh ditambal (<code>compactAsync</code>, <code>initialMessages</code>); sisanya upstream.</li>
+        <li>Hanya seam aditif yang boleh ditambal (<code>compactAsync</code>, <code>initialMessages</code>, <code>cwd</code>); sisanya upstream.</li>
       </ol>
       <div class="guard">guard: perubahan kernel wajib lolos seluruh gate (§6) + bench smoke supaya loop tidak regresi.</div>
     </div>
