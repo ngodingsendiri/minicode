@@ -7,10 +7,14 @@ import { displayWidth, truncateToWidth } from "../render/width.ts"
 import {
   applyKey,
   buildRenderSpec,
+  createDecoderState,
   createState,
-  decodeKeys,
+  type DecoderState,
+  decodeKeysStream,
+  MAX_VISIBLE,
   type PromptKey,
   pointLength,
+  toGraphemes,
 } from "./prompt-engine.ts"
 
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
@@ -110,9 +114,39 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
   let historyIdx = -1
   let savedLine = ""
 
-  return new Promise((resolve) => {
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
+  return new Promise((resolve, reject) => {
+    // Raw mode harus dikembalikan BAGI BAGIAN body yang error: bila renderAnsi
+    // melempar (mis. lebar terminal abnormal), terminal tidak boleh tertinggal
+    // dalam raw + listener lama menumpuk (dulu REPL catch{continue} lalu
+    // askLine berikutnya memasang listener kedua → MaxListenersExceeded).
+    const decoder: DecoderState = createDecoderState()
+    let done = false
+    let onData!: (chunk: Buffer) => void
+    const cleanup = () => {
+      if (done) return
+      done = true
+      try {
+        process.stdin.setRawMode(false)
+      } catch {}
+      process.stdin.pause()
+      if (onData) process.stdin.removeListener("data", onData)
+    }
+    const finish = (v: string | null) => {
+      cleanup()
+      resolve(v)
+    }
+    const fail = (e: unknown) => {
+      cleanup()
+      reject(e)
+    }
+
+    try {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+    } catch (e) {
+      reject(e)
+      return
+    }
 
     let state = createState()
     let prevRows = 0 // jumlah baris dropdown yang tergambar (untuk clear)
@@ -132,11 +166,13 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       // Bekerja pada teks bersih: potongan tengah tidak bisa mempertahankan
       // sekuens ANSI dengan benar tanpa melacak state warna.
       const clean = stripAnsi(line)
-      const pts = Array.from(clean)
+      const pts = toGraphemes(clean)
       // Lebar kumulatif per posisi karakter.
       const colAt: number[] = [0]
       for (const ch of pts) colAt.push(colAt[colAt.length - 1]! + displayWidth(ch))
-      const keep = Math.max(8, cols - 4)
+      // Jendela scroll tidak boleh melebihi terminal sendiri: `max(8, cols-4)`
+      // di cols=5 menghasilkan keep 8 > cols → baris membungkus lagi.
+      const keep = Math.min(Math.max(8, cols - 4), Math.max(4, cols - 1))
       // Cari indeks awal terkecil yang membuat kursor masuk jendela `keep`.
       let start = 0
       while (start < pts.length && cursorCol - colAt[start]! >= keep) start++
@@ -154,7 +190,11 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     }
 
     const renderAnsi = () => {
-      const spec = buildRenderSpec(state, promptOf(), matches(), opts.groupOf)
+      const rows = process.stdout.rows || 24
+      // Sisakan ruang untuk prompt + 1 baris status agar dropdown tidak
+      // membungkus di terminal pendek.
+      const maxVisible = Math.max(1, Math.min(MAX_VISIBLE, rows - 3))
+      const spec = buildRenderSpec(state, promptOf(), matches(), opts.groupOf, maxVisible)
       const maxRows = Math.max(prevRows, spec.totalRows)
       const view = scrollableLine(spec.inputLine, spec.cursorCol)
       const inputLine = view.text
@@ -243,8 +283,9 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       prevRows = 0
     }
 
-    const onData = (chunk: Buffer) => {
-      for (const d of decodeKeys(chunk)) {
+    onData = (chunk: Buffer) => {
+      const keys = decodeKeysStream(chunk, decoder)
+      for (const d of keys) {
         // Hook pemanggil: key yang ditangani sendiri (return truthy) dilewati
         // dari logika bawaan; render() di akhir chunk tetap menggambar efeknya.
         if (opts.onKey?.(d.key)) continue
@@ -275,8 +316,21 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           }
           continue
         }
-        // Mengetik/menghapus setelah menjelajah history mengunci baris saat ini.
-        if (d.key.type === "char" || d.key.type === "backspace" || d.key.type === "delete") {
+        // Mengetik/menghapus/memindah kursor setelah menjelajah history
+        // memutus mode history — semua shell begitu (setiap edit = edit baris
+        // baru, bukan lanjut navigasi). Sebelumnya ctrl-w/ctrl-u/tab/panah
+        // tidak me-reset historyIdx, jadi setelah recall history lalu Ctrl+W
+        // panah bawah tetap kembali ke entri history lain.
+        if (
+          d.key.type === "char" ||
+          d.key.type === "backspace" ||
+          d.key.type === "delete" ||
+          d.key.type === "ctrl-w" ||
+          d.key.type === "ctrl-u" ||
+          d.key.type === "tab" ||
+          d.key.type === "left" ||
+          d.key.type === "right"
+        ) {
           historyIdx = -1
           savedLine = ""
         }
@@ -297,70 +351,96 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         }
       }
       // Satu render per chunk - paste 50+ char tidak meng-redraw 50 kali.
-      render()
-    }
-
-    const finish = (v: string | null) => {
-      process.stdin.setRawMode(false)
-      process.stdin.pause()
-      process.stdin.removeListener("data", onData)
-      resolve(v)
+      try {
+        render()
+      } catch (e) {
+        fail(e)
+      }
     }
 
     process.stdin.on("data", onData)
-    render()
+    try {
+      render()
+    } catch (e) {
+      fail(e)
+    }
   })
 }
 
 export async function askSecret(promptText: string): Promise<string> {
   if (!process.stdin.isTTY) return ""
 
-  return new Promise((resolve) => {
-    process.stdout.write(promptText)
-    let secret = ""
-
-    const finish = (value: string) => {
-      process.stdin.removeListener("data", onData)
-      process.stdin.setRawMode(false)
+  return new Promise((resolve, reject) => {
+    const decoder: DecoderState = createDecoderState()
+    let done = false
+    let onData!: (chunk: Buffer) => void
+    const cleanup = () => {
+      if (done) return
+      done = true
+      try {
+        process.stdin.setRawMode(false)
+      } catch {}
       process.stdin.pause()
+      if (onData) process.stdin.removeListener("data", onData)
+    }
+    const finish = (value: string) => {
+      cleanup()
       process.stdout.write("\n")
       resolve(value)
     }
+    const fail = (e: unknown) => {
+      cleanup()
+      reject(e)
+    }
 
-    const onData = (chunk: Buffer) => {
-      const str = chunk.toString()
+    process.stdout.write(promptText)
+    let secret = ""
 
-      for (let i = 0; i < str.length; i++) {
-        const char = str[i]!
-
-        if (char === "\r" || char === "\n") {
-          finish(secret.trim())
-          return
-        } else if (char === "\u0003") {
-          // Ctrl+C = BATALKAN PROMPT, bukan matikan proses.
-          //
-          // Dulu di sini `process.exit(130)`. Di raw mode Ctrl+C tidak
-          // menghasilkan SIGINT, jadi itu emulasi manual — tapi `askSecret`
-          // dipanggil dari `runProviderManager`, sebuah dialog di dalam REPL
-          // yang hidup. Menekan Ctrl+C saat salah ketik API key mematikan
-          // seluruh sesi beserta riwayatnya, bukan menutup dialognya.
-          //
-          // String kosong adalah sinyal batal yang SUDAH ditangani kedua
-          // pemanggil: provider-manager mencetak "API Key wajib diisi." lalu
-          // kembali ke daftar, wizard mencetak "Setup dibatalkan.". Ini juga
-          // menyamakan perilakunya dengan `askLine`, yang membatalkan (null)
-          // alih-alih keluar.
-          finish("")
-          return
-        } else if (char === "\u007f" || char === "\b") {
-          if (secret.length > 0) {
-            secret = secret.slice(0, -1)
-            process.stdout.write("\b \b")
+    onData = (chunk: Buffer) => {
+      try {
+        for (const d of decodeKeysStream(chunk, decoder)) {
+          const k = d.key
+          if (k.type === "enter") {
+            finish(secret.trim())
+            return
+          } else if (k.type === "ctrl-c" || k.type === "ctrl-d") {
+            // Ctrl+C = BATALKAN PROMPT, bukan matikan proses.
+            //
+            // Dulu di sini `process.exit(130)`. Di raw mode Ctrl+C tidak
+            // menghasilkan SIGINT, jadi itu emulasi manual — tapi `askSecret`
+            // dipanggil dari `runProviderManager`, sebuah dialog di dalam REPL
+            // yang hidup. Menekan Ctrl+C saat salah ketik API key mematikan
+            // seluruh sesi beserta riwayatnya, bukan menutup dialognya.
+            //
+            // String kosong adalah sinyal batal yang SUDAH ditangani kedua
+            // pemanggil. Ini juga menyamakan perilakunya dengan `askLine`,
+            // yang membatalkan (null) alih-alih keluar.
+            finish("")
+            return
+          } else if (k.type === "backspace") {
+            // Hapus satu GRAPHEME (bukan code point/UTF-16 unit): emoji ZWJ
+            // dan flag tidak meninggalkan setengah.
+            const graphemes = toGraphemes(secret)
+            if (graphemes.length > 0) {
+              graphemes.pop()
+              secret = graphemes.join("")
+              process.stdout.write("\b \b")
+            }
+          } else if (k.type === "char") {
+            // Sekuens kontrol dari paste dibuang — secret tidak boleh
+            // mengandung newline/C0 (Enter adalah satu-satunya terminasi).
+            const clean = k.ch
+              .replace(/\r\n|\r|\n|\t/g, "")
+              // biome-ignore lint/suspicious/noControlCharactersInRegex: membuang kontrol dari paste
+              .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+            if (clean) {
+              secret += clean
+              process.stdout.write("*".repeat(toGraphemes(clean).length))
+            }
           }
-        } else if (char.charCodeAt(0) >= 32) {
-          secret += char
-          process.stdout.write("*")
         }
+      } catch (e) {
+        fail(e)
       }
     }
 

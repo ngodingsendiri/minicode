@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.8.1] - 2026-09-03 — UI P0-P2: approval sanitize, grapheme, streaming paste/mouse/UTF-8, fence & inline code, highlight, SGR
+
+### Fixed (P0 — keamanan/hang)
+- `approval/prompt.ts:22` sanitize `toolName/actionSummary` (`sanitizeAnsiLine`, try/catch `JSON.stringify` circular)
+- `input.ts:117` & `picker.ts:110` raw-mode `try/finally` (terminal tidak tertinggal raw saat `buildRenderSpec` throw)
+- `provider-manager.ts:152` & `model-manager.ts:83` `busy` `try/finally` (deadlock bila `onAdd` throw)
+- `provider-manager.ts:130` & `model-manager.ts:89` hapus `\r\n` di `suspend` (gap 1 baris scrollback)
+- `prompt-engine.ts:265` streaming decoder `decodeKeysStream` + `createDecoderState` (UTF-8 split, bracket paste `ESC[200~…201~`, mouse `ESC[M`+3 byte mentah & `ESC[<…M/m`)
+- `prompt-engine.ts:65` `toGraphemes` via `Intl.Segmenter` (ZWJ 👨‍👩‍👧, flag 🇮🇩, `askSecret` & `picker` backspace grapheme)
+- `simple.ts:48` `parseFence` sinkron dengan `markdown.ts:37` (char/len) + highlight di dalam fence; `width.ts:110` CSI truncated tidak greedy (` ` teks tidak ditelan); `theme.ts:312` `ANSI_PATTERN` sinkron + truncated CSI `|\\[[0-9;?<=>]*`
+
+### Fixed (P1 — render)
+- `markdown.ts:14` inline `code` placeholder `\u0000` sebelum `**bold` (`` `**a**` `` tidak jadi bold)
+- `highlight.ts:139` `findCommentIndex` string-aware (`"https://"` & `"#fff"` tidak jadi komentar)
+- `turn-status.ts:76` & `spinner.ts:28` sanitize `label/message` (`sanitizeAnsiLine`)
+- `width.ts:184` `chunkByWidth` bawa open SGR ke potongan berikutnya
+
+### Changed (P2 — UX kecil)
+- `prompt-engine.ts:19` `MAX_VISIBLE` adaptif `rows-3` via `buildRenderSpec(maxVisible)`; `input.ts:105` `Math.max(1,min(10,rows-3))`
+- `input.ts:139` `keep = min(max(8,cols-4), max(4,cols-1))`
+- `input.ts:279` history lock reset `ctrl-w/ctrl-u/tab/left/right` + `wizard.ts:73` `readline` → `askLine`
+- `diff.ts:12` dokumentasi O(n·m) heuristik & cap
+
+### Test & Gate
+- `1168 pass 0 fail` (highlight pad ` 1` → `   1`), `gate:coverage` 82.66%/84.88% (min81/83 PASS), `lint` 17 warn, `tsc` PASS. `P2.6` `diff.ts` batas O(n·m) didokumentasi.
+
 ## [0.8.0] - 2026-09-02 — Penghapusan tema + perbaikan cwd jail (P2.1) + hardening lanjutan
 
 ### Fixed

@@ -1,4 +1,5 @@
 import type { UiBus } from "../contract.ts"
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { registerStatusLine } from "../runtime/statusline.ts"
 
 // Turn status line — satu baris di stderr: `·· model` (dots + label saja).
@@ -74,7 +75,10 @@ export function attachTurnStatus(
     } else if (e.kind === "effective-model") {
       const d = e.data as { effective?: string; provider?: string }
       if (d.effective) {
-        label = d.provider ? `${d.provider}/${d.effective}` : d.effective
+        // Nama model/provider bisa memuat teks dari provider — sanitasi agar
+        // status line tidak bisa menyembunyikan kursor/mengubah judul terminal.
+        const raw = d.provider ? `${d.provider}/${d.effective}` : d.effective
+        label = sanitizeAnsiLine(raw)
         if (!spinner) paint()
       }
     }

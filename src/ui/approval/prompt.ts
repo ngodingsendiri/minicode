@@ -2,6 +2,7 @@
 // Lapisan policy tidak mengimpor file ini; ia di-inject sebagai callback dari
 // composition root (cli/setup.ts -> createMinicodeSession -> permission).
 import { askLine } from "../input/input.ts"
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c } from "../render/theme.ts"
 
 /** Subset struktural tool call yang dibutuhkan view — tanpa tipe kernel. */
@@ -15,14 +16,26 @@ export async function promptAsk(call: ApprovalRequest): Promise<"allow" | "deny"
   // Non-visual feedback bisa dimatikan untuk aksesibilitas/recording.
   if (process.env.MINICODE_BELL !== "0") process.stdout.write("\x07")
 
-  const toolName = call.name
+  // toolName/actionSummary berasal dari model/MCP (tidak terpercaya). Tanpa
+  // sanitasi, `\x1b[2J\x1b[H` di dalam args.command akan membersihkan layar
+  // terminal user saat prompt persetujuan tampil (sama seperti provider:text).
+  const toolName = sanitizeAnsiLine(call.name)
   const args = (call.args ?? {}) as Record<string, unknown>
 
   let actionSummary = ""
   if (args.command) actionSummary = `Command: ${String(args.command).slice(0, 100)}`
   else if (args.path) actionSummary = `File: ${String(args.path)}`
   else if (args.query) actionSummary = `Query: ${String(args.query)}`
-  else actionSummary = `Args: ${JSON.stringify(args).slice(0, 100)}`
+  else {
+    let json = ""
+    try {
+      json = JSON.stringify(args)
+    } catch {
+      json = String(args)
+    }
+    actionSummary = `Args: ${json.slice(0, 100)}`
+  }
+  actionSummary = sanitizeAnsiLine(actionSummary)
 
   process.stdout.write(`\n${c.warning(c.bold("Approval required"))}\n`)
   process.stdout.write(`  ${c.bold("Tool:")} ${c.info(toolName)}\n`)

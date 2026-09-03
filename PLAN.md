@@ -31,7 +31,7 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 
 ---
 
-## Status eksekusi terbaru (update 2026-09-02)
+## Status eksekusi terbaru (update 2026-09-03)
 
 Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_REDESIGN_CLI_CONSTRAINED_2026-09-01.md):
 
@@ -41,6 +41,8 @@ Ringkasan progres terhadap roadmap UI CLI-constrained (outputs/UI_FOUNDATION_RED
 - ✅ Tahap 3 (component family refactor) selesai.
 - ✅ Tahap 4 (runtime feedback harmonization) selesai.
 - ✅ Tahap 5 (verification & hardening) selesai.
+- ✅ P2.1 `cwd` jail tuntas (0.8.0): seam aditif `cwd?:string` di `vendor/minicore` + `src/tools/*` resolve terhadap `ctx.cwd`.
+- ✅ UI P0-P2 render hardening tuntas (0.8.1): DCS/APC, fence, inline code, highlight, chunk SGR, table, overlay gap, busy deadlock, detail/reasoning getter (lihat di bawah).
 
 Catatan eksekusi terbaru:
 - Primitive overlay shared sudah dipakai oleh picker/provider-manager/model-manager (`src/ui/screens/overlay.ts`).
@@ -51,12 +53,31 @@ Catatan eksekusi terbaru:
 - `scripts/coverage-gate.ts` diperbaiki agar memanggil runtime Bun via `process.execPath` (bukan perintah `bun` di PATH), untuk lingkungan yang tidak menaruh bun di PATH.
 - Penghapusan fitur tema tuntas: `src/ui/render/themes.ts` dihapus, `src/ui/render/theme.ts` jadi palet tunggal (satu set TOKENS dark, auto-detect NO_COLOR>COLORTERM>truecolor>mono), flag `--theme` & slash `/theme` & env `MINICODE_THEME`/`themeState`/`applyTheme` dihapus dari `cli/index.ts`, HELP, dan test. Dijaga oleh `test/no-frozen-runtime-value.test.ts` & `test/theme.test.ts` baru.
 - Sisa inkonsistensi plan .verdent dibersihkan: `test/cli-session.test.ts:604` blok `describe("cli: --theme")` dihapus, komentar `themeState` di `test/no-frozen-runtime-value.test.ts:20` diperbaiki, `bun.lock` divalidasi `bun install` + `--frozen-lockfile` hijau, `experiments/extreme-mcp-adversarial.ts` diselaraskan ke English ("private host rejected", "redirect not followed", "not valid JSON").
-- Gate di host ini (Win32, Bun 1.4.0, 2026-09-02): `tsc` PASS, `lint` PASS (17 warn), `bun test` 1168 pass 0 fail, `gate:coverage` 82.79% funcs / 85.22% lines (min 81/83 PASS), `gate:pack` 22/22 PASS, `gate:bash` 0/38 bypass 0/15 over-block di kedua mode, `extreme-bash-fuzz` 0 bypass (2582 varian), `extreme-mcp` 67/67 PASS. `extreme-shadow-git` masih timeout 300s di Windows (unit `shadow-git.test.ts` 22 pass — hambatan I/O skala 2000 file, bukan regresi fungsional).
-- `vendor/minicore` sinkron ulang (`19 file, be68c07aa4ae8cb6`) via `bun run vendor:minicore`.
+- `vendor/minicore` sinkron ulang (`19 file, 4591de2f578d9f4c`) via `bun run vendor:minicore`.
+- **Audit UI mendalam 2026-09-02** — 3 sub-audit (input / render / overlay-REPL) menemukan 8 High + 7 Medium + 6 Low. Semua **P0 (keamanan/hang) & P1 (render)** & **P2 (UX kecil)** dieksekusi pada 2026-09-03 (lihat `PLAN.md: Audit UI — temuan P0-P2`):
+  - P0.1 `approval/prompt.ts:22` sanitize `toolName/actionSummary` (+ try/catch JSON)
+  - P0.2 raw-mode `try/finally` di `input.ts:117,330` & `picker.ts:110` (terminal tidak tertinggal raw saat `buildRenderSpec` throw)
+  - P0.3 `busy` `try/finally` di `provider-manager.ts:152` & `model-manager.ts:83` (deadlock bila `onAdd` throw)
+  - P0.4 gap 1 baris suspend (`provider-manager.ts:130` & `model-manager.ts:89` hapus `\r\n` di `suspend`)
+  - P0.5-P0.7 streaming decoder `prompt-engine.ts:265` `decodeKeysStream` (UTF-8 split, bracket paste `ESC[200~…201~`, mouse X10 `ESC[M`+3 byte & SGR `ESC[<…M` tahan di `pending`)
+  - P0.8 grapheme `Intl.Segmenter` di `prompt-engine.ts:65` (`toGraphemes`), `askSecret` & `picker` backspace grapheme
+  - P1.1 `simple.ts:48` fence state `parseFence` sinkron dengan `markdown.ts:37` (char/len), highlight di dalam fence
+  - P1.2 inline `code` placeholder `\u0000` di `markdown.ts:14` (sebelumnya `**` di dalam `` `**a**` `` jadi bold)
+  - P1.3 `width.ts:110` CSI truncated tidak greedy (hanya params, ` ` teks `"` → `" world"` bukan `"orld"`)
+  - P1.4 `highlight.ts:139` `findCommentIndex` string-aware (`"https://"` tidak jadi komentar)
+  - P1.5 `turn-status.ts:76` & `spinner.ts:28` sanitize `label/message` (`sanitizeAnsiLine`)
+  - P1.6 `width.ts:184` `chunkByWidth` bawa open SGR ke potongan berikutnya
+  - P2.1 `MAX_VISIBLE` adaptif `rows-3` di `input.ts:105`, P2.2 clamp `keep = min(max(8,cols-4), max(4,cols-1))`
+  - P2.3 history lock reset `ctrl-w/ctrl-u/tab/left/right` di `input.ts:279`
+  - P2.4 `askSecret` grapheme backspace + sanitasi paste + `decodeKeysStream`
+  - P2.5 `wizard.ts:73` `readline` → `askLine` (satu stack sanitasi/width/history)
+  - P2.6 `diff.ts:12` dokumentasi O(n·m) heuristik & cap
+- Gate di host ini (Win32, Bun 1.4.0, 2026-09-03): `tsc` PASS, `lint` PASS (17 warn), `bun test` 1168 pass 0 fail, `gate:coverage` 82.66%/84.88% (min 81/83 PASS), `gate:pack` 22/22 PASS.
 
 Next action (urut eksekusi):
-1. P1.1–P1.3 masih terbuka (coverage `cli/setup.ts` 0%, provider-manager harness, highlight), dan P2.1 `cwd` jail butuh keputusan arsitektur A/B/C — lihat §P1/P2.
-2. Publish npm (P2.2) menunggu bump `package.json` + `CHANGELOG.md` release note + kredensial.
+1. Publish npm 0.8.x (butuh bump `CHANGELOG.md` [0.8.1] + `npm publish`).
+2. Extreme shadow Windows (`.verdent/plans/Extreme_Shadow…`): profiling `snapshotTree` 200/1000/5000 file → batch `--stdin-paths` atau `rows-` adaptif (tracked lokal, tidak block rilis).
+3. P1 asli `cli/setup.ts` 0% (coverage `bun --coverage` tidak ukur subprocess `Bun.spawn` — tetap butuh `spawnSync` harness terpisah, bukan aggregate; dokumentasi batas ini sudah ada di coverage.txt).
 
 ---
 

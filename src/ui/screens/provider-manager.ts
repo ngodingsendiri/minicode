@@ -3,7 +3,7 @@
 // di-inject controller (cli/provider-manager.ts).
 
 import { askLine, askSecret } from "../input/input.ts"
-import { decodeKeys } from "../input/prompt-engine.ts"
+import { createDecoderState, type DecoderState, decodeKeysStream } from "../input/prompt-engine.ts"
 import { c, glyphs } from "../render/theme.ts"
 import { padToWidth, truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
@@ -127,7 +127,9 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
     const suspend = () => {
       prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
-      process.stdout.write("\r\n")
+      // TIDAK menulis \r\n di sini: clearTransientOverlay sudah menaruh kursor
+      // kembali ke anchor. \r\n sebelumnya membuat baris kosong permanen di
+      // scrollback (append-only) — gap 1 baris tiap kali a/d/e dipakai.
       process.stdin.setRawMode(false)
       process.stdin.pause()
       process.stdin.removeListener("data", onData)
@@ -149,187 +151,189 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
       suspend()
     }
 
-    const doAdd = async () => {
-      if (busy) return
-      busy = true
-      suspend()
-      console.log("\nAdd provider\n")
-      opts.presets.forEach((p, i) => {
-        console.log(`  [${i}] ${p.label}`)
-        console.log(`      ${p.baseUrl}`)
-      })
-      const customIdx = opts.presets.length
-      console.log(`  [${customIdx}] Custom URL\n`)
-      const selStr = await askLine({ prompt: "Gateway > " })
-      if (selStr == null) {
-        console.log("Canceled")
-        busy = false
-        await reload()
-        resume()
-        return
-      }
-      const pick = selStr.trim()
-      const idx = Number(pick)
-      let preset: ProviderPresetView | undefined
-      let baseUrl: string
-      if (Number.isInteger(idx) && idx >= 0 && idx < customIdx) {
-        preset = opts.presets[idx]!
-        baseUrl = preset.baseUrl
-      } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
-        const url = await askLine({ prompt: "Base URL > " })
-        if (!url || !url.trim()) {
-          console.log("Base URL is required.")
+    // SEMUA aksi a/d/e lewat sini: busy guard + suspend, lalu SELALU resume di
+    // finally. Tanpa finally, exception di onAdd/askLine (atau loadRows) membuat
+    // busy tetap true → onData menolak semua input → manager terkunci selamanya.
+    const runAction = (fn: () => Promise<void>) =>
+      (async () => {
+        if (busy) return
+        busy = true
+        suspend()
+        try {
+          await fn()
+        } catch (e) {
+          console.log(`${glyphs.cross} ${(e as Error).message}`)
+        } finally {
           busy = false
-          await reload()
+          await reload().catch(() => {})
           resume()
+        }
+      })()
+
+    const doAdd = () =>
+      runAction(async () => {
+        console.log("\nAdd provider\n")
+        opts.presets.forEach((p, i) => {
+          console.log(`  [${i}] ${p.label}`)
+          console.log(`      ${p.baseUrl}`)
+        })
+        const customIdx = opts.presets.length
+        console.log(`  [${customIdx}] Custom URL\n`)
+        const selStr = await askLine({ prompt: "Gateway > " })
+        if (selStr == null) {
+          console.log("Canceled")
           return
         }
-        baseUrl = url.trim()
-      } else {
-        console.log(`${glyphs.cross} Unknown selection`)
-        busy = false
-        await reload()
-        resume()
-        return
-      }
-      const apiKey = await askSecret("API key: ")
-      if (!apiKey) {
-        console.log("API key is required.")
-        busy = false
-        await reload()
-        resume()
-        return
-      }
-      let scope: "global" | "local" = "global"
-      if (opts.askScope) {
-        const ans = await askLine({ prompt: "Save globally? [Y/n] " })
-        scope = ans?.trim().toLowerCase() === "n" ? "local" : "global"
-      }
-      console.log("Detecting models…")
-      const res = await opts.onAdd({ preset, baseUrl, apiKey, scope })
-      if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
-      else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
-      busy = false
-      await reload()
-      resume()
-    }
-
-    const doDelete = async () => {
-      if (busy || providers.length === 0) return
-      const target = providers[sel]
-      if (!target) return
-      busy = true
-      suspend()
-      // Konfirmasi menyebut DAMPAK, bukan hanya nama: berapa model ikut hilang,
-      // dan apakah provider ini yang sedang dipakai. Tanpa itu user menekan "y"
-      // tanpa tahu prompt berikutnya akan gagal.
-      const active = opts.currentModel?.startsWith(`${target.id}::`)
-      console.log(`\nDelete provider "${target.id}" and ${target.models} models?`)
-      if (active) {
-        console.log(`${glyphs.cross} Provider is active (${opts.currentModel}).`)
-      }
-      const ans = await askLine({ prompt: "Delete? [y/N] " })
-      if (ans?.trim().toLowerCase() === "y") {
-        const res = await opts.onDelete(target)
-        if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
-        else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
-      } else {
-        console.log("Canceled")
-      }
-      busy = false
-      await reload()
-      resume()
-    }
-
-    const doEdit = async () => {
-      if (busy || providers.length === 0) return
-      const target = providers[sel]
-      if (!target) return
-      busy = true
-      suspend()
-      const defaults = await opts.onEditDefaults(target)
-      if (!defaults) {
-        console.log("Provider not found")
-        busy = false
-        await reload()
-        resume()
-        return
-      }
-      console.log(`\nEdit provider "${target.id}"\n`)
-      const newUrl = await askLine({ prompt: `Base URL [${defaults.baseUrl}]: ` })
-      const newKey = await askSecret("API key [****]: ")
-      const baseUrl = newUrl && newUrl.trim() ? newUrl.trim() : defaults.baseUrl
-      const apiKey = newKey && newKey.trim() ? newKey.trim() : defaults.apiKey
-      if (baseUrl === defaults.baseUrl && apiKey === defaults.apiKey) {
-        console.log("No changes.")
-      } else {
+        const pick = selStr.trim()
+        const idx = Number(pick)
+        let preset: ProviderPresetView | undefined
+        let baseUrl: string
+        if (Number.isInteger(idx) && idx >= 0 && idx < customIdx) {
+          preset = opts.presets[idx]!
+          baseUrl = preset.baseUrl
+        } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
+          const url = await askLine({ prompt: "Base URL > " })
+          if (!url || !url.trim()) {
+            console.log("Base URL is required.")
+            return
+          }
+          baseUrl = url.trim()
+        } else {
+          console.log(`${glyphs.cross} Unknown selection`)
+          return
+        }
+        const apiKey = await askSecret("API key: ")
+        if (!apiKey) {
+          console.log("API key is required.")
+          return
+        }
+        let scope: "global" | "local" = "global"
+        if (opts.askScope) {
+          const ans = await askLine({ prompt: "Save globally? [Y/n] " })
+          scope = ans?.trim().toLowerCase() === "n" ? "local" : "global"
+        }
         console.log("Detecting models…")
-        const res = await opts.onEditSave(target, { baseUrl, apiKey })
+        const res = await opts.onAdd({ preset, baseUrl, apiKey, scope })
         if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
         else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
-      }
-      busy = false
-      await reload()
-      resume()
+      })
+
+    const doDelete = () => {
+      if (providers.length === 0) return
+      const target = providers[sel]
+      if (!target) return
+      return runAction(async () => {
+        // Konfirmasi menyebut DAMPAK, bukan hanya nama: berapa model ikut hilang,
+        // dan apakah provider ini yang sedang dipakai. Tanpa itu user menekan "y"
+        // tanpa tahu prompt berikutnya akan gagal.
+        const active = opts.currentModel?.startsWith(`${target.id}::`)
+        console.log(`\nDelete provider "${target.id}" and ${target.models} models?`)
+        if (active) {
+          console.log(`${glyphs.cross} Provider is active (${opts.currentModel}).`)
+        }
+        const ans = await askLine({ prompt: "Delete? [y/N] " })
+        if (ans?.trim().toLowerCase() === "y") {
+          const res = await opts.onDelete(target)
+          if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
+          else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
+        } else {
+          console.log("Canceled")
+        }
+      })
     }
 
+    const doEdit = () => {
+      if (providers.length === 0) return
+      const target = providers[sel]
+      if (!target) return
+      return runAction(async () => {
+        const defaults = await opts.onEditDefaults(target)
+        if (!defaults) {
+          console.log("Provider not found")
+          return
+        }
+        console.log(`\nEdit provider "${target.id}"\n`)
+        const newUrl = await askLine({ prompt: `Base URL [${defaults.baseUrl}]: ` })
+        const newKey = await askSecret("API key [****]: ")
+        const baseUrl = newUrl && newUrl.trim() ? newUrl.trim() : defaults.baseUrl
+        const apiKey = newKey && newKey.trim() ? newKey.trim() : defaults.apiKey
+        if (baseUrl === defaults.baseUrl && apiKey === defaults.apiKey) {
+          console.log("No changes.")
+        } else {
+          console.log("Detecting models…")
+          const res = await opts.onEditSave(target, { baseUrl, apiKey })
+          if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
+          else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
+        }
+      })
+    }
+
+    const decoder: DecoderState = createDecoderState()
     const onData = (chunk: Buffer) => {
       if (busy) return
-      for (const d of decodeKeys(chunk)) {
-        switch (d.key.type) {
-          case "up":
-            sel = Math.max(0, sel - 1)
-            render()
-            break
-          case "down":
-            sel = Math.min(providers.length - 1, sel + 1)
-            render()
-            break
-          case "char": {
-            const ch = d.key.ch.toLowerCase()
-            if (ch === "a") {
-              void doAdd()
+      try {
+        for (const d of decodeKeysStream(chunk, decoder)) {
+          switch (d.key.type) {
+            case "up":
+              sel = Math.max(0, sel - 1)
+              render()
+              break
+            case "down":
+              sel = Math.min(providers.length - 1, sel + 1)
+              render()
+              break
+            case "char": {
+              const ch = d.key.ch.toLowerCase()
+              if (ch === "a") {
+                void doAdd()
+                return
+              }
+              if (ch === "d") {
+                void doDelete()
+                return
+              }
+              if (ch === "e") {
+                void doEdit()
+                return
+              }
+              break
+            }
+            case "enter": {
+              // Set model sync dari data yang sudah dimuat - tidak ada console.log
+              // dan tidak ada async yang nembak setelah resolve (menghentikan REPL).
+              const p = providers[sel]
+              if (p) opts.onSelect(p)
+              cleanup()
+              resolve()
               return
             }
-            if (ch === "d") {
-              void doDelete()
+            case "esc":
+            case "ctrl-c":
+            case "ctrl-d":
+              cleanup()
+              resolve()
               return
-            }
-            if (ch === "e") {
-              void doEdit()
-              return
-            }
-            break
+            default:
+              break
           }
-          case "enter": {
-            // Set model sync dari data yang sudah dimuat - tidak ada console.log
-            // dan tidak ada async yang nembak setelah resolve (menghentikan REPL).
-            const p = providers[sel]
-            if (p) opts.onSelect(p)
-            cleanup()
-            resolve()
-            return
-          }
-          case "esc":
-          case "ctrl-c":
-          case "ctrl-d":
-            cleanup()
-            resolve()
-            return
-          default:
-            break
         }
+      } catch {
+        cleanup()
       }
     }
 
     const onResize = () => render()
 
     process.stdout.write("\x1b[?25l")
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setMaxListeners(0)
-    process.stdin.on("data", onData)
-    process.stdout.on("resize", onResize)
-    render()
+    try {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.setMaxListeners(0)
+      process.stdin.on("data", onData)
+      process.stdout.on("resize", onResize)
+      render()
+    } catch {
+      cleanup()
+    }
   })
 }

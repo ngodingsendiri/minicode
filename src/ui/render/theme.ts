@@ -309,7 +309,7 @@ export const ESC = String.fromCharCode(27)
 // ESC[?25l, ESC[?2026h, ESC[?1049h dipakai untuk kursor/sync/alternate-screen.
 // Tanpa itu sekuens kontrol lolos ke teks yang seharusnya sudah bersih —
 // terlihat saat output ditangkap/disanitasi untuk tampilan.
-export const ANSI_PATTERN = `${ESC}(?:\\[[0-9;?<=>]*[a-zA-Z]|\\[[0-9;?<=>]*$|\\][^${ESC}\\u0007]*(?:\\u0007|${ESC}\\\\)|\\[P_\\^X][^${ESC}\\u0007]*(?:\\u0007|${ESC}\\\\)|[()#][0-9A-Za-z]|[0-9A-Za-z])`
+export const ANSI_PATTERN = `${ESC}(?:\\[[0-9;?<=>]*[a-zA-Z]|\\[[0-9;?<=>]*|\\][^${ESC}\\u0007]*(?:\\u0007|${ESC}\\\\)|\\[P_\\^X][^${ESC}\\u0007]*(?:\\u0007|${ESC}\\\\)|[()#][0-9A-Za-z]|[0-9A-Za-z])`
 
 export function stripAnsi(str: string): string {
   // regex baru per panggilan: aman dari lastIndex bersama antar pemanggil

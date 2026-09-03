@@ -1,3 +1,4 @@
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c, glyphs } from "../render/theme.ts"
 
 // Jaga agar kursor terminal selalu ter-restore meski proses dihentikan (SIGINT/dll).
@@ -14,7 +15,9 @@ export interface Spinner {
 
 export function createSpinner(initialMessage: string = ""): Spinner {
   const isTTY = process.stderr.isTTY
-  let message = initialMessage
+  // Pesan spinner bisa datang dari hasil tool yang tidak terpercaya — SGR boleh
+  // lewat, sekuens lain (mis. \x1b[2J) dibuang agar tidak merusak layar.
+  let message = sanitizeAnsiLine(initialMessage)
   let frameIdx = 0
   let intervalId: ReturnType<typeof setInterval> | undefined
 
@@ -43,21 +46,21 @@ export function createSpinner(initialMessage: string = ""): Spinner {
 
   return {
     update(newMessage: string) {
-      message = newMessage
+      message = sanitizeAnsiLine(newMessage)
     },
     stop(finalMessage?: string) {
       stopTimer()
       if (finalMessage) {
-        process.stderr.write(`${finalMessage}\n`)
+        process.stderr.write(`${sanitizeAnsiLine(finalMessage)}\n`)
       }
     },
     success(msg: string) {
       stopTimer()
-      process.stderr.write(`${c.green(glyphs.check)} ${msg}\n`)
+      process.stderr.write(`${c.green(glyphs.check)} ${sanitizeAnsiLine(msg)}\n`)
     },
     error(msg: string) {
       stopTimer()
-      process.stderr.write(`${c.red(glyphs.cross)} ${msg}\n`)
+      process.stderr.write(`${c.red(glyphs.cross)} ${sanitizeAnsiLine(msg)}\n`)
     },
   }
 }

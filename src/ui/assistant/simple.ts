@@ -7,7 +7,8 @@ import { detail } from "../render/detail.ts"
 import { renderDiffCard } from "../render/diff.ts"
 import { formatFriendly, friendlyError, friendlyFromCategory } from "../render/errors.ts"
 import { formatArgsPreview, formatProviderError, formatUsage } from "../render/format.ts"
-import { decorateMarkdown } from "../render/markdown.ts"
+import { highlightCode } from "../render/highlight.ts"
+import { decorateMarkdown, type FenceMatch, parseFence } from "../render/markdown.ts"
 import { reasoning } from "../render/reasoning.ts"
 import { sanitizeAnsi, sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c, glyphs } from "../render/theme.ts"
@@ -46,14 +47,30 @@ function patchBlocks(patches: unknown): [string, string] {
 
 export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => void {
   let streamBuffer = ""
-  let inFence = false
+  // State fence dipegang DI SINI, bukan di decorateMarkdown: baris datang per
+  // event streaming, sedangkan decorateMarkdown memproses satu teks utuh.
+  // Sebelumnya `line.includes("```")` toggle naif → fence ~~~ tidak dikenal,
+  // fence berbahasa kehilangan highlight, dan wrap salah setelah fence.
+  let fence: FenceMatch | null = null
 
   const flushLine = (line: string) => {
-    if (line.includes("```")) inFence = !inFence
     const w = process.stdout.columns || 80
-    const dec = decorateMarkdown(line)
-    if (!inFence) wOut(formatWrapped(dec, w, true))
-    else wOut(dec)
+    const f = parseFence(line)
+    if (f) {
+      if (fence === null) fence = f
+      else if (f.char === fence.char && f.len >= fence.len) fence = null
+      // Baris pembuka/penutup fence adalah delimiter — tidak dicetak.
+      return
+    }
+    if (fence) {
+      // Di dalam fence: isi TIDAK disentuh markdown; di-highlight bila ada
+      // bahasa. Tanpa bahasa, tetap apa adanya (perbaikan V8: fence tanpa
+      // bahasa tidak boleh kehilangan *value* karena dianggap italic).
+      const content = fence.lang ? highlightCode(line, fence.lang) : line
+      wOut(`  ${content}\n`)
+      return
+    }
+    wOut(formatWrapped(decorateMarkdown(line), w, true))
     wOut("\n")
   }
   const flushBuf = () => {

@@ -1,9 +1,8 @@
 // View wizard setup pertama — murni presentasi: picker gateway, isian URL,
 // input API key, spinner. Penyimpanan provider dilakukan lewat callback
 // `onSubmit` yang di-inject controller (cli/wizard.ts).
-import { createInterface } from "node:readline"
 import { formatError } from "../assistant/simple.ts"
-import { askSecret } from "../input/input.ts"
+import { askLine, askSecret } from "../input/input.ts"
 import { c, glyphs } from "../render/theme.ts"
 import { displayWidth } from "../render/width.ts"
 import { runPicker } from "./picker.ts"
@@ -69,20 +68,16 @@ export async function runSetupWizardView(opts: SetupWizardViewOptions): Promise<
     return false
   }
 
-  // readline dipakai HANYA untuk isian teks bebas (URL), bukan untuk memilih.
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const ask = (q: string) => new Promise<string>((res) => rl.question(q, (a) => res(a.trim())))
-
+  // Isian URL memakai askLine (bukan readline) — satu stack input: sanitasi
+  // paste, editing UTF-16/grapheme, history, dan ukuran lebar kolom semuanya
+  // sama dengan prompt REPL. Readline lama tidak lewat decodeKeys sehingga
+  // paste/mouse bisa bocor sebagai teks.
   let targetUrl: string
-  try {
-    if (picked === CUSTOM) {
-      targetUrl = await ask("Base URL: ")
-    } else {
-      const custom = await ask(`Base URL [${picked}]: `)
-      targetUrl = custom || (picked as string)
-    }
-  } finally {
-    rl.close()
+  if (picked === CUSTOM) {
+    targetUrl = (await askLine({ prompt: "Base URL: " })) ?? ""
+  } else {
+    const custom = (await askLine({ prompt: `Base URL [${picked}]: ` })) ?? ""
+    targetUrl = custom || (picked as string)
   }
 
   if (!targetUrl) {

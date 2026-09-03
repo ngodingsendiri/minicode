@@ -1,6 +1,11 @@
 // Modal picker - searchable, VS Code palette
 
-import { decodeKeys } from "../input/prompt-engine.ts"
+import {
+  createDecoderState,
+  type DecoderState,
+  decodeKeysStream,
+  toGraphemes,
+} from "../input/prompt-engine.ts"
 import { c } from "../render/theme.ts"
 import { truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
@@ -107,6 +112,9 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
     }
 
     let done = false
+    let onData!: (chunk: Buffer) => void
+    let onResize!: () => void
+    const decoder: DecoderState = createDecoderState()
     const cleanup = () => {
       if (done) return
       done = true
@@ -114,84 +122,97 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       process.stdout.write("\x1b[0m\x1b[?25h")
       // Ensure cursor at next line after anchor for result
       process.stdout.write("\r\n")
-      process.stdin.setRawMode(false)
+      try {
+        process.stdin.setRawMode(false)
+      } catch {}
       process.stdin.pause()
-      process.stdin.removeListener("data", onData)
-      process.stdout.removeListener("resize", onResize)
+      if (onData) process.stdin.removeListener("data", onData)
+      if (onResize) process.stdout.removeListener("resize", onResize)
     }
 
-    const onData = (chunk: Buffer) => {
-      for (const d of decodeKeys(chunk)) {
-        const items = filteredItems()
-        switch (d.key.type) {
-          case "up":
-            sel = Math.max(0, sel - 1)
-            render()
-            break
-          case "down":
-            sel = Math.min(items.length - 1, sel + 1)
-            render()
-            break
-          case "char": {
-            if (isFilterable) {
-              filter += d.key.ch
-              sel = 0
-              scroll = 0
-              render()
-            }
-            break
-          }
-          case "backspace": {
-            if (isFilterable && filter.length > 0) {
-              filter = filter.slice(0, -1)
-              sel = 0
-              scroll = 0
-              render()
-            }
-            break
-          }
-          case "enter": {
-            const item = items[sel]
-            cleanup()
-            if (item) opts.onPick(item.value)
-            else opts.onCancel()
-            resolve()
-            return
-          }
-          case "esc": {
-            // Esc pertama membersihkan filter; Esc kedua (filter kosong) keluar.
-            if (isFilterable && filter.length > 0) {
-              filter = ""
-              sel = 0
-              scroll = 0
+    onData = (chunk: Buffer) => {
+      try {
+        for (const d of decodeKeysStream(chunk, decoder)) {
+          const items = filteredItems()
+          switch (d.key.type) {
+            case "up":
+              sel = Math.max(0, sel - 1)
               render()
               break
+            case "down":
+              sel = Math.min(items.length - 1, sel + 1)
+              render()
+              break
+            case "char": {
+              if (isFilterable) {
+                filter += d.key.ch
+                sel = 0
+                scroll = 0
+                render()
+              }
+              break
             }
-            cleanup()
-            opts.onCancel()
-            resolve()
-            return
+            case "backspace": {
+              if (isFilterable && filter.length > 0) {
+                // Hapus satu grapheme (filter bisa berisi emoji/flag).
+                const graphemes = toGraphemes(filter)
+                graphemes.pop()
+                filter = graphemes.join("")
+                sel = 0
+                scroll = 0
+                render()
+              }
+              break
+            }
+            case "enter": {
+              const item = items[sel]
+              cleanup()
+              if (item) opts.onPick(item.value)
+              else opts.onCancel()
+              resolve()
+              return
+            }
+            case "esc": {
+              // Esc pertama membersihkan filter; Esc kedua (filter kosong) keluar.
+              if (isFilterable && filter.length > 0) {
+                filter = ""
+                sel = 0
+                scroll = 0
+                render()
+                break
+              }
+              cleanup()
+              opts.onCancel()
+              resolve()
+              return
+            }
+            case "ctrl-c":
+            case "ctrl-d":
+              cleanup()
+              opts.onCancel()
+              resolve()
+              return
+            default:
+              break
           }
-          case "ctrl-c":
-          case "ctrl-d":
-            cleanup()
-            opts.onCancel()
-            resolve()
-            return
-          default:
-            break
         }
+      } catch {
+        cleanup()
       }
     }
 
-    const onResize = () => render()
+    onResize = () => render()
 
     process.stdout.write("\x1b[?25l")
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setMaxListeners(0)
-    process.stdin.on("data", onData)
-    process.stdout.on("resize", onResize)
-    render()
+    try {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.setMaxListeners(0)
+      process.stdin.on("data", onData)
+      process.stdout.on("resize", onResize)
+      render()
+    } catch {
+      cleanup()
+    }
   })
 }

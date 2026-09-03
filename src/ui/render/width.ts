@@ -106,15 +106,34 @@ export function displayWidth(s: string): number {
   return w
 }
 
+// Klasifikasi byte di dalam CSI: parameter (digit/;/:/</=/>/?), intermediate
+// (!#$%&'()*+,-./), atau final (A-Z a-z @ [ \ ] ^ _ ` { | } ~). SPASI sengaja
+// TIDAK dianggap intermediate: jauh lebih sering itu teks biasa yang mengikuti
+// sekuens yang terpotong daripada bagian dari sekuens itu sendiri.
+function csiByteKind(b: number): "param" | "inter" | "final" | "other" {
+  if (b >= 0x40 && b <= 0x7e) return "final"
+  if (b >= 0x30 && b <= 0x3f) return "param"
+  if (b >= 0x21 && b <= 0x2f) return "inter"
+  return "other"
+}
+
 /** Panjang sekuens escape yang mulai di `i`, atau 0 bila bukan escape. */
 export function escapeLength(s: string, i: number): number {
   if (s[i] !== "\x1b") return 0
   const next = s[i + 1]
   if (next === "[") {
-    // CSI: ESC [ params final-letter
+    // CSI: ESC [ params intermediate* final-byte
     let j = i + 2
-    while (j < s.length && !/[a-zA-Z]/.test(s[j]!)) j++
-    return j < s.length ? j - i + 1 : s.length - i
+    while (j < s.length) {
+      const kind = csiByteKind(s.charCodeAt(j)!)
+      if (kind === "param" || kind === "inter") j++
+      else break
+    }
+    if (j < s.length && csiByteKind(s.charCodeAt(j)!) === "final") return j - i + 1
+    // Tidak ada byte final yang sah: konsumsi HANYA parameter yang sudah
+    // terbaca. Sebelumnya scan meneruskan sampai huruf berikutnya di TEKS
+    // ("a ESC[33 world" → 'w' ikut ditelan jadi "a orld") — data loss.
+    return Math.min(j, s.length) - i
   }
   if (next === "]") {
     // OSC: ESC ] ... BEL | ESC \
@@ -200,11 +219,22 @@ export function chunkByWidth(s: string, width: number): string[] {
   let cur = ""
   let w = 0
   let i = 0
+  // Sekuens SGR yang masih "terbuka" (bukan reset) — disuntikkan ke potongan
+  // berikutnya agar warna tidak hilang saat kata berwarna panjang dipecah.
+  let openSgr = ""
   while (i < s.length) {
     if (s[i] === "\x1b") {
       const len = escapeLength(s, i)
       if (len > 0) {
-        cur += s.slice(i, i + len)
+        const seq = s.slice(i, i + len)
+        if (seq.endsWith("m")) {
+          // Reset/close menutup atribut; selain itu ingat sekuens pembuka.
+          const params = seq.slice(2, -1).split(";")
+          openSgr = params.some((p) => p === "0" || p === "22" || p === "39" || p === "49")
+            ? ""
+            : seq
+        }
+        cur += seq
         i += len
         continue
       }
@@ -214,7 +244,7 @@ export function chunkByWidth(s: string, width: number): string[] {
     const size = cp > 0xffff ? 2 : 1
     if (w + cw > width && cur !== "") {
       out.push(cur)
-      cur = ""
+      cur = openSgr // lanjutkan warna ke potongan berikutnya
       w = 0
     }
     cur += s.slice(i, i + size)

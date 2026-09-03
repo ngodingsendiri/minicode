@@ -9,6 +9,15 @@ export interface DiffLine {
   content: string
 }
 
+/**
+ * Diff baris heuristik: `slice(i).includes(...)` O(n·m) dan salah urut untuk
+ * duplikat/reorder (`["a","b","a"]` vs `["a","a","b"]` jadi add/delete terbalik).
+ * Cukup untuk diff card edit/apply_patch yang hanya menampilkan beberapa baris
+ * (DIFF_MAX_LINES=24) — TIDAK untuk file besar (>2000 baris). Jangan "perbaiki"
+ * ke Myers tanpa kebutuhan: renderer ini bukan alat merge, dan cap ukuran ada
+ * di pemanggil. Ini batas yang DIBIARKAN secara sadar (PLAN.md: temuan tanpa
+ * dampak nyata adalah utang, bukan aset).
+ */
 export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
   const oldLines = oldText.split("\n")
   const newLines = newText.split("\n")

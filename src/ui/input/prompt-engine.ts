@@ -59,20 +59,30 @@ export type PromptKey =
 // Terapkan satu keypress -> state baru + render spec + action (submit/cancel).
 export type PromptAction = "none" | "render" | "submit" | "cancel"
 
-// ── Helper code-point ──
-// String JS diindeks per UTF-16 unit; emoji memakai dua. Semua operasi kursor
-// bekerja pada array code point supaya emoji tidak pernah terbelah.
-function toPoints(s: string): string[] {
-  return Array.from(s)
+// ── Helper grapheme ──
+// String JS diindeks per UTF-16 unit; emoji memakai dua. Array.from memecah per
+// code point, tapi grapheme cluster (ZWJ 👨‍👩‍👧, flag 🇮🇩, emoji + VS16 ❤️) tetap
+// terbelah — backspace lalu menyisakan setengah. Intl.Segmenter membagi di
+// batas grapheme sungguhan (Node 16+ / Bun tersedia); fallback ke code point
+// di runtime tanpa dukungan.
+let segmenter: Intl.Segmenter | undefined
+export function toGraphemes(s: string): string[] {
+  try {
+    segmenter ??= new Intl.Segmenter("und", { granularity: "grapheme" })
+    return [...segmenter.segment(s)].map((seg) => seg.segment)
+  } catch {
+    return Array.from(s)
+  }
 }
 
+/** Panjang dalam satuan grapheme (bukan code point / UTF-16 unit). */
 export function pointLength(s: string): number {
-  return toPoints(s).length
+  return toGraphemes(s).length
 }
 
-/** Konversi indeks code-point -> indeks UTF-16, untuk slice(). */
+/** Konversi indeks grapheme -> indeks UTF-16, untuk slice(). */
 function unitIndex(s: string, point: number): number {
-  const pts = toPoints(s)
+  const pts = toGraphemes(s)
   let units = 0
   for (let i = 0; i < point && i < pts.length; i++) units += pts[i]!.length
   return units
@@ -144,12 +154,12 @@ export function applyKey(
     }
     case "backspace": {
       if (state.cursor === 0) return { state, action: "none" }
-      const pts = toPoints(state.line)
+      const pts = toGraphemes(state.line)
       pts.splice(state.cursor - 1, 1)
       return { state: withLine(pts.join(""), state.cursor - 1), action: "render" }
     }
     case "delete": {
-      const pts = toPoints(state.line)
+      const pts = toGraphemes(state.line)
       if (state.cursor >= pts.length) return { state, action: "none" }
       pts.splice(state.cursor, 1)
       return { state: withLine(pts.join(""), state.cursor), action: "render" }
@@ -233,10 +243,14 @@ export function buildRenderSpec(
   prompt: string,
   hints: string[],
   groupOf?: (text: string) => string,
+  maxVisible = MAX_VISIBLE,
 ): RenderSpec {
+  // Dropdown tidak boleh melebihi tinggi terminal sungguhan. MAX_VISIBLE=10
+  // konstan membuat overlay 11 baris di terminal 8 baris (dulu membungkus).
+  const limit = Math.max(1, maxVisible)
   const inputLine = `${prompt}${state.line}`
-  const visible = hints.slice(0, MAX_VISIBLE)
-  const moreCount = Math.max(0, hints.length - MAX_VISIBLE)
+  const visible = hints.slice(0, limit)
+  const moreCount = Math.max(0, hints.length - limit)
   const rows: RenderSpec["rows"] = []
   let lastGroup: string | undefined
   for (const text of visible) {
@@ -250,10 +264,12 @@ export function buildRenderSpec(
   // Kolom kursor diukur dalam KOLOM terminal: sekuens ANSI pada prompt tidak
   // menempati kolom, dan CJK/emoji menempati dua. Menghitung panjang string
   // mentah membuat kursor terminal salah posisi begitu prompt diwarnai.
-  const cursorPoints = Array.from(state.line).slice(0, clampCursor(state.line, state.cursor))
+  const cursorPoints = toGraphemes(state.line)
+    .slice(0, clampCursor(state.line, state.cursor))
+    .join("")
   return {
     inputLine,
-    cursorCol: displayWidth(prompt) + displayWidth(cursorPoints.join("")),
+    cursorCol: displayWidth(prompt) + displayWidth(cursorPoints),
     rows,
     moreCount,
     totalRows: rows.length + (moreCount > 0 ? 1 : 0),
@@ -277,6 +293,185 @@ export function decodeKeys(buf: Uint8Array): DecodedKey[] {
 export interface DecodedKey {
   key: PromptKey
   width: number
+}
+
+// ── Streaming decoder ──
+// `decodeKeys` di atas bekerja pada SATU chunk utuh. Data stdin datang per
+// chunk (Bun/Node tidak menjamin batas UTF-8, bracketed paste, atau byte mouse
+// jatuh di satu event). Decoder di bawah memakai buffer byte agar emoji yang
+// terbelah 2+2, paste `ESC[200~…` yang terbelah, dan `ESC[M`/`ESC[<…M` yang
+// terpotong tidak bocor jadi karakter pengganti/teks (dulu: emoji rusak, paste
+// jadi teks "200~", mouse jadi "00").
+export interface DecoderState {
+  /** Byte yang belum lengkap jadi satu key (tail dari chunk sebelumnya). */
+  pending: number[]
+}
+
+export function createDecoderState(): DecoderState {
+  return { pending: [] }
+}
+
+function isCsiParam(b: number): boolean {
+  return b >= 0x30 && b <= 0x3f
+}
+
+function isCsiFinal(b: number): boolean {
+  return b >= 0x40 && b <= 0x7e
+}
+
+function utf8CharLen(b: number): number {
+  if (b < 0x80) return 1
+  if ((b & 0xe0) === 0xc0) return 2
+  if ((b & 0xf0) === 0xe0) return 3
+  if ((b & 0xf8) === 0xf0) return 4
+  return 1
+}
+
+function decodeUtf8(bytes: number[]): string {
+  return new TextDecoder().decode(Uint8Array.from(bytes))
+}
+
+/** Pemetaan byte ASCII/control → key; null bila printable biasa. */
+function asciiKey(b: number): DecodedKey | null {
+  switch (b) {
+    case 0x01:
+      return { key: { type: "home" }, width: 0 }
+    case 0x05:
+      return { key: { type: "end" }, width: 0 }
+    case 0x0f:
+      return { key: { type: "ctrl-o" }, width: 0 }
+    case 0x12:
+      return { key: { type: "ctrl-r" }, width: 0 }
+    case 0x14:
+      return { key: { type: "ctrl-t" }, width: 0 }
+    case 0x7f:
+    case 0x08:
+      return { key: { type: "backspace" }, width: 0 }
+    case 0x0a:
+    case 0x0d:
+      return { key: { type: "enter" }, width: 0 }
+    case 0x09:
+      return { key: { type: "tab" }, width: 0 }
+    case 0x03:
+      return { key: { type: "ctrl-c" }, width: 0 }
+    case 0x04:
+      return { key: { type: "ctrl-d" }, width: 0 }
+    case 0x15:
+      return { key: { type: "ctrl-u" }, width: 0 }
+    case 0x17:
+      return { key: { type: "ctrl-w" }, width: 0 }
+    default:
+      if (b < 0x20) return { key: { type: "ignore" }, width: 0 }
+      return null
+  }
+}
+
+/**
+ * Dekode chunk stdin streaming: konsumsi key yang LENGKAP, sisanya disimpan
+ * di `state.pending` untuk chunk berikutnya. Key dikembalikan berurutan.
+ */
+export function decodeKeysStream(chunk: Uint8Array, state: DecoderState): DecodedKey[] {
+  const buf = state.pending.concat([...chunk])
+  const out: DecodedKey[] = []
+  let i = 0
+  while (i < buf.length) {
+    const b = buf[i]!
+    if (b === 0x1b) {
+      const n1 = buf[i + 1]
+      // Bracketed paste start: ESC[200~ … ESC[201~ — tahan sampai penutup.
+      if (
+        n1 === 0x5b &&
+        buf[i + 2] === 0x32 &&
+        buf[i + 3] === 0x30 &&
+        buf[i + 4] === 0x30 &&
+        buf[i + 5] === 0x7e
+      ) {
+        let term = -1
+        for (let j = i + 6; j + 5 < buf.length; j++) {
+          if (
+            buf[j] === 0x1b &&
+            buf[j + 1] === 0x5b &&
+            buf[j + 2] === 0x32 &&
+            buf[j + 3] === 0x30 &&
+            buf[j + 4] === 0x31 &&
+            buf[j + 5] === 0x7e
+          ) {
+            term = j
+            break
+          }
+        }
+        if (term === -1) break // penutup belum tiba — tahan
+        out.push({ key: { type: "char", ch: decodeUtf8(buf.slice(i + 6, term)) }, width: 0 })
+        i = term + 6
+        continue
+      }
+      // Mouse X10: ESC[M + 3 byte koordinat MENTAH (bukan UTF-8).
+      if (n1 === 0x5b && buf[i + 2] === 0x4d) {
+        if (i + 6 > buf.length) break // byte koordinat terpotong — tahan
+        out.push({ key: { type: "ignore" }, width: 0 })
+        i += 6
+        continue
+      }
+      // Mouse SGR: ESC[< … M|m
+      if (n1 === 0x5b && buf[i + 2] === 0x3c) {
+        let j = i + 3
+        while (j < buf.length && buf[j] !== 0x4d && buf[j] !== 0x6d) j++
+        if (j >= buf.length) break // terminator belum tiba — tahan
+        out.push({ key: { type: "ignore" }, width: 0 })
+        i = j + 1
+        continue
+      }
+      // CSI (ESC[) / SS3 (ESC O): sekuens ASCII sampai byte final.
+      if (n1 === 0x5b || n1 === 0x4f) {
+        let j = i + 2
+        while (
+          j < buf.length &&
+          !isCsiFinal(buf[j]!) &&
+          (isCsiParam(buf[j]!) || (buf[j]! >= 0x20 && buf[j]! <= 0x2f))
+        ) {
+          j++
+        }
+        if (j < buf.length && isCsiFinal(buf[j]!)) {
+          const seq = String.fromCharCode(...buf.slice(i, j + 1))
+          const d = decodeKey(seq, 0)
+          out.push(d ?? { key: { type: "ignore" }, width: 0 })
+          i = j + 1
+          continue
+        }
+        if (j === i + 2) {
+          // Hanya "ESC["/"ESC O" tanpa apa pun → ESC biasa, lengkap.
+          out.push({ key: { type: "esc" }, width: 0 })
+          i += 2
+          continue
+        }
+        break // ada parameter tapi belum ada byte final — tahan
+      }
+      // ESC + byte lain: ESC tunggal (lengkap, tidak menunggu apa pun).
+      out.push({ key: { type: "esc" }, width: 0 })
+      i += 1
+      continue
+    }
+    if (b < 0x80) {
+      const d = asciiKey(b)
+      out.push(d ?? { key: { type: "char", ch: String.fromCharCode(b) }, width: 0 })
+      i += 1
+      continue
+    }
+    // Multi-byte UTF-8 — pastikan seluruh sekuens sudah tiba.
+    const n = utf8CharLen(b)
+    if (i + n > buf.length) break
+    const bytes = buf.slice(i, i + n)
+    const contOk = bytes.slice(1).every((x) => (x & 0xc0) === 0x80)
+    if (!contOk) {
+      out.push({ key: { type: "char", ch: "\ufffd" }, width: 0 })
+      i += 1
+      continue
+    }
+    out.push({ key: { type: "char", ch: decodeUtf8(bytes) }, width: 0 })
+    i += n
+  }
+  state.pending = buf.slice(i)
+  return out
 }
 
 export function decodeKey(s: string, i: number): DecodedKey | null {

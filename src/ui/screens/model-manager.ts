@@ -1,7 +1,7 @@
 // View model registry — pola overlay transient yang konsisten dengan picker/
 // provider-manager. Tetap shell-like: overlay sementara, hasil aksi tetap inline.
 import { askLine } from "../input/input.ts"
-import { decodeKeys } from "../input/prompt-engine.ts"
+import { createDecoderState, type DecoderState, decodeKeysStream } from "../input/prompt-engine.ts"
 import { c } from "../render/theme.ts"
 import { padToWidth, truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
@@ -86,7 +86,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
     const suspend = () => {
       prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
-      process.stdout.write("\r\n")
+      // TIDAK menulis \r\n — clearTransientOverlay sudah kembali ke anchor.
       process.stdin.setRawMode(false)
       process.stdin.pause()
       process.stdin.removeListener("data", onData)
@@ -109,68 +109,94 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       resolve()
     }
 
-    const addModel = async () => {
-      if (busy) return
-      busy = true
-      suspend()
-      const providerId = await askLine({ prompt: "Provider > " })
-      const model = await askLine({ prompt: "Model > " })
-      rows =
-        providerId?.trim() && model?.trim()
-          ? await opts.onAdd(providerId.trim(), model.trim())
-          : await opts.loadRows()
+    const runAction = (fn: () => Promise<void>) =>
+      (async () => {
+        if (busy) return
+        busy = true
+        suspend()
+        try {
+          await fn()
+        } catch (e) {
+          console.error(`[model-manager] ${(e as Error).message}`)
+        } finally {
+          busy = false
+          await loadRowsSafe()
+          resume()
+        }
+      })()
+
+    const loadRowsSafe = async () => {
+      try {
+        rows = await opts.loadRows()
+      } catch {}
       sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
-      busy = false
-      resume()
     }
 
-    const deleteModel = async () => {
-      if (busy || rows.length === 0) return
+    const addModel = () =>
+      runAction(async () => {
+        const providerId = await askLine({ prompt: "Provider > " })
+        const model = await askLine({ prompt: "Model > " })
+        rows =
+          providerId?.trim() && model?.trim()
+            ? await opts.onAdd(providerId.trim(), model.trim())
+            : await opts.loadRows()
+        sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      })
+
+    const deleteModel = () => {
+      if (rows.length === 0) return
       const row = rows[sel]
       if (!row) return
-      busy = true
-      suspend()
-      const answer = await askLine({ prompt: `Delete ${row.id}? [y/N] ` })
-      rows =
-        answer?.trim().toLowerCase() === "y" ? await opts.onDelete(row.id) : await opts.loadRows()
-      sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
-      busy = false
-      resume()
+      return runAction(async () => {
+        const answer = await askLine({ prompt: `Delete ${row.id}? [y/N] ` })
+        rows =
+          answer?.trim().toLowerCase() === "y" ? await opts.onDelete(row.id) : await opts.loadRows()
+        sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      })
     }
 
+    const decoder: DecoderState = createDecoderState()
     const onData = (chunk: Buffer) => {
       if (busy) return
-      for (const item of decodeKeys(chunk)) {
-        if (item.key.type === "esc" || item.key.type === "ctrl-c" || item.key.type === "ctrl-d") {
-          finish()
-          return
+      try {
+        for (const item of decodeKeysStream(chunk, decoder)) {
+          if (item.key.type === "esc" || item.key.type === "ctrl-c" || item.key.type === "ctrl-d") {
+            finish()
+            return
+          }
+          if (item.key.type === "up") sel = Math.max(0, sel - 1)
+          else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
+          else if (item.key.type === "enter") {
+            const row = rows[sel]
+            if (row) opts.onSelect(row.id)
+            finish()
+            return
+          } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
+            void addModel()
+            return
+          } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "d") {
+            void deleteModel()
+            return
+          }
         }
-        if (item.key.type === "up") sel = Math.max(0, sel - 1)
-        else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
-        else if (item.key.type === "enter") {
-          const row = rows[sel]
-          if (row) opts.onSelect(row.id)
-          finish()
-          return
-        } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
-          void addModel()
-          return
-        } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "d") {
-          void deleteModel()
-          return
-        }
+        render()
+      } catch {
+        finish()
       }
-      render()
     }
 
     const onResize = () => render()
 
     process.stdout.write("\x1b[?25l")
-    process.stdin.setRawMode(true)
-    process.stdin.resume()
-    process.stdin.setMaxListeners(0)
-    process.stdin.on("data", onData)
-    process.stdout.on("resize", onResize)
-    render()
+    try {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.setMaxListeners(0)
+      process.stdin.on("data", onData)
+      process.stdout.on("resize", onResize)
+      render()
+    } catch {
+      finish()
+    }
   })
 }

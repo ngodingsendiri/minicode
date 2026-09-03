@@ -136,9 +136,39 @@ export function highlightCode(code: string, lang: string = ""): string {
     .join("\n")
 }
 
+/**
+ * Cari penanda komentar (`//`, `#`) di LUAR string literal.
+ *
+ * Sebelumnya `indexOf("//")`/`indexOf("#")` menyalahartikan
+ * `const url = "https://a.com"` (semua setelah `//` dianggap komentar) dan
+ * `color = "#fff"` (`#fff"` jadi komentar). Scanner di bawah melompati isi
+ * string kutip tunggal/ganda/backtick termasuk escape.
+ */
+function findCommentIndex(line: string, marker: string): number {
+  let quote: string | null = null
+  let i = 0
+  while (i < line.length) {
+    const ch = line[i]!
+    if (quote !== null) {
+      if (ch === "\\") i += 2
+      else if (ch === quote) quote = null
+      i++
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch
+      i++
+      continue
+    }
+    if (line.startsWith(marker, i)) return i
+    i++
+  }
+  return -1
+}
+
 function highlightTsLine(line: string): string {
   // Comments
-  const commentIdx = line.indexOf("//")
+  const commentIdx = findCommentIndex(line, "//")
   if (commentIdx !== -1) {
     const codePart = line.slice(0, commentIdx)
     const commentPart = line.slice(commentIdx)
@@ -174,7 +204,7 @@ function highlightTsTokens(text: string): string {
 }
 
 function highlightPythonLine(line: string): string {
-  const commentIdx = line.indexOf("#")
+  const commentIdx = findCommentIndex(line, "#")
   if (commentIdx !== -1) {
     const codePart = line.slice(0, commentIdx)
     const commentPart = line.slice(commentIdx)
@@ -214,7 +244,7 @@ function highlightJsonLine(line: string): string {
 }
 
 function highlightShellLine(line: string): string {
-  const commentIdx = line.indexOf("#")
+  const commentIdx = findCommentIndex(line, "#")
   if (commentIdx !== -1) {
     const codePart = line.slice(0, commentIdx)
     const commentPart = line.slice(commentIdx)
