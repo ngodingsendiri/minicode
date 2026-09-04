@@ -151,6 +151,20 @@ describe("REPL linier: siklus dasar", () => {
     expect(visible(tty)).toContain("Sampai jumpa")
   })
 
+  test("/clear menandai tanpa menghapus scrollback", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("halo")
+    expect(h.ran).toEqual(["halo"])
+    await typeLine("/clear")
+    const out = visible(tty)
+    // Banner penanda baru ada; sesi tetap jalan (bukan clear layar).
+    expect(out).toContain("scrollback preserved")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
   test("Ctrl+C dua kali beruntun saat idle keluar", async () => {
     tty = installFakeTty()
     const h = makeHarness()
@@ -305,6 +319,15 @@ describe("REPL linier: mode & toggle", () => {
     expect(visible(tty)).toContain("compact")
     await typeLine("/compact off")
     expect(visible(tty)).toContain("expanded")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("/copy tanpa output turn memberitahu, bukan gagal sunyi", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("/copy")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })

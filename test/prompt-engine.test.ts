@@ -6,6 +6,7 @@ import {
   decodeKeys,
   MAX_VISIBLE,
   type PromptKey,
+  pointLength,
 } from "../src/ui/input/prompt-engine.ts"
 
 const cmds = [
@@ -175,10 +176,15 @@ test("buildRenderSpec: grouped hints → header rows dinamis", () => {
   expect(spec.totalRows).toBe(4)
 })
 
-test("decodeKeys: plain text + enter", () => {
+test("decodeKeys: plain text + LF adalah ctrl-j (multiline), CR enter", () => {
   const keys = decodeKeys(new TextEncoder().encode("ok\n"))
-  expect(keys.map((k) => k.key.type)).toEqual(["char", "char", "enter"])
+  expect(keys.map((k) => k.key.type)).toEqual(["char", "char", "ctrl-j"])
   expect(keys[0]?.key).toEqual({ type: "char", ch: "o" })
+  expect(decodeKeys(new TextEncoder().encode("ok\r")).map((k) => k.key.type)).toEqual([
+    "char",
+    "char",
+    "enter",
+  ])
 })
 
 test("decodeKeys: arrows & escape", () => {
@@ -214,7 +220,7 @@ test("decodeKeys: mixed emoji + text stays intact", () => {
   const keys = decodeKeys(new TextEncoder().encode("halo😀ok\n"))
   const chars = keys.map((k) => (k.key.type === "char" ? k.key.ch : null)).filter(Boolean)
   expect(chars.join("")).toBe("halo😀ok")
-  expect(keys[keys.length - 1]?.key.type).toBe("enter")
+  expect(keys[keys.length - 1]?.key.type).toBe("ctrl-j")
 })
 
 test("applyKey: backspace removes full surrogate pair", () => {
@@ -443,7 +449,7 @@ test("decodeKey: kontrol yang PUNYA arti tetap dipetakan", () => {
     [0x05, "end"],
     [0x08, "backspace"],
     [0x09, "tab"],
-    [0x0a, "enter"],
+    [0x0a, "ctrl-j"],
     [0x0d, "enter"],
     [0x0f, "ctrl-o"],
     [0x12, "ctrl-r"],
@@ -523,4 +529,33 @@ test("buildRenderSpec: sekuens ANSI pada prompt tidak menambah kolom", () => {
   const plain = buildRenderSpec(s, "> ", [])
   const colored = buildRenderSpec(s, "\x1b[36m> \x1b[39m", [])
   expect(colored.cursorCol).toBe(plain.cursorCol)
+})
+
+test("backspace Thai: hapus per code point, bukan per suku kata", () => {
+  // U+0E19 U+0E49 U+0E33 = satu grapheme, tiga code point (dibangun via
+  // fromCharCode agar source tetap ASCII murni).
+  const syllable = String.fromCharCode(0x0e19, 0x0e49, 0x0e33)
+  expect(pointLength(syllable)).toBe(1)
+  let s = createState()
+  for (const ch of Array.from(syllable)) s = applyKey(s, { type: "char", ch }, hints).state
+  expect(s.line).toBe(syllable)
+  // Kode lama: satu backspace menelan seluruh suku kata (line === "").
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe(String.fromCharCode(0x0e19, 0x0e49))
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe(String.fromCharCode(0x0e19))
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe("")
+})
+
+test("backspace emoji VS16: tetap satu tekan", () => {
+  // U+2764 U+FE0F = satu grapheme, tanpa diakritik Thai (terukur di runtime ini;
+  // ZWJ family/flag dipecah ICU setempat jadi bukan contoh yang tepat).
+  const heart = String.fromCharCode(0x2764, 0xfe0f)
+  expect(pointLength(heart)).toBe(1)
+  let s = createState()
+  s = applyKey(s, { type: "char", ch: heart }, hints).state
+  expect(s.line).toBe(heart)
+  s = applyKey(s, { type: "backspace" }, hints).state
+  expect(s.line).toBe("")
 })

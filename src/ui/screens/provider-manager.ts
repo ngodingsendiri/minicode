@@ -4,6 +4,7 @@
 
 import { askLine, askSecret } from "../input/input.ts"
 import { createDecoderState, type DecoderState, decodeKeysStream } from "../input/prompt-engine.ts"
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c, glyphs } from "../render/theme.ts"
 import { padToWidth, truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
@@ -214,8 +215,9 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         }
         console.log("Detecting models…")
         const res = await opts.onAdd({ preset, baseUrl, apiKey, scope })
-        if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
-        else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
+        // Hasil dari jaringan/config — sanitasi sebelum tampil di scrollback.
+        if (res.ok) console.log(`${glyphs.check} ${sanitizeAnsiLine(res.ok)}`)
+        else if (res.err) console.log(`${glyphs.cross} ${sanitizeAnsiLine(res.err)}`)
       })
 
     const doDelete = () => {

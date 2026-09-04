@@ -3,6 +3,7 @@
 // `onSubmit` yang di-inject controller (cli/wizard.ts).
 import { formatError } from "../assistant/simple.ts"
 import { askLine, askSecret } from "../input/input.ts"
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c, glyphs } from "../render/theme.ts"
 import { displayWidth } from "../render/width.ts"
 import { runPicker } from "./picker.ts"
@@ -107,7 +108,8 @@ export async function runSetupWizardView(opts: SetupWizardViewOptions): Promise<
   const spin = createSpinner("Detecting models…")
   try {
     const message = await opts.onSubmit(targetUrl, apiKey)
-    spin.success(message)
+    // Pesan dari jaringan (nama model/gateway) — sanitasi sebelum tampil.
+    spin.success(sanitizeAnsiLine(message))
     process.stdout.write(`Setup complete.\n\n`)
     return true
   } catch (e) {

@@ -4,7 +4,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { EventBus } from "#minicore/core/index.ts"
-import { attachSimpleLogger, formatError } from "../src/ui/assistant/simple.ts"
+import {
+  attachSimpleLogger,
+  formatError,
+  getLastTurnText,
+  writeClipboardOsc52,
+} from "../src/ui/assistant/simple.ts"
 import { detail, setCompactMode } from "../src/ui/render/detail.ts"
 import {
   formatArgsPreview,
@@ -16,6 +21,7 @@ import {
 import { decorateMarkdown, renderInline } from "../src/ui/render/markdown.ts"
 import { reasoning, setReasoningVisible } from "../src/ui/render/reasoning.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
+import { displayWidth } from "../src/ui/render/width.ts"
 import { formatWrapped, justifyLine, visibleLen, wordWrap } from "../src/ui/render/wrap.ts"
 import { registerStatusLine, runWithoutStatus } from "../src/ui/runtime/statusline.ts"
 import { createFakeBus, type FakeTty, installFakeTty } from "./helpers/tui-harness.ts"
@@ -421,8 +427,11 @@ describe("simple logger (one-shot)", () => {
     setCompactMode(false)
   })
 
-  const attach = (verbose = false) => {
-    tty = installFakeTty({ columns: 80, rows: 24 })
+  const attach = (verbose = false, rows = 24) => {
+    // Jangan biarkan harness lama tak ter-restore (env COLORTERM/isTTY bocor
+    // ke file test berikutnya dalam proses yang sama).
+    tty?.restore()
+    tty = installFakeTty({ columns: 80, rows })
     const bus = createFakeBus()
     const detach = attachSimpleLogger(bus as unknown as EventBus, { verbose })
     // Renderer memisahkan aliran: teks model ke stdout, ringkasan tool/error ke
@@ -502,6 +511,7 @@ describe("simple logger (one-shot)", () => {
   })
 
   test("expanded: keluaran bash panjang dipangkas dengan penanda sisa", () => {
+    // rows=24 → cap max(10, 24-6)=18 baris.
     const { bus, detach, out } = attach()
     const lines = Array.from({ length: 60 }, (_, i) => `baris-${i + 1}`)
     bus.emit("execution:completed", {
@@ -512,9 +522,29 @@ describe("simple logger (one-shot)", () => {
     })
     detach()
     const o = out()
-    expect(o).toContain("baris-50")
-    expect(o).not.toContain("baris-51")
-    expect(o).toContain("10 more lines")
+    expect(o).toContain("baris-18")
+    expect(o).not.toContain("baris-19")
+    expect(o).toContain("42 more lines")
+  })
+
+  test("expanded: cap output adaptif terhadap tinggi terminal", () => {
+    const lines = Array.from({ length: 60 }, (_, i) => `r${i + 1}`)
+    const run = (rows: number) => {
+      const { bus, detach, out } = attach(false, rows)
+      bus.emit("execution:completed", {
+        execution: {
+          call: { name: "bash", args: { cmd: "urutan" } },
+          result: { isError: false, content: lines.join("\n") },
+        },
+      })
+      detach()
+      return out()
+    }
+    // rows=10 → max(10, 4)=10; rows=60 → 60-6=54.
+    expect(run(10)).toContain("r10")
+    expect(run(10)).not.toContain("r11")
+    expect(run(60)).toContain("r54")
+    expect(run(60)).not.toContain("r55")
   })
 
   test("expanded: edit menampilkan diff card inline", () => {
@@ -571,7 +601,8 @@ describe("simple logger (one-shot)", () => {
     expect(o).toContain("- satu")
   })
 
-  test("expanded: read_file preview 20 baris + penanda sisa", () => {
+  test("expanded: read_file preview adaptif + penanda sisa", () => {
+    // rows=24 → preview max(6, 8)=8 baris.
     const { bus, detach, out } = attach()
     const lines = Array.from({ length: 30 }, (_, i) => `isi-${i + 1}`)
     bus.emit("execution:completed", {
@@ -582,9 +613,9 @@ describe("simple logger (one-shot)", () => {
     })
     detach()
     const o = out()
-    expect(o).toContain("isi-20")
-    expect(o).not.toContain("isi-21")
-    expect(o).toContain("10 more lines")
+    expect(o).toContain("isi-8")
+    expect(o).not.toContain("isi-9")
+    expect(o).toContain("22 more lines")
   })
 
   test("hasil tool disanitasi dari sekuens kontrol", () => {
@@ -719,4 +750,78 @@ describe("simple logger (one-shot)", () => {
     // size = panjang string hasil, bukan isi args
     expect(out()).toMatch(/\(\d+ chars\)/)
   })
+  test("copy: buffer turn terakhir terakumulasi + reset per turn", () => {
+    const { bus, detach } = attach()
+    bus.emit("turn:started", { turn: 1 })
+    bus.emit("provider:text", { text: "jawaban penting\n" })
+    bus.emit("execution:completed", {
+      execution: { call: { name: "bash", args: { cmd: "echo hi" } }, result: { content: "hi" } },
+    })
+    expect(getLastTurnText()).toContain("jawaban penting")
+    expect(getLastTurnText()).toContain("hi")
+    bus.emit("turn:started", { turn: 2 })
+    expect(getLastTurnText()).toBe("")
+    detach()
+  })
+
+  test("copy: OSC52 butuh TTY — non-TTY mengembalikan false", () => {
+    const prevTty = process.stdout.isTTY
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true })
+    try {
+      expect(writeClipboardOsc52("x")).toBe(false)
+    } finally {
+      Object.defineProperty(process.stdout, "isTTY", { value: prevTty, configurable: true })
+    }
+  })
+
+  test("statusline rich: getStats tampil bila disediakan", async () => {
+    tty = installFakeTty({ columns: 80, rows: 24 })
+    const bus = createFakeBus()
+    const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
+    const detach = attachTurnStatus(bus as unknown as EventBus, {
+      initialModel: "m",
+      getStats: () => "5 tok",
+    })
+    bus.emit("turn:started", { turn: 1 })
+    await new Promise((r) => setTimeout(r, 350))
+    detach()
+    expect(stripAnsi(tty!.combined())).toContain("5 tok")
+  })
+
+  test("copy: envelope OSC52 benar saat TTY", () => {
+    const prevTty = process.stdout.isTTY
+    const prevWrite = process.stdout.write.bind(process.stdout)
+    const chunks: string[] = []
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
+    ;(process.stdout as unknown as { write: unknown }).write = (c: string | Uint8Array) => {
+      chunks.push(typeof c === "string" ? c : Buffer.from(c).toString("utf8"))
+      return true
+    }
+    try {
+      expect(writeClipboardOsc52("halo")).toBe(true)
+      const seq = chunks.join("")
+      // Dibangun dinamis (bukan literal regex) agar bebas control character
+      // mentah (noControlCharactersInRegex) sekaligus bukan string statis
+      // (useRegexLiterals) — ESC/BEL dari char code seperti pola ANSI theme.ts.
+      const ESC = String.fromCharCode(27)
+      const BEL = String.fromCharCode(7)
+      const m = new RegExp(`^${ESC}\\]52;c;([A-Za-z0-9+/=]+)${BEL}$`).exec(seq)
+      expect(m).not.toBeNull()
+      expect(Buffer.from(m![1]!, "base64").toString("utf8")).toBe("halo")
+    } finally {
+      Object.defineProperty(process.stdout, "isTTY", { value: prevTty, configurable: true })
+      ;(process.stdout as unknown as { write: unknown }).write = prevWrite
+    }
+  })
+})
+
+test("wrap: spasi ganda ASCII art tidak collapse", () => {
+  expect(wordWrap("name    value", 40)).toBe("name    value")
+  const narrow = wordWrap("ab  cd  ef", 6).split("\n")
+  expect(narrow[0]).toBe("ab  cd")
+  expect(narrow.every((l) => displayWidth(l) <= 6)).toBe(true)
+})
+
+test("wrap: baris spasi ganda tidak dijustify", () => {
+  expect(formatWrapped("kolom1  kolom2  kolom3", 40)).toBe("kolom1  kolom2  kolom3")
 })

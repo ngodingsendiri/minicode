@@ -51,8 +51,9 @@ export type PromptKey =
   | { type: "ctrl-u" } // clear line
   | { type: "ctrl-w" } // delete previous word
   | { type: "ctrl-o" } // expand detail (TUI)
-  | { type: "ctrl-r" } // reverse history search (TUI)
+  | { type: "ctrl-r" } // reverse-i-search history
   | { type: "ctrl-t" } // toggle reasoning visibility
+  | { type: "ctrl-j" } // sisipkan newline (multiline opt-in; Enter=\r tetap submit)
   | { type: "shift-tab" } // cycle mode (REPL linier) — ESC[Z didekode decodeKey
   | { type: "ignore" } // sekuens yang sengaja dibuang (mis. byte mouse)
 
@@ -78,6 +79,37 @@ export function toGraphemes(s: string): string[] {
 /** Panjang dalam satuan grapheme (bukan code point / UTF-16 unit). */
 export function pointLength(s: string): number {
   return toGraphemes(s).length
+}
+
+// Tanda diakritik Thai/Lao yang menempel: satu grapheme Thai bisa terdiri
+// dari konsonan + 1-2 tanda (mis. U+0E19 U+0E49 U+0E33 = satu suku kata).
+// Menghapus per grapheme (aturan emoji ZWJ) membuat satu backspace menelan
+// SELURUH suku kata sekaligus — platform menghapus per code point untuk
+// aksara ini (bug Claude #83449). deletePrevUnit memilih satuan hapus yang
+// benar: diakritik terakhir dulu, lalu bertahap.
+// (Range ditulis \u eksplisit — literal combining char pernah rusak jadi U+FFFD
+// oleh pipeline PowerShell tanpa encoding, dijaga test/import-convention.)
+const THAI_DEPENDENT = new RegExp(
+  `[${String.fromCharCode(0x0e31)}-${String.fromCharCode(0x0e4e)}${String.fromCharCode(0x0ec8)}-${String.fromCharCode(0x0ecd)}]`,
+)
+export function deletePrevUnit(line: string, cursor: number): { line: string; cursor: number } {
+  if (cursor <= 0) return { line, cursor }
+  const pts = toGraphemes(line)
+  const target = pts[cursor - 1] ?? ""
+  if (THAI_DEPENDENT.test(target)) {
+    // Potong satu code point terakhir cluster via indeks UTF-16 mentah.
+    // Sisa cluster tetap 1 grapheme di posisi sama, jadi kursor BERTAHAN
+    // (bukan mundur): backspace berikut menghapus diakritik berikutnya —
+    // persis perilaku platform (satu suku kata butuh N kali tekan).
+    // clampCursor menangani kasus sisa kosong (cluster tinggal 1 tanda).
+    const at = unitIndex(line, cursor)
+    const cps = Array.from(target)
+    const lastLen = cps[cps.length - 1]?.length ?? 1
+    const next = line.slice(0, at - lastLen) + line.slice(at)
+    return { line: next, cursor: clampCursor(next, cursor) }
+  }
+  pts.splice(cursor - 1, 1)
+  return { line: pts.join(""), cursor: cursor - 1 }
 }
 
 /** Konversi indeks grapheme -> indeks UTF-16, untuk slice(). */
@@ -152,11 +184,17 @@ export function applyKey(
       const { line, cursor } = insertAt(state.line, state.cursor, ins)
       return { state: withLine(line, cursor), action: "render" }
     }
+    case "ctrl-j": {
+      // Multiline opt-in eksplisit — BERBEDA dari paste yang digepeng jadi
+      // spasi: keypress sadar user boleh membawa newline mentah. Render dan
+      // history menanganinya per baris visual.
+      const ins = insertAt(state.line, state.cursor, "\n")
+      return { state: withLine(ins.line, ins.cursor), action: "render" }
+    }
     case "backspace": {
       if (state.cursor === 0) return { state, action: "none" }
-      const pts = toGraphemes(state.line)
-      pts.splice(state.cursor - 1, 1)
-      return { state: withLine(pts.join(""), state.cursor - 1), action: "render" }
+      const { line, cursor } = deletePrevUnit(state.line, state.cursor)
+      return { state: withLine(line, cursor), action: "render" }
     }
     case "delete": {
       const pts = toGraphemes(state.line)
@@ -347,7 +385,11 @@ function asciiKey(b: number): DecodedKey | null {
     case 0x7f:
     case 0x08:
       return { key: { type: "backspace" }, width: 0 }
+    // LF (Ctrl+J) BUKAN submit: ia menyisipkan newline (multiline opt-in).
+    // Hanya CR (tombol Enter) yang submit. Paste bracketed tak tersentuh
+    // (segelintir chunk → char) sehingga perilaku paste lama tidak berubah.
     case 0x0a:
+      return { key: { type: "ctrl-j" }, width: 0 }
     case 0x0d:
       return { key: { type: "enter" }, width: 0 }
     case 0x09:
@@ -530,7 +572,9 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (code === 0x12) return { key: { type: "ctrl-r" }, width: 1 }
   if (code === 0x14) return { key: { type: "ctrl-t" }, width: 1 }
   if (code === 0x7f || code === 0x08) return { key: { type: "backspace" }, width: 1 }
-  if (c === "\n" || c === "\r") return { key: { type: "enter" }, width: 1 }
+  // Sinkron dengan asciiKey di atas: LF = newline, CR = submit.
+  if (c === "\n") return { key: { type: "ctrl-j" }, width: 1 }
+  if (c === "\r") return { key: { type: "enter" }, width: 1 }
   if (c === "\t") return { key: { type: "tab" }, width: 1 }
   if (code === 0x03) return { key: { type: "ctrl-c" }, width: 1 }
   if (code === 0x04) return { key: { type: "ctrl-d" }, width: 1 }

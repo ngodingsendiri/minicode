@@ -227,6 +227,86 @@ describe("askLine: history", () => {
   })
 })
 
+describe("askLine: reverse-i-search (Ctrl+R)", () => {
+  const hist = ["fix bug auth", "tambah fitur x", "fix bug db"]
+  test("Ctrl+R lalu ketik lalu Enter mengambil cocokkan", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: hist })
+    await tty.ready()
+    await tty.send(KEY.ctrlR, 30)
+    expect(visible(tty)).toContain("(reverse-i-search)")
+    await tty.send("auth")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("fix bug auth")
+  })
+  test("Ctrl+R berulang memutar ke cocokkan lebih lama", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: hist })
+    await tty.ready()
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("tambah fitur x")
+  })
+  test("Esc membatalkan pencarian, draf kembali utuh", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: hist })
+    await tty.ready()
+    await tty.send("draf")
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send("fitur")
+    await tty.send(KEY.esc, 30)
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("draf")
+  })
+  test("tanpa history, Ctrl+R diabaikan", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: [] })
+    await tty.ready()
+    await tty.send(KEY.ctrlR, 30)
+    expect(visible(tty)).not.toContain("reverse-i-search")
+    await tty.send("abc")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("abc")
+  })
+})
+
+describe("askLine: multiline (Ctrl+J)", () => {
+  test("Ctrl+J menyisipkan newline, Enter submit utuh", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> " })
+    await tty.ready()
+    await tty.send("baris1")
+    await tty.send("\x0a", 30)
+    await tty.send("baris2")
+    const out = visible(tty)
+    expect(out).toContain("baris1")
+    expect(out).toContain("baris2")
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("baris1\nbaris2")
+  })
+  test("history multiline roundtrip JSON + format lama tetap terbaca", async () => {
+    const { mkdtemp, rm, writeFile } = await import("node:fs/promises")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { appendHistory, loadHistory } = await import("../src/ui/input/input.ts")
+    const dir = await mkdtemp(join(tmpdir(), "minicode-hist-"))
+    try {
+      const f = join(dir, "history")
+      await appendHistory("baris1\nbaris2", f)
+      expect(await loadHistory(f)).toEqual(["baris1\nbaris2"])
+      await appendHistory("plain", f)
+      expect(await loadHistory(f)).toEqual(["baris1\nbaris2", "plain"])
+      // Format lama (plain per baris) tetap terbaca.
+      const g = join(dir, "legacy")
+      await writeFile(g, "lama satu\nlama dua\n", "utf8")
+      expect(await loadHistory(g)).toEqual(["lama satu", "lama dua"])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("askLine: mouse tidak mencemari input", () => {
   test("byte klik mouse dibuang, bukan jadi teks", async () => {
     tty = installFakeTty()

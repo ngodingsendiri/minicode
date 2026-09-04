@@ -37,11 +37,21 @@ export function wordWrap(text: string, width: number): string {
     let current = ""
     const flush = () => {
       if (current !== "") {
-        out.push(current)
+        // Spasi pemisah di ujung tidak ikut tampil.
+        out.push(current.trimEnd())
         current = ""
       }
     }
-    for (const word of line.split(" ")) {
+    // Pisah dengan pemisah tertangkap agar spasi ganda (ASCII art/tabel)
+    // tetap utuh — run whitespace menempel ke kata berikut, wrap hanya putus
+    // di batas run (spasi di ujung baris dibuang saat flush).
+    for (const tok of line.split(/(\s+)/)) {
+      if (tok === "") continue
+      if (/^\s+$/.test(tok)) {
+        if (current !== "") current += tok
+        continue
+      }
+      const word = tok
       // Kata tunggal lebih lebar dari baris: pecah paksa per kolom.
       if (displayWidth(word) > width) {
         flush()
@@ -50,12 +60,14 @@ export function wordWrap(text: string, width: number): string {
         current = pieces[pieces.length - 1] ?? ""
         continue
       }
-      const candidate = current ? `${current} ${word}` : word
-      if (displayWidth(candidate) > width && current) {
-        out.push(current)
+      // `current` sudah memuat run whitespace aslinya; tambah satu spasi
+      // hanya bila tidak ada pemisah di antara dua kata.
+      const glued = !current || /\s$/.test(current) ? `${current}${word}` : `${current} ${word}`
+      if (displayWidth(glued) > width && current) {
+        out.push(current.trimEnd())
         current = word
       } else {
-        current = candidate
+        current = glued
       }
     }
     flush()
@@ -96,6 +108,9 @@ export function formatWrapped(text: string, width: number, justify = true): stri
     .map((line, i) => {
       const plain = stripAnsi(line)
       if (/^\s*(```|#|[-*] |>\s)/.test(plain) || /^\s*$/.test(plain)) return line
+      // Baris dengan spasi ganda (tabel ASCII/art) jangan dijustify —
+      // justifyLine akan meratakan ulang run spasi yang disengaja.
+      if (plain.includes("  ")) return line
       // Baris terakhir, atau baris tepat sebelum baris kosong (= akhir paragraf).
       const isParagraphEnd = i === lines.length - 1 || /^\s*$/.test(lines[i + 1] ?? "")
       if (isParagraphEnd) return line

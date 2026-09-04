@@ -293,7 +293,8 @@ export function section(title: string): string {
   const width = getTerminalWidth()
   const label = ` ${title} `
   // Lebar pemisah dihitung per KOLOM terminal: CJK/emoji bisa 2 kolom.
-  const dashes = Math.max(4, width - displayWidth(label))
+  // Clamp agar garis tak memicu wrap sendiri di terminal sempit.
+  const dashes = Math.min(Math.max(4, width - displayWidth(label)), Math.max(4, width - 4))
   return c.dim(label + "─".repeat(dashes))
 }
 

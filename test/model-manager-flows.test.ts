@@ -1,6 +1,6 @@
-﻿// Alur interactive `runModelManager` (jalur /model di REPL): pilih, tambah,
+// Alur interactive `runModelManager` (jalur /model di REPL): pilih, tambah,
 // hapus, navigasi. Sebelumnya nol cakupan karena memakai askLine di dalam
-// raw mode yang di-suspend â€” ditutup lewat `tty.answerSequence()` (pola yang
+// raw mode yang di-suspend — ditutup lewat `tty.answerSequence()` (pola yang
 // sama dengan test/provider-manager-flows.test.ts).
 //
 // Config global di `~/.minicode/config.json` dicadangkan dan dikembalikan:
@@ -89,9 +89,10 @@ describe("model-manager: alur interactive", () => {
     expect(out).toContain("prov::m1")
     expect(out).toContain("prov::m2")
     expect(out).toContain("active")
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
-  }, 30000)
+  }, 5000)
 
   test("Enter memilih model ter-highlight (setModelOverride dipanggil)", async () => {
     tty = installFakeTty({ rows: 24 })
@@ -111,23 +112,29 @@ describe("model-manager: alur interactive", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({ cwd: workspace })
     await tty.ready()
-    const seq = tty.answerSequence(["prov", "m3"])
+    const seq = tty.answerSequence(["prov", "m3"], {
+      expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
+    })
     await tty.send("a", 30)
     await seq
     // Model baru harus tersimpan meski output terminal bisa berbeda antar host.
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m3")
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
-  }, 30000)
+  }, 5000)
 
   test("a dengan jawaban kosong tidak menambah apa pun", async () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({ cwd: workspace })
     await tty.ready()
-    const seq = tty.answerSequence(["", ""])
+    const seq = tty.answerSequence(["", ""], {
+      expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
+    })
     await tty.send("a", 30)
     await seq
     expect((await readConfig(localConfigPath())).providers[0]?.models).not.toContain("m3")
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
   })
@@ -136,7 +143,9 @@ describe("model-manager: alur interactive", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({ cwd: workspace, currentModel: "prov::m1" })
     await tty.ready()
-    const seq = tty.answerSequence(["y"])
+    const seq = tty.answerSequence(["y"], {
+      expect: [(out) => out.includes("[y/N]")],
+    })
     await tty.send("d", 30)
     await seq
     expect((await readConfig(localConfigPath())).providers[0]?.models).not.toContain("m1")
@@ -144,6 +153,7 @@ describe("model-manager: alur interactive", () => {
     const lastRender = visible().split("Models").at(-1) ?? ""
     expect(lastRender).toContain("prov::m2")
     expect(lastRender).not.toContain("prov::m1")
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
   })
@@ -152,10 +162,13 @@ describe("model-manager: alur interactive", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({ cwd: workspace, currentModel: "prov::m1" })
     await tty.ready()
-    const seq = tty.answerSequence(["n"])
+    const seq = tty.answerSequence(["n"], {
+      expect: [(out) => out.includes("[y/N]")],
+    })
     await tty.send("d", 30)
     await seq
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m1")
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
   })
@@ -178,6 +191,7 @@ describe("model-manager: alur interactive", () => {
       setModelOverride: (m) => overrideLog.push(m),
     })
     await tty.ready()
+    await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
     expect(overrideLog).toEqual([])
@@ -186,7 +200,7 @@ describe("model-manager: alur interactive", () => {
 
 describe("model-manager: daftar kosong", () => {
   test("pesan no models & Enter tanpa baris tidak memanggil onSelect", async () => {
-    // Config lokal diutamakan — kosongkan keduanya.
+    // Config lokal diutamakan -- kosongkan keduanya.
     await writeFile(localConfigPath(), JSON.stringify({ providers: [] }), "utf8")
     await writeFile(globalPath, JSON.stringify({ providers: [] }), "utf8")
     tty = installFakeTty({ rows: 24 })

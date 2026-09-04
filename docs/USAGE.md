@@ -84,6 +84,8 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
 | `MINICODE_DROPDOWN` | `0` → matikan floating dropdown, pakai hint inline (konsol legacy) |
 | `MINICODE_BELL` | `0` → matikan bell `\x07` saat approval (aksesibilitas) |
+| `MINICODE_STATUSLINE` | `rich` → statusline turn menampilkan token kumulatif + biaya sesi (default hemat) |
+| `MINICODE_A11Y` | `1` → live-region approval untuk screen reader (baris polos tanpa ANSI) |
 | `MINICODE_SHOW_THINKING` | `1` → tampilkan reasoning model (`/thinking` on) |
 | `MINICODE_THINKING` | `off` → kirim `enable_thinking:false` ke OpenAI-compat (DeepSeek) |
 | `MINICODE_EMBED_MODEL` | Model embedding untuk memory/vector (default `text-embedding-3-small`) |
@@ -129,7 +131,8 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/status` | Info runtime (ID sesi, model, provider, tool aktif, skill) |
 | `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model |
 | `/init` | Buat `AGENTS.md` untuk proyek ini |
-| `/clear` | Bersihkan transkrip di layar |
+| `/copy` | Salin output turn terakhir ke clipboard (OSC 52) |
+| `/clear` | Tandai batas layar: banner `--- cleared (scrollback preserved) ---` (scrollback tetap jadi transcript) |
 | `/exit` | Keluar |
 
 Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/usage`, `/quit`, `/compact`, `/history`.
@@ -144,6 +147,8 @@ Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/u
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
 | `ctrl+t` | Tampilkan/sembunyikan reasoning model |
 | `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |
+| `ctrl+r` | Reverse-i-search history (substring; Esc/Ctrl+C batal) |
+| `ctrl+j` | Sisipkan newline (multiline opt-in; Enter tetap submit) |
 | `←` / `→` | Geser kursor (editing di tengah baris) |
 | `ctrl+a` / `ctrl+e` | Ke awal / akhir baris |
 | `home` / `end` / `del` | Sama seperti di editor |

@@ -63,6 +63,25 @@ export interface FakeTty {
   /** Tunggu sampai listener stdin BARU terpasang (epoch melewati `since`). */
   waitForNewListener(since: number, timeoutMs?: number): Promise<number>
   /**
+   * Tunggu sampai MINIMAL SATU listener stdin ada.
+   *
+   * Pasangan `close()` manager: suspend melepas listener utama dan resume
+   * memasangnya lagi — Esc yang dikirim di jendela tanpa-listener hilang
+   * tanpa jejak dan `await done` gantung selamanya (flake timeout 5000ms
+   * yang berpindah tiap run). Tunggu dulu; bila tak kunjung ada, gagal
+   * cepat dengan pesan jelas, bukan gantung sampai timeout test.
+   */
+  waitForListener(timeoutMs?: number): Promise<void>
+  /**
+   * Tunggu sampai output stdout cocok predikat.
+   *
+   * Listener terpasang ≠ komponen siap dibaca: ada jeda antara `on("data")`
+   * dan prompt pertama digambar (dynamic import/config). Menunggu marker
+   * OUTPUT (teks prompt terlihat) menghilangkan seluruh kelas flake timing —
+   * jawaban hanya dikirim setelah bukti visual prompt ada di scrollback.
+   */
+  waitForOutput(pred: (out: string) => boolean, timeoutMs?: number): Promise<string>
+  /**
    * Jawab prompt berurutan.
    *
    * Setiap kali komponen memasang listener stdin baru, jawaban berikutnya
@@ -77,7 +96,20 @@ export interface FakeTty {
    * `send()` hanya mengirim ke listener yang ada SEKARANG, sementara prompt
    * berikutnya baru memasang listener setelah yang sebelumnya selesai.
    */
-  answerSequence(answers: string[], opts?: { timeoutMs?: number; settleMs?: number }): Promise<void>
+  answerSequence(
+    answers: string[],
+    opts?: {
+      timeoutMs?: number
+      settleMs?: number
+      /**
+       * Predikat output per langkah: jawaban[i] baru dikirim setelah
+       * `expect[i](tty.all())` benar (prompt langkah itu sudah digambar).
+       * Hilangkan flake "jawaban masuk ke prompt yang salah" saat dua prompt
+       * berurutan memasang listener dalam tick yang sama.
+       */
+      expect?: ((out: string) => boolean)[]
+    },
+  ): Promise<void>
   /** Kirim byte ke semua listener stdin, lalu beri kesempatan microtask jalan. */
   send(data: string | Uint8Array, settleMs?: number): Promise<void>
   /** Semua chunk yang ditulis ke stdout, apa adanya. */
@@ -179,7 +211,13 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       return fakeStdin.on(event, fn)
     },
     once(event: string, fn: (chunk: Buffer) => void) {
-      return fakeStdin.on(event, fn)
+      // `once` Node melepas listener setelah satu panggilan — tanpa ini
+      // listener menumpuk dan send() fan-out ganda ke prompt yang sudah tutup.
+      const wrapped = (chunk: Buffer) => {
+        fakeStdin.off(event, wrapped)
+        fn(chunk)
+      }
+      return fakeStdin.on(event, wrapped)
     },
     off(event: string, fn: (chunk: Buffer) => void) {
       if (event === "data") {
@@ -295,15 +333,41 @@ export function installFakeTty(opts: FakeTtyOptions = {}): FakeTty {
       await new Promise((r) => setTimeout(r, 5))
       return listenerEpoch
     },
+    async waitForListener(timeoutMs = 2000) {
+      const deadline = Date.now() + timeoutMs
+      while (dataListeners.length === 0) {
+        if (Date.now() > deadline) {
+          throw new Error("fake tty: tidak ada listener stdin dalam batas waktu")
+        }
+        await new Promise((r) => setTimeout(r, 5))
+      }
+    },
+    async waitForOutput(pred, timeoutMs = 2000) {
+      const deadline = Date.now() + timeoutMs
+      for (;;) {
+        const out = chunks.join("")
+        if (pred(out)) return out
+        if (Date.now() > deadline) {
+          throw new Error("fake tty: output yang ditunggu tidak muncul dalam batas waktu")
+        }
+        await new Promise((r) => setTimeout(r, 5))
+      }
+    },
     async answerSequence(answers, opts = {}) {
       const timeoutMs = opts.timeoutMs ?? 2000
       const settleMs = opts.settleMs ?? 15
       let epoch = listenerEpoch
-      for (const answer of answers) {
+      for (let i = 0; i < answers.length; i++) {
         epoch = await tty.waitForNewListener(epoch, timeoutMs)
-        // Karakter dikirim menyatu dengan Enter: askLine/askSecret keduanya
-        // memproses seluruh chunk per byte, jadi ini setara dengan mengetik.
-        await tty.send(`${answer}\r`, settleMs)
+        const want = opts.expect?.[i]
+        if (want) await tty.waitForOutput(want, timeoutMs)
+        // Kirim hanya ke listener raw TERBARU: listener lama yang bocor
+        // (lupa removeListener) tidak boleh menerima jawaban prompt baru.
+        const raws = dataListeners.filter((l) => l.raw)
+        const target = raws.length > 0 ? [raws[raws.length - 1]!] : [...dataListeners]
+        const buf = Buffer.from(`${answers[i]}\r`, "utf8")
+        for (const l of target) l.fn(buf)
+        await new Promise((r) => setTimeout(r, settleMs))
       }
     },
     chunks: () => [...chunks],

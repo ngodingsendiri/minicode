@@ -80,6 +80,7 @@ Next action (urut eksekusi):
 2. Extreme shadow Windows (`.verdent/plans/Extreme_Shadow…`): profiling `snapshotTree` 200/1000/5000 file → batch `--stdin-paths` atau `rows-` adaptif (tracked lokal, tidak block rilis).
 3. P1 asli `cli/setup.ts` — tertutup via `test/cli-setup-coverage.test.ts` 12 test direct import (`setup.ts:61.54%/70%`), P1.2 `answerSequence` & P1.3 `highlight` 99% sudah (backlog `spawnSync` harness terpisah tetap ada tapi tidak block).
 4. P2–P7 backlog: `P4 P2` trace lock/FTS5/`net` strict + `P5 P1.2` leak & `P1.3` timeout + `P6` sisa `P0.3` MCP/LSP/todo + `P1` guard — sprint depan; `P7` P2 polish `ARCH` line numbers.
+5. **P13** — Raise 3 dimensi tertinggal (Model/Tool/Sesi-Memori): eksekusi **P0 dulu** (≤3 hari, tanpa ubah UI/API), lalu P1 sprint — detail lengkap di bagian P13 di bawah.
 
 ---
 
@@ -360,7 +361,102 @@ Audit 2026-09-05 menemukan 4 kritis: `process.cwd()` bocor `--cwd` di 3 tool mem
 >
 > **Update 2026-09-06 (P2 tuntas):** MMR λ=0.7 + dedup cosine 0.92 (`mmrRerank`, terbukti: test gagal tanpa MMR), chunk 2000/overlap 200 kolom `parent` (return parent id), `createdAt` di `MemoryHit` + display `(score, tanggal)` di RAG/tool, `chmod 600` db-wal/-shm, `memoryHits` di `RunTrace` + `createRagLayer` + `CliSession`, subcommand baru `minicode memory status [--json]` (`cli/commands/memory.ts`, `getMemoryStats`), 8 test `test/memory-p2.test.ts` + 3 test `cli-subcommands`, docs `USAGE.md` + `ARCHITECTURE.html` sinkron.
 
+## P10 — Path to 9+: TOCTOU, `--cwd` repo-wide, SWE-bench Lite, flake TUI
+
+Empat pekerjaan rumah terakhir sebelum skor 9+ bisa diklaim (audit 2026-09-06). Detail ada di bagian ini.
+
+**P0 — Rilis blocker (minggu ini):**
+- **P0.1 `--cwd` repo-wide:** `getArg` berhenti di token subcommand (boundary anti-injeksi P8) → SEMUA handler (`sessions`, `stats`, `providers`, …) mengabaikan `--cwd` (terverifikasi: artefak jatuh ke repo/global). Fix di `cli/router.ts`: bangun `subArgv` (flag sebelum cmd + args dari cmd) + `subGetArg`; hapus workaround `subArg` di `memory.ts`. Test: tiap subcommand `--cwd tmp` assert artefak lokal.
+- **P0.2 TOCTOU `O_NOFOLLOW`:** 6 tool pola cek-dulu-pakai-kemudian (`realpath` lalu `readFile` terpisah). Helper baru `src/lib/safe-open.ts` (open `O_NOFOLLOW` → fstat → baca via handle; `O_NOFOLLOW` di `atomic-write.ts`; fallback `dev+ino` terdokumentasi di Windows). Test `test/tool-toctou.test.ts` dengan swapper latar (harus menang ≥1× di kode lama).
+
+**P1 — Kepercayaan pengukuran (sprint depan):**
+- **P1.1 Flake TUI:** `tui-harness.ts` sleep-based (`settleMs 15`, timeout 2000) + `send` fan-out ke stale listener → `waitForOutput` + `answerSequence` v2 + kirim ke listener raw-terbaru; kembalikan timeout ≤5000; 10/10 hijau + `test/tui-harness.test.ts` baru.
+- **P1.2 SWE-bench Lite:** `bench/swebench.ts` baru (clone + checkout `base_commit`, prompt = problem_statement, verify = `FAIL_TO_PASS` via pytest, `PASS_TO_PASS` sampled); 20 instance terstratifikasi di-pin; angka resolve rate TERCETAK (berapa pun) sebelum boleh dikutip — PLAN P3.1 tetap berlaku.
+
+**Selesai bila:** artefak `--cwd` selalu lokal, swapper 3×1000 iterasi 0 lolos, timeout manager ≤5000 + 10/10 hijau, angka SWE-Lite-20 dari run nyata, gate hijau.
+
+## P11 — Provider Hardening: correctness, harga, Responses, retry
+
+Audit 2026-09-06 menemukan provider skor terendah (7.5): shim Gemini drop `thought_signature` (400 diam-diam), harga Opus usang 3× (rusak `--budget`), tanpa Responses API dan `reasoning_effort`, 429 bakar-daftar provider, deteksi via substring URL, OAuth 1 provider belum terverifikasi, tanpa observabilitas, `max_tokens` 4096 sunyi. Detail ada di bagian ini.
+
+**P0 — Kebenaran (minggu ini):**
+- **P0.1 `thought_signature` pass-through:** teruskan `extra_content.google` dari delta tool_call → echo verbatim (seam aditif bila perlu). Test: tool loop Gemini thinking 3-turn hijau.
+- **P0.2 Refresh harga:** koreksi Opus `$5/$25` + GPT-5.x/Claude 4.6/Gemini 3.x/DeepSeek V4; `pricing status` tampilkan umur cache + peringatan stale (tanpa auto-fetch).
+- **P0.3 `max_tokens` 8192 + `length` eksplisit:** stop terpotong jadi peringatan, bukan teks sunyi.
+
+**P1 — Daya saing (sprint depan):**
+- **P1.1 Adapter Responses API** (`/v1/responses`, `previous_response_id`, `store:false` default) + `providerHint: "responses"`.
+- **P1.2 `reasoning_effort` generik** (`ProviderEntry`, dipetakan per-wire).
+- **P1.3 Retry-after dihonori**, fallback hanya non-429 (hapus bakar-daftar).
+- **P1.4 Wire dari probe** (bukan substring URL) + Gemini native bila P0.1 rapuh.
+
+**P2 — Kematangan:** routing policy + provider efektif di header, OAuth Copilot/ChatGPT, observabilitas `/cost` (pola `memoryHits`).
+
+**Selesai bila:** tool loop Gemini 3-turn hijau, Opus ≈⅓ biaya lama, `length` eksplisit, fake Responses SSE benar, 429 tunggu-di-tempat, gate hijau.
+
+**Sengaja ditolak:** proxy universal ala LiteLLM — tiga adapter kecil yang jujur > satu proxy ajaib (postur zero-dep).
+
+## P12 — UI Shell-Max ke 9.8 (tanpa TUI)
+
+Audit + riset 2026-09-06: shell-first 8.0 (append-only scrollback satu-satunya transcript, tanpa `?1049h`, overlay transient hapus-diri). Keputusan pemilik dikunci: highlight tetap regex 0-dep, `/clear` jadi banner, TUI full/Windows/web = varian terpisah nanti (tidak dibahas di sini). Detail ada di bagian P12 di bawah.
+
+**P0 — Hari ini (<1 jam) → 8.0→8.5:**
+- **Spinner tunggal** `turn-status.ts:27` → `glyphs.spinnerFrames`; **sanitize overlay** `wizard.ts:110` + `provider-manager.ts:217-218`; **`/clear` banner** `repl.ts:302` (scrollback preserved).
+
+**P1 — Besok (2 jam) → 8.5→9.0:**
+- **Wrap preservasi spasi** `wrap.ts:44` + skip justify ganda; **SGR prompt saat scroll** `input.ts:163` `takeLeadSgr()`; **picker highlight** `picker.ts:33` + `c.bold`; **dashes clamp** `theme.ts:296`.
+
+**P2 — Minggu depan (4 jam) → 9.0→9.8:**
+- **Table vertikal** `table.ts:44` bila `termW<40 && cols>3`; **diff two-sided** `diff.ts:31` (3 op vs 4); **Thai-aware delete** `prompt-engine.ts:91` `deletePrevUnit()` (regex via `fromCharCode` — literal combining char pernah rusak jadi U+FFFD); **live-region** `approval/prompt.ts:20` `MINICODE_A11Y=1`; **harness output-driven** `tui-harness.ts` (`once` auto-remove, `waitForOutput`, `answerSequence expect[]` + raw-terbaru), timeout manager `30000→5000`.
+
+**Selesai bila:** `tsc` + `lint` + `1210 pass 0 fail` + `coverage 81.18/83.16` + `pack 22/22` hijau; timeout manager ≤5000; 10× run manager-flows hijau (DoD, belum dijalankan — butuh ~15 menit).
+
 ---
+
+## P12 — UI Shell-Max ke 9.8 (tanpa TUI) — DIEKSEKUSI 2026-09-06
+
+Audit + riset: shell-first 8.0 (append-only scrollback satu-satunya transcript, tanpa `?1049h`, overlay transient hapus-diri). Keputusan dikunci: highlight tetap regex 0-dep, `/clear` jadi banner, TUI = varian terpisah. Detail di `.verdent/plans/UI_ShellMax_To_10-0906.plan.md`.
+
+**P0 → 8.5:** spinner tunggal (`turn-status.ts:27`), sanitize overlay (`wizard.ts:110`, `provider-manager.ts:217-218`), `/clear` banner (`repl.ts:302`).
+**P1 → 9.0:** wrap preservasi spasi + no-justify ganda, prompt SGR saat scroll (`takeLeadSgr`), picker highlight query, dashes clamp.
+**P2 → 9.3:** table vertikal `termW<40`, diff two-sided + word-level, Thai-aware delete (`deletePrevUnit`), live-region `MINICODE_A11Y=1`, harness output-driven (`once` auto-remove, `waitForOutput`, `answerSequence expect[]`), timeout manager `30000→5000`.
+**Bonus:** Ctrl+R reverse-i-search inline, cap output adaptif, multiline Ctrl+J + history JSON, `/copy` OSC 52, statusline rich opt-in (`MINICODE_STATUSLINE=rich`).
+
+**Selesai bila (TERUKUR):** `tsc` + `lint` + `1225 pass 0 fail` + `coverage 81.44/83.65` + `pack 22/22` hijau; manager-flows 10/10 final. Skor akhir jujur **9.3** (bukan 9.8 — sisa 0.2 = observasi long-run flake; 0.5 terakhir butuh viewport TUI).
+
+## P13 — Raise 3 Dimensi Tertinggal: Model 8.0→8.7, Tool 8.5→9.0, Sesi/Memori 8.5→9.0
+
+Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Berbasis riset read-only 2026-09-06 (empat fact-sheet: inventaris 31 tools `src/tools/index.ts:47`, 14 preset `src/providers/presets.ts:14`, 6 mode `src/policy/permission.ts:8`, WAL+shadow-git+FTS5/MMR). **Keputusan pemilik dikunci:** P0 dulu; memori **opt-out** (`MINICODE_AUTO_MEMORY=0`); **sandbox tidak disentuh** (skor 8.0 dibiarkan — pemilik menolak kerja sandbox Windows/Linux). Tanpa TUI, tanpa proxy universal LiteLLM, tanpa edit `vendor/minicore/**` kecuali seam aditif.
+
+**P0 — Semua yang menaikkan skor (≤3 hari, tanpa ubah UI/API):**
+
+- **Model (8.0→8.7):**
+  - **M0.1 `thought_signature` pass-through:** seam aditif `provider_meta?: unknown` di `vendor/minicore/src/core/tool.ts:22` (+ `VENDOR.md`, `bun run vendor:minicore`); teruskan `extra_content.google.thought_signature` dari delta `vendor/minicore/src/providers/openai-compat.ts:112` → `ToolCall._meta` → echo verbatim. *DoD:* fake SSE 3-turn Gemini thinking → turn-3 tidak 400.
+  - **M0.2 Refresh `BUILTIN_PRICING`:** `src/policy/pricing.ts:30` Opus `$15/$75→$5/$25` + GPT-5.x/Claude 4.6/Gemini 3.x/DeepSeek V4; `cli/commands/pricing.ts:42` tampil `ageH` + `(stale)` >30d (tanpa auto-fetch).
+  - **M0.3 `max_tokens` 4096→8192:** `src/providers/anthropic.ts:73` + warning `length` eksplisit di `src/ui/render/errors.ts` + `src/ui/assistant/simple.ts`.
+- **Tool (8.5→9.0):**
+  - **T0.1 `move_file` + `delete_file`** (delete soft ke `.trash/`; jail sama `write_file.ts:30`, atomic, `isSensitive`).
+  - **T0.2 `read_image`** — reuse `estimateImageTokens` `src/policy/context.ts:15` → base64 `data:image/...` cap `BASH_OUTPUT_MAX_CHARS`.
+  - **T0.3 Pisah `readonly` vs `plan`** `src/policy/permission.ts:179` — `plan` boleh `todo_write` + `delegate_task:explore` + `write_plan`.
+  - **T0.4 `O_NOFOLLOW` safe-open** `src/lib/safe-open.ts` → 6 tool file + `atomic-write.ts`; fallback `dev+ino` Windows (paralel P10.2).
+  - **T0.5 `code_run` tool** — sandboxed sama `bash`, bypass deny `INLINE_INTERPRETER` `bash-guard.ts:135` (hanya bila `MINICODE_SANDBOX=os|docker`).
+- **Sesi & Memori — opt-out (8.5→9.0):**
+  - **S1 Persist summary:** `src/policy/compaction.ts:187` → `addMemory(summary.slice(0,1200), {category:'summary'})`, guard `if (process.env.MINICODE_AUTO_MEMORY !== "0")`.
+  - **S2 Kategori:** `src/memory/vector.ts:30` migration `category` (`fact|decision|preference|snippet|summary`) + `write_memory {category?, tags?}` (default `fact`); boost `score+=0.1` bila query match.
+  - **S3 Scope `all`:** `vector.ts:431` `scope: 'cwd'|'global'|'all'` (merge dua DB, perbaiki silent shadowing `src/lib/db-path.ts:16`); default `cwd`.
+
+**P1 — Sprint (8.4→8.6):**
+- **Model:** adapter Responses API `src/providers/responses.ts` (`/v1/responses`, `previous_response_id`, `store:false` default) + `providerHint:"responses"`; `reasoningEffort?: "low"|"medium"|"high"` di `src/config.ts:29` (dipetakan per-wire); honori `retry-after` di provider sama `src/providers/router.ts:114` (hapus bakar-daftar 429); wire dari probe `src/providers/detect.ts:62` (bukan substring URL).
+- **Tool:** `submit_result` (structured output `response_format:json_schema`); `ask_user` gated `permission.ts:68` render via injeksi `promptAsk` `cli/setup.ts:30`.
+- **Sesi/Memori:** plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`); auto-extract snippet dari turn verify sukses (`cli/setup.ts:226`, opt-out sama); branch `branchSession` (`src/session/persistence.ts`); TTL hierarkis `fact/decision 180, summary 90, snippet 14` + `accessCount`.
+
+**Selesai bila (semua diukur):**
+- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` dinaikkan bila coverage naik.
+- `test/tool-toctou.test.ts` swapper 3×1000 iterasi **0 lolos** (wajib gagal di kode lama).
+- `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global.
+- `test/tui-harness.test.ts` 10× hijau (flake TUI tidak mundur).
+- Gemini thinking 3-turn hijau; Opus ≈⅓ biaya lama; `length` eksplisit; fake Responses SSE benar; 429 tunggu-di-tempat.
+- `memory status --json`: kategori + scope tampil; setelah 20 turn ada summary `rows+1` (kecuali `MINICODE_AUTO_MEMORY=0`).
 
 ## Yang sengaja TIDAK dikerjakan
 

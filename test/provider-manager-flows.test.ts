@@ -113,6 +113,9 @@ async function openManager(
   return {
     done,
     async close() {
+      // Jangan kirim Esc saat jendela suspend (0 listener): ia hilang dan
+      // `await done` gantung sampai timeout test. Tunggu listener kembali.
+      await t.waitForListener(2000)
       await t.send(KEY.esc, 30)
       await done
     },
@@ -248,7 +251,11 @@ describe.serial("provider-manager: delete (d)", () => {
     await writeFile(globalPath, JSON.stringify({ providers: oneProvider }), "utf8")
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
-    const seq = tty.answerSequence(["y"])
+    // Tunggu marker prompt sebelum jawab: jawaban tak boleh masuk ke prompt
+    // yang salah bila dua prompt berurutan pasang listener dalam tick sama.
+    const seq = tty.answerSequence(["y"], {
+      expect: [(out) => out.includes("Delete? [y/N] ")],
+    })
     await tty.send("d")
     await seq
     const out = visible(tty)
@@ -260,7 +267,7 @@ describe.serial("provider-manager: delete (d)", () => {
       return local.providers.length === 0 && global.providers.length === 0
     })
     await mgr.close()
-  }, 30000)
+  }, 5000)
 
   test("'n' confirmation cancels — provider remains", async () => {
     await writeLocalProviders(oneProvider)
@@ -291,14 +298,16 @@ describe.serial("provider-manager: delete (d)", () => {
     const mgr = await openManager({ currentModel: "gw::m1" })
     // List marks active provider before user presses d.
     expect(visible(tty)).toContain("(active)")
-    const seq = tty.answerSequence(["y"])
+    const seq = tty.answerSequence(["y"], {
+      expect: [(out) => out.includes("Delete? [y/N] ")],
+    })
     await tty.send("d")
     await seq
     const out = visible(tty)
     expect(out).toContain("(active)")
     expect(out).toContain("Provider is active")
     await mgr.close()
-  }, 30000)
+  }, 5000)
 
   test("empty list: d does nothing", async () => {
     tty = installFakeTty({ rows: 24 })
@@ -360,7 +369,9 @@ describe.serial("provider-manager: edit (e)", () => {
     ])
     tty = installFakeTty({ rows: 24 })
     const mgr = await openManager()
-    const seq = tty.answerSequence(["https://baru.example/v1", ""])
+    const seq = tty.answerSequence(["https://baru.example/v1", ""], {
+      expect: [(out) => out.includes("Base URL ["), (out) => out.includes("API key")],
+    })
     await tty.send("e")
     await seq
     const t = tty
@@ -369,7 +380,7 @@ describe.serial("provider-manager: edit (e)", () => {
     expect(visible(t)).toContain("updated")
     expect(tty.failures()).toEqual([])
     await mgr.close()
-  }, 10000)
+  }, 5000)
 
   test("empty list: e does nothing", async () => {
     tty = installFakeTty({ rows: 24 })

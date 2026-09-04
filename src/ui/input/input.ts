@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { stripAnsi } from "../render/theme.ts"
-import { displayWidth, truncateToWidth } from "../render/width.ts"
+import { displayWidth, escapeLength, truncateToWidth } from "../render/width.ts"
 import {
   applyKey,
   buildRenderSpec,
@@ -20,28 +20,44 @@ import {
 const HISTORY_FILE = join(homedir(), ".minicode", "history")
 const MAX_HISTORY = 1000
 
-export async function loadHistory(): Promise<string[]> {
+export async function loadHistory(file = HISTORY_FILE): Promise<string[]> {
   try {
-    const content = await readFile(HISTORY_FILE, "utf8")
-    return content
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean)
+    const content = await readFile(file, "utf8")
+    const out: string[] = []
+    for (const line of content.split("\n")) {
+      if (!line) continue
+      // Format baru: satu JSON string per baris (mendukung newline di entri
+      // multiline). Format lama: baris plain — tetap dibaca apa adanya.
+      if (line.startsWith('"')) {
+        try {
+          const v: unknown = JSON.parse(line)
+          if (typeof v === "string" && v) {
+            out.push(v)
+            continue
+          }
+        } catch {
+          // Bukan JSON valid — jatuh ke plain di bawah.
+        }
+      }
+      const t = line.trim()
+      if (t) out.push(t)
+    }
+    return out.slice(-MAX_HISTORY)
   } catch {
     return []
   }
 }
 
-export async function appendHistory(entry: string): Promise<void> {
+export async function appendHistory(entry: string, file = HISTORY_FILE): Promise<void> {
   const clean = entry.trim()
   if (!clean) return
   try {
-    const existing = await loadHistory()
+    const existing = await loadHistory(file)
     const filtered = existing.filter((e) => e !== clean)
     filtered.push(clean)
     const capped = filtered.slice(-MAX_HISTORY)
     await mkdir(join(homedir(), ".minicode"), { recursive: true }).catch(() => {})
-    await writeFile(HISTORY_FILE, `${capped.join("\n")}\n`, "utf8")
+    await writeFile(file, `${capped.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf8")
   } catch {}
 }
 
@@ -69,6 +85,11 @@ export interface AskLineOptions {
   prompt?: string | (() => string)
   hints?: (line: string) => string[]
   groupOf?: (text: string) => string // opsional: label grup (commands/skills)
+  /**
+   * Riwayat eksplisit (menggantikan loadHistory dari file). Dipakai test agar
+   * hermetic tanpa menyentuh ~/.minicode/history milik mesin.
+   */
+  history?: string[]
   /**
    * Dipanggil untuk setiap keypress SEBELUM logika bawaan (history, applyKey).
    * Return truthy = key sudah ditangani pemanggil; askLine melewatkan handling
@@ -110,9 +131,32 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
   const hints = (l: string) => opts.hints?.(l) ?? []
 
   // History navigation via Up/Down when menu not open (append mode)
-  const historyCache = await loadHistory()
+  const historyCache = opts.history ?? (await loadHistory())
   let historyIdx = -1
   let savedLine = ""
+
+  // Reverse-i-search ala readline (Ctrl+R): filter substring historyCache,
+  // tampil inline sebagai prompt pengganti — tanpa overlay/picker. Dulu
+  // Ctrl+R di-decode prompt-engine tapi tak dipakai ("bekas picker history
+  // fullscreen"). Hasil ditampilkan sebagai state.line sementara; draf asli
+  // kembali utuh bila pencarian dibatalkan (Esc/Ctrl+C).
+  let search: { query: string; idx: number; saved: string } | null = null
+  const searchMatches = (): string[] => {
+    if (!search) return []
+    const q = search.query.toLowerCase()
+    const out: string[] = []
+    for (let i = historyCache.length - 1; i >= 0; i--) {
+      const h = historyCache[i]!
+      if (!q || h.toLowerCase().includes(q)) out.push(h)
+    }
+    return out
+  }
+  const effPrompt = (): string => {
+    const base = promptOf()
+    if (!search) return base
+    const ok = searchMatches().length > 0
+    return `${ok ? "(reverse-i-search)" : "(failed reverse-i-search)"}\`${search.query}': `
+  }
 
   return new Promise((resolve, reject) => {
     // Raw mode harus dikembalikan BAGI BAGIAN body yang error: bila renderAnsi
@@ -150,6 +194,8 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
 
     let state = createState()
     let prevRows = 0 // jumlah baris dropdown yang tergambar (untuk clear)
+    let prevInputRows = 1 // jumlah baris input visual frame lalu (multiline)
+    let prevCursorRow = 0 // baris kursor frame lalu (0 = anchor)
     let printedW = 0 // lebar teks yang ditulis (fallback inline)
 
     const matches = (): string[] => hints(state.line)
@@ -160,11 +206,29 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
     // terlihat. Semua ukuran dalam KOLOM terminal — CJK/emoji dua kolom.
     // Sebelumnya memakai `.length` (karakter), sehingga baris CJK 53 kolom
     // dianggap "muat" di terminal 30 kolom lalu membungkus sendiri.
+    // Ambil run SGR di awal baris (biasanya gaya prompt): potongan tengah
+    // memang plain (teks user), tapi jendela dari awal harus mempertahankan
+    // warna prompt. Tanpa ini stripAnsi membuat prompt pudar begitu baris
+    // lebih panjang dari terminal.
+    const takeLeadSgr = (s: string): string => {
+      let out = ""
+      let i = 0
+      while (s[i] === "\x1b") {
+        const len = escapeLength(s, i)
+        if (len <= 0) break
+        const seq = s.slice(i, i + len)
+        if (!seq.endsWith("m")) break
+        out += seq
+        i += len
+      }
+      return out
+    }
     const scrollableLine = (line: string, cursorCol: number): { text: string; col: number } => {
       const cols = process.stdout.columns || 80
       if (displayWidth(line) <= cols - 1) return { text: line, col: cursorCol }
       // Bekerja pada teks bersih: potongan tengah tidak bisa mempertahankan
       // sekuens ANSI dengan benar tanpa melacak state warna.
+      const lead = takeLeadSgr(line)
       const clean = stripAnsi(line)
       const pts = toGraphemes(clean)
       // Lebar kumulatif per posisi karakter.
@@ -179,7 +243,9 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       const ell = start > 0 ? "…" : ""
       const body = truncateToWidth(pts.slice(start).join(""), keep - displayWidth(ell), "")
       return {
-        text: (start > 0 ? c.dim(ell) : "") + body,
+        // Awalan SGR (nol kolom) hanya relevan saat jendela dari awal —
+        // saat start>0 prompt sudah tergulir keluar dan body memang plain.
+        text: (start > 0 ? c.dim(ell) : lead) + body,
         col: displayWidth(ell) + (cursorCol - colAt[start]!),
       }
     }
@@ -189,27 +255,74 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       process.stdout.write(`\x1b[${Math.max(1, col + 1)}G`)
     }
 
+    // Render input multiline (Ctrl+J): tiap baris visual digambar di baris
+    // terminal sendiri; kursor diposisikan di baris+kolom logisnya. Baris
+    // non-kursor digambar dari awal (cukup, karena teks user plain); baris
+    // kursor lewat scrollableLine (jendela + warna prompt bila di baris 0).
+    const scrollableMultiline = (
+      prompt: string,
+      line: string,
+      cursor: number,
+    ): { texts: string[]; cursorRow: number; cursorCol: number } => {
+      const segs = line.split("\n")
+      let acc = 0
+      let cursorRow = 0
+      let cursorInRow = 0
+      for (let r = 0; r < segs.length; r++) {
+        const glen = pointLength(segs[r]!)
+        if (cursor <= acc + glen) {
+          cursorRow = r
+          cursorInRow = cursor - acc
+          break
+        }
+        acc += glen + 1
+        if (r === segs.length - 1) {
+          cursorRow = r
+          cursorInRow = glen
+        }
+      }
+      const promptW = displayWidth(prompt)
+      const texts: string[] = []
+      let cursorCol = 0
+      for (let r = 0; r < segs.length; r++) {
+        const full = r === 0 ? prompt + segs[r]! : segs[r]!
+        if (r === cursorRow) {
+          const colW = displayWidth(toGraphemes(segs[r]!).slice(0, cursorInRow).join(""))
+          const v = scrollableLine(full, (r === 0 ? promptW : 0) + colW)
+          texts.push(v.text)
+          cursorCol = v.col
+        } else {
+          texts.push(scrollableLine(full, 0).text)
+        }
+      }
+      return { texts, cursorRow, cursorCol }
+    }
+
     const renderAnsi = () => {
       const rows = process.stdout.rows || 24
+      // Baris input visual ikut memakan tinggi: kurangi jatah dropdown agar
+      // blok input + dropdown tetap muat di terminal pendek.
+      const nInGuess = state.line.split("\n").length
       // Sisakan ruang untuk prompt + 1 baris status agar dropdown tidak
       // membungkus di terminal pendek.
-      const maxVisible = Math.max(1, Math.min(MAX_VISIBLE, rows - 3))
-      const spec = buildRenderSpec(state, promptOf(), matches(), opts.groupOf, maxVisible)
+      const maxVisible = Math.max(1, Math.min(MAX_VISIBLE, rows - 3 - (nInGuess - 1)))
+      const spec = buildRenderSpec(state, effPrompt(), matches(), opts.groupOf, maxVisible)
+      const view = scrollableMultiline(effPrompt(), state.line, state.cursor)
+      const nIn = view.texts.length
       const maxRows = Math.max(prevRows, spec.totalRows)
-      const view = scrollableLine(spec.inputLine, spec.cursorCol)
-      const inputLine = view.text
-
-      process.stdout.write(`\r${CLEAR}${inputLine}`)
-
-      if (maxRows > 0) {
-        process.stdout.write("\r\n")
-        for (let k = 0; k < maxRows; k++) {
-          process.stdout.write(CLEAR)
-          if (k < maxRows - 1) process.stdout.write("\r\n")
-        }
-        process.stdout.write(`\x1b[${maxRows}A`)
-        process.stdout.write(`\r${inputLine}`)
-      }
+      const maxIn = Math.max(prevInputRows, nIn)
+      // Kembali ke anchor: render lalu menaruh kursor di baris R.
+      if (prevCursorRow > 0) process.stdout.write(`\x1b[${prevCursorRow}A`)
+      // Blok input (anchor + lanjutan), bersihkan sisa frame lama yang susut.
+      process.stdout.write(`\r${CLEAR}${view.texts[0]}`)
+      for (let k = 1; k < maxIn; k++)
+        process.stdout.write(`\r\n${CLEAR}${k < nIn ? view.texts[k]! : ""}`)
+      // Turun ke bawah-blok-input aktual (bukan sisa frame lama yang susut).
+      const gapUp = maxIn - nIn
+      if (gapUp > 0) process.stdout.write(`\x1b[${gapUp}A`)
+      // Blok dropdown di bawah input, bersihkan sisa frame lama.
+      for (let k = 0; k < maxRows; k++) process.stdout.write(`\r\n${CLEAR}`)
+      if (maxRows > 0) process.stdout.write(`\x1b[${maxRows}A`)
 
       if (spec.rows.length > 0) {
         const cols = process.stdout.columns || 80
@@ -238,22 +351,36 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           process.stdout.write("\r\n")
           process.stdout.write(`${CLEAR + DIM}    … ${spec.moreCount} more${RESTORE}`)
         }
-        process.stdout.write(`\x1b[${spec.totalRows}A`)
-        process.stdout.write(`\r${inputLine}`)
+        // Kembali ke anchor (melewati dropdown + baris input lanjutan).
+        process.stdout.write(`\x1b[${spec.totalRows + (nIn - 1)}A`)
+        // Gambar ulang blok input (pastikan bersih setelah naik).
+        process.stdout.write(`\r${CLEAR}${view.texts[0]}`)
+        for (let k = 1; k < nIn; k++) process.stdout.write(`\r\n${CLEAR}${view.texts[k]!}`)
       }
 
+      // Naik dari baris input terakhir ke baris kursor, lalu ke kolom logis.
+      const upToCursor = nIn - 1 - view.cursorRow
+      if (upToCursor > 0) process.stdout.write(`\x1b[${upToCursor}A`)
       // Kursor sungguhan di posisi logis — bukan selalu di ujung baris.
-      placeCursor(view.col)
+      placeCursor(view.cursorCol)
       prevRows = spec.totalRows
+      prevInputRows = nIn
+      prevCursorRow = view.cursorRow
     }
 
     // ── render inline (legacy console, tanpa ANSI) ──
     const renderInline = () => {
       const hs = matches()
-      const prompt = promptOf()
+      const prompt = effPrompt()
+      // Konsol legacy tak menghitung baris: gepengkan multiline untuk display
+      // (nilai submit tetap utuh ber-newline).
+      const flat =
+        state.line.indexOf("\n") === -1
+          ? state.line
+          : `${state.line.replace(/\n/g, " ")} (+${state.line.split("\n").length - 1} lines)`
       const content = hs.length
-        ? `${prompt}${state.line}    ${hs.slice(0, 5).join("  ")}`
-        : `${prompt}${state.line}`
+        ? `${prompt}${flat}    ${hs.slice(0, 5).join("  ")}`
+        : `${prompt}${flat}`
       // Fallback non-ANSI tetap harus mengukur lebar per KOLOM terminal.
       // Jika memakai .length, CJK/emoji meninggalkan jejak saat baris memendek.
       const contentW = displayWidth(content)
@@ -281,12 +408,124 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       prevRows = 0
     }
 
+    // Tampilkan cocokkan pencarian sebagai baris (sementara; draf asli di
+    // search.saved dan kembali utuh bila dibatalkan).
+    const searchShow = () => {
+      const ms = searchMatches()
+      const m = ms.length ? ms[Math.min(search!.idx, ms.length - 1)]! : ""
+      state = { ...state, line: m, cursor: pointLength(m), sel: -1, menuOpen: false }
+      render()
+    }
+    // Echo baris final ke scrollback lalu selesaikan askLine. Multiline:
+    // kursor bisa di baris R>0 — naik ke anchor dulu agar clearOverlay (yang
+    // mengasumsikan kursor di anchor) dan echo menimpa blok input tepat.
+    const doSubmit = (cancelled: boolean) => {
+      const v = cancelled ? null : state.line.trim()
+      if (ansi) {
+        const segs = state.line.split("\n")
+        let crow = 0
+        let acc = 0
+        for (let r = 0; r < segs.length; r++) {
+          const glen = pointLength(segs[r]!)
+          if (state.cursor <= acc + glen) {
+            crow = r
+            break
+          }
+          acc += glen + 1
+          crow = r
+        }
+        if (crow > 0) process.stdout.write(`\x1b[${crow}A`)
+        clearOverlay()
+        const cols = process.stdout.columns || 80
+        const prompt = effPrompt()
+        // Baris pertama lewat scrollableLine (jendela horizontal, sama
+        // seperti dulu); baris lanjutan cukup dipotong ke lebar terminal.
+        const first = scrollableLine(`${prompt}${segs[0]!}`, 0).text
+        process.stdout.write(`\r${CLEAR}${first}\r\n`)
+        for (let k = 1; k < segs.length; k++)
+          process.stdout.write(`${CLEAR + truncateToWidth(segs[k]!, cols)}\r\n`)
+      } else {
+        process.stdout.write(`\r${CLEAR}${effPrompt()}${state.line}\r\n`)
+      }
+      finish(v)
+    }
+
     onData = (chunk: Buffer) => {
       const keys = decodeKeysStream(chunk, decoder)
       for (const d of keys) {
         // Hook pemanggil: key yang ditangani sendiri (return truthy) dilewati
         // dari logika bawaan; render() di akhir chunk tetap menggambar efeknya.
         if (opts.onKey?.(d.key)) continue
+        // Reverse-i-search: Ctrl+R masuk/putar, sisanya dikelola di bawah.
+        if (d.key.type === "ctrl-r") {
+          if (historyCache.length === 0) continue
+          if (!search) {
+            search = { query: "", idx: 0, saved: state.line }
+            historyIdx = -1
+            searchShow()
+          } else {
+            const ms = searchMatches()
+            if (ms.length) {
+              search.idx = (search.idx + 1) % ms.length
+              searchShow()
+            }
+          }
+          continue
+        }
+        if (search) {
+          if (d.key.type === "enter") {
+            // Bash: Enter mengeksekusi baris hasil pencarian.
+            search = null
+            historyIdx = -1
+            savedLine = ""
+            doSubmit(false)
+            return
+          }
+          if (d.key.type === "esc" || d.key.type === "ctrl-c") {
+            // Batal cari saja (bukan batal baris): kembalikan draf.
+            const back = search.saved
+            search = null
+            state = { ...state, line: back, cursor: pointLength(back), sel: -1, menuOpen: false }
+            historyIdx = -1
+            render()
+            continue
+          }
+          if (d.key.type === "char") {
+            search.query += d.key.ch
+            search.idx = 0
+            searchShow()
+            continue
+          }
+          if (d.key.type === "backspace") {
+            const q = toGraphemes(search.query)
+            q.pop()
+            search.query = q.join("")
+            search.idx = 0
+            searchShow()
+            continue
+          }
+          if (d.key.type === "up") {
+            const ms = searchMatches()
+            if (search.idx < ms.length - 1) {
+              search.idx++
+              searchShow()
+            }
+            continue
+          }
+          if (d.key.type === "down") {
+            if (search.idx > 0) {
+              search.idx--
+              searchShow()
+            }
+            continue
+          }
+          // Tombol lain: terima hasil ke baris lalu proses normal di bawah.
+          const ms = searchMatches()
+          const m = ms.length ? ms[Math.min(search.idx, ms.length - 1)]! : search.saved
+          search = null
+          state = { ...state, line: m, cursor: pointLength(m), sel: -1, menuOpen: false }
+          historyIdx = -1
+        }
         // Navigasi history saat dropdown tertutup.
         //
         // Sebelumnya entri history DIGABUNGKAN ke teks yang sedang ditulis
@@ -321,6 +560,7 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         // panah bawah tetap kembali ke entri history lain.
         if (
           d.key.type === "char" ||
+          d.key.type === "ctrl-j" ||
           d.key.type === "backspace" ||
           d.key.type === "delete" ||
           d.key.type === "ctrl-w" ||
@@ -335,16 +575,8 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
         const r = applyKey(state, d.key, hints)
         state = r.state
         if (r.action === "submit" || r.action === "cancel") {
-          const v = r.action === "submit" ? state.line.trim() : null
           // Empty Enter = "" (not null) - REPL continues; null = cancel (break)
-          if (ansi) {
-            clearOverlay()
-            const shown = scrollableLine(`${promptOf()}${state.line}`, 0).text
-            process.stdout.write(`\r${CLEAR}${shown}\r\n`)
-          } else {
-            process.stdout.write(`\r${CLEAR}${promptOf()}${state.line}\r\n`)
-          }
-          finish(v)
+          doSubmit(r.action === "cancel")
           return
         }
       }

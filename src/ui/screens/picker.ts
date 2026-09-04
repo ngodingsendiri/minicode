@@ -30,6 +30,19 @@ const DIM = "\x1b[2m",
   ACC = (s: string) => c.accent(c.bold(s)),
   ACC_DIM = (s: string) => c.accent(s)
 
+// Tandai substring query di label agar user tahu KENAPA item cocok.
+// Operasi pada teks plain (sebelum truncate) — SGR bold nol kolom.
+function highlightMatch(label: string, query: string): string {
+  if (!query) return label
+  const idx = label.toLowerCase().indexOf(query.toLowerCase())
+  if (idx < 0) return label
+  return (
+    label.slice(0, idx) +
+    c.bold(label.slice(idx, idx + query.length)) +
+    label.slice(idx + query.length)
+  )
+}
+
 export async function runPicker(opts: PickerOptions): Promise<void> {
   if (!process.stdin.isTTY) {
     console.log(`\n${opts.title}`)
@@ -93,7 +106,9 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
         const it = rows[i]!
         const picked = i === sel - scroll
         // Potong label ke KOLOM (CJK 2 kolom), sisakan ruang untuk penanda "› ".
-        const label = truncateToWidth(`${it.provider ? `${it.provider} › ` : ""}${it.name}`, w - 4)
+        // Highlight query DITERAPKAN sebelum truncate agar posisi kolom tepat.
+        const rawLabel = `${it.provider ? `${it.provider} › ` : ""}${it.name}`
+        const label = highlightMatch(truncateToWidth(rawLabel, w - 4), filter)
         if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
         else lines.push(`   ${DIM}${label}${RESTORE}`)
       }

@@ -15,6 +15,10 @@ export async function promptAsk(call: ApprovalRequest): Promise<"allow" | "deny"
   if (!process.stdin.isTTY) return "deny"
   // Non-visual feedback bisa dimatikan untuk aksesibilitas/recording.
   if (process.env.MINICODE_BELL !== "0") process.stdout.write("\x07")
+  // Live-region untuk screen reader: baris polos tanpa ANSI agar terbaca
+  // sebagai teks, bukan escape mentah. Bell saja mengganggu tanpa informasi.
+  if (process.env.MINICODE_A11Y === "1")
+    process.stderr.write(`[approval required: ${sanitizeAnsiLine(call.name)}]\n`)
 
   // toolName/actionSummary berasal dari model/MCP (tidak terpercaya). Tanpa
   // sanitasi, `\x1b[2J\x1b[H` di dalam args.command akan membersihkan layar

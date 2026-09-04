@@ -60,6 +60,7 @@ src/ui/input/prompt-engine.ts:
   interface DecodedKey
   function decodeKey(...)
   function scanCsi(...)
+  function deletePrevUnit(...)
 cli/router.ts:
   function dispatch(...)
 cli/commands/mcp.ts:
@@ -138,6 +139,8 @@ src/ui/screens/provider-manager.ts:
   function runProviderManagerView(...)
 src/ui/assistant/simple.ts:
   function attachSimpleLogger(...)
+  function getLastTurnText(...)
+  function writeClipboardOsc52(...)
 src/app/mentions.ts:
   function parseMentions(...)
   function resolveMentionContent(...)

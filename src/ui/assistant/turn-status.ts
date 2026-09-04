@@ -1,5 +1,6 @@
 import type { UiBus } from "../contract.ts"
 import { sanitizeAnsiLine } from "../render/sanitize.ts"
+import { glyphs } from "../render/theme.ts"
 import { registerStatusLine } from "../runtime/statusline.ts"
 
 // Turn status line — satu baris di stderr: `·· model` (dots + label saja).
@@ -8,7 +9,16 @@ import { registerStatusLine } from "../runtime/statusline.ts"
 // output lain memakai runWithoutStatus() yang menahan repaint sesaat.
 export function attachTurnStatus(
   bus: UiBus,
-  opts: { initialModel?: string; getModel?: () => string | undefined } = {},
+  opts: {
+    initialModel?: string
+    getModel?: () => string | undefined
+    /**
+     * Teks statistik tambahan (mis. token/biaya sesi) — DI dari composition
+     * root agar UI tak perlu impor lapisan policy/usage. Undefined = mati
+     * (default hemat: shell tetap bersih).
+     */
+    getStats?: () => string | undefined
+  } = {},
 ): () => void {
   if (!process.stderr.isTTY) return () => {}
   const isWinLegacy =
@@ -24,10 +34,16 @@ export function attachTurnStatus(
   let label = opts.initialModel ?? "..."
   let spinner: ReturnType<typeof setInterval> | undefined
   let fi = 0
-  const F = ["·", "··", "···"]
+  // Satu sumber frames dengan spinner wizard (MINICODE_ASCII konsisten).
+  const F = glyphs.spinnerFrames
 
   const paint = () => {
-    process.stderr.write(`\r\x1b[2K${F[fi % F.length]} ${label}`)
+    let extra = ""
+    try {
+      const s = opts.getStats?.()
+      if (s) extra = ` · ${s}`
+    } catch {}
+    process.stderr.write(`\r\x1b[2K${F[fi % F.length]!} ${label}${extra}`)
     fi++
   }
 

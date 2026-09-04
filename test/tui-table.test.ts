@@ -108,3 +108,26 @@ test("table: emoji tidak melebihi lebar kolom", () => {
   ).split("\n")
   for (const l of lines) expect(displayWidth(l)).toBe(10) // 8 + 2 spasi bantalan
 })
+
+test("table: terminal sempit + banyak kolom jadi vertikal, bukan elipsis", () => {
+  const prev = process.stdout.columns
+  Object.defineProperty(process.stdout, "columns", { value: 20, configurable: true })
+  try {
+    const out = stripAnsi(
+      renderTable(
+        [
+          { header: "ID", key: "id" },
+          { header: "Model", key: "m" },
+          { header: "URL", key: "u" },
+          { header: "Status", key: "s" },
+        ],
+        [{ id: "gw", m: "m1", u: "https://x", s: "ok" }],
+      ),
+    )
+    expect(out).toContain("ID: gw")
+    expect(out).toContain("Status: ok")
+    expect(out).not.toContain("…")
+  } finally {
+    Object.defineProperty(process.stdout, "columns", { value: prev, configurable: true })
+  }
+})

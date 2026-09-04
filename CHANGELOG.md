@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.1] - 2026-09-06 — UI Shell-Max (P12) + plan P13
+
+### Added — P12 UI Shell-Max
+- **`/copy` slash command** (`cli/repl.ts:44`): salin teks model + hasil tool turn terakhir ke clipboard terminal via OSC 52 (`src/ui/assistant/simple.ts` `writeClipboardOsc52`), cap 200_000 char (`getLastTurnText`); jujur saat terminal menolak clipboard ("clipboard needs a TTY terminal") atau belum ada output.
+- **Reverse-i-search** (`src/ui/input/input.ts:138`): `Ctrl+R` memfilter history dengan substring, tampil inline sebagai prompt pengganti (bukan overlay) — `(reverse-i-search)`/`(failed reverse-i-search)`; batal dengan Esc/Ctrl+C mengembalikan draf asli.
+- **Multiline input** (`src/ui/input/prompt-engine.ts:187`): `Ctrl+J` menyisipkan newline (ops-in eksplisit; hanya CR/Enter yang submit; paste tetap digepeng jadi spasi); render per baris visual + kursor di posisi logis; history JSON per baris mendukung entri multiline.
+- **Statusline kaya opt-in** (`cli/setup.ts:293`): `MINICODE_STATUSLINE=rich` menampilkan token kumulatif + biaya sesi di spinner turn (`turn-status.ts` `getStats` callback DI dari composition root — UI tetap tanpa impor policy).
+- **Preservasi spasi ganda** (`src/ui/render/wrap.ts:44`): wrap pecah di batas run whitespace (ASCII art/tabel utuh), tidak mengjustify baris ber-spasi-ganda; trimEnd saat flush.
+- **Picker highlight query** (`src/ui/screens/picker.ts:33`): substring filter ditebalkan sebelum truncate — user tahu kenapa item cocok.
+- **Table vertikal** (`src/ui/render/table.ts:44`): terminal sempit (`<40` kolom) + banyak kolom render `key: value` vertikal, bukan baris terpotong.
+- **Diff dua sisi** (`src/ui/render/diff.ts:31`): `indexOf` tanpa slice (O(n) per langkah), reorder ambigu dahulukan add (3 op), sorot kata berubah via LCS kecil dengan guard noise >60% (`markChangedWords`).
+- **Accessibilitas**: live-region `MINICODE_A11Y=1` di approval (`src/ui/approval/prompt.ts:20`); spinner tunggal dari `glyphs.spinnerFrames` (`turn-status.ts`); sanitasi hasil jaringan di provider-manager & wizard (`sanitizeAnsiLine`); dashes clamp di section (`theme.ts:296`).
+
+### Fixed — P12 shell-first
+- `/clear` kini banner `--- cleared (scrollback preserved) ---` — scrollback terminal tetap menjadi satu-satunya transcript (tidak dihapus).
+- Harness TUI output-driven (`test/helpers/tui-harness.ts`): `waitForOutput` + `answerSequence(expect[])` + `once` auto-remove, kirim ke listener raw terbaru — timeout manager 30000→5000 (`test/tui-harness.test.ts` self-test).
+- Thai/Lao delete-aware (`src/ui/input/prompt-engine.ts:91` `deletePrevUnit`): diakritik terakhir dulu, kursor bertahan — satu suku kata butuh N tekan (bug Claude #83449).
+
+### Test & Gate
+- `1225 pass 0 fail / 8 skip`, `gate:coverage` 81.44%/83.65% (min81/83), `lint` 9 warn (pre-existing), `tsc` PASS, `gate:pack` 22/22. Manager-flows 10/10 (DoD P12, dijalankan ulang saat run isolasi).
+
 ## [0.9.0] - 2026-09-06 — P9 Memory/RAG hardening (P0-P2) + P8 CLI flag-injection hardening
 
 ### Fixed — CLI flag-injection (P8)

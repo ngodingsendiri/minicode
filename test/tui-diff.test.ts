@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { computeLineDiff, renderDiffCard } from "../src/ui/render/diff.ts"
+import { computeLineDiff, markChangedWords, renderDiffCard } from "../src/ui/render/diff.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
 import { displayWidth } from "../src/ui/render/width.ts"
 
@@ -89,4 +89,42 @@ test("diff: berkas besar tidak kuadratik", () => {
   const t0 = performance.now()
   computeLineDiff(oldT, newT)
   expect(performance.now() - t0).toBeLessThan(2000)
+})
+
+test("diff: reorder ambigu dahulukan add (lebih sedikit op)", () => {
+  // Lama ["a","b"] vs baru ["b","a","b"]: kode lama menghapus "a" dulu
+  // (4 op: del,ctx,add,add); heuristik dua sisi menambah "b" dulu (3 op).
+  const diff = computeLineDiff("a\nb", "b\na\nb")
+  expect(diff.length).toBe(3)
+  expect(diff[0]).toMatchObject({ type: "add", content: "b" })
+})
+
+test("diff: kata berubah ditandai, bukan sebaris penuh", () => {
+  const { oldMask, newMask } = markChangedWords("const a = 1", "const a = 2")
+  // Token: const|sp|a|sp|=|sp|1 — hanya token terakhir beda.
+  expect(oldMask).toEqual([false, false, false, false, false, false, true])
+  expect(newMask).toEqual([false, false, false, false, false, false, true])
+})
+
+test("diff: baris yang hampir seluruhnya beda tampil polos", () => {
+  const card = stripAnsi(renderDiffCard("f.ts", "aaa bbb", "xxx yyy"))
+  expect(card).toContain("aaa bbb")
+  expect(card).toContain("xxx yyy")
+})
+
+test("diff: kata berubah di-bold di card (COLORTERM truecolor)", () => {
+  const prevCt = process.env.COLORTERM
+  const prevNc = process.env.NO_COLOR
+  process.env.COLORTERM = "truecolor"
+  delete process.env.NO_COLOR
+  try {
+    const card = renderDiffCard("f.ts", "const a = 1", "const a = 2")
+    expect(card).toContain("const a = ")
+    expect(card).toContain("\x1b[1m2\x1b[22m")
+  } finally {
+    if (prevCt == null) delete process.env.COLORTERM
+    else process.env.COLORTERM = prevCt
+    if (prevNc == null) delete process.env.NO_COLOR
+    else process.env.NO_COLOR = prevNc
+  }
 })

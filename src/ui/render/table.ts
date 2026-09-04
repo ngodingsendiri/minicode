@@ -36,11 +36,26 @@ export function renderTable(columns: ColumnDef[], data: Record<string, unknown>[
 
   const cells = data.map((row) => columns.map((col) => sanitizeCell(row[col.key])))
 
+  const termW = getTerminalWidth()
+  // Terminal sangat sempit + banyak kolom: budget per kolom (~10) membuat
+  // semua isi jadi "…" — render vertikal `key: value` agar tetap terbaca.
+  if (termW < 40 && columns.length > 3) {
+    return data
+      .map((row) =>
+        columns
+          .map(
+            (col) =>
+              `${c.bold(col.header)}: ${truncateToWidth(sanitizeCell(row[col.key]), termW, ELLIPSIS)}`,
+          )
+          .join("\n"),
+      )
+      .join("\n\n")
+  }
+
   // `width` yang dideklarasikan adalah batas keras dalam KOLOM terminal
   // (CJK/emoji dihitung dua). Sebelumnya ia hanya MINIMUM dan diukur per
   // karakter, sehingga satu nilai panjang mendorong kolom melebar dan header
   // berhenti berbaris dengan body.
-  const termW = getTerminalWidth()
   const widths = columns.map((col, i) => {
     // Nilai negatif/NaN dari pemanggil tidak boleh membuat "".repeat() melempar.
     if (col.width != null && Number.isFinite(col.width)) return Math.max(0, Math.trunc(col.width))

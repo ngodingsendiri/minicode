@@ -18,7 +18,7 @@ import { expandMentions } from "../src/app/mentions.ts"
 import { redoLastCheckpoint, undoLastCheckpoint } from "../src/session/checkpoint.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
-import { formatError } from "../src/ui/assistant/simple.ts"
+import { formatError, getLastTurnText, writeClipboardOsc52 } from "../src/ui/assistant/simple.ts"
 import { appendHistory, askLine } from "../src/ui/input/input.ts"
 import type { PromptKey } from "../src/ui/input/prompt-engine.ts"
 import { setCompactMode } from "../src/ui/render/detail.ts"
@@ -41,6 +41,7 @@ const DRIVER_COMMANDS = [
   "/cost",
   "/resume",
   "/clear",
+  "/copy",
 ]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
@@ -300,7 +301,24 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         return false
       }
       if (name === "clear") {
-        console.clear()
+        // Shell-first: scrollback adalah transcript — jangan hapus, tandai saja.
+        console.log(c.dim("--- cleared (scrollback preserved) ---"))
+        return false
+      }
+      if (name === "copy") {
+        const txt = getLastTurnText().trim()
+        if (!txt) {
+          console.log(c.dim("(nothing to copy yet — run a prompt first)"))
+          return false
+        }
+        // OSC 52 diblokir default di banyak terminal; sampaikan jujur.
+        if (writeClipboardOsc52(txt))
+          console.log(
+            c.dim(
+              `copied ${txt.length} chars (OSC 52 — allow clipboard access in terminal if empty)`,
+            ),
+          )
+        else console.log(c.dim("(clipboard needs a TTY terminal)"))
         return false
       }
       if (name === "quit" || name === "q") {

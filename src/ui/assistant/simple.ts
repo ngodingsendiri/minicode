@@ -2,6 +2,7 @@
 // Output append-only ke scrollback terminal, tanpa alternate screen. Tool call
 // inline dan EXPANDED by default (transparansi shell); mode compact via
 // MINICODE_COMPACT=1 atau setCompactMode (/compact).
+import { Buffer } from "node:buffer"
 import type { UiBus, UiStep } from "../contract.ts"
 import { detail } from "../render/detail.ts"
 import { renderDiffCard } from "../render/diff.ts"
@@ -19,14 +20,50 @@ export interface SimpleOptions {
   verbose?: boolean
 }
 
+// Buffer output turn terakhir untuk /copy: teks model (sudah sanitize, sama
+// seperti yang terlihat) + isi hasil tool string. BUKAN transcript penuh —
+// scrollback milik terminal; ini konten yang berguna ditempel ulang. Cap agar
+// sesi panjang tak membengkakkan memori.
+const LAST_TURN_MAX_CHARS = 200_000
+let lastTurnText = ""
+/** Isi output turn terakhir (teks model + hasil tool). */
+export function getLastTurnText(): string {
+  return lastTurnText
+}
+const rememberTurn = (s: string) => {
+  if (!s) return
+  lastTurnText += s
+  if (lastTurnText.length > LAST_TURN_MAX_CHARS)
+    lastTurnText = lastTurnText.slice(-LAST_TURN_MAX_CHARS)
+}
+
+/**
+ * Tulis teks ke clipboard terminal via OSC 52 (`ESC ] 52 ; c ; base64 BEL`).
+ *
+ * Sekuens ini SENGAJA dikecualikan dari sanitizeAnsi: sanitizer menjaga teks
+ * TAK TERPERCAYA (model/tool), sedangkan payload di sini dibuat sendiri dari
+ * buffer yang sudah sanitize + base64 murni — tidak ada byte kontrol asing
+ * yang bisa lolos. Banyak terminal memblokir OSC 52 default; pemanggil wajib
+ * menyampaikan fallback-nya ke user. Return false bila bukan TTY.
+ */
+export function writeClipboardOsc52(text: string): boolean {
+  if (!process.stdout.isTTY) return false
+  const b64 = Buffer.from(text, "utf8").toString("base64")
+  process.stdout.write(`\x1b]52;c;${b64}\x07`)
+  return true
+}
+
 const wOut = (s: string) => runWithoutStatus(() => process.stdout.write(s))
 const wErr = (s: string) => runWithoutStatus(() => process.stderr.write(s))
 
-// Batas tampilan expanded. Scrollback terminal tidak terbatas, tapi satu tool
-// yang memuntahkan 10 ribu baris tetap tidak ramah dibaca — pangkas dengan
-// penanda jumlah sisa, seperti `| head` yang disengaja.
-const TOOL_OUT_MAX_LINES = 50
-const CONTENT_PREVIEW_LINES = 20
+// Batas tampilan expanded — ADAPTIF terhadap tinggi terminal, bukan konstanta
+// mati. Scrollback memang tak terbatas, tapi satu tool yang memuntahkan 10
+// ribu baris di terminal 10 baris tetap menenggelamkan konteks; sebaliknya di
+// terminal 60 baris preview 20 baris pelit. Dievaluasi LAZY per render (jangan
+// simpan ke const — lihat P0.1).
+const termRows = (): number => process.stdout.rows || 24
+const TOOL_OUT_MAX_LINES = (): number => Math.max(10, termRows() - 6)
+const CONTENT_PREVIEW_LINES = (): number => Math.max(6, Math.floor(termRows() / 3))
 const DIFF_MAX_LINES = 24
 // Tool yang hasilnya adalah KONTEN yang memang ingin dilihat user (bukan cuma
 // status aksi) — di mode expanded isinya ikut dicetak.
@@ -83,6 +120,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   const offs: (() => void)[] = []
   offs.push(
     bus.on("turn:started", (e) => {
+      lastTurnText = ""
       if (opts.verbose) wErr(c.muted(`\n── Turn ${e.turn} ──\n`))
     }),
   )
@@ -100,7 +138,10 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
     bus.on("provider:text", (e) => {
       // Teks model TIDAK terpercaya: tanpa sanitasi ia bisa menyisipkan sekuens
       // kontrol (bersihkan layar, ubah judul jendela) langsung ke scrollback.
-      streamBuffer += sanitizeAnsi(e.text)
+      // Versi sanitize yang SAMA masuk buffer /copy (apa yang terlihat).
+      const clean = sanitizeAnsi(e.text)
+      streamBuffer += clean
+      rememberTurn(clean)
       flushBuf()
     }),
   )
@@ -162,6 +203,10 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
       const r = e.execution.result
       const name = e.execution.call.name
       const args = (e.execution.call.args ?? {}) as Record<string, unknown>
+      // Hasil string ikut ke buffer /copy (versi sanitize, cap per-add agar
+      // satu read_file raksasa tak langsung memenuhi buffer sendirian).
+      if (!r.isError && typeof r.content === "string")
+        rememberTurn(sanitizeAnsi(r.content).slice(0, 20000))
       if (r.isError) {
         wErr(c.error(`  ✗ ${name}: ${sanitizeAnsi(String(r.content)).slice(0, 200)}\n`))
         return
@@ -207,11 +252,10 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
           wErr(c.success(`  ✓ $ ${cmdLabel}\n`) + c.muted(`    ${preview}\n`))
           return
         }
-        const shown = lines.slice(0, TOOL_OUT_MAX_LINES).map((l) => `    ${sanitizeAnsi(l)}`)
+        const maxLines = TOOL_OUT_MAX_LINES()
+        const shown = lines.slice(0, maxLines).map((l) => `    ${sanitizeAnsi(l)}`)
         const more =
-          lines.length > TOOL_OUT_MAX_LINES
-            ? c.muted(`\n    … (${lines.length - TOOL_OUT_MAX_LINES} more lines)`)
-            : ""
+          lines.length > maxLines ? c.muted(`\n    … (${lines.length - maxLines} more lines)`) : ""
         wErr(
           c.success(`  ✓ $ ${cmdLabel}\n`) +
             (shown.length ? `${c.muted(shown.join("\n")) + more}\n` : ""),
@@ -222,13 +266,14 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         // Hasil berupa KONTEN (isi berkas, hasil cari) ikut mengalir expanded.
         const raw = sanitizeAnsi(String(r.content ?? "")).trim()
         const lines = raw ? raw.split("\n") : []
+        const maxPreview = CONTENT_PREVIEW_LINES()
         const preview = lines
-          .slice(0, CONTENT_PREVIEW_LINES)
+          .slice(0, maxPreview)
           .map((l) => `    ${l}`)
           .join("\n")
         const more =
-          lines.length > CONTENT_PREVIEW_LINES
-            ? c.muted(`\n    … (${lines.length - CONTENT_PREVIEW_LINES} more lines)`)
+          lines.length > maxPreview
+            ? c.muted(`\n    … (${lines.length - maxPreview} more lines)`)
             : ""
         const label = sanitizeAnsiLine(target ?? formatArgsPreview(args))
         wErr(c.success(`  ✓ ${name} ${label}\n`) + (preview ? `${c.muted(preview) + more}\n` : ""))

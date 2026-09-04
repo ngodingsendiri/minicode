@@ -288,12 +288,23 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   // sudah tidak ada, jadi tidak ada lagi jalur renderer kedua untuk dibedakan.
   const detachSimple = attachSimpleLogger(session.events, { verbose })
   const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
+  const { formatUsd } = await import("../src/ui/render/money.ts")
+  const usage = createUsageCollector(session.events, effectiveInitialModel)
+  // Statusline kaya = opt-in (default mati, shell tetap bersih). Data biaya
+  // disuntik sebagai callback agar UI tak mengimpor lapisan policy.
+  const richStatus = process.env.MINICODE_STATUSLINE === "rich"
   const detachStatus = attachTurnStatus(session.events, {
     initialModel: effectiveInitialModel,
     getModel: () => modelRef.current ?? effectiveInitialModel,
+    ...(richStatus
+      ? {
+          getStats: () => {
+            const u = usage.getSession(modelRef.current)
+            return `${u.totalTokens.toLocaleString()} tok${u.cost != null ? ` · ${formatUsd(u.cost)}` : ""}`
+          },
+        }
+      : {}),
   })
-
-  const usage = createUsageCollector(session.events, effectiveInitialModel)
   // Muat overlay harga dari cache lokal (bila user pernah `pricing sync`).
   // Tidak ada request jaringan di sini — hanya baca berkas.
   void primePricing()
