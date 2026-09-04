@@ -27,6 +27,8 @@ export interface OpenAICompatConfig {
    * retries once without it. Defaults to true.
    */
   includeUsage?: boolean;
+  /** Generic reasoning effort knob — mapped per-wire (openai reasoning_effort, anthropic thinking). */
+  reasoningEffort?: string;
 }
 
 /**
@@ -61,6 +63,7 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
           // DeepSeek-style thinking: provider seperti b.ai butuh reasoning_content
           // di history saat thinking aktif. OFF via env agar multi-turn aman.
           ...(process.env.MINICODE_THINKING === "off" ? { enable_thinking: false } : {}),
+          ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
         });
       let body = buildBody(includeUsage);
       let response = await fetchOrThrow(endpoint, headers, body, signal);
@@ -139,6 +142,16 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
             calls.set(index, acc);
             if (order.indexOf(index) < 0) order.push(index);
             if (typeof td.id === "string" && td.id) acc.id = td.id;
+            // P13 M0.1 — preserve Gemini thought_signature (extra_content) verbatim
+            const extra =
+              (td as Record<string, unknown>).extra_content ??
+              (td as Record<string, unknown>).thought_signature ??
+              (td as Record<string, unknown>).providerMeta;
+            if (extra != null) (acc as Record<string, unknown>)._extra = extra;
+            const fnExtra =
+              (td.function as Record<string, unknown> | undefined)?.extra_content ??
+              (td.function as Record<string, unknown> | undefined)?.thought_signature;
+            if (fnExtra != null) (acc as Record<string, unknown>)._extra = fnExtra;
             const fn = td.function as { name?: unknown; arguments?: unknown } | undefined;
             if (fn) {
               // A tool name is never split across deltas (only `arguments` is),
@@ -153,7 +166,7 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
         if (!finished && first.finish_reason) {
           finished = true;
           for (const index of order) {
-            const acc = calls.get(index);
+            const acc = calls.get(index) as unknown as { id: string; name: string; args: string; _extra?: unknown };
             if (!acc) continue;
             let args: unknown = acc.args;
             if (acc.args) {
@@ -162,6 +175,12 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
               } catch {
                 args = { raw: acc.args };
               }
+            }
+            // P13 M0.1 — stash extra_content in args for history replay (opaque to executor)
+            if (acc._extra != null && typeof args === "object" && args !== null && !Array.isArray(args)) {
+              ;(args as Record<string, unknown>).__extra_content = acc._extra
+            } else if (acc._extra != null) {
+              args = { value: args, __extra_content: acc._extra } as unknown
             }
             yield { type: "tool_call", id: acc.id || `call_${index}`, name: acc.name, args };
           }
@@ -196,11 +215,20 @@ function toMessages(messages: readonly Message[]): unknown[] {
           // saat thinking mode aktif, agar multi-turn tidak 400.
           ...((message as { reasoning?: string }).reasoning ? { reasoning_content: (message as { reasoning?: string }).reasoning } : {}),
           tool_calls: message.toolCalls?.length
-            ? message.toolCalls.map((call) => ({
-                id: call.id,
-                type: "function",
-                function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
-              }))
+            ? message.toolCalls.map((call) => {
+                const raw = (call.args ?? {}) as Record<string, unknown>
+                const extra = (raw as Record<string, unknown>).__extra_content ?? (raw as Record<string, unknown>)._extra
+                const clean: Record<string, unknown> = { ...raw }
+                delete clean.__extra_content
+                delete clean._extra
+                delete clean.__thought_signature
+                return {
+                  id: call.id,
+                  type: "function",
+                  function: { name: call.name, arguments: JSON.stringify(clean) },
+                  ...(extra != null ? { extra_content: extra } : {}),
+                }
+              })
             : undefined,
         };
       case "tool":

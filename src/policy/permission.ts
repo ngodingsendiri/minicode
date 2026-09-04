@@ -36,6 +36,7 @@ const READONLY_TOOLS = new Set([
   "lsp_hover",
   "lsp_symbols",
   "lsp_workspace_symbols",
+  "read_image",
 ])
 // Tool yang menulis state internal minicode (bukan file workspace) — aman
 // di semua mode kecuali readonly/plan. `bash_kill` menghentikan proses yang
@@ -48,7 +49,7 @@ const INTERNAL_WRITE_TOOLS = new Set([
   "bash_kill",
 ])
 
-const FILE_WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch"])
+const FILE_WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch", "move_file", "delete_file"])
 
 // Subset INTERNAL_WRITE_TOOLS yang juga tidak perlu prompt di mode `ask`.
 // `write_memory`/`forget_memory` TIDAK termasuk: itu menulis MEMORY.md yang
@@ -218,6 +219,11 @@ export function createPermissionHandler(
       if (isGated(call.name)) return await promptAskOr(call, () => "deny")
       if (FILE_WRITE_TOOLS.has(call.name)) return "allow"
       if (INTERNAL_WRITE_TOOLS.has(call.name)) return "allow"
+      if (call.name === "code_run") {
+        const sb = process.env.MINICODE_SANDBOX ?? ""
+        if (sb !== "os" && sb !== "docker" && sb !== "bwrap" && sb !== "seatbelt") return "deny"
+        return "allow"
+      }
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? ""
         if (!cmd.trim() || bashDenied(cmd)) return "deny"

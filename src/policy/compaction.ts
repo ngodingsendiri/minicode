@@ -188,5 +188,13 @@ export async function compactWithLlm(
     role: "user" as const,
     content: `Previous context (LLM summarized):\n${summary.slice(0, 3000)}`,
   }
+  // P13 S1 — persist summary ke vector (opt-out via MINICODE_AUTO_MEMORY=0)
+  if (process.env.MINICODE_AUTO_MEMORY !== "0") {
+    try {
+      const { addMemory } = await import("../memory/vector.ts")
+      // fire-and-forget, jangan gagalkan compaction bila embedding gagal
+      void addMemory(summary.slice(0, 1200), { category: "summary" }).catch(() => {})
+    } catch {}
+  }
   return [lruSummary, ...messages.slice(-kept)]
 }

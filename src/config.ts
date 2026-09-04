@@ -33,6 +33,8 @@ export interface ProviderEntry {
   apiKey: string
   models: string[]
   providerHint?: string
+  /** Knob generik reasoning effort — dipetakan per-wire (openai reasoning_effort, anthropic thinking, gemini). */
+  reasoningEffort?: "low" | "medium" | "high"
   /**
    * Sumber kredensial. `oauth` = ambil access token dari `~/.minicode/auth.json`
    * saat runtime, jangan simpan di config (config bisa ikut ter-commit).

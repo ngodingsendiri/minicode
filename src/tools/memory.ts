@@ -66,16 +66,26 @@ export const writeMemoryTool: Tool = {
   description: "Write to MEMORY.md + vector store (allow write, permitted directly).",
   parameters: {
     type: "object",
-    properties: { text: { type: "string", description: "memori baru, ringkas 1-2 kalimat" } },
+    properties: {
+      text: { type: "string", description: "memori baru, ringkas 1-2 kalimat" },
+      category: {
+        type: "string",
+        enum: ["fact", "decision", "preference", "snippet", "summary"],
+        description: "kategori memory untuk retrieval presisi",
+      },
+      tags: { type: "array", items: { type: "string" } },
+    },
     required: ["text"],
     additionalProperties: false,
   },
-  async execute({ text }, ctx) {
+  async execute({ text, category, tags }, ctx) {
     ctx.signal.throwIfAborted()
     const t = text as string
     if (!t.trim()) throw new Error("text empty")
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     const path = await appendMemory(t, cwd)
+    const cat = (category as string) ?? "fact"
+    const tagArr = Array.isArray(tags) ? (tags as string[]) : undefined
     // also add to vector (hybrid) — pass cwd so local vector.db is used
     try {
       const baseUrl = process.env.AGENT_BASE_URL ?? "https://api.openai.com/v1"
@@ -84,13 +94,13 @@ export const writeMemoryTool: Tool = {
         process.env.OPENAI_API_KEY ??
         process.env.AGENT_API_KEY ??
         ""
-      if (apiKey) await addMemory(t, { baseUrl, apiKey, cwd })
-      else await addMemory(t, { cwd })
+      if (apiKey) await addMemory(t, { baseUrl, apiKey, cwd, category: cat, tags: tagArr })
+      else await addMemory(t, { cwd, category: cat, tags: tagArr })
     } catch (e) {
       process.stderr.write(`[warn] memory vector embedding failed: ${(e as Error).message}\n`)
       // fallback keyword-only
       try {
-        await addMemory(t, { cwd })
+        await addMemory(t, { cwd, category: cat, tags: tagArr })
       } catch (e2) {
         process.stderr.write(
           `[warn] memory keyword-only fallback failed: ${(e2 as Error).message}\n`,

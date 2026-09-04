@@ -21,17 +21,21 @@ function open(cwd?: string): Database {
     initializedPaths.add(p)
   }
   db.exec(`
-    CREATE TABLE IF NOT EXISTS memory (id TEXT PRIMARY KEY, text TEXT, embedding BLOB, created_at INTEGER);
+    CREATE TABLE IF NOT EXISTS memory (id TEXT PRIMARY KEY, text TEXT, embedding BLOB, created_at INTEGER, category TEXT DEFAULT 'fact', tags TEXT, model TEXT, dim INTEGER, parent TEXT);
     CREATE INDEX IF NOT EXISTS idx_memory_created ON memory(created_at);
     CREATE INDEX IF NOT EXISTS idx_memory_text ON memory(text);
   `)
   // P1.3: kolom model/dim untuk deteksi embedding-mismatch (best-effort migrasi)
   // P2.2: kolom parent untuk chunk entri panjang (chunk berbagi parent id)
+  // P13 S2: kategori terstruktur untuk retrieval presisi
   try {
     const cols = db.prepare(`PRAGMA table_info(memory)`).all() as { name: string }[]
     if (!cols.some((c) => c.name === "model")) db.exec(`ALTER TABLE memory ADD COLUMN model TEXT`)
     if (!cols.some((c) => c.name === "dim")) db.exec(`ALTER TABLE memory ADD COLUMN dim INTEGER`)
     if (!cols.some((c) => c.name === "parent")) db.exec(`ALTER TABLE memory ADD COLUMN parent TEXT`)
+    if (!cols.some((c) => c.name === "category"))
+      db.exec(`ALTER TABLE memory ADD COLUMN category TEXT DEFAULT 'fact'`)
+    if (!cols.some((c) => c.name === "tags")) db.exec(`ALTER TABLE memory ADD COLUMN tags TEXT`)
   } catch {}
   // P1.1: expression index + FTS5 untuk keyword pre-filter (10-50× vs instr scan)
   try {
@@ -262,7 +266,14 @@ export function splitMemoryChunks(text: string): string[] {
 
 export async function addMemory(
   text: string,
-  opts: { baseUrl?: string; apiKey?: string; cwd?: string; embeddingModel?: string } = {},
+  opts: {
+    baseUrl?: string
+    apiKey?: string
+    cwd?: string
+    embeddingModel?: string
+    category?: string
+    tags?: string[]
+  } = {},
 ) {
   const clean = scrubSecrets(text)
   const chunks = splitMemoryChunks(clean)
@@ -291,10 +302,12 @@ export async function addMemory(
       const v = vecs?.[i]
       const embedding = v ? toBlob(v) : null
       const id = i === 0 ? parentId : randomUUID()
+      const category = (opts.category as string) ?? "fact"
+      const tagsJson = opts.tags ? JSON.stringify(opts.tags) : null
       await withBusyRetry(() =>
         db
           .prepare(
-            "INSERT INTO memory (id, text, embedding, created_at, model, dim, parent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memory (id, text, embedding, created_at, model, dim, parent, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
           )
           .run(
             id,
@@ -304,6 +317,8 @@ export async function addMemory(
             embedding ? embedModel : null,
             v?.length ?? null,
             parentId,
+            category,
+            tagsJson,
           ),
       )
     }
@@ -346,6 +361,8 @@ type MemoryRow = {
   dim: number | null
   model: string | null
   created_at: number
+  category?: string | null
+  tags?: string | null
 }
 
 export interface MemoryHit {
@@ -436,13 +453,12 @@ export async function searchHybrid(
     cwd?: string
     topK?: number
     embeddingModel?: string
+    scope?: "cwd" | "global" | "all"
   } = {},
 ): Promise<MemoryHit[]> {
-  const db = open(opts.cwd)
-  let rows: MemoryRow[]
-  try {
-    // Hybrid: keyword pre-filter via FTS5 MATCH (pakai rank) → fallback LIKE
-    // dengan idx_memory_text_lower bila FTS tidak tersedia/DB lama.
+  const scope = opts.scope ?? (process.env.MINICODE_MEMORY_SCOPE as string) ?? "cwd"
+  // helper untuk ambil rows dari satu DB path (dipakai untuk scope all)
+  const fetchRows = (db: ReturnType<typeof open>): MemoryRow[] => {
     const keywords = query.toLowerCase().split(/\W+/).filter(Boolean).slice(0, 5)
     const escKeywords = keywords.map((k) =>
       k.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_"),
@@ -450,7 +466,7 @@ export async function searchHybrid(
     if (keywords.length > 0) {
       const recentRows = db
         .prepare(
-          `SELECT text, embedding, dim, model, created_at FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_RECENT_LIMIT}`,
+          `SELECT text, embedding, dim, model, created_at, category, tags FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_RECENT_LIMIT}`,
         )
         .all() as MemoryRow[]
       let keywordRows: MemoryRow[] = []
@@ -459,7 +475,7 @@ export async function searchHybrid(
         try {
           keywordRows = db
             .prepare(
-              `SELECT m.text as text, m.embedding as embedding, m.dim as dim, m.model as model, m.created_at as created_at FROM memory_fts f JOIN memory m ON m.rowid = f.rowid WHERE memory_fts MATCH ? ORDER BY rank LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
+              `SELECT m.text as text, m.embedding as embedding, m.dim as dim, m.model as model, m.created_at as created_at, m.category as category, m.tags as tags FROM memory_fts f JOIN memory m ON m.rowid = f.rowid WHERE memory_fts MATCH ? ORDER BY rank LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
             )
             .all(ftsQ) as MemoryRow[]
         } catch {
@@ -472,20 +488,46 @@ export async function searchHybrid(
           .join(" OR ")
         keywordRows = db
           .prepare(
-            `SELECT text, embedding, dim, model, created_at FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
+            `SELECT text, embedding, dim, model, created_at, category, tags FROM memory WHERE ${likeClauses} ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_KEYWORD_LIMIT}`,
           )
           .all(...escKeywords) as MemoryRow[]
       }
       const merged = new Map<string, MemoryRow>()
       for (const r of [...recentRows, ...keywordRows])
         if (!merged.has(r.text)) merged.set(r.text, r)
-      rows = [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
+      return [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
     } else {
-      rows = db
+      return db
         .prepare(
-          `SELECT text, embedding, dim, model, created_at FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_SEARCH_LIMIT}`,
+          `SELECT text, embedding, dim, model, created_at, category, tags FROM memory ORDER BY created_at DESC LIMIT ${LIMITS.VECTOR_SEARCH_LIMIT}`,
         )
         .all() as MemoryRow[]
+    }
+  }
+
+  let rows: MemoryRow[]
+  const db = open(opts.cwd)
+  try {
+    rows = fetchRows(db)
+    if (scope === "all") {
+      try {
+        const { join } = await import("node:path")
+        const { homedir } = await import("node:os")
+        const { Database } = await import("bun:sqlite")
+        const globalPath = join(homedir(), ".minicode", "vector.db")
+        const localPath = dbPath(opts.cwd)
+        if (globalPath !== localPath) {
+          const gdb = new Database(globalPath)
+          try {
+            const gRows = fetchRows(gdb as unknown as ReturnType<typeof open>)
+            const merged = new Map<string, MemoryRow>()
+            for (const r of [...rows, ...gRows]) if (!merged.has(r.text)) merged.set(r.text, r)
+            rows = [...merged.values()].slice(0, LIMITS.VECTOR_SEARCH_LIMIT)
+          } finally {
+            gdb.close()
+          }
+        }
+      } catch {}
     }
   } finally {
     db.close()
@@ -519,7 +561,10 @@ export async function searchHybrid(
     }
     const kw = keywordScore(query, r.text)
     // hybrid 0.7 vector + 0.3 keyword, if no vector -> keyword only
-    const score = queryVec ? vecScore * 0.7 + kw * 0.3 : kw
+    let score = queryVec ? vecScore * 0.7 + kw * 0.3 : kw
+    // P13 S2 — boost decision category bila query mengandung fix/decide
+    if ((r as MemoryRow).category === "decision" && /fix|decide|decision/i.test(query)) score += 0.1
+    if ((r as MemoryRow).category === "preference" && /prefer|like/i.test(query)) score += 0.05
     return { text: r.text, score, vec, createdAt: r.created_at }
   })
   const minScore = queryVec ? LIMITS.MEMORY_MIN_SCORE_HYBRID : LIMITS.MEMORY_MIN_SCORE_KEYWORD

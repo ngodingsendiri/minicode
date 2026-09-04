@@ -3,6 +3,7 @@ import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts
 import type { MinicodeConfig } from "../config.ts"
 import { createAnthropicProvider } from "./anthropic.ts"
 import { getValidAccessToken } from "./oauth.ts"
+import { createResponsesProvider } from "./responses.ts"
 
 // Satu-satunya tempat membangun daftar provider dari config (hybrid anthropic/openai-compat).
 // Dipakai CLI, sub-agent (task.ts), dan MCP server agar logika tidak terduplikasi.
@@ -11,7 +12,27 @@ import { getValidAccessToken } from "./oauth.ts"
 export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
   const out: ModelProvider[] = []
   for (const p of cfg.providers) {
-    if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
+    if (p.providerHint === "responses") {
+      out.push(
+        createResponsesProvider({
+          id: p.id,
+          baseUrl: p.baseUrl,
+          apiKey: p.apiKey,
+          models: p.models,
+          defaultModel: p.models[0],
+          ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
+        }),
+      )
+    } else if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
+      // Map generic reasoningEffort to anthropic thinking budget
+      const thinking =
+        p.reasoningEffort === "high"
+          ? 4096
+          : p.reasoningEffort === "medium"
+            ? 2048
+            : p.reasoningEffort === "low"
+              ? 1024
+              : undefined
       out.push(
         createAnthropicProvider({
           id: p.id,
@@ -19,6 +40,7 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
           baseUrl: p.baseUrl,
           models: p.models,
           defaultModel: p.models[0],
+          ...(thinking ? { thinking } : {}),
         }) as unknown as ModelProvider,
       )
     } else {
@@ -29,6 +51,7 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
           apiKey: p.apiKey,
           models: p.models,
           defaultModel: p.models[0],
+          ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
         }),
       )
     }

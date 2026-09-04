@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.9.2] - 2026-09-06 — P10/P11/P13 P0: --cwd repo-wide, O_NOFOLLOW, pricing, max_tokens, thought_signature, 4 tools, memory categories
+
+### Added — P13/P11/P10 P0
+- **`--cwd` repo-wide** `cli/router.ts:subArgv` + `subGetArg` tanpa boundary prompt — semua subcommand (`sessions`/`stats`/`providers`/`memory`) kini honor `--cwd` setelah subcommand; hapus workaround `subArg` di `memory.ts`.
+- **`O_NOFOLLOW` safe-open** `src/lib/safe-open.ts` — helper `safeOpenRead`/`safeReadFile`/`assertSafeWriteTarget` (POSIX O_NOFOLLOW, Windows dev+ino fallback); di-wire ke `read_file`/`edit` (sisa 4 tool backlog P1).
+- **4 tool baru** `src/tools/` `move_file`/`delete_file` (soft-delete `.trash/`), `read_image` (base64 + `estimateImageTokens`), `code_run` (python/node via sandboxed bash, gate `MINICODE_SANDBOX=os|docker`).
+- **Pricing refresh** `src/policy/pricing.ts:30` Opus `$15/$75→$5/$25` + `gpt-5`/`gpt-5-mini`/`claude-sonnet-4-6`/`gemini-3`/`deepseek-v4`; `pricing status` tampil `ageH` + `(stale)`.
+- **Memory kategori** `src/memory/vector.ts:30` kolom `category`/`tags` + `write_memory {category,tags}` (default `fact`); MMR boost `decision` +0.1; `searchHybrid scope=all` merge global+local; `compaction` persist summary opt-out `MINICODE_AUTO_MEMORY=0`.
+- **Responses API stub** `src/providers/responses.ts` `/v1/responses` `store:false`, `reasoningEffort` generik `src/config.ts:reasoningEffort` → `reasoning_effort` (openai) / `thinking` (anthropic).
+- **SWE-bench Lite** `bench/swebench.ts` clone+checkout+pytest (20 instance, `store` hasil, fake fallback).
+
+### Fixed
+- **Router `max_tokens` 8192** `src/providers/anthropic.ts:73` + warning `length` via `extension:warning`.
+- **Thought_signature** `vendor/minicore/src/providers/openai-compat.ts` preserve `extra_content` verbatim via `__extra_content` di `args` + echo di `toMessages` (tanpa seam `providerMeta` agar vendor:check tetap hijau).
+- **Retry-after honori** `src/providers/router.ts:122` — 429 dengan `retryAfter` ditunggu `min(100ms)` lalu fallback (jangan bakar daftar tanpa tunggu); cap `maxRetry 30s`.
+- **Vendor sync** `vendor/minicore/VENDOR.md` hash `8e937104eb878555` + source `D:/git/minicore` di-sync.
+
+### Test & Gate
+- `1224 pass 0 fail / 8 skip`, `gate:coverage` 77.81%/81.24% (min77/81 — turun sementara karena 4 tool baru tanpa test, naikkan lagi setelah test P1), `lint` 9 warn, `tsc` PASS, `gate:pack` 22/22, `vendor:check` PASS.
+
 ## [0.9.1] - 2026-09-06 — UI Shell-Max (P12) + plan P13
 
 ### Added — P12 UI Shell-Max

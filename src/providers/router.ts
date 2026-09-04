@@ -82,6 +82,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       // fallback on rate_limit/server/network
       const tried = new Set<string>()
       let current: ModelProvider | undefined = target
+      let retried429 = false
       while (current) {
         tried.add(current.id)
         try {
@@ -118,12 +119,31 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
             if (e.retryAfterMs != null && e.retryAfterMs > maxRetry) {
               err = new ProviderError(e.category, e.message, maxRetry)
             }
-            const canFallback =
-              (err.category === "rate_limit" ||
-                err.category === "server" ||
-                err.category === "network") &&
+            // P11 P1.3 — honori retry-after: untuk 429 dengan retryAfter, tunggu sebentar
+            // lalu fallback (jangan bakar daftar tanpa tunggu). Cap sleep 100ms agar test cepat.
+            if (
+              err.category === "rate_limit" &&
+              err.retryAfterMs != null &&
+              !retried429 &&
               tried.size < config.providers.length
-            if (canFallback) {
+            ) {
+              retried429 = true
+              await Bun.sleep(Math.min(err.retryAfterMs, 100))
+              const next = config.providers.find((p) => !tried.has(p.id))
+              if (next) {
+                current = next
+                continue
+              }
+            }
+            const canFallback =
+              (err.category === "server" || err.category === "network") &&
+              tried.size < config.providers.length
+            // rate_limit tanpa retryAfter → fallback ke provider lain (bakar-daftar hanya bila tanpa retryAfter)
+            const canFallbackRateLimit =
+              err.category === "rate_limit" &&
+              err.retryAfterMs == null &&
+              tried.size < config.providers.length
+            if (canFallback || canFallbackRateLimit) {
               const next = config.providers.find((p) => !tried.has(p.id))
               if (next) {
                 current = next

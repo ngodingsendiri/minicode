@@ -1,8 +1,9 @@
-import { readFile, realpath, stat } from "node:fs/promises"
+import { realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
+import { safeReadFile } from "../lib/safe-open.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
 import { applyHashline } from "./hashline.ts"
@@ -157,7 +158,7 @@ export const editTool: Tool = {
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
-    const content = await readFile(realAbs, "utf8").catch(() => {
+    const content = await safeReadFile(abs, root).catch(() => {
       throw new Error(`file not found: ${p}`)
     })
     const oldS = oldString as string

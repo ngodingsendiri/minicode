@@ -1,7 +1,8 @@
-﻿import { readFile, realpath, stat } from "node:fs/promises"
+﻿import { realpath, stat } from "node:fs/promises"
 import { isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
+import { safeReadFile } from "../lib/safe-open.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
@@ -88,10 +89,9 @@ export const readFileTool: Tool = {
     if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
     if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    // resolve symlink target — prevent symlink escape out of workspace
-    // realRoot dipakai agar symlink root tidak bypass (isRealPathOutsideRoot logic)
-    const real = await realpath(abs).catch(() => abs)
     const realRoot = await realpath(root).catch(() => root)
+    // TOCTOU: gunakan O_NOFOLLOW agar symlink swap di antara cek dan pakai gagal
+    const real = await realpath(abs).catch(() => abs)
     if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
     const st = await stat(real).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
@@ -110,7 +110,7 @@ export const readFileTool: Tool = {
         `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — read it in chunks with offset/limit`,
       )
     }
-    const raw = await readFile(real, "utf8")
+    const raw = await safeReadFile(abs, root)
     const { text } = formatLines(raw, {
       offset: offset as number | undefined,
       limit: limit as number | undefined,

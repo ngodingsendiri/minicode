@@ -60,27 +60,8 @@ export async function handleMemory(
     console.error(`unknown memory subcommand "${sub}" — see: minicode memory status`)
     process.exit(1)
   }
-  // Catatan: getArg() bersama berhenti di token subcommand ("memory" dianggap
-  // batas prompt anti-injeksi), jadi --cwd/--json setelah subcommand tidak
-  // terbaca lewatnya — bug yang sama ada di semua subcommand lain (stats,
-  // sessions, providers, …). Parse lokal dari args[1..] agar flag command ini
-  // benar-benar honored tanpa mengubah semantik getArg global.
-  const subArg = (name: string): string | undefined => {
-    for (let i = 1; i < args.length; i++) {
-      const a = args[i]!
-      if (a === name) {
-        const v = args[i + 1]
-        return v !== undefined && !v.startsWith("-") ? v : undefined
-      }
-      if (a.startsWith(`${name}=`)) {
-        const v = a.slice(name.length + 1)
-        return v !== "" ? v : undefined
-      }
-    }
-    return getArg(name)
-  }
-  const cwdArg = subArg("--cwd")
-  const asJson = subArg("--json") !== undefined || process.argv.includes("--json")
+  const cwdArg = getArg("--cwd")
+  const asJson = getArg("--json") !== undefined || args.includes("--json")
   const s = getMemoryStats(cwdArg)
   const { runs, avgHits } = readHitRate(cwdArg)
   if (asJson) {

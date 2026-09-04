@@ -6,7 +6,7 @@ import type { ToolCall, ToolResult } from "#minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
 
 // Tool yang mengubah file workspace — butuh write-slot DAN file-lock per path.
-const WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch"])
+const WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch", "move_file", "delete_file"])
 
 // Tool yang harus eksklusif tapi tidak punya path tunggal untuk di-lock.
 // `bash` bisa menulis apa pun, jadi tidak boleh paralel dengan write lain;

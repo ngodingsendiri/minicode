@@ -70,8 +70,8 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         : undefined
 
       const effectiveMaxTokens = config.thinking
-        ? Math.max(config.maxTokens ?? 4096, config.thinking + 1024)
-        : (config.maxTokens ?? 4096)
+        ? Math.max(config.maxTokens ?? 8192, config.thinking + 1024)
+        : (config.maxTokens ?? 8192)
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
         max_tokens: effectiveMaxTokens,
@@ -126,8 +126,14 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
           const stop = d?.stop_reason
           if (stop) {
             if (stop === "tool_use") yield { type: "finish", reason: "tool_calls" }
-            else if (stop === "max_tokens") yield { type: "finish", reason: "length" }
-            else yield { type: "finish", reason: "stop" }
+            else if (stop === "max_tokens") {
+              yield {
+                type: "extension",
+                kind: "warning",
+                data: { text: "⚠ response truncated: hit max_tokens — raise via config maxTokens" },
+              }
+              yield { type: "finish", reason: "length" }
+            } else yield { type: "finish", reason: "stop" }
           }
           // Anthropic also sends usage in message_delta
           const usage = raw.usage ?? (d as unknown as { usage?: AnthropicRaw["usage"] })?.usage
