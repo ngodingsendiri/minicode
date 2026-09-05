@@ -7,6 +7,27 @@ import type { ModelProvider, ProviderEvent, StreamRequest } from "../core/provid
 import type { ToolSchema } from "../core/tool.ts";
 import type { Content, Message } from "../core/types.ts";
 
+// P13 M0.1 (revisi S1) — side-map toolCallId → extra_content (mis. Gemini
+// thought_signature). Versi sebelumnya menaruhnya di `args` sebagai
+// `__extra_content`, tapi executor menolaknya ("unknown property", semua schema
+// additionalProperties:false) sehingga tool call Gemini thinking justru gagal
+// validasi. Side-map menjaga args bersih; consume-once + cap agar tak bocor.
+const providerMetaByCallId = new Map<string, unknown>()
+function stashProviderMeta(id: string, meta: unknown): void {
+  if (!id || meta == null) return
+  providerMetaByCallId.set(id, meta)
+  // cap: buang yang terlama bila menumpuk (sesi sangat panjang)
+  if (providerMetaByCallId.size > 500) {
+    const first = providerMetaByCallId.keys().next()
+    if (!first.done) providerMetaByCallId.delete(first.value)
+  }
+}
+function takeProviderMeta(id: string): unknown {
+  const v = providerMetaByCallId.get(id)
+  if (v != null) providerMetaByCallId.delete(id)
+  return v
+}
+
 /** Configuration for an OpenAI-compatible chat completions endpoint. */
 export interface OpenAICompatConfig {
   /** Adapter id reported on the ModelProvider. Defaults to "openai-compat". */
@@ -142,7 +163,9 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
             calls.set(index, acc);
             if (order.indexOf(index) < 0) order.push(index);
             if (typeof td.id === "string" && td.id) acc.id = td.id;
-            // P13 M0.1 — preserve Gemini thought_signature (extra_content) verbatim
+            // P13 M0.1 (S1) — preserve Gemini thought_signature (extra_content)
+            // verbatim di side-map (BUKAN di args — executor menolak properti
+            // tak dikenal). Di-echo saat replay history di toMessages.
             const extra =
               (td as Record<string, unknown>).extra_content ??
               (td as Record<string, unknown>).thought_signature ??
@@ -176,13 +199,11 @@ export function createOpenAICompatProvider(config: OpenAICompatConfig): ModelPro
                 args = { raw: acc.args };
               }
             }
-            // P13 M0.1 — stash extra_content in args for history replay (opaque to executor)
-            if (acc._extra != null && typeof args === "object" && args !== null && !Array.isArray(args)) {
-              ;(args as Record<string, unknown>).__extra_content = acc._extra
-            } else if (acc._extra != null) {
-              args = { value: args, __extra_content: acc._extra } as unknown
-            }
-            yield { type: "tool_call", id: acc.id || `call_${index}`, name: acc.name, args };
+            // P13 M0.1 (S1) — args TETAP bersih (executor validateArgs menolak
+            // properti tak dikenal); signature disimpan di side-map by call id.
+            const callId = acc.id || `call_${index}`
+            if (acc._extra != null) stashProviderMeta(callId, acc._extra);
+            yield { type: "tool_call", id: callId, name: acc.name, args };
           }
           // P6: content_filter (OpenAI safety filter) must not be invisible as
           // a plain "stop" — surface it as an extension event so observers can
@@ -216,16 +237,13 @@ function toMessages(messages: readonly Message[]): unknown[] {
           ...((message as { reasoning?: string }).reasoning ? { reasoning_content: (message as { reasoning?: string }).reasoning } : {}),
           tool_calls: message.toolCalls?.length
             ? message.toolCalls.map((call) => {
-                const raw = (call.args ?? {}) as Record<string, unknown>
-                const extra = (raw as Record<string, unknown>).__extra_content ?? (raw as Record<string, unknown>)._extra
-                const clean: Record<string, unknown> = { ...raw }
-                delete clean.__extra_content
-                delete clean._extra
-                delete clean.__thought_signature
+                // P13 M0.1 (S1) — echo signature dari side-map (consume-once),
+                // args dikirim apa adanya tanpa kunci siluman.
+                const extra = takeProviderMeta(call.id)
                 return {
                   id: call.id,
                   type: "function",
-                  function: { name: call.name, arguments: JSON.stringify(clean) },
+                  function: { name: call.name, arguments: JSON.stringify(call.args ?? {}) },
                   ...(extra != null ? { extra_content: extra } : {}),
                 }
               })

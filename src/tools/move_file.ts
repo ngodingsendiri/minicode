@@ -1,6 +1,7 @@
-import { realpath, rename, stat } from "node:fs/promises"
+import { mkdir, realpath, rename, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
+import { trashFile } from "../lib/trash.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 export const moveFileTool: Tool = {
@@ -36,9 +37,19 @@ export const moveFileTool: Tool = {
     const realToDir = await realpath(dirname(absTo)).catch(() => dirname(absTo))
     const realTo = resolve(realToDir, basename(absTo))
     if (isPathOutsideRoot(realTo, realRoot)) throw new Error(`destination outside workspace: ${t}`)
-    const { mkdir } = await import("node:fs/promises")
     await mkdir(dirname(absTo), { recursive: true, mode: 0o700 }).catch(() => {})
+    // S3 — dest yang sudah ada dibackup ke trash dulu (jangan timpa diam-diam)
+    let backup = ""
+    const destStat = await stat(absTo).catch(() => null)
+    if (destStat) {
+      if (destStat.isDirectory()) throw new Error(`destination is a directory: ${t}`)
+      const destReal = await realpath(absTo).catch(() => absTo)
+      if (isPathOutsideRoot(destReal, realRoot))
+        throw new Error(`destination symlink points outside workspace: ${t}`)
+      const trashed = await trashFile(root, absTo)
+      backup = ` (previous dest backed up to ${trashed})`
+    }
     await rename(absFrom, absTo)
-    return `moved ${f} -> ${t}`
+    return `moved ${f} -> ${t}${backup}`
   },
 }

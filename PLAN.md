@@ -101,7 +101,7 @@ Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Ber
 - **Tool (8.5→9.0):**
   - **T0.1 `move_file` + `delete_file`** (delete soft ke `.trash/`; jail sama `write_file.ts:30`, atomic, `isSensitive`).
   - **T0.2 `read_image`** — reuse `estimateImageTokens` `src/policy/context.ts:15` → base64 `data:image/...` cap `BASH_OUTPUT_MAX_CHARS`.
-  - **T0.3 Pisah `readonly` vs `plan`** `src/policy/permission.ts:179` — `plan` boleh `todo_write` + `delegate_task:explore` + `write_plan`.
+  - **T0.3 Pisah `readonly` vs `plan` — DEFERRED:** ditolak, `plan` = `readonly` strict (test `plan mode: read-only` + `permission Fase 1` menuntut todo_write/delegate ditolak). Kembali hanya bila ada desain `write_plan` artifact + test baru.
   - **T0.4 `O_NOFOLLOW` safe-open** `src/lib/safe-open.ts` → 6 tool file + `atomic-write.ts`; fallback `dev+ino` Windows (paralel P10.2).
   - **T0.5 `code_run` tool** — sandboxed sama `bash`, bypass deny `INLINE_INTERPRETER` `bash-guard.ts:135` (hanya bila `MINICODE_SANDBOX=os|docker`).
 - **Sesi & Memori — opt-out (8.5→9.0):**
@@ -115,7 +115,7 @@ Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Ber
 - **Sesi/Memori:** plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`); auto-extract snippet dari turn verify sukses (`cli/setup.ts:226`, opt-out sama); branch `branchSession` (`src/session/persistence.ts`); TTL hierarkis `fact/decision 180, summary 90, snippet 14` + `accessCount`.
 
 **Selesai bila (semua diukur):**
-- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` dinaikkan bila coverage naik.
+- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` dinaikkan bila coverage naik. **Sementara 77/81** (4 tool baru tanpa test saat P0) — kembalikan 81/83 setelah test P1 mendarat.
 - `test/tool-toctou.test.ts` swapper 3×1000 iterasi **0 lolos** (wajib gagal di kode lama).
 - `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global.
 - `test/tui-harness.test.ts` 10× hijau (flake TUI tidak mundur).

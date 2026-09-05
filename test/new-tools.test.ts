@@ -46,16 +46,27 @@ test("move_file: menolak keluar workspace & sensitif & tak ada", async () => {
   )
 })
 
-test("delete_file: soft-delete ke .trash + restore via move", async () => {
+test("delete_file: soft-delete ke .minicode/.trash + restore via move", async () => {
   writeFileSync(join(dir, "todel.txt"), "bye")
   const r = (await deleteFileTool.execute({ path: "todel.txt" }, ctx())) as string
   expect(r).toContain("deleted")
   expect(existsSync(join(dir, "todel.txt"))).toBe(false)
-  expect(existsSync(join(dir, ".trash"))).toBe(true)
+  expect(existsSync(join(dir, ".minicode", ".trash"))).toBe(true)
   const m = /\.trash[\\/]([^\s)]+)/.exec(r)
   expect(m).not.toBeNull()
-  await moveFileTool.execute({ from: join(".trash", m![1]!), to: "restored.txt" }, ctx())
+  await moveFileTool.execute(
+    { from: join(".minicode", ".trash", m![1]!), to: "restored.txt" },
+    ctx(),
+  )
   expect(readFileSync(join(dir, "restored.txt"), "utf8")).toBe("bye")
+})
+
+test("move_file: dest yang ada dibackup ke trash, bukan ditimpa diam-diam", async () => {
+  writeFileSync(join(dir, "a.txt"), "new")
+  writeFileSync(join(dir, "b.txt"), "old")
+  const r = (await moveFileTool.execute({ from: "a.txt", to: "b.txt" }, ctx())) as string
+  expect(r).toContain("backed up")
+  expect(readFileSync(join(dir, "b.txt"), "utf8")).toBe("new")
 })
 
 test("delete_file: menolak direktori, luar workspace, tak ada", async () => {
@@ -112,15 +123,28 @@ test("code_run: timeout membunuh loop tak berujung (tanpa hang)", async () => {
   expect(typeof r).toBe("string")
 })
 
+test("code_run: substitusi shell $(...) tidak dieksekusi (tanpa shell)", async () => {
+  // Regresi S2: versi lama merangkai `node -e "<code>"` lewat shell:true,
+  // sehingga $(...)/backtick di kode dieksekusi shell SEBELUM node.
+  process.env.MINICODE_SANDBOX = "os"
+  const r = (await codeRunTool.execute(
+    { lang: "node", code: 'console.log("$(echo PWNED)")' },
+    ctx(),
+  )) as string
+  expect(r).toContain("$(")
+  expect(r).not.toMatch(/^PWNED$/m)
+})
+
 test("permission: move/delete butuh tulis, read_image read-only", async () => {
   const ro = createPermissionHandler({ mode: "readonly", root: dir })
   const plan = createPermissionHandler({ mode: "plan", root: dir })
   const all = createPermissionHandler({ mode: "allow-all", root: dir })
-  const call = (name: string, args: unknown) => ({ name, args }) as never
-  expect(await ro.check(call("move_file", { from: "a", to: "b" }))).toBe("deny")
-  expect(await ro.check(call("delete_file", { path: "a" }))).toBe("deny")
-  expect(await ro.check(call("read_image", { path: "a.png" }))).toBe("allow")
-  expect(await plan.check(call("move_file", { from: "a", to: "b" }))).toBe("deny")
-  expect(await all.check(call("move_file", { from: "a", to: "b" }))).toBe("allow")
-  expect(await all.check(call("delete_file", { path: "a" }))).toBe("allow")
+  const deps = { signal: new AbortController().signal } as never
+  const call = (name: string, args: unknown) => [{ name, args }, deps] as unknown as [never, never]
+  expect(await ro.check(...call("move_file", { from: "a", to: "b" }))).toBe("deny")
+  expect(await ro.check(...call("delete_file", { path: "a" }))).toBe("deny")
+  expect(await ro.check(...call("read_image", { path: "a.png" }))).toBe("allow")
+  expect(await plan.check(...call("move_file", { from: "a", to: "b" }))).toBe("deny")
+  expect(await all.check(...call("move_file", { from: "a", to: "b" }))).toBe("allow")
+  expect(await all.check(...call("delete_file", { path: "a" }))).toBe("allow")
 })

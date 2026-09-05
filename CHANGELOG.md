@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.4] - 2026-09-06 — Kritik S1–S5: side-map signature, code_run tanpa shell, trash bersama, read_image utuh
+
+### Fixed
+- **M0.1 self-defeating (P0):** `__extra_content` di `args` ditolak `validateArgs` (`unknown property`, semua schema `additionalProperties:false`) — tool call Gemini thinking gagal validasi. Kini side-map `toolCallId→extra_content` (consume-once, cap 500) di `vendor/minicore/src/providers/openai-compat.ts`; args bersih, echo `extra_content` saat replay. Vendor sync `caba755c`.
+- **`code_run` shell-injection:** kode via `node -e` + `shell:true` mengeksekusi `$(...)`/backtick di shell dulu. Kini spawn langsung (argv, tanpa shell) + tree-kill dua OS + gate sandbox tetap.
+- **`move_file` overwrite diam-diam:** dest yang ada dibackup ke trash dulu (catat path di hasil).
+- **`read_image` potong base64 diam-diam:** kini kirim utuh + lapor `(bytes mime, tokens)`; cap tetap di file-size.
+
+### Added
+- **`src/lib/trash.ts`:** `trashDir`/`trashFile` bersama (`.minicode/.trash`, gitignored, cap 100 terbaru) untuk `delete_file` + backup `move_file` (ARCH + AGENTS map update).
+- **Test:** `thought_signature` fake-SSE (args bersih + echo replay), `$(echo PWNED)` tak dieksekusi, backup overwrite — `1237 pass 0 fail`, coverage 79.98/83.19.
+
+### Deferred
+- **T0.3 (`plan` vs `readonly` split):** ditolak test `plan mode: read-only` — `plan` tetap strict; kembali bila ada desain `write_plan` + test baru. Gate 77/81 sementara sampai test P1 mendarat.
+
 ## [0.9.3] - 2026-09-06 — code_run/bash timeout tree-kill + regression tests 4 tools
 
 ### Fixed

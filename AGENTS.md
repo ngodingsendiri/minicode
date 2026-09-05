@@ -92,6 +92,9 @@ cli/args.ts:
   function readPrompt(...)
 src/lib/atomic-write.ts:
   function atomicWriteText(...)
+src/lib/trash.ts:
+  function trashDir(...)
+  function trashFile(...)
 src/lib/net.ts:
   function isPrivateHost(...)
   function isPrivateHostWithDns(...)

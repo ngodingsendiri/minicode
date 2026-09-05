@@ -1,12 +1,13 @@
-import { randomUUID } from "node:crypto"
-import { mkdir, realpath, rename, stat } from "node:fs/promises"
-import { basename, isAbsolute, join, resolve } from "node:path"
+import { realpath, stat } from "node:fs/promises"
+import { isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
+import { trashFile } from "../lib/trash.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 export const deleteFileTool: Tool = {
   name: "delete_file",
-  description: "Delete a file (soft-delete to .trash/ with undo via move). Use for removing files.",
+  description:
+    "Delete a file (soft-delete to .minicode/.trash/ with undo via move). Use for removing files.",
   parameters: {
     type: "object",
     properties: {
@@ -29,11 +30,8 @@ export const deleteFileTool: Tool = {
     const st = await stat(real).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.isDirectory()) throw new Error(`path is directory, use bash rm -r: ${p}`)
-    // soft-delete: pindah ke .trash/<uuid>-<basename>
-    const trashDir = join(root, ".trash")
-    await mkdir(trashDir, { recursive: true, mode: 0o700 }).catch(() => {})
-    const dest = join(trashDir, `${randomUUID().slice(0, 8)}-${basename(abs)}`)
-    await rename(abs, dest)
+    // soft-delete ke .minicode/.trash (gitignored, cap 100) — restore via move_file
+    const dest = await trashFile(root, abs)
     return `deleted ${p} -> ${dest} (soft-delete, restore via move_file if needed)`
   },
 }

@@ -57,6 +57,8 @@ export const readImageTool: Tool = {
             ? "image/gif"
             : "image/png"
     const tokens = estimateImageTokens(buf.byteLength)
-    return `data:${mime};base64,${b64.slice(0, 200000)}\n(tokens ~${tokens})`
+    // S4 — kirim utuh + laporkan bytes (dulu slice 200k diam-diam → gambar korup).
+    // File sudah di-cap BASH_OUTPUT_MAX_CHARS di atas, jadi b64 selalu muat konteks.
+    return `data:${mime};base64,${b64}\n(${buf.byteLength} bytes ${mime}, tokens ~${tokens})`
   },
 }

@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test"
 import { ProviderError } from "#minicore/core/errors.ts"
+import { validateArgs } from "#minicore/core/tool.ts"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { createAnthropicProvider } from "../src/providers/anthropic.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
 
@@ -353,4 +355,86 @@ test("anthropic vision: user image content dikirim base64", async () => {
   expect(imagePart).toBeTruthy()
   expect(imagePart.source.media_type).toBe("image/png")
   expect(imagePart.source.data).toBe(Buffer.from(img).toString("base64"))
+})
+
+test("openai-compat thought_signature: args bersih, echo via side-map", async () => {
+  // Regresi S1: versi lama menaruh __extra_content di args → validateArgs
+  // menolak ("unknown property") sehingga tool call Gemini thinking gagal.
+  const origFetch = globalThis.fetch
+  const bodies: any[] = []
+  const sig = { google: { thought_signature: "sig-abc-123" } }
+  const toolChunk = `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":"{\\"path\\":\\"a.txt\\"}"},"extra_content":${JSON.stringify(sig)}}]}}]}\n\n`
+  const finishChunk = `data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n`
+  let n = 0
+  ;(globalThis as unknown as { fetch: unknown }).fetch = async (_url: unknown, init: any) => {
+    bodies.push(JSON.parse(init.body))
+    n++
+    // request ke-2 (replay history): langsung finish tanpa tool
+    const sse =
+      n === 1
+        ? toolChunk + finishChunk
+        : `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n`
+    return new Response(sse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }) as unknown as Response
+  }
+  const p = createOpenAICompatProvider({ baseUrl: "https://x/v1", apiKey: "k", models: ["m"] })
+  const calls: any[] = []
+  try {
+    for await (const ev of p.stream(
+      { messages: [{ role: "user", content: "hi" }] },
+      new AbortController().signal,
+    )) {
+      if (ev.type === "tool_call") calls.push(ev)
+    }
+  } catch {}
+  globalThis.fetch = origFetch
+  expect(calls.length).toBe(1)
+  const args = calls[0]!.args as Record<string, unknown>
+  // args harus bersih — executor validateArgs additionalProperties:false
+  expect("__extra_content" in args).toBe(false)
+  expect(args).toEqual({ path: "a.txt" })
+  const schema = {
+    type: "object",
+    properties: { path: { type: "string" } },
+    required: ["path"],
+    additionalProperties: false,
+  } as const
+  expect(validateArgs(schema, args).ok).toBe(true)
+
+  // replay: history berisi tool call di atas → body ke-2 harus echo extra_content
+  const origFetch2 = globalThis.fetch
+  ;(globalThis as unknown as { fetch: unknown }).fetch = async (_url: unknown, init: any) => {
+    bodies.push(JSON.parse(init.body))
+    return new Response(
+      `data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n`,
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ) as unknown as Response
+  }
+  try {
+    for await (const _ of p.stream(
+      {
+        messages: [
+          { role: "user", content: "hi" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [{ id: "call_1", name: "read_file", args }],
+          } as any,
+        ],
+      },
+      new AbortController().signal,
+    )) {
+    }
+  } catch {}
+  globalThis.fetch = origFetch2
+  const replay = bodies[bodies.length - 1]
+  const tc = replay.messages
+    .find((m: any) => m.role === "assistant")
+    ?.tool_calls?.find((t: any) => t.id === "call_1")
+  expect(tc).toBeTruthy()
+  expect(tc.extra_content).toEqual(sig)
+  // arguments yang dikirim tidak mengandung kunci siluman
+  expect(tc.function.arguments).toBe(JSON.stringify({ path: "a.txt" }))
 })
