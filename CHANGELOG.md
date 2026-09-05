@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.3] - 2026-09-06 — code_run/bash timeout tree-kill + regression tests 4 tools
+
+### Fixed
+- **`code_run` timeout diabaikan → hang selamanya:** tool meneruskan `timeout`, padahal `bash` membaca `timeoutMs` (`src/tools/bash.ts:157`) — loop tak berujung tidak pernah dibunuh. Kini dipetakan (`src/tools/code_run.ts:33`).
+- **Kill yatim Windows:** `p.kill()` hanya membunuh wrapper `cmd.exe` — cucu `node -e` tetap hidup menahan pipe (`close` tak pernah datang). `killTree()` baru (`src/tools/bash.ts`): `taskkill /T /F` langsung saat timeout/abort di win32; process-group kill (`kill(-pid)`, spawn `detached`) di POSIX. Terverifikasi: 4 proses yatim `while(true)` dari uji sebelumnya dibersihkan, uji timeout kini selesai <3s (dulu hang >120s).
+- **Artefak bench:** `bench/swebench_results.json` hasil run `--fake` masuk lint (formatter) — dihapus + masuk `.gitignore`.
+
+### Added — test
+- **`test/new-tools.test.ts` (10 test):** move (pindah/auto-mkdir/deny), delete (soft-delete `.trash` + restore/deny), read_image (mime/base64/cap), code_run (deny tanpa sandbox/echo/timeout-kill), permission mapping readonly/plan/allow-all. `1234 pass 0 fail`, coverage naik 77.81/81.24 → **80.03/83.09**.
+
 ## [0.9.2] - 2026-09-06 — P10/P11/P13 P0: --cwd repo-wide, O_NOFOLLOW, pricing, max_tokens, thought_signature, 4 tools, memory categories
 
 ### Added — P13/P11/P10 P0

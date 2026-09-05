@@ -1,4 +1,4 @@
-﻿import { spawn } from "node:child_process"
+﻿import { spawn, spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import type { Tool, ToolContext } from "#minicore"
@@ -66,6 +66,34 @@ function reapFinishedJobs(): void {
   for (const [id, j] of jobs) {
     if (j.done && now - j.startedAt > LIMITS.BASH_BACKGROUND_MAX_LIFETIME_MS) jobs.delete(id)
   }
+}
+
+/**
+ * Bunuh proses + seluruh subtree-nya. Di Windows `p.kill()` hanya membunuh
+ * wrapper `cmd.exe` — cucu seperti `node -e "while(true){}"` tetap hidup,
+ * menahan pipe stdio sehingga event `close` tidak pernah datang (hang
+ * selamanya walau timeout sudah lewat). `taskkill /T` menutup tree-nya.
+ */
+function killTree(p: ReturnType<typeof spawn>): void {
+  try {
+    if (process.platform === "win32" && p.pid !== undefined) {
+      const r = spawnSync("taskkill", ["/pid", String(p.pid), "/T", "/F"], {
+        stdio: "ignore",
+      })
+      if (r.status === 0) return
+    } else if (p.pid !== undefined) {
+      // POSIX: bunuh seluruh grup proses (shell wrapper + cucu seperti
+      // `node -e`). Spawn foreground memakai detached:true agar shell jadi
+      // group leader; kill(-pid) menutup tree-nya.
+      try {
+        process.kill(-p.pid, "SIGKILL")
+        return
+      } catch {}
+    }
+  } catch {}
+  try {
+    p.kill("SIGKILL")
+  } catch {}
 }
 
 /** Hentikan semua job — dipanggil saat CLI keluar agar tidak ada proses yatim. */
@@ -210,6 +238,9 @@ export const bashTool: Tool = {
         cwd: resolvedCwd,
         env: sanitizeSpawnEnv(process.env),
         signal: ctx.signal,
+        // detached agar shell jadi group leader → killTree bisa bunuh
+        // seluruh grup (POSIX kill(-pid)). Tanpa ini cucu yatim menahan pipe.
+        detached: process.platform !== "win32",
       })
       const buf = new CappedBuffer(LIMITS.BASH_OUTPUT_MAX_CHARS)
       // Progres inkremental: command panjang (bun test, build) tidak lagi
@@ -234,11 +265,14 @@ export const bashTool: Tool = {
       })
       let killTimer: ReturnType<typeof setTimeout> | undefined
       const t = setTimeout(() => {
-        p.kill("SIGTERM")
+        // Windows: SIGTERM hanya membunuh cmd.exe wrapper — cucu (node -e)
+        // bisa belum lahir (spawn lambat) atau yatim sambil menahan pipe.
+        // Eskalasi taskkill /pid-shell-yang-sudah-mati lalu gagal total.
+        // Jadi di win32 langsung tree-kill saat timeout, tanpa jeda.
+        if (process.platform === "win32") killTree(p)
+        else p.kill("SIGTERM")
         killTimer = setTimeout(() => {
-          try {
-            p.kill("SIGKILL")
-          } catch {}
+          killTree(p)
         }, 2000)
       }, timeout)
       ctx.signal.addEventListener(
@@ -246,11 +280,10 @@ export const bashTool: Tool = {
         () => {
           clearTimeout(t)
           if (killTimer) clearTimeout(killTimer)
-          p.kill("SIGTERM")
+          if (process.platform === "win32") killTree(p)
+          else p.kill("SIGTERM")
           killTimer = setTimeout(() => {
-            try {
-              p.kill("SIGKILL")
-            } catch {}
+            killTree(p)
           }, 1000)
         },
         { once: true },

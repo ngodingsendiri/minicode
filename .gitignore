@@ -32,6 +32,7 @@ tmp/
 *.tmp
 .tmp-*/
 bench/results.json
+bench/swebench_results.json
 
 # Local tool artifacts
 .freebuff/

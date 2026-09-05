@@ -28,9 +28,12 @@ export const codeRunTool: Tool = {
       lang === "python"
         ? `python3 -c ${JSON.stringify(code as string)}`
         : `node -e ${JSON.stringify(code as string)}`
-    // delegate ke bashTool yang sudah memiliki jail + sandbox
+    // delegate ke bashTool yang sudah memiliki jail + sandbox.
+    // bash memakai `timeoutMs` — jangan `timeout` (akan diabaikan → hang).
+    const timeoutMs =
+      typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : 10000
     return (bashTool.execute as unknown as (a: unknown, c: unknown) => Promise<unknown>)(
-      { cmd, timeout: (timeout as number) ?? 10000 },
+      { cmd, timeoutMs },
       ctx,
     )
   },
