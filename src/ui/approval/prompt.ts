@@ -53,3 +53,22 @@ export async function promptAsk(call: ApprovalRequest): Promise<"allow" | "deny"
   if (a === "y" || a === "yes") return "allow"
   return "deny"
 }
+
+/** View pertanyaan ask_user — di-inject ke src/tools/ask_user.ts dari cli/setup.ts.
+ * Teks pertanyaan berasal dari model (tidak terpercaya): disanitasi sebelum
+ * tampil agar tak bisa membersihkan layar via escape sequence. Return null
+ * bila user membatalkan (Esc/Ctrl+C → askLine null) atau jawaban kosong. */
+export async function promptAskText(question: string, options?: string[]): Promise<string | null> {
+  if (!process.stdin.isTTY) return null
+  const q = sanitizeAnsiLine(question).slice(0, 2000)
+  process.stdout.write(`\n${c.warning(c.bold("Agent asks"))}\n`)
+  process.stdout.write(`  ${q}\n`)
+  if (options?.length) {
+    options.forEach((o, i) => {
+      process.stdout.write(`  ${c.dim(`${i + 1}.`)} ${sanitizeAnsiLine(o)}\n`)
+    })
+  }
+  const ans = await askLine({ prompt: `${c.bold("Your answer")} (empty = cancel): ` })
+  if (ans == null || !ans.trim()) return null
+  return ans.trim()
+}

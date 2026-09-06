@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path"
+import { loadConfig } from "../src/config.ts"
 import type { Usage } from "../src/policy/usage.ts"
 import { refreshProviderModels } from "../src/providers/provision.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
@@ -51,11 +52,23 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
   { name: "exit", desc: "Exit" },
 ]
 
+/** Perintah yang ditangani DRIVER REPL (bukan handleBuiltinCommand) —
+ * ditampilkan di /help agar bisa ditemukan, tapi sengaja TIDAK masuk dropdown
+ * completion (di dropdown cukup /mode /compact /thinking + builtin).
+ * Opsi A audit UX: undo/redo/clear/copy/history tidak punya duplikat lain. */
+export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
+  { name: "undo", desc: "Revert file changes from the last turn" },
+  { name: "redo", desc: "Re-apply reverted changes" },
+  { name: "clear", desc: "Mark a boundary (scrollback preserved)" },
+  { name: "copy", desc: "Copy last turn to clipboard (OSC 52)" },
+  { name: "history", desc: "Show recent prompt history" },
+]
+
 /** Pintasan papan tombol — didokumentasikan di /help, bukan hanya di kode. */
 const KEYBOARD_HELP: [string, string][] = [
   ["enter", "submit"],
   ["shift+tab", "cycle permission mode"],
-  ["tab", "complete command"],
+  ["tab", "complete command (empty line: toggle plan/build)"],
   ["up / down", "history or picker navigation"],
   ["ctrl+o", "toggle compact/expanded tool output"],
   ["ctrl+t", "toggle reasoning"],
@@ -98,7 +111,7 @@ export async function handleBuiltinCommand(
       // pintasan lengkap dipindah ke `/help tombol`.
       const wantKeys = /^(tombol|keys?|keyboard)$/i.test(args)
       if (wantKeys) {
-        console.log("\nPapan tombol:")
+        console.log("\nKeyboard:")
         for (const [key, desc] of KEYBOARD_HELP) {
           console.log(`  ${pad(key, 22)}${desc}`)
         }
@@ -106,7 +119,7 @@ export async function handleBuiltinCommand(
         return { handled: true }
       }
       console.log("\nCommands:")
-      for (const b of BUILTIN_COMMANDS) {
+      for (const b of [...BUILTIN_COMMANDS, ...DRIVER_HELP_COMMANDS]) {
         if (b.hidden) continue
         const withArgs = b.args ? `${b.name} ${b.args}` : b.name
         console.log(`  /${pad(withArgs, 22)}${b.desc}`)
@@ -145,7 +158,7 @@ export async function handleBuiltinCommand(
     }
 
     case "exit":
-      console.log("Sampai jumpa.")
+      console.log("Bye.")
       return { handled: true, shouldExit: true }
 
     case "model": {
@@ -185,12 +198,19 @@ export async function handleBuiltinCommand(
     case "sync": {
       // Re-detect model dari semua provider -> config diperbarui otomatis
       console.log("\nSyncing models…")
-      const results = await refreshProviderModels({ cwd: ctx.cwd })
-      if (results.length === 0) {
-        console.log("  No providers configured.")
+      const { updated, failed } = await refreshProviderModels({ cwd: ctx.cwd })
+      if (!updated.length && !failed.length) {
+        // Bedakan "belum ada provider" dari "ada tapi deteksi kosong" —
+        // yang kedua jangan diklaim sebagai yang pertama.
+        const cfg = await loadConfig(ctx.cwd)
+        if (cfg.providers.length === 0) console.log("  No providers configured.")
+        else console.log("  No changes — check API key and network, then retry.")
       } else {
-        for (const r of results) {
+        for (const r of updated) {
           console.log(`  ${glyphs.check} ${r.id}: ${r.from} -> ${r.to} models`)
+        }
+        for (const f of failed) {
+          console.log(`  ${glyphs.cross} ${f.id}: ${f.reason}`)
         }
       }
       console.log("  Restart to use updated models.\n")

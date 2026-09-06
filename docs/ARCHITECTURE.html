@@ -378,7 +378,7 @@
     <rect class="box b2" x="230" y="254" width="500" height="88"></rect>
     <text class="t t2" x="480" y="280" text-anchor="middle">LAPISAN 2 — AGEN MINICODE <tspan class="d" style="font-weight:400">(logika)</tspan></text>
     <text class="p" x="480" y="299" text-anchor="middle">src/ — app · policy · tools · providers · session · mcp</text>
-    <text class="d" x="480" y="318" text-anchor="middle">31 tool bawaan · izin &amp; keamanan · persistensi · ↛ import src/ui</text>
+    <text class="d" x="480" y="318" text-anchor="middle">37 tool bawaan · izin &amp; keamanan · persistensi · ↛ import src/ui</text>
 
     <!-- cabang MCP server -->
     <path class="side" d="M230,298 H176" marker-end="url(#arwW)"></path>
@@ -455,7 +455,7 @@
       <div class="lnum">2</div>
       <div class="ltitle">Agen Minicode <span class="chip c2">L2</span></div>
       <div class="lpath">src/ (non-ui)</div>
-      <div class="ldesc">Perakit sesi (app/), keamanan &amp; izin (policy/), 31 tool, provider, MCP/LSP, hooks, memory, skills, persistensi sesi.</div>
+      <div class="ldesc">Perakit sesi (app/), keamanan &amp; izin (policy/), 37 tool, provider, MCP/LSP, hooks, memory, skills, persistensi sesi.</div>
     </div>
     <div class="stackarrow">▼ lewat <code>#minicore</code></div>
     <div class="layer l3">
@@ -567,9 +567,9 @@
       <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: whitelist flag, bentuk <code>--f v</code> &amp; <code>--f=v</code>, baca stdin.</div><div class="exports">getArg · promptFromArgs · readPrompt</div></div>
       <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">Composition root: rakit config + kernel session + tools + permission; inject wizard (setupWhenEmpty) dan approval (ask) ke lapisan logika.</div><div class="exports">createCliSession · CliSession</div></div>
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div><div class="exports">dispatch</div></div>
-      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya.</div><div class="exports">handleBuiltinCommand · /help /provider /model /sync /status /sessions /init /exit /thinking</div></div>
-      <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver.</div><div class="exports">runRepl</div></div>
-      <div class="mod"><div class="fname">commands/ — 10 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts · memory.ts (status RAG: rows/size/hit-rate)</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats · handleMemory</div></div>
+      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya. DRIVER_HELP_COMMANDS = perintah driver yang tampil di /help tapi TIDAK di dropdown (undo/redo/clear/copy/history).</div><div class="exports">handleBuiltinCommand · BUILTIN_COMMANDS · DRIVER_HELP_COMMANDS · /help /provider /model /sync /status /sessions /init /exit /thinking</div></div>
+      <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver; Tab kosong toggle plan/build; did-you-mean untuk typo slash.</div><div class="exports">runRepl · suggestSimilar</div></div>
+      <div class="mod"><div class="fname">commands/ — 11 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts · memory.ts (status RAG: rows/size/hit-rate) · doctor.ts (diagnosis lokal)</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats · handleMemory · handleDoctor</div></div>
       <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/.</div></div>
     </div>
   </details>
@@ -601,9 +601,9 @@
   </details>
 
   <details class="group" id="g-tools">
-    <summary><span class="chip c2">L2</span> src/tools/ <span class="role">— 31 tool bawaan agen (registry: allTools)</span></summary>
+    <summary><span class="chip c2">L2</span> src/tools/ <span class="role">— 37 tool bawaan agen (registry: allTools)</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Registry tool bawaan; tool MCP di-append runtime dengan dedup nama.</div><div class="exports">allTools: Tool[] (31) · withMcpTools</div></div>
+      <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Registry tool bawaan; tool MCP di-append runtime dengan dedup nama.</div><div class="exports">allTools: Tool[] (37) · withMcpTools</div></div>
       <div class="mod"><div class="fname">bash.ts — 3 tool</div><div class="fdesc">bash (eksekusi, integrasi bash-guard), bashOutput, bashKill.</div><div class="exports">bashTool · bashOutputTool · bashKillTool</div></div>
       <div class="mod"><div class="fname">read_file.ts · write_file.ts · edit.ts · patch.ts — 4 tool</div><div class="fdesc">Baca/tulis/edit/patch; edit pakai flexibleMatch bertingkat.</div><div class="exports">readFileTool · writeFileTool · editTool · applyPatchTool</div></div>
       <div class="mod"><div class="fname">glob.ts · grep.ts — 2 tool</div><div class="fdesc">Pencarian berkas &amp; isi (grep: ripgrep bila ada, engine js via env).</div><div class="exports">globTool · grepTool</div></div>
@@ -612,7 +612,7 @@
       <div class="mod"><div class="fname">lsp.ts — 6 tool</div><div class="fdesc">Diagnostics, definition, references, hover, symbols, workspaceSymbols.</div><div class="exports">lspDiagnosticsTool · lspDefinitionTool · lspReferencesTool · lspHoverTool · lspSymbolsTool · lspWorkspaceSymbolsTool</div></div>
       <div class="mod"><div class="fname">web_fetch.ts · web_search.ts — 2 tool</div><div class="fdesc">Fetch/search web dengan proteksi SSRF (DNS pinning).</div><div class="exports">webFetchTool · webSearchTool</div></div>
       <div class="mod"><div class="fname">memory.ts — 3 tool</div><div class="fdesc">Memori lintas sesi (RAG).</div><div class="exports">readMemoryTool · writeMemoryTool · forgetMemoryTool</div></div>
-      <div class="mod"><div class="fname">task.ts · todo.ts — 3 tool</div><div class="fdesc">delegateTask (sub-agen via agents/pool; session factory di-inject dari cli/index.ts — tool tidak mengimpor lapisan app); todo state per sesi.</div><div class="exports">delegateTaskTool · setSubAgentSessionFactory · SubAgentSessionFactory · todoWriteTool · todoReadTool · todoSession</div></div>
+      <div class="mod"><div class="fname">task.ts · todo.ts · submit_result.ts · ask_user.ts — 5 tool</div><div class="fdesc">delegateTask (sub-agen via agents/pool; session factory di-inject dari cli/index.ts — tool tidak mengimpor lapisan app); todo state per sesi + plan artifact .minicode/plans/&lt;id&gt;.md; submit_result (output terstruktur); ask_user (gated, view di-inject dari cli/setup.ts).</div><div class="exports">delegateTaskTool · setSubAgentSessionFactory · SubAgentSessionFactory · todoWriteTool · todoReadTool · todoSession · renderPlan · savePlanSnapshot · loadPlan · submitResultTool · askUserTool · setAskTextFn</div></div>
       <div class="mod"><div class="fname">mcp_call.ts — 4 tool</div><div class="fdesc">Klien tool MCP eksternal dari dalam loop agen.</div><div class="exports">mcpListTool · mcpCallTool · mcpReadTool · mcpPromptTool</div></div>
     </div>
   </details>
@@ -620,9 +620,10 @@
   <details class="group" id="g-providers">
     <summary><span class="chip c2">L2</span> src/providers/ <span class="role">— koneksi model</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (fallback berantai).</div></div>
+      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (fallback berantai; 429 + retry-after ditunggu — cap 30 dtk — lalu fallback, atau coba-ulang-di-tempat bila provider tunggal).</div></div>
       <div class="mod"><div class="fname">anthropic.ts</div><div class="fdesc">Adapter Anthropic native (stream SSE).</div></div>
-      <div class="mod"><div class="fname">build.ts · detect.ts · presets.ts</div><div class="fdesc">Bangun adapter; deteksi tipe dari base URL; preset provider populer.</div></div>
+      <div class="mod"><div class="fname">responses.ts</div><div class="fdesc">Adapter Responses API (/v1/responses, store:false, chaining previous_response_id per model).</div><div class="exports">createResponsesProvider · clearResponsesChain</div></div>
+      <div class="mod"><div class="fname">build.ts · detect.ts · presets.ts</div><div class="fdesc">Bangun adapter (termasuk Responses API + peta reasoningEffort); deteksi tipe dari probe (path /responses → responses), bukan substring URL; preset provider populer.</div></div>
       <div class="mod"><div class="fname">provision.ts</div><div class="fdesc">Provisioning provider: deteksi model + simpan/hapus/sinkron entri config. Dipisah dari config.ts (B3) agar config murni IO.</div><div class="exports">saveProvider · detectAndSave · deriveProviderId · removeProvider · refreshProviderModels</div></div>
       <div class="mod"><div class="fname">oauth.ts · auth-store.ts</div><div class="fdesc">Alur OAuth dan penyimpanan kredensial.</div></div>
     </div>
@@ -631,7 +632,7 @@
   <details class="group" id="g-session">
     <summary><span class="chip c2">L2</span> src/session/ <span class="role">— persistensi &amp; checkpoint</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">persistence.ts</div><div class="fdesc">sqlite WAL: simpan pesan inkremental, daftar sesi, purge TTL.</div><div class="exports">saveSession · loadSession · listSessions · deleteSession · purgeExpired · getSessionTtlDays</div></div>
+      <div class="mod"><div class="fname">persistence.ts</div><div class="fdesc">sqlite WAL: simpan pesan inkremental, daftar sesi, purge TTL, fork sesi (branch).</div><div class="exports">saveSession · loadSession · listSessions · deleteSession · branchSession · purgeExpired · getSessionTtlDays</div></div>
       <div class="mod"><div class="fname">shadow-git.ts</div><div class="fdesc">SHA tree git per turn di refs/minicode/* — tanpa menyentuh HEAD/index user.</div><div class="exports">ShadowSnapshot · ShadowChange · RestoreResult</div></div>
       <div class="mod"><div class="fname">checkpoint.ts</div><div class="fdesc">Manifes checkpoint di .minicode/checkpoints/ (maks 20) + undo per turn.</div><div class="exports">Checkpoint · CheckpointManifest · FileSnapshot</div></div>
     </div>
@@ -666,7 +667,7 @@
       <div class="mod"><div class="fname">mcp/ (client · server · transport · http-transport)</div><div class="fdesc">Klien &amp; server MCP; transport stdio/HTTP (SSRF-protected). server.ts = minicode jadi MCP server.</div><div class="exports">mcpInventory · listMcpResources · listMcpPrompts · extractMcpText · getMcpServerIds · McpServerConfig</div></div>
       <div class="mod"><div class="fname">lsp/client.ts</div><div class="fdesc">Klien LSP: diagnostics, posisi symbol, server per ekstensi.</div><div class="exports">LspConnection · configureServers · lspDiagnostics · languageIdFor</div></div>
       <div class="mod"><div class="fname">hooks/run.ts</div><div class="fdesc">Eksekusi hook eksternal opt-in (MINICODE_HOOKS=1). Allowlist pindah ke policy/allowlist.ts.</div><div class="exports">findRunHooks · runRunHooks</div></div>
-      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor (embedding): FTS5 + idx lower(text), ranking MMR λ=0.7 + dedup cosine 0.92, chunk 2000/overlap 200 (kolom parent), TTL 90 hari + cap 5000 baris, kolom model/dim, SSRF strict.</div><div class="exports">addMemory · searchHybrid · deleteMemoryByQuery · clearAllMemory · getMemoryStats · splitMemoryChunks · MemoryHit · MemoryStats</div></div>
+      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor (embedding): FTS5 + idx lower(text), ranking MMR λ=0.7 + dedup cosine 0.92, chunk 2000/overlap 200 (kolom parent), TTL hierarkis fact/decision 180 + summary 90 + snippet 14 hari + cap 5000 baris, kolom model/dim/category/tags/access_count, SSRF strict.</div><div class="exports">addMemory · searchHybrid · deleteMemoryByQuery · clearAllMemory · getMemoryStats · splitMemoryChunks · MemoryHit · MemoryStats</div></div>
       <div class="mod"><div class="fname">skills/loader.ts</div><div class="fdesc">Muat &amp; render skill — slash /nama-skill.</div></div>
       <div class="mod"><div class="fname">repo/repomap.ts</div><div class="fdesc">Peta ringkas struktur repo untuk konteks (LSP atau regex).</div></div>
       <div class="mod"><div class="fname">sandbox/docker.ts · sandbox/os.ts</div><div class="fdesc">Eksekusi terisolasi Docker/OS di bawah kebijakan sandbox-policy.</div></div>

@@ -102,3 +102,13 @@ test("runWithSelfHeal: caps at max cycles", async () => {
   expect(runs.length).toBe(3)
   expect(onCycleCalls).toBe(3)
 })
+
+test("buildVerifySnippet: ringkas, potong prompt panjang", async () => {
+  const { buildVerifySnippet } = await import("../src/policy/verifier.ts")
+  const s = buildVerifySnippet("  perbaiki   bug login  ", "bun test", 2)
+  expect(s).toContain("verified ok")
+  expect(s).toContain("perbaiki bug login")
+  expect(s).toContain("bun test")
+  const long = buildVerifySnippet("x".repeat(500), "y".repeat(300), 9)
+  expect(long.length).toBeLessThan(400)
+})

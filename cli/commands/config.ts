@@ -108,6 +108,10 @@ export async function handleConfig(
     )
     process.exit(0)
   } else if (sub === "detect") {
+    if (args.includes("--help") || args.includes("-h")) {
+      console.log("usage: minicode config detect --baseUrl <url> --apiKey <key>")
+      process.exit(0)
+    }
     const baseUrl = getArg("--baseUrl")
     const apiKey = getArg("--apiKey")
     if (!baseUrl || !apiKey) {
@@ -115,7 +119,12 @@ export async function handleConfig(
       process.exit(1)
     }
     const { detectModels } = await import("../../src/providers/detect.ts")
-    const res = await detectModels(baseUrl, apiKey)
+    const res = await detectModels(baseUrl, apiKey).catch((e) => {
+      // Host mati total (bukan sekadar tanpa /models) — katakan begitu,
+      // jangan "Detected 0 models" yang menyalahkan kredensial.
+      console.error(`${c.red(glyphs.cross)} ${(e as Error).message} — check network and URL`)
+      process.exit(1)
+    })
     console.log(
       `${c.green(glyphs.check)} Detected ${res.models.length} models (${res.providerHint}):\n${res.models.map((m) => `  ${glyphs.dot} ${m}`).join("\n")}`,
     )

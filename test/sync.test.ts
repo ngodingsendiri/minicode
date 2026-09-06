@@ -54,9 +54,10 @@ test("sync: refreshProviderModels updates config models (local)", async () => {
       ],
     }),
   )
-  const results = await refreshProviderModels({ cwd: localCwd })
-  expect(results.length).toBe(1)
-  expect(results[0]).toEqual({ id: "gw", from: 1, to: 2 })
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  expect(failed).toEqual([])
+  expect(updated.length).toBe(1)
+  expect(updated[0]).toEqual({ id: "gw", from: 1, to: 2 })
   const cfg = JSON.parse(await readFile(localConfig, "utf8"))
   expect(cfg.providers[0].models).toEqual(["model-a", "model-b"])
   expect(cfg.providers[0].apiKey).toBe("k") // secrets intak
@@ -78,9 +79,10 @@ test("sync: provider DI LOCAL tetap terupdate tanpa flag global eksplisit", asyn
     }
     return new Response("nf", { status: 404 })
   }) as typeof fetch
-  const results = await refreshProviderModels({ cwd: localCwd })
-  expect(results.length).toBe(1)
-  expect(results[0]).toEqual({ id: "gw", from: 2, to: 3 })
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  expect(failed).toEqual([])
+  expect(updated.length).toBe(1)
+  expect(updated[0]).toEqual({ id: "gw", from: 2, to: 3 })
   const cfg = JSON.parse(await readFile(localConfig, "utf8"))
   expect(cfg.providers[0].models).toEqual(["m1", "m2", "m3"])
 })
@@ -90,6 +92,25 @@ test("sync: tanpa provider di merge → hasil kosong tanpa throw", async () => {
   clearDetectCache()
   globalThis.fetch = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch
   const empty = resolve(mkdtempSync(join(tmpdir(), "minicode-sync-empty-")), "nope")
-  const results = await refreshProviderModels({ cwd: empty })
-  expect(results).toEqual([])
+  const res = await refreshProviderModels({ cwd: empty })
+  expect(res).toEqual({ updated: [], failed: [] })
+})
+
+test("sync: provider unreachable tercatat di failed, bukan hasil kosong", async () => {
+  const { clearDetectCache } = await import("../src/providers/detect.ts")
+  clearDetectCache()
+  // fetch selalu throw (jaringan mati) — bedakan dari "tak ada provider".
+  globalThis.fetch = (async () => {
+    throw new Error("socket hang up")
+  }) as unknown as typeof fetch
+  await writeFile(
+    localConfig,
+    JSON.stringify({
+      providers: [{ id: "down", baseUrl: "https://down.example/v1", apiKey: "k", models: ["m"] }],
+    }),
+  )
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  expect(updated).toEqual([])
+  expect(failed.length).toBe(1)
+  expect(failed[0]?.id).toBe("down")
 })

@@ -284,3 +284,56 @@ export async function deleteSession(id: string, cwd?: string) {
     db.close()
   }
 }
+
+// P13 P1 — branch: fork sesi (history + turns) ke id baru tanpa menyentuh
+// sumber. Butuh untuk "coba dua arah dari titik yang sama" — tanpa ini user
+// harus mengulang seluruh percakapan untuk eksplorasi alternatif.
+export async function branchSession(srcId: string, dstId: string, cwd?: string): Promise<number> {
+  if (!dstId || !/^[\w.-]{1,64}$/.test(dstId)) throw new Error("invalid branch session id")
+  const db = open(cwd)
+  const now = Date.now()
+  let copied = 0
+  const txn = db.transaction(() => {
+    const src = db.prepare("SELECT cwd, system FROM sessions WHERE id = ?").get(srcId) as {
+      cwd: string
+      system: string
+    } | null
+    if (!src) throw new Error(`session not found: ${srcId}`)
+    db.prepare(
+      "INSERT OR REPLACE INTO sessions (id, created_at, updated_at, cwd, system) VALUES (?, ?, ?, ?, ?)",
+    ).run(dstId, now, now, src.cwd, src.system)
+    const rows = db
+      .prepare(
+        "SELECT seq, role, content, toolCalls, toolCallId, name, ts FROM messages WHERE session_id = ? ORDER BY seq",
+      )
+      .all(srcId) as {
+      seq: number
+      role: string
+      content: string
+      toolCalls: string
+      toolCallId: string | null
+      name: string | null
+      ts: number
+    }[]
+    const ins = db.prepare(
+      "INSERT INTO messages (session_id, seq, role, content, toolCalls, toolCallId, name, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    for (const r of rows) {
+      ins.run(dstId, r.seq, r.role, r.content, r.toolCalls, r.toolCallId, r.name, r.ts)
+    }
+    copied = rows.length
+    const turns = db
+      .prepare("SELECT turn_idx, usage, ts FROM turns WHERE session_id = ? ORDER BY turn_idx")
+      .all(srcId) as { turn_idx: number; usage: string; ts: number }[]
+    const insT = db.prepare(
+      "INSERT INTO turns (session_id, turn_idx, usage, ts) VALUES (?, ?, ?, ?)",
+    )
+    for (const t of turns) insT.run(dstId, t.turn_idx, t.usage, t.ts)
+  })
+  try {
+    await withBusyRetry(() => txn())
+  } finally {
+    db.close()
+  }
+  return copied
+}

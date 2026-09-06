@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.9.6] - 2026-09-06 — Audit UX: Tab plan/build, did-you-mean, banner konteks, English-only, sync jujur
+
+### Added
+- **Tab kosong = toggle plan/build** (Tab berisi teks tetap completion; Shift+Tab tetap cycle semua mode) + test harness.
+- **Did-you-mean** untuk typo slash (`/sessoons` → `Did you mean /sessions?`, ambang jarak ≤2) + `suggestSimilar` teruji.
+- **Banner konteks saat start REPL** — satu baris `model · mode · cwd` (sebelumnya user buta posisi).
+- **`/thinking [on|off]`** eksplisit (docs selama ini menjanjikannya, kode mengabaikan argumen).
+- **Sync jujur**: `refreshProviderModels` kembalikan `{updated, failed}`; `sync` bedakan "belum ada provider" vs "deteksi gagal" vs "tak ada perubahan". `detectModels` lempar `unreachable:` bila tanpa satu pun respons HTTP (bedakan dari Anthropic yang memang tanpa /models).
+- **Opsi A konsolidasi perintah** (audit UX): `/cost` & `/usage` = alias `/status` (satu sumber biaya sesi); `/resume [id]` = alias `/sessions [id]`; `/undo /redo /clear /copy /history` tetap perintah mandiri — TIDAK masuk dropdown Tab, tapi terdaftar di `/help` (DRIVER_HELP_COMMANDS, dropdown tetap 3 toggle + builtin).
+
+### Fixed
+- **`doctor` "ok" palsu** untuk provider 0 models → warn + saran `sync`; path config `~/...` literal (dulu `~\...` di Windows).
+- **Error ganda**: event error provider kini ditunda (`takePendingError`, consume-once) — satu kegagalan = satu blok ✗.
+- **Sandbox notice bocor** ke `exec --help` / exit no-provider — cetak di setup setelah provider lolos.
+- **`models --match` noise** (header tanpa hasil), header kolom "Model" → "Models", `config detect --help` exit 0.
+- **`auth login` non-TTY** fail-fast (dulu menembak jaringan lalu 400).
+- **English-only**: `Bye.`, `Keyboard:`, `unknown mode`, `(80% used)`; regex penjaga diperluas.
+
+### Removed
+- **`/quit` + `/q`** — satu jalan keluar: `/exit` (plus Ctrl+C ganda). Alias tersembunyi lain tetap jalan, tak diiklankan.
+
+### Docs
+- USAGE: baris `doctor`, `/mode`, `/thinking [on|off]`, Tab toggle, tabel alias `/cost→/status` `/resume→/sessions`, catatan dropdown vs /help; hapus `/quit` dari alias.
+
+### Test & Gate
+- `1284 pass 0 fail` (91 file), `tsc` PASS, `lint` 0 warning, `gate:coverage` 80.77/84.56 (min80/84), `gate:pack` 22/22, `gate:bash` 0 bypass.
+
+## [0.9.5] - 2026-09-06 — P13/P11/P10 P1: 2 tool, Responses chaining, retry jujur, TTL hierarkis, SWE-Lite pin, doctor
+
+### Added — P13 P1 (sesi/memori/tool)
+- **`submit_result` + `ask_user`** (`src/tools/`, registry 35→37, ARCH update): output terstruktur pengganti `response_format` (`exec --json` verbatim) + tanya user di tengah run (gated, view `promptAskText` via DI `setAskTextFn`, fail-closed non-TTY). Test: validasi, gating per-mode, fail-closed.
+- **Plan artifact** (`.minicode/plans/<id>.md` tiap `todo_write`) + **`branchSession`** (fork history+turns) + **snippet verify** (`buildVerifySnippet` di `onOk`, opt-out `MINICODE_AUTO_MEMORY=0`).
+- **TTL hierarkis** (`fact/decision/preference` 180, `summary` 90, `snippet` 14 hari) + **`access_count`** per row + `memory status --json` tampil kategori + scope; `scope: all` teruji gabung lokal+global.
+
+### Added — P11 P1 (provider) + P10 P1 (pengukuran)
+- **Responses chaining** (`previous_response_id` per model) + **probe `/responses`** (bukan substring) + **`mapReasoningToThinking`** + **retry-after dihonori** (tunggu cap 30 dtk → fallback; provider tunggal coba-ulang-di-tempat). Test fake-SSE/chaining (8 test, prinsip 3: solo-retry gagal di kode lama).
+- **SWE-bench Lite**: `bench/swebench_lite_20.jsonl` 20 instance nyata terstratifikasi (12 repo, base_commit spot-check via GitHub API) + harness kini apply `test_patch` (bug: tanpanya skor fiksi) + flag env-provider + `--fake` hijau `0/20`.
+- **`minicode doctor`** (runtime/providers/pricing/memory/sandbox/config, `--json`) + TUI harness **10/10** + lint **0 warning** (suppresi eksplisit string serangan) + coverage-min **80/84** (naik dari 77/81).
+
+### Fixed
+- **Regresi sleep 30 dtk**: retry-after besar + provider tunggal membuat 2 test lama timeout — test dipersempit (cap 100 ms, maksud cap tetap teruji), perilaku honori dipertahankan.
+- **Koreksi audit**: klaim "mojibake" di test/detect-cache & bench/swebench ralat — verifikasi byte: UTF-8 bersih, yang rusak hanya decode konsol PowerShell 5.1. `import-convention` hijau membuktikannya.
+
+### Deferred (jujur, bukan diam)
+- **OAuth Copilot/ChatGPT** (P11 P2): endpoint device-flow tak terverifikasi — mengarangnya melanggar Prinsip 2.
+- **81/83 coverage**: 80.75/84.52 — sisa di area lama (lsp/config/repl).
+
+### Test & Gate (update run nyata 2026-09-06)
+
+- **SWE-Lite-20 nyata: 0/20** (`nemotron-3.5-lightning-free` gratis via OpenCode Zen, 25 steps, ~56 mnt) — dengan catatan validitas: reproduksi manual membuktikan lingkungan (Python 3.14 + pytest 9 vs repo era 2022) mendominasi hasil (`pytest-11143` lolos tanpa patch; `requests-1963` collection error `cgi`). Harness end-to-end (clone→test_patch→agen→pytest) terbukti jalan; skor comparable butuh Docker per-instance.
+- `1270 pass 0 fail` (90 file; TOCTOU 3 skip di Windows by design), `tsc` PASS, `lint` 0 warning, `gate:coverage` 80.75/84.52 (min80/84), `gate:pack` 22/22, `gate:bash` 0 bypass.
+
 ## [0.9.4] - 2026-09-06 — Kritik S1–S5: side-map signature, code_run tanpa shell, trash bersama, read_image utuh
 
 ### Fixed

@@ -64,6 +64,8 @@ export async function handleMemory(
   const asJson = getArg("--json") !== undefined || args.includes("--json")
   const s = getMemoryStats(cwdArg)
   const { runs, avgHits } = readHitRate(cwdArg)
+  // P13 P1 DoD: scope efektif ikut tampil agar silent shadowing terlihat.
+  const scope = process.env.MINICODE_MEMORY_SCOPE ?? "cwd"
   if (asJson) {
     console.log(
       JSON.stringify({
@@ -73,6 +75,8 @@ export async function handleMemory(
         shmBytes: s.shmBytes,
         models: s.models,
         dims: s.dims,
+        categories: s.categories,
+        scope,
         oldest: s.oldest,
         newest: s.newest,
         traceRuns: runs,
@@ -90,6 +94,10 @@ export async function handleMemory(
     console.log(`  models: ${s.models.map((m) => `${m.model}×${m.count}`).join(", ")}`)
   if (s.dims.length)
     console.log(`  dims: ${s.dims.map((d) => `${d.dim || "none"}×${d.count}`).join(", ")}`)
+  if (s.categories.length)
+    console.log(
+      `  categories: ${s.categories.map((m) => `${m.category}×${m.count}`).join(", ")} (scope: ${scope})`,
+    )
   console.log(`  range: ${fmtDate(s.oldest)} → ${fmtDate(s.newest)}`)
   if (runs > 0)
     console.log(`  RAG hit-rate: ${avgHits.toFixed(2)} hits/run over ${runs} traced runs`)

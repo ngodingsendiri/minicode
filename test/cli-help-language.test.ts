@@ -9,7 +9,7 @@ import { captureOutput } from "./helpers/capture.ts"
 
 /** Kata Inggris yang pernah bocor ke keluaran pengguna. */
 const INDONESIAN =
-  /\b(Tampilkan|Kelola|Pilih|Segarkan|Batalkan|Terapkan|Pemakaian|Daftar|Lanjutkan|Status|Ganti|Buat|Bersihkan|Keluar)\b/
+  /\b(Tampilkan|Kelola|Pilih|Segarkan|Batalkan|Terapkan|Pemakaian|Daftar|Lanjutkan|Status|Ganti|Buat|Bersihkan|Keluar|Sampai jumpa|Papan tombol|tak dikenal|terpakai)\b/
 
 const ctx = {
   cwd: process.cwd(),
@@ -43,6 +43,10 @@ describe("/help: kelengkapan & ukuran", () => {
   test("contains only the supported command surface", async () => {
     const teks = (await run("/help")).join("\n")
     for (const cmd of ["/help", "/provider", "/model", "/status", "/sessions", "/init", "/exit"])
+      expect(teks, cmd).toContain(cmd)
+    // Opsi A audit UX: perintah driver (undo/redo/clear/copy/history) tampil
+    // DI /HELP tapi TIDAK di dropdown completion (lihat DRIVER_HELP_COMMANDS).
+    for (const cmd of ["/undo", "/redo", "/clear", "/copy", "/history"])
       expect(teks, cmd).toContain(cmd)
     for (const cmd of ["/models", "/providers", "/cost", "/resume", "/theme", "/thinking"])
       expect(teks, cmd).not.toContain(cmd)
@@ -84,6 +88,10 @@ describe("BUILTIN_COMMANDS: setiap perintah yang ditangani terdaftar", () => {
       "thinking",
       "cost",
       "resume",
+      "undo",
+      "redo",
+      "clear",
+      "copy",
     ]) {
       expect(
         BUILTIN_COMMANDS.some((x) => x.name === n),
@@ -146,7 +154,6 @@ describe("glyphs: menghormati dukungan UTF-8", () => {
     process.env.MINICODE_ASCII = "1"
     for (const [nama, nilai] of Object.entries(glyphs)) {
       const teks = Array.isArray(nilai) ? nilai.join("") : String(nilai)
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: memastikan ASCII cetak
       expect(/^[\x20-\x7e]*$/.test(teks), `${nama}=${teks}`).toBe(true)
     }
   })

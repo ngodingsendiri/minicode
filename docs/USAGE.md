@@ -31,6 +31,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `minicode skills list` | Daftar skill terpasang |
 | `minicode sessions list` | Riwayat sesi |
 | `minicode memory status [--json]` | Statistik vector RAG store (rows, size, hit-rate) |
+| `minicode doctor [--json]` | Diagnosis lokal: runtime, provider, pricing, memory, sandbox, config |
 | `minicode mcp serve` | Ekspos minicode sebagai MCP server |
 
 ## Flags
@@ -67,6 +68,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_VERIFY_CMD` | Custom verify command (ganti `detectVerifyCommand`) |
 | `MINICODE_BASH_ALLOWLIST` | Kustom allowlist bash (koma-pisah, ganti DEFAULT) |
 | `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) \| `none` |
+| `MINICODE_SANDBOX_STRICT` | `1` → fail-closed: tolak bash bila isolasi yang diminta tak tersedia (default: warn + eksekusi langsung) |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
 | `MINICODE_GREP_ENGINE` | `js` → paksa walker internal, jangan pakai ripgrep |
@@ -125,17 +127,19 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/sync` | Segarkan daftar model dari semua provider |
 | `/undo` | Batalkan perubahan berkas dari turn terakhir |
 | `/redo` | Terapkan ulang perubahan yang dibatalkan |
-| `/cost` | Pemakaian token & biaya **kumulatif sesi** (bukan turn terakhir); menampilkan model efektif bila router menyubstitusi |
-| `/sessions` | Daftar sesi terbaru |
-| `/resume [id]` | Lanjutkan sesi (picker tanpa argumen; respawn via `--resume`) |
-| `/status` | Info runtime (ID sesi, model, provider, tool aktif, skill) |
-| `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model |
+| `/sessions` | Daftar sesi terbaru; tanpa argumen = pilih untuk di-resume (picker); `/sessions <id>` = langsung resume |
+| `/status` | Info runtime + pemakaian & biaya **kumulatif sesi** (ID sesi, model, provider, token, cost) |
+| `/mode [nama]` | Ganti mode permission (`auto`, `ask`, `plan`, `allowlist`); tanpa argumen = putar |
+| `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model (tanpa argumen = toggle) |
 | `/init` | Buat `AGENTS.md` untuk proyek ini |
 | `/copy` | Salin output turn terakhir ke clipboard (OSC 52) |
 | `/clear` | Tandai batas layar: banner `--- cleared (scrollback preserved) ---` (scrollback tetap jadi transcript) |
+| `/history` | Tampilkan 20 entri riwayat prompt terakhir |
 | `/exit` | Keluar |
 
-Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/usage`, `/quit`, `/compact`, `/history`.
+Alias yang juga dikenali (tidak muncul di `/help`): `/models` → `/model`, `/providers` → `/provider`, `/usage` & `/cost` → `/status`, `/resume [id]` → `/sessions [id]`, `/compact`.
+
+Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/mode` + `/compact` + `/thinking`** — tetap pendek dan minimalis. Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help`.
 
 ### Papan tombol (REPL)
 
@@ -143,7 +147,7 @@ Alias yang juga dikenali (tidak muncul di `/help`): `/models`, `/providers`, `/u
 |---|---|
 | `enter` | Kirim prompt |
 | `shift+tab` | Putar mode permission (`auto` → `ask` → `plan` → `allowlist`) |
-| `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih) |
+| `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih); di baris kosong = toggle plan/build |
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
 | `ctrl+t` | Tampilkan/sembunyikan reasoning model |
 | `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |
@@ -347,7 +351,7 @@ Docker **tidak** dipakai otomatis meski tersedia — menarik image dan menjalank
    | `bash <(curl x)` | tak ada aturan process substitution | ditolak |
    | `rm -rf ..` | pola lama hanya kenal `/` dan `~` | ditolak |
 
-2. **Allowlist** (`--allowlist`, dan default bila tak ada sandbox) — hanya bentuk perintah read/build: `git status/diff/log/branch/show`, `bun test/run/x tsc`, `npm run/exec`, `npx`, `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `which`, `echo`, `pwd`. Operasi tulis lewat shell (`mkdir`, `cp`, `mv`, `rm`, `touch`) **ditahan** — agent yang perlu menulis file punya `write_file`/`edit` yang ter-jail. Untuk `npm exec`/`npx`, arg tak boleh memuat ekspansi shell (`$`, backtick) atau redirection.
+2. **Allowlist** (`--allowlist`, dan default bila tak ada sandbox) — hanya bentuk perintah read/build: `git status/diff/log/branch/show`, `bun test/run/x tsc`, `npm run/exec`, `npx`, `ls`, `cat`, `head`, `tail`, `wc`, `grep`, `rg`, `find`, `which`, `echo`, `pwd`. Operasi tulis lewat shell (`mkdir`, `cp`, `mv`, `rm`, `touch`) **ditahan** — agent yang perlu menulis file punya `write_file`/`edit` yang ter-jail. Untuk `npm exec`/`npx`/`bun run`/`bun x`, arg tak boleh memuat ekspansi shell (`$`, backtick) atau redirection.
 
 3. **Path jail** — realpath-based, berlaku bahkan saat `--allow-all`.
 

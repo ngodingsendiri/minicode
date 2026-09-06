@@ -81,7 +81,7 @@ export async function createProviderLayer(opts: {
   }
   if (providers.length === 0) {
     console.error(
-      "no provider configured — run `minicode` for setup wizard,\nor: minicode config add --baseUrl <url> --apiKey <key>, or set OPENAI_API_KEY",
+      "no provider configured — run `minicode` for setup wizard,\nor: minicode auth login (free, no API key), minicode config add --baseUrl <url> --apiKey <key>, or set OPENAI_API_KEY",
     )
     process.exit(1)
   }

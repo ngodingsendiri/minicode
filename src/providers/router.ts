@@ -119,21 +119,21 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
             if (e.retryAfterMs != null && e.retryAfterMs > maxRetry) {
               err = new ProviderError(e.category, e.message, maxRetry)
             }
-            // P11 P1.3 — honori retry-after: untuk 429 dengan retryAfter, tunggu sebentar
-            // lalu fallback (jangan bakar daftar tanpa tunggu). Cap sleep 100ms agar test cepat.
-            if (
-              err.category === "rate_limit" &&
-              err.retryAfterMs != null &&
-              !retried429 &&
-              tried.size < config.providers.length
-            ) {
+            // P11 P1.3 — honori retry-after: untuk 429 dengan retryAfter, tunggu
+            // (dibatasi maxRetry, default 30 dtk) lalu fallback. Tanpa tunggu,
+            // request berikutnya menabrak jendela limit yang sama — daftar
+            // provider terbakar sia-sia. Bila tak ada provider tersisa, coba
+            // ulang provider SAMA sekali (tunggu-di-tempat), baru menyerah.
+            if (err.category === "rate_limit" && err.retryAfterMs != null && !retried429) {
               retried429 = true
-              await Bun.sleep(Math.min(err.retryAfterMs, 100))
+              await Bun.sleep(Math.min(err.retryAfterMs, maxRetry))
               const next = config.providers.find((p) => !tried.has(p.id))
               if (next) {
                 current = next
                 continue
               }
+              // tunggu-di-tempat: ulangi provider sama sekali
+              continue
             }
             const canFallback =
               (err.category === "server" || err.category === "network") &&

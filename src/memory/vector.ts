@@ -21,13 +21,14 @@ function open(cwd?: string): Database {
     initializedPaths.add(p)
   }
   db.exec(`
-    CREATE TABLE IF NOT EXISTS memory (id TEXT PRIMARY KEY, text TEXT, embedding BLOB, created_at INTEGER, category TEXT DEFAULT 'fact', tags TEXT, model TEXT, dim INTEGER, parent TEXT);
+    CREATE TABLE IF NOT EXISTS memory (id TEXT PRIMARY KEY, text TEXT, embedding BLOB, created_at INTEGER, category TEXT DEFAULT 'fact', tags TEXT, model TEXT, dim INTEGER, parent TEXT, access_count INTEGER DEFAULT 0);
     CREATE INDEX IF NOT EXISTS idx_memory_created ON memory(created_at);
     CREATE INDEX IF NOT EXISTS idx_memory_text ON memory(text);
   `)
   // P1.3: kolom model/dim untuk deteksi embedding-mismatch (best-effort migrasi)
   // P2.2: kolom parent untuk chunk entri panjang (chunk berbagi parent id)
   // P13 S2: kategori terstruktur untuk retrieval presisi
+  // P13 P1: access_count untuk bukti manfaat (berapa kali row ikut jadi hit)
   try {
     const cols = db.prepare(`PRAGMA table_info(memory)`).all() as { name: string }[]
     if (!cols.some((c) => c.name === "model")) db.exec(`ALTER TABLE memory ADD COLUMN model TEXT`)
@@ -36,6 +37,8 @@ function open(cwd?: string): Database {
     if (!cols.some((c) => c.name === "category"))
       db.exec(`ALTER TABLE memory ADD COLUMN category TEXT DEFAULT 'fact'`)
     if (!cols.some((c) => c.name === "tags")) db.exec(`ALTER TABLE memory ADD COLUMN tags TEXT`)
+    if (!cols.some((c) => c.name === "access_count"))
+      db.exec(`ALTER TABLE memory ADD COLUMN access_count INTEGER DEFAULT 0`)
   } catch {}
   // P1.1: expression index + FTS5 untuk keyword pre-filter (10-50× vs instr scan)
   try {
@@ -307,7 +310,7 @@ export async function addMemory(
       await withBusyRetry(() =>
         db
           .prepare(
-            "INSERT INTO memory (id, text, embedding, created_at, model, dim, parent, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO memory (id, text, embedding, created_at, model, dim, parent, category, tags, access_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
           )
           .run(
             id,
@@ -322,12 +325,27 @@ export async function addMemory(
           ),
       )
     }
-    // P1.2: prune TTL 90d + cap MAX_ROWS 5000 (best-effort, jangan gagalkan write)
+    // P13 P1: prune TTL HIERARKIS per kategori (best-effort, jangan gagalkan write).
+    // Fakta/keputusan awet 180 hari, ringkasan 90, snippet 14 — snippet basi
+    // (mis. "test X lolos") menyesatkan bila dibiarkan selama fakta.
     try {
-      const ttlMs = LIMITS.MEMORY_TTL_DAYS * 24 * 60 * 60 * 1000
-      if (ttlMs > 0) {
+      const day = 24 * 60 * 60 * 1000
+      const cuts = [
+        { cats: ["snippet"], ms: LIMITS.MEMORY_TTL_SNIPPET_DAYS * day },
+        { cats: ["summary"], ms: LIMITS.MEMORY_TTL_SUMMARY_DAYS * day },
+        { cats: ["fact", "decision", "preference"], ms: LIMITS.MEMORY_TTL_FACT_DAYS * day },
+      ]
+      for (const c of cuts) {
+        if (c.ms <= 0) continue
+        const ph = c.cats.map(() => "?").join(",")
+        // Bucket fakta juga menampung NULL (DB lama pra-S2) — jangan abadi.
+        const nullCatch = c.cats.includes("fact") ? " OR category IS NULL" : ""
         await withBusyRetry(() =>
-          db.prepare("DELETE FROM memory WHERE created_at < ?").run(now - ttlMs),
+          db
+            .prepare(
+              `DELETE FROM memory WHERE (category IN (${ph})${nullCatch}) AND created_at < ?`,
+            )
+            .run(...c.cats, now - c.ms),
         )
       }
       const cnt =
@@ -574,7 +592,26 @@ export async function searchHybrid(
   const pool = filtered.slice(0, LIMITS.MEMORY_MMR_CANDIDATES)
   const ranked = mmrRerank(pool, opts.topK ?? 5)
   const createdByText = new Map(pool.map((p) => [p.text, p.createdAt] as const))
-  return ranked.map((h) => ({ ...h, createdAt: createdByText.get(h.text) ?? Date.now() }))
+  const hits = ranked.map((h) => ({ ...h, createdAt: createdByText.get(h.text) ?? Date.now() }))
+  // P13 P1 — bukti manfaat per row: hit yang dikembalikan menaikkan
+  // access_count (best-effort; gagal diam — jangan rusak retrieval).
+  // Hanya DB lokal yang disentuh; row global (scope all) tidak dihitung.
+  if (hits.length > 0) {
+    try {
+      const db2 = open(opts.cwd)
+      try {
+        const ph = hits.map(() => "?").join(",")
+        db2
+          .prepare(
+            `UPDATE memory SET access_count = COALESCE(access_count, 0) + 1 WHERE text IN (${ph})`,
+          )
+          .run(...hits.map((h) => h.text))
+      } finally {
+        db2.close()
+      }
+    } catch {}
+  }
+  return hits
 }
 
 export interface MemoryStats {
@@ -584,6 +621,7 @@ export interface MemoryStats {
   shmBytes: number
   models: { model: string; count: number }[]
   dims: { dim: number; count: number }[]
+  categories: { category: string; count: number }[]
   oldest: number | null
   newest: number | null
 }
@@ -607,6 +645,11 @@ export function getMemoryStats(cwd?: string): MemoryStats {
         "SELECT coalesce(dim, 0) as dim, count(*) as count FROM memory GROUP BY dim ORDER BY count DESC",
       )
       .all() as { dim: number; count: number }[]
+    const categories = db
+      .prepare(
+        "SELECT coalesce(category, 'fact') as category, count(*) as count FROM memory GROUP BY category ORDER BY count DESC",
+      )
+      .all() as { category: string; count: number }[]
     const p = dbPath(cwd)
     const sizeOf = (f: string): number => {
       try {
@@ -622,6 +665,7 @@ export function getMemoryStats(cwd?: string): MemoryStats {
       shmBytes: sizeOf(`${p}-shm`),
       models,
       dims,
+      categories,
       oldest: bounds?.oldest ?? null,
       newest: bounds?.newest ?? null,
     }

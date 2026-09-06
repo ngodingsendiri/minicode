@@ -297,7 +297,7 @@ describe("cli: --budget", () => {
       ["apa saja", "--budget", "1"],
     )
     expect(r.code).toBe(0)
-    expect(r.stderr).toContain("80% terpakai")
+    expect(r.stderr).toContain("80% used")
     expect(r.stderr).not.toContain("over budget")
   })
 

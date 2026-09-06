@@ -115,5 +115,10 @@ export async function dispatch(
     await handleMemory(args, subGetArg)
     return true
   }
+  if (cmd === "doctor") {
+    const { handleDoctor } = await import("./commands/doctor.ts")
+    await handleDoctor(args, subGetArg)
+    return true
+  }
   return false
 }

@@ -9,6 +9,13 @@ import { createResponsesProvider } from "./responses.ts"
 // Dipakai CLI, sub-agent (task.ts), dan MCP server agar logika tidak terduplikasi.
 // PENTING: id identitas provider WAJIB diteruskan — kalau tidak, router byId
 // memetakan semua provider ke id generik "openai-compat" (provider terakhir menang).
+// P11 P1.2 — knob generik reasoningEffort dipetakan per-wire: OpenAI/
+// Responses meneruskan string effort, Anthropic butuh budget token thinking.
+// Diekspor agar teruji tanpa membangun provider sungguhan.
+export function mapReasoningToThinking(effort?: string): number | undefined {
+  return effort === "high" ? 4096 : effort === "medium" ? 2048 : effort === "low" ? 1024 : undefined
+}
+
 export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
   const out: ModelProvider[] = []
   for (const p of cfg.providers) {
@@ -25,14 +32,7 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
       )
     } else if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
       // Map generic reasoningEffort to anthropic thinking budget
-      const thinking =
-        p.reasoningEffort === "high"
-          ? 4096
-          : p.reasoningEffort === "medium"
-            ? 2048
-            : p.reasoningEffort === "low"
-              ? 1024
-              : undefined
+      const thinking = mapReasoningToThinking(p.reasoningEffort)
       out.push(
         createAnthropicProvider({
           id: p.id,

@@ -8,6 +8,7 @@ const BOOLEAN_FLAGS = new Set([
   "--verify",
   "--allowlist",
   "--json", // dipakai `exec --json` dan `--help --json`
+  "--budget-strict", // fail-closed: cost tak dikenal dianggap over budget
 ])
 const VALUE_FLAGS = new Set([
   "--cwd",

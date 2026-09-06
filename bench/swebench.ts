@@ -3,12 +3,15 @@
 // SWE-bench Lite runner — 20 instance terstratifikasi, clone+checkout, verify pytest.
 // Dipakai untuk P10 P1.2: angka resolve rate TERCETAK dari run nyata sebelum boleh dikutip.
 // Usage: bun bench/swebench.ts [--fake] [--limit 20] [--dataset bench/swebench_lite.jsonl]
+//   Real run tanpa menyentuh config: --api-key-env NAMA_ENV --base-url URL --model ID
+//   (kunci tetap di environment, tak pernah ditulis ke disk) [--max-steps 25]
 
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ModelProvider } from "#minicore"
+import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { createMinicodeSession } from "../src/app/session.ts"
 import { loadConfig } from "../src/config.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
@@ -21,6 +24,7 @@ interface SweInstance {
   repo: string
   base_commit: string
   problem_statement: string
+  test_patch?: string
   FAIL_TO_PASS: string[]
   PASS_TO_PASS: string[]
 }
@@ -37,6 +41,24 @@ const DATASET =
 const fake = process.argv.includes("--fake")
 const limitArg = process.argv.indexOf("--limit")
 const limit = limitArg !== -1 ? Number(process.argv[limitArg + 1]) : 20
+const maxStepsArg = process.argv.indexOf("--max-steps")
+const maxSteps = maxStepsArg !== -1 ? Number(process.argv[maxStepsArg + 1]) : undefined
+function flagVal(name: string): string | undefined {
+  const i = process.argv.indexOf(name)
+  return i !== -1 ? process.argv[i + 1] : undefined
+}
+
+// Satu fungsi verify untuk FAIL_TO_PASS dan PASS_TO_PASS — daftar kosong
+// berarti tidak ada yang diuji (true), bukan lolos.
+function runPytest(dir: string, tests: string[]): boolean {
+  if (tests.length === 0) return true
+  const verify = spawnSync("python", ["-m", "pytest", ...tests, "-q"], {
+    cwd: dir,
+    timeout: 180000,
+    encoding: "utf8",
+  })
+  return verify.status === 0
+}
 
 async function runOne(
   inst: SweInstance,
@@ -54,29 +76,41 @@ async function runOne(
     if (clone.status !== 0) throw new Error(`clone failed ${inst.repo}`)
     spawnSync("git", ["-C", dir, "checkout", inst.base_commit], { stdio: "ignore", timeout: 30000 })
 
+    // test_patch WAJIB di-apply dulu: tanpa test baru, FAIL_TO_PASS tidak ada
+    // dan patch benar pun tak terukur. Versi lama melewatkan ini sehingga
+    // skornya fiksi (selalu lolos bila FAIL_TO_PASS kosong).
+    if (inst.test_patch) {
+      const { writeFileSync } = await import("node:fs")
+      const patchFile = join(dir, "swe_test.patch")
+      writeFileSync(patchFile, inst.test_patch)
+      const applied = spawnSync("git", ["-C", dir, "apply", patchFile], {
+        stdio: "ignore",
+        timeout: 30000,
+      })
+      if (applied.status !== 0) throw new Error(`test_patch failed ${inst.instance_id}`)
+    }
+
     const session = await createMinicodeSession({
       provider,
       tools: allTools,
       cwd: dir,
       permissionMode: "auto",
+      ...(maxSteps ? { maxSteps } : {}),
     })
     const usage = createUsageCollector(session.events)
     await session.run(inst.problem_statement, {})
     void usage.get()
 
-    // verify: FAIL_TO_PASS harus jadi PASS via pytest (sampled)
-    const toCheck = inst.FAIL_TO_PASS.slice(0, 3)
-    if (toCheck.length === 0) {
-      passed = true
-    } else {
-      const verify = spawnSync("python", ["-m", "pytest", ...toCheck, "-q"], {
-        cwd: dir,
-        timeout: 120000,
-        encoding: "utf8",
-      })
-      passed = verify.status === 0
-    }
-  } catch {
+    // verify: SEMUA FAIL_TO_PASS + sampel PASS_TO_PASS harus hijau via pytest.
+    const fail = runPytest(dir, inst.FAIL_TO_PASS)
+    const pass = runPytest(dir, inst.PASS_TO_PASS.slice(0, 3))
+    passed = fail && pass
+  } catch (e) {
+    // Diagnosa ke stderr (ringkas, tanpa secret): tanpa ini semua FAIL terlihat
+    // sama — bedakan clone/test_patch/LLM/pytest sejak awal.
+    process.stderr.write(
+      `[swebench] ${inst.instance_id} error: ${String((e as Error)?.message ?? e).slice(0, 300)}\n`,
+    )
     passed = false
   } finally {
     try {
@@ -98,13 +132,33 @@ async function main() {
       },
     }
   } else {
-    const cfg = await loadConfig()
-    const providers = buildProviderList(cfg)
-    if (providers.length === 0) {
-      console.error("no provider — use --fake or configure one")
-      process.exit(1)
+    // Jalur env: provider ad-hoc tanpa menyentuh ~/.minicode/config.json.
+    // Kunci dibaca dari environment (tak pernah ditulis ke disk/jejak config).
+    const keyEnv = flagVal("--api-key-env")
+    const baseUrl = flagVal("--base-url")
+    const model = flagVal("--model")
+    if (keyEnv && baseUrl && model) {
+      const apiKey = process.env[keyEnv]
+      if (!apiKey) {
+        console.error(`env ${keyEnv} kosong — export dulu sebelum real run`)
+        process.exit(1)
+      }
+      const solo = createOpenAICompatProvider({
+        baseUrl,
+        apiKey,
+        models: [model],
+        defaultModel: model,
+      })
+      provider = createRouterProvider({ providers: [solo] })
+    } else {
+      const cfg = await loadConfig()
+      const providers = buildProviderList(cfg)
+      if (providers.length === 0) {
+        console.error("no provider — use --fake or configure one")
+        process.exit(1)
+      }
+      provider = createRouterProvider({ providers })
     }
-    provider = createRouterProvider({ providers })
   }
 
   let instances = loadDataset(DATASET)
@@ -140,7 +194,14 @@ async function main() {
     writeFileSync(
       "bench/swebench_results.json",
       JSON.stringify(
-        { resolved, total: instances.length, rate, fake, timestamp: new Date().toISOString() },
+        {
+          resolved,
+          total: instances.length,
+          rate,
+          fake,
+          model: fake ? "fake" : (flagVal("--model") ?? "config"),
+          timestamp: new Date().toISOString(),
+        },
         null,
         2,
       ),

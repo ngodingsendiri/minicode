@@ -27,7 +27,10 @@ function openLocal(dir: string): Database {
 }
 
 test("P1 limits terdokumentasi di LIMITS", () => {
-  expect(LIMITS.MEMORY_TTL_DAYS).toBe(90)
+  // P13 P1: flat MEMORY_TTL_DAYS 90 diganti hierarkis per kategori.
+  expect(LIMITS.MEMORY_TTL_FACT_DAYS).toBe(180)
+  expect(LIMITS.MEMORY_TTL_SUMMARY_DAYS).toBe(90)
+  expect(LIMITS.MEMORY_TTL_SNIPPET_DAYS).toBe(14)
   expect(LIMITS.MEMORY_MAX_ROWS).toBe(5000)
   expect(LIMITS.MEMORY_MIN_SCORE_HYBRID).toBe(0.2)
   expect(LIMITS.MEMORY_MIN_SCORE_KEYWORD).toBe(0.25)
@@ -68,31 +71,37 @@ test("P1.1 LIKE escaping: underscore tidak jadi wildcard", async () => {
   }
 })
 
-test("P1.2 TTL prune: baris 100 hari dihapus saat addMemory", async () => {
+test("P1.2 TTL prune hierarkis: snippet 100 hari gugur, fakta 100 hari awet", async () => {
   const cwd = await makeCwd()
   try {
     const oldMarker = `old-${randomUUID().slice(0, 6)}`
+    const factMarker = `fact-${randomUUID().slice(0, 6)}`
     // seed dulu lewat addMemory agar skema + trigger FTS sinkron sebelum insert manual
     await addMemory(`seed ${randomUUID().slice(0, 6)}`, { cwd })
     const db = openLocal(cwd)
     try {
       const oldTs = Date.now() - 100 * 24 * 60 * 60 * 1000
-      db.prepare("INSERT INTO memory (id, text, embedding, created_at) VALUES (?, ?, ?, ?)").run(
-        randomUUID(),
-        `unique ${oldMarker} ancient note`,
-        null,
-        oldTs,
-      )
+      // snippet basi 100 hari (>14) wajib gugur; fakta 100 hari (<180) wajib awet.
+      db.prepare(
+        "INSERT INTO memory (id, text, embedding, created_at, category) VALUES (?, ?, ?, ?, ?)",
+      ).run(randomUUID(), `unique ${oldMarker} ancient snippet`, null, oldTs, "snippet")
+      db.prepare(
+        "INSERT INTO memory (id, text, embedding, created_at, category) VALUES (?, ?, ?, ?, ?)",
+      ).run(randomUUID(), `unique ${factMarker} old fact`, null, oldTs, "fact")
     } finally {
       db.close()
     }
     await addMemory(`fresh ${randomUUID().slice(0, 6)} note`, { cwd })
     const db2 = openLocal(cwd)
     try {
-      const left = db2
+      const gone = db2
         .prepare(`SELECT count(*) as c FROM memory WHERE text LIKE ?`)
         .get(`%${oldMarker}%`) as { c: number } | null
-      expect(left?.c ?? -1).toBe(0)
+      expect(gone?.c ?? -1).toBe(0)
+      const kept = db2
+        .prepare(`SELECT count(*) as c FROM memory WHERE text LIKE ?`)
+        .get(`%${factMarker}%`) as { c: number } | null
+      expect(kept?.c ?? -1).toBe(1)
     } finally {
       db2.close()
     }

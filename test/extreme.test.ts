@@ -157,10 +157,13 @@ test("05 router clone retryAfter does not mutate original", async () => {
     models: ["m"],
     // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
-      throw new ProviderError("rate_limit", "rl", 3600_000)
+      // retryAfter 5 dtk > cap 100 ms: router memotong TANPA memutasi error
+      // asli, lalu (provider tunggal) menunggu-di-tempat 100 ms dan
+      // mencoba ulang sekali sebelum menyerah — total jauh di bawah timeout.
+      throw new ProviderError("rate_limit", "rl", 5_000)
     },
   }
-  const router = createRouterProvider({ providers: [inner as any], maxRetryAfterMs: 30_000 })
+  const router = createRouterProvider({ providers: [inner as any], maxRetryAfterMs: 100 })
   try {
     for await (const _ of router.stream(
       { messages: [{ role: "user", content: "hi" }] },
@@ -168,7 +171,7 @@ test("05 router clone retryAfter does not mutate original", async () => {
     )) {
     }
   } catch (e) {
-    expect((e as ProviderError).retryAfterMs).toBe(30_000)
+    expect((e as ProviderError).retryAfterMs).toBe(100)
   }
 })
 
@@ -207,6 +210,7 @@ test("06 permission: traversal + sensitive + variable home", async () => {
     ),
   ).toBe("deny")
   expect(
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: perintah serangan yang diuji guard, bukan template
     await h.check({ id: "1", name: "bash", args: { cmd: "rm -rf ${HOME}/x" } } as any, {} as any),
   ).toBe("deny")
   expect(

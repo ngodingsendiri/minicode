@@ -76,7 +76,7 @@ export async function detectAndSave(
 ): Promise<ProviderEntry> {
   // Fallback model dipakai bila provider tidak punya endpoint GET /models
   // (mis. Anthropic) atau deteksi gagal — agar wizard tetap berhasil.
-  let detected: { models: string[]; providerHint: "openai" | "anthropic" | "unknown" }
+  let detected: { models: string[]; providerHint: "openai" | "anthropic" | "responses" | "unknown" }
   try {
     detected = await detectModels(baseUrl, apiKey)
     if (detected.models.length === 0 && opts.fallbackModels?.length) {
@@ -91,7 +91,7 @@ export async function detectAndSave(
         : "unknown"
     detected = {
       models: opts.fallbackModels,
-      providerHint: hint as "openai" | "anthropic" | "unknown",
+      providerHint: hint as "openai" | "anthropic" | "responses" | "unknown",
     }
   }
   // dedup id: id ramah via preset/slug, tanpa hash acak (lihat deriveProviderId)
@@ -123,9 +123,18 @@ export async function removeProvider(id: string, opts: { global?: boolean; cwd?:
 // Membaca MERGED config (local prioritas atas global) dan menulis kembali ke
 // KEDUA file tempat provider ternyata disimpan — mirip perilaku loadConfig,
 // sehingga `/sync` bekerja walau provider disimpan di local (bukan global).
+export interface SyncResult {
+  updated: { id: string; from: number; to: number }[]
+  /** Provider yang gagal total (network/timeout) — bedakan dari "tak ada
+   * perubahan" agar /sync jujur. Catatan: 401/403 dari /models ditelan
+   * detectModels sebagai "kosong" (Anthropic memang tak punya endpoint itu),
+   * jadi daftar ini hanya untuk kegagalan transport, bukan vonis auth. */
+  failed: { id: string; reason: string }[]
+}
+
 export async function refreshProviderModels(
   opts: { global?: boolean; cwd?: string } = {},
-): Promise<{ id: string; from: number; to: number }[]> {
+): Promise<SyncResult> {
   // /sync harus benar-benar re-fetch — tanpa ini detectModels menyajikan cache
   // 30 menit dan /sync menjadi no-op ("from == to") padahal provider punya
   // model baru.
@@ -139,9 +148,10 @@ export async function refreshProviderModels(
       .catch(() => [])
     providers.push(...g)
   }
-  if (providers.length === 0) return []
+  if (providers.length === 0) return { updated: [], failed: [] }
 
   const updated = new Map<string, ProviderEntry>()
+  const failed: { id: string; reason: string }[] = []
   for (let i = 0; i < providers.length; i++) {
     const p = providers[i]!
     if (!p.apiKey || !p.baseUrl) continue
@@ -150,8 +160,9 @@ export async function refreshProviderModels(
       if (detected.models.length) {
         updated.set(p.id, { ...p, models: detected.models, providerHint: detected.providerHint })
       }
-    } catch {
-      // provider offline / auth gagal — biarkan daftar lama
+    } catch (e) {
+      // provider offline/timeout — catat, jangan diam. Daftar lama dibiarkan.
+      failed.push({ id: p.id, reason: String((e as Error)?.message ?? e).slice(0, 120) })
     }
   }
 
@@ -188,5 +199,5 @@ export async function refreshProviderModels(
     const orig = providers.find((p) => p.id === id)!
     results.push({ id, from: orig.models.length, to: nu.models.length })
   }
-  return results
+  return { updated: results, failed }
 }

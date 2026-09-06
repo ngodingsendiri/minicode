@@ -33,6 +33,11 @@ function todoPath(sessionId: string, cwd: string): string {
   return resolve(cwd, ".minicode", "todos", `${safe}.json`)
 }
 
+function planPath(sessionId: string, cwd: string): string {
+  const safe = sanitizeTodoId(sessionId)
+  return resolve(cwd, ".minicode", "plans", `${safe}.md`)
+}
+
 /** Sanitasi + batasi daftar. Diekspor untuk test. */
 export function normalizeTodos(input: unknown): TodoItem[] {
   if (!Array.isArray(input)) throw new Error("todos must be an array")
@@ -87,6 +92,47 @@ export async function saveTodos(
   await atomicWriteText(p, JSON.stringify({ sessionId, updatedAt: Date.now(), todos }, null, 2))
 }
 
+/** P13 P1 — plan artifact: snapshot markdown rencana per sesi.
+ * JSON todos bagus untuk mesin tapi tak bisa dibaca kilat manusia; file ini
+ * dibaca model berikutnya saat resume lintas sesi tanpa memutar ulang todo.
+ * Best-effort: gagal tulis tak boleh menggagalkan todo_write. */
+export function renderPlan(sessionId: string, todos: TodoItem[]): string {
+  const done = todos.filter((t) => t.status === "completed").length
+  const lines = [
+    `# Plan — ${sessionId}`,
+    ``,
+    `Progress: ${done}/${todos.length} completed.`,
+    ``,
+    ...todos.map(
+      (t) =>
+        `- [${t.status === "completed" ? "x" : t.status === "in_progress" ? "~" : t.status === "cancelled" ? "-" : " "}] ${t.content} (${t.status})`,
+    ),
+    ``,
+    `_Updated: ${new Date().toISOString()}_`,
+    ``,
+  ]
+  return lines.join("\n")
+}
+
+export async function savePlanSnapshot(
+  sessionId: string,
+  todos: TodoItem[],
+  cwd = process.cwd(),
+): Promise<string> {
+  const p = planPath(sessionId, cwd)
+  await mkdir(resolve(cwd, ".minicode", "plans"), { recursive: true }).catch(() => {})
+  await atomicWriteText(p, renderPlan(sessionId, todos))
+  return p
+}
+
+export async function loadPlan(sessionId: string, cwd = process.cwd()): Promise<string | null> {
+  try {
+    return await readFile(planPath(sessionId, cwd), "utf8")
+  } catch {
+    return null
+  }
+}
+
 /** Session id aktif — di-set CLI supaya todo tersimpan per sesi. */
 export const todoSession = { id: "default", cwd: undefined as string | undefined }
 
@@ -122,6 +168,9 @@ export const todoWriteTool: Tool = {
     const list = normalizeTodos(todos)
     const cwd = todoSession.cwd ?? process.cwd()
     await saveTodos(todoSession.id, list, cwd)
+    // Plan artifact ditulis tiap save — murah (atomik, kecil) dan membuat
+    // resume lintas sesi tidak butuh memutar ulang seluruh percakapan.
+    await savePlanSnapshot(todoSession.id, list, cwd).catch(() => {})
     return renderTodos(list)
   },
 }

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto"
 import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
+import { scrubSecrets } from "../../src/policy/scrub.ts"
+import { getSubmittedResult } from "../../src/tools/submit_result.ts"
 import { formatError } from "../../src/ui/assistant/simple.ts"
 import { hasFlag, promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
@@ -41,7 +43,6 @@ export async function handleExec(
   )
   if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
   else process.env.MINICODE_SANDBOX = sandbox.mode
-  if (sandbox.notice) process.stderr.write(`${sandbox.notice}\n`)
   const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
   const budgetRaw = getArg("--budget")
   const parsedBudget = budgetRaw ? Number(budgetRaw) : undefined
@@ -75,6 +76,9 @@ export async function handleExec(
     verify: hasFlag(args, "--verify"),
     budget,
     rateLimiter,
+    // Notice dicetak di setup setelah provider lolos — bukan di sini, supaya
+    // `exec --help` (prompt kosong, exit di atas) tetap senyap.
+    sandboxNotice: sandbox.notice,
   })
   const t0 = Date.now()
   const events: unknown[] = []
@@ -84,14 +88,19 @@ export async function handleExec(
   const unsub = ctx.session.events.on("*", (ev) => {
     events.push(ev)
     if (jsonMode) {
-      // stream JSON lines like Codex/Gemini
-      process.stdout.write(`${JSON.stringify(ev)}\n`)
+      // stream JSON lines like Codex/Gemini — di-scrub dulu: event bisa
+      // membawa tool output berisi secret ke stdout pipeline CI, sementara
+      // trace file sudah di-scrub sejak awal.
+      process.stdout.write(`${scrubSecrets(JSON.stringify(ev))}\n`)
     }
   })
   try {
     await ctx.runPromptWithVerify(effectivePrompt)
     const u = ctx.usage.get(ctx.modelRef.current)
     if (jsonMode) {
+      // submit_result dari model (bila dipanggil) ikut verbatim — pipeline CI
+      // tak perlu menebak batas JSON dari prosa turn terakhir.
+      const submitted = getSubmittedResult()
       const result = {
         type: "summary" as const,
         ok: true,
@@ -103,11 +112,12 @@ export async function handleExec(
         turns: ctx.session.state.turnCount,
         usage: u,
         eventCount: events.length,
+        ...(submitted ? { submitted: submitted.result } : {}),
       }
       // Event sudah di-stream sebagai JSONL di stdout; summary jadi baris
       // terakhir di stdout juga (bukan stderr) supaya pipeline CI bisa
       // membaca satu stream saja.
-      process.stdout.write(`${JSON.stringify(result)}\n`)
+      process.stdout.write(`${scrubSecrets(JSON.stringify(result))}\n`)
     } else {
       process.stdout.write(
         `\n[exec] done model=${ctx.modelRef.current} steps=${ctx.session.state.stepCount} tokens=${u.totalTokens} ${Date.now() - t0}ms\n`,
@@ -119,7 +129,7 @@ export async function handleExec(
   } catch (e) {
     if (jsonMode)
       process.stdout.write(
-        `${JSON.stringify({ type: "summary", ok: false, error: formatError(e), prompt: effectivePrompt })}\n`,
+        `${scrubSecrets(JSON.stringify({ type: "summary", ok: false, error: formatError(e), prompt: effectivePrompt }))}\n`,
       )
     else process.stderr.write(`\n${formatError(e)}\n`)
     unsub()

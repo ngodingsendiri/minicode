@@ -68,7 +68,7 @@ export async function handleProviders(
   if (firstArg === "providers") {
     if (cfg.providers.length === 0) {
       console.log(
-        "(no providers yet - run `minicode` for the wizard, or `minicode config add --baseUrl <url> --apiKey <key>`)",
+        "(no providers yet - run `minicode` for the wizard, `minicode auth login` (free, no API key),\nor `minicode config add --baseUrl <url> --apiKey <key>`)",
       )
       process.exit(0)
     }
@@ -94,7 +94,7 @@ export async function handleProviders(
         renderTable(
           [
             { header: "ID", key: "id", width: 24 },
-            { header: "Model", key: "models", width: 6, align: "right" },
+            { header: "Models", key: "models", width: 6, align: "right" },
             { header: "Base URL", key: "url", width: 34 },
             { header: "Status", key: "status", width: 18 },
           ],
@@ -123,23 +123,34 @@ export async function handleProviders(
       for (const [i, m] of list.entries()) console.log(`  [${i}] ${m}`)
     } else {
       if (cfg.providers.length === 0) console.log("(no providers yet)")
+      let shown = 0
       for (const p of cfg.providers) {
         const list = p.models.filter(match)
+        if (!list.length) continue
         console.log(`${p.id} (${p.baseUrl})${filter ? ` - matches "${filter}"` : ""}`)
-        if (!list.length) console.log("  (no matches)")
+        shown += list.length
         for (const m of list.slice(0, 10)) console.log(`  ${m}`)
         if (filter && list.length > 10) console.log(`  … +${list.length - 10} more`)
         if (!filter && p.models.length > 10) console.log(`  … +${p.models.length - 10} more`)
       }
+      // Header provider hanya bila ada yang cocok — tanpa ini filter kosong
+      // mencetak judul lalu "(no matches)", dua baris untuk nol informasi.
+      if (filter && shown === 0) console.log(`  (no matches for "${filter}")`)
     }
     process.exit(0)
   }
   if (firstArg === "sync") {
     console.log("Syncing model list from providers…")
-    const results = await refreshProviderModels({ cwd: cwdArg })
-    for (const r of results)
+    const { updated, failed } = await refreshProviderModels({ cwd: cwdArg })
+    for (const r of updated)
       console.log(`  ${c.green(glyphs.check)} ${r.id}: ${r.from} -> ${r.to} model`)
-    if (!results.length) console.log("  (no providers yet - run `minicode config add` first)")
+    for (const f of failed) console.log(`  ${c.red(glyphs.cross)} ${f.id}: ${f.reason}`)
+    if (!updated.length && !failed.length) {
+      const cfgHere = await loadConfig(cwdArg)
+      if (cfgHere.providers.length === 0)
+        console.log("  (no providers yet - run `minicode config add` first)")
+      else console.log("  (no changes — check API key and network, then retry)")
+    }
     process.exit(0)
   }
   process.exit(0)

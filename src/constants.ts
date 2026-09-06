@@ -31,7 +31,11 @@ export const LIMITS = {
   VECTOR_KEYWORD_LIMIT: 200,
   MEMORY_MIN_SCORE_HYBRID: 0.2,
   MEMORY_MIN_SCORE_KEYWORD: 0.25,
-  MEMORY_TTL_DAYS: 90,
+  /** P13 P1 — TTL hierarkis per kategori (hari): fakta awet, ringkasan
+   * sedang, snippet cepat basi. Menggantikan MEMORY_TTL_DAYS flat 90. */
+  MEMORY_TTL_FACT_DAYS: 180,
+  MEMORY_TTL_SUMMARY_DAYS: 90,
+  MEMORY_TTL_SNIPPET_DAYS: 14,
   MEMORY_MAX_ROWS: 5000,
   /** P2 MMR: bobot relevansi vs diversitas + ambang dedup near-duplikat */
   MEMORY_MMR_LAMBDA: 0.7,

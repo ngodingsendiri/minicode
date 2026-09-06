@@ -35,12 +35,15 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 
 - ✅ P0-P9 tuntas dan dihapus dari plan (commit `e143db2` 0.9.0 + `b8b5749` 0.9.1): guardrail, coverage, overlay, English-only, tema, data-at-rest, session, tool-layer, env/command, CLI hardening, memory/RAG P0-P2.
 - ✅ P12 UI Shell-Max DIEKSEKUSI `b8b5749` (9.3/10): `/copy` OSC52, Ctrl+R/Ctrl+J, statusline rich, wrap/table/diff/picker, harness output-driven. Gate `tsc PASS / lint 9 warn / 1224 pass 0 fail / coverage 81.44/83.65 / pack 22/22`.
+- ✅ P13 P0 + P10 P0 + P11 P0 DIEKSEKUSI (`ff70d65` 0.9.2 + `e1c7839`/`346a932` 0.9.3/0.9.4): `--cwd` repo-wide, O_NOFOLLOW, pricing refresh, max_tokens 8192, thought_signature side-map, 4 tool, memori kategori/scope, code_run tanpa shell, trash bersama.
+- ✅ P13 P1 + P11 P1 + P10 P1 DIEKSEKUSI (0.9.5, uncommitted): submit_result, ask_user (gated+DI), plan artifact, snippet verify, branchSession, TTL hierarkis + accessCount, Responses chaining, reasoningEffort map, retry-after honori + coba-ulang-di-tempat, probe /responses, harness TUI 10/10, SWE-bench Lite (dataset 20 pin + test_patch + fake 0/20), doctor, lint 0 warning, coverage-min 80/84.
+- ✅ AUDIT UX DIEKSEKUSI (0.9.6, uncommitted): Tab kosong toggle plan/build, did-you-mean (≤2), banner konteks, /thinking on-off, sync jujur {updated,failed}, doctor warn 0-model, error tunggal, sandbox notice tepat, models --match bersih, auth non-TTY fail-fast, English-only + regex penjaga, /quit dihapus, USAGE lengkap. **Opsi A konsolidasi**: /cost & /usage → /status, /resume → /sessions; /undo /redo /clear /copy /history tetap mandiri, tampil di /help tapi TIDAK di dropdown. Gate `1284 pass 0 fail / tsc / lint 0 warn / 80.77/84.56 / pack 22/22 / bash 0`.
 
 Next action — sisa aktif (urut):
-1. **P13 P0** — Raise 3 dimensi (Model/Tool/Sesi-Memori) ≤3 hari.
-2. **P10 P0** — TOCTOU + `--cwd` repo-wide (minggu ini).
-3. **P11 P0** — Provider correctness (minggu ini).
-4. **P10/P11/P13 P1** — sprint (Responses, reasoning_effort, SWE-bench Lite, flake TUI).
+1. **SWE-Lite valid** — `bench/docker/` + pin Python/pytest per era repo (skor 0/20 saat ini measures env, bukan model).
+2. **OAuth Copilot/ChatGPT** (P11 P2) — butuh verifikasi login sungguhan; endpoint tak boleh dikarang.
+3. **81/83 coverage** — sisa di area lama (lsp/config/repl), bukan kode baru.
+4. **TOCTOU Linux CI** — swapper 1000× jalan penuh di CI (skip di Windows tanpa privilege).
 
 ---
 
@@ -57,9 +60,13 @@ Next action — sisa aktif (urut):
 
 Empat pekerjaan rumah terakhir sebelum skor 9+ bisa diklaim (audit 2026-09-06). Detail ada di bagian ini.
 
-**P0 — Rilis blocker (minggu ini):**
-- **P0.1 `--cwd` repo-wide:** `getArg` berhenti di token subcommand (boundary anti-injeksi P8) → SEMUA handler (`sessions`, `stats`, `providers`, …) mengabaikan `--cwd` (terverifikasi: artefak jatuh ke repo/global). Fix di `cli/router.ts`: bangun `subArgv` (flag sebelum cmd + args dari cmd) + `subGetArg`; hapus workaround `subArg` di `memory.ts`. Test: tiap subcommand `--cwd tmp` assert artefak lokal.
-- **P0.2 TOCTOU `O_NOFOLLOW`:** 6 tool pola cek-dulu-pakai-kemudian (`realpath` lalu `readFile` terpisah). Helper baru `src/lib/safe-open.ts` (open `O_NOFOLLOW` → fstat → baca via handle; `O_NOFOLLOW` di `atomic-write.ts`; fallback `dev+ino` terdokumentasi di Windows). Test `test/tool-toctou.test.ts` dengan swapper latar (harus menang ≥1× di kode lama).
+**P0 — Rilis blocker (minggu ini):** ✅ SELESAI 0.9.2, refinement 0.9.5.
+- **P0.1 `--cwd` repo-wide:** ✅ `cli/router.ts` subArgv + subGetArg; `test/cli-subcommands.test.ts` assert artefak lokal.
+- **P0.2 TOCTOU `O_NOFOLLOW`:** ✅ helper `src/lib/safe-open.ts` membuka path **terverifikasi** (`realpath`→cek→`open(preReal, O_NOFOLLOW)`): symlink internal tetap terbaca, swap jadi symlink gagal tutup (ELOOP). **POSIX-only** — Windows mengabaikan flag (pre-check saja); klaim "0 lolos" sah di POSIX. Test `test/tool-toctou.test.ts` (swapper 1000×, skip bila symlink EPERM → jalan penuh di Linux CI).
+
+**P1 — Kepercayaan pengukuran (sprint depan):**
+- **P1.1 Flake TUI:** ✅ `test/tui-harness.test.ts` 10/10 hijau beruntun (2026-09-06).
+- **P1.2 SWE-bench Lite:** ✅ HARNESS + DATASET + RUN NYATA — `bench/swebench_lite_20.jsonl` 20 instance nyata terstratifikasi (12 repo, base_commit spot-check via GitHub API) + `bench/swebench.ts` apply `test_patch` dulu + flag `--api-key-env/--base-url/--model/--max-steps` (kunci di env, tanpa sentuh config) + diagnosa error per-instance. **Run nyata 2026-09-06: 0/20** (`nemotron-3.5-lightning-free`, 25 steps, `bench/swebench_results.json`) — TAPI angka ini **terkonfoundasi lingkungan**: reproduksi manual membuktikan (a) `pytest-11143` FAIL_TO_PASS lolos TANPA patch + PASS_TO_PASS gagal di base (Python 3.14 vs era 2022), (b) `requests-1963` collection error (`cgi` hilang di 3.13+). Tanpa Docker image per-instance ala SWE-bench resmi, skor tak comparable ke leaderboard. Butuh: `bench/docker/` + pin Python/pytest per era repo.
 
 **P1 — Kepercayaan pengukuran (sprint depan):**
 - **P1.1 Flake TUI:** `tui-harness.ts` sleep-based (`settleMs 15`, timeout 2000) + `send` fan-out ke stale listener → `waitForOutput` + `answerSequence` v2 + kirim ke listener raw-terbaru; kembalikan timeout ≤5000; 10/10 hijau + `test/tui-harness.test.ts` baru.
@@ -76,13 +83,13 @@ Audit 2026-09-06 menemukan provider skor terendah (7.5): shim Gemini drop `thoug
 - **P0.2 Refresh harga:** koreksi Opus `$5/$25` + GPT-5.x/Claude 4.6/Gemini 3.x/DeepSeek V4; `pricing status` tampilkan umur cache + peringatan stale (tanpa auto-fetch).
 - **P0.3 `max_tokens` 8192 + `length` eksplisit:** stop terpotong jadi peringatan, bukan teks sunyi.
 
-**P1 — Daya saing (sprint depan):**
-- **P1.1 Adapter Responses API** (`/v1/responses`, `previous_response_id`, `store:false` default) + `providerHint: "responses"`.
-- **P1.2 `reasoning_effort` generik** (`ProviderEntry`, dipetakan per-wire).
-- **P1.3 Retry-after dihonori**, fallback hanya non-429 (hapus bakar-daftar).
-- **P1.4 Wire dari probe** (bukan substring URL) + Gemini native bila P0.1 rapuh.
+**P1 — Daya saing (sprint depan):** ✅ SELESAI 0.9.5.
+- **P1.1 Adapter Responses API** ✅ (`/v1/responses`, `previous_response_id` chaining per model, `store:false` default) + `providerHint: "responses"` + fake-SSE test.
+- **P1.2 `reasoning_effort` generik** ✅ (`ProviderEntry`, `mapReasoningToThinking` → per-wire, test).
+- **P1.3 Retry-after dihonori** ✅, tunggu (cap 30 dtk) lalu fallback; provider tunggal coba-ulang-di-tempat sekali; test (Prinsip 3: gagal di kode lama).
+- **P1.4 Wire dari probe** ✅ (path `/responses` → hint `responses`; substring host hanya fallback) + test.
 
-**P2 — Kematangan:** routing policy + provider efektif di header, OAuth Copilot/ChatGPT, observabilitas `/cost` (pola `memoryHits`).
+**P2 — Kematangan:** observabilitas ✅ (trace cost + memoryHits + provider efektif di header — warisan V7); routing policy eksplisit ⏳ (defer: router first-match + `::` override cukup); OAuth Copilot/ChatGPT ⏳ DEFER JUJUR: endpoint device-flow tak terverifikasi dari env ini — mengarangnya melanggar Prinsip 2.
 
 **Selesai bila:** tool loop Gemini 3-turn hijau, Opus ≈⅓ biaya lama, `length` eksplisit, fake Responses SSE benar, 429 tunggu-di-tempat, gate hijau.
 
@@ -102,25 +109,26 @@ Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Ber
   - **T0.1 `move_file` + `delete_file`** (delete soft ke `.trash/`; jail sama `write_file.ts:30`, atomic, `isSensitive`).
   - **T0.2 `read_image`** — reuse `estimateImageTokens` `src/policy/context.ts:15` → base64 `data:image/...` cap `BASH_OUTPUT_MAX_CHARS`.
   - **T0.3 Pisah `readonly` vs `plan` — DEFERRED:** ditolak, `plan` = `readonly` strict (test `plan mode: read-only` + `permission Fase 1` menuntut todo_write/delegate ditolak). Kembali hanya bila ada desain `write_plan` artifact + test baru.
-  - **T0.4 `O_NOFOLLOW` safe-open** `src/lib/safe-open.ts` → 6 tool file + `atomic-write.ts`; fallback `dev+ino` Windows (paralel P10.2).
+  - **T0.4 `O_NOFOLLOW` safe-open** `src/lib/safe-open.ts` → `read_file`/`edit` (+ `patch`/`glob`/`grep` backlog P1); POSIX-only, Windows pre-check saja (paralel P10.2).
   - **T0.5 `code_run` tool** — sandboxed sama `bash`, bypass deny `INLINE_INTERPRETER` `bash-guard.ts:135` (hanya bila `MINICODE_SANDBOX=os|docker`).
 - **Sesi & Memori — opt-out (8.5→9.0):**
   - **S1 Persist summary:** `src/policy/compaction.ts:187` → `addMemory(summary.slice(0,1200), {category:'summary'})`, guard `if (process.env.MINICODE_AUTO_MEMORY !== "0")`.
   - **S2 Kategori:** `src/memory/vector.ts:30` migration `category` (`fact|decision|preference|snippet|summary`) + `write_memory {category?, tags?}` (default `fact`); boost `score+=0.1` bila query match.
   - **S3 Scope `all`:** `vector.ts:431` `scope: 'cwd'|'global'|'all'` (merge dua DB, perbaiki silent shadowing `src/lib/db-path.ts:16`); default `cwd`.
 
-**P1 — Sprint (8.4→8.6):**
-- **Model:** adapter Responses API `src/providers/responses.ts` (`/v1/responses`, `previous_response_id`, `store:false` default) + `providerHint:"responses"`; `reasoningEffort?: "low"|"medium"|"high"` di `src/config.ts:29` (dipetakan per-wire); honori `retry-after` di provider sama `src/providers/router.ts:114` (hapus bakar-daftar 429); wire dari probe `src/providers/detect.ts:62` (bukan substring URL).
-- **Tool:** `submit_result` (structured output `response_format:json_schema`); `ask_user` gated `permission.ts:68` render via injeksi `promptAsk` `cli/setup.ts:30`.
-- **Sesi/Memori:** plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`); auto-extract snippet dari turn verify sukses (`cli/setup.ts:226`, opt-out sama); branch `branchSession` (`src/session/persistence.ts`); TTL hierarkis `fact/decision 180, summary 90, snippet 14` + `accessCount`.
+**P1 — Sprint (8.4→8.6):** ✅ SELESAI 0.9.5.
+- **Model:** ✅ adapter Responses API `src/providers/responses.ts` (chaining + test fake-SSE); `reasoningEffort` di `src/config.ts:29` + `mapReasoningToThinking` (test); honori `retry-after` + coba-ulang-di-tempat di `src/providers/router.ts` (test gagal-di-kode-lama); wire dari probe `src/providers/detect.ts` (test).
+- **Tool:** ✅ `submit_result` (NO_PROMPT, `exec --json` verbatim); `ask_user` gated `permission.ts` + render via injeksi `promptAskText` `cli/setup.ts` (fail-closed, test).
+- **Sesi/Memori:** ✅ plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`, test); auto-extract snippet dari turn verify sukses (`buildVerifySnippet` + `onOk`, opt-out sama, test); branch `branchSession` (`src/session/persistence.ts`, test); TTL hierarkis `fact/decision/preference 180, summary 90, snippet 14` + `accessCount` (test).
 
 **Selesai bila (semua diukur):**
-- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` dinaikkan bila coverage naik. **Sementara 77/81** (4 tool baru tanpa test saat P0) — kembalikan 81/83 setelah test P1 mendarat.
-- `test/tool-toctou.test.ts` swapper 3×1000 iterasi **0 lolos** (wajib gagal di kode lama).
-- `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global.
-- `test/tui-harness.test.ts` 10× hijau (flake TUI tidak mundur).
-- Gemini thinking 3-turn hijau; Opus ≈⅓ biaya lama; `length` eksplisit; fake Responses SSE benar; 429 tunggu-di-tempat.
-- `memory status --json`: kategori + scope tampil; setelah 20 turn ada summary `rows+1` (kecuali `MINICODE_AUTO_MEMORY=0`).
+- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` di `scripts/coverage-gate.ts` = **80/84** (naik dari 77/81; 81/83 tertunda — sisa di area lama lsp/config/repl, bukan kode baru).
+- `test/tool-toctou.test.ts` swapper 1000 iterasi **0 lolos** di POSIX (skip bila symlink EPERM; Windows CI: 3 skip by design).
+- `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global. ✅
+- `test/tui-harness.test.ts` 10× hijau. ✅ (2026-09-06)
+- Gemini thinking 3-turn hijau ✅ (0.9.4); Opus ≈⅓ biaya lama ✅ (0.9.2); `length` eksplisit ✅; fake Responses SSE benar ✅ + chaining; 429 tunggu-di-tempat ✅.
+- `memory status --json`: kategori + scope tampil ✅; summary persist opt-out ✅ (kecuali `MINICODE_AUTO_MEMORY=0`).
+- SWE-Lite-20: dataset pin + harness benar + fake hijau + **run nyata 0/20 (terkonfoundasi env — lihat P1.2)** ✅; angka leaderboard-comparable ⏳ (butuh Docker per-instance).
 
 ## Yang sengaja TIDAK dikerjakan
 

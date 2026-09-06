@@ -11,10 +11,16 @@ import type { MinicodeConfig } from "../src/config.ts"
 import { runRunHooks } from "../src/hooks/run.ts"
 import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
+import { addMemory } from "../src/memory/vector.ts"
 import { createLlmCompaction } from "../src/policy/compaction.ts"
 import type { RateLimiter } from "../src/policy/ratelimit.ts"
 import { createUsageCollector, primePricing } from "../src/policy/usage.ts"
-import { detectVerifyCommand, runVerify, runWithSelfHeal } from "../src/policy/verifier.ts"
+import {
+  buildVerifySnippet,
+  detectVerifyCommand,
+  runVerify,
+  runWithSelfHeal,
+} from "../src/policy/verifier.ts"
 import {
   beginTurnSnapshot,
   recordCheckpointFromSnapshots,
@@ -24,9 +30,10 @@ import {
 import { loadSession, saveSession } from "../src/session/persistence.ts"
 import { snapshotTree } from "../src/session/shadow-git.ts"
 import type { Skill } from "../src/skills/loader.ts"
+import { setAskTextFn } from "../src/tools/ask_user.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
-import { promptAsk } from "../src/ui/approval/prompt.ts"
+import { promptAsk, promptAskText } from "../src/ui/approval/prompt.ts"
 import { attachSimpleLogger } from "../src/ui/assistant/simple.ts"
 import { c } from "../src/ui/render/theme.ts"
 import { runSetupWizard } from "./wizard.ts"
@@ -46,12 +53,18 @@ export interface CliSessionOptions {
   allowlist: boolean
   verify: boolean
   budget?: number
+  /** Harness-P1: fail-closed bila cost sesi tak dikenal (model tanpa harga). */
+  budgetStrict?: boolean
   maxSteps?: number
   contextWindowTokens?: number
   timeoutMs?: number
   rateLimiter?: RateLimiter
   concurrency?: number
   writeConcurrency?: number
+  /** Notice sandbox dari composition root — dicetak di sini (setelah provider
+   * layer lolos) supaya invokasi yang mati sebelum sesi (help-semu, exit
+   * no-provider) tidak berisik. */
+  sandboxNotice?: string
 }
 
 export interface CliSession {
@@ -67,6 +80,7 @@ export interface CliSession {
   allLoadedSkills: Skill[]
   usage: ReturnType<typeof createUsageCollector>
   budget?: number
+  budgetStrict?: boolean
   /** P2.3: jumlah hit RAG memory yang di-inject ke system prompt sesi ini. */
   memoryHits: number
   detachSimple: () => void
@@ -93,10 +107,12 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     allowlist,
     verify,
     budget,
+    budgetStrict,
     maxSteps,
     contextWindowTokens,
     timeoutMs,
     rateLimiter,
+    sandboxNotice,
   } = opts
   const modelRef = { current: modelOverride }
 
@@ -117,6 +133,9 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     providerOverride,
     setupWhenEmpty: runSetupWizard,
   })
+  // Provider ada (atau wizard sukses) — sesi benar-benar terbentuk. Di sinilah
+  // notice sandbox relevan; invokasi yang mati sebelumnya tetap senyap.
+  if (sandboxNotice && !plan) process.stderr.write(`${sandboxNotice}\n`)
   const {
     systemExtra,
     skills: allLoadedSkills,
@@ -156,6 +175,9 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   // todo_write/todo_read menyimpan state per sesi di .minicode/todos/<id>.json
   todoSession.id = sessionId
   todoSession.cwd = cwd
+  // View pertanyaan ask_user — composition root meng-inject, tool menolak
+  // jalan tanpanya (fail-closed, sama seperti `ask` pada permission).
+  setAskTextFn(promptAskText)
 
   const permissionMode = allowAll
     ? "allow-all"
@@ -279,7 +301,18 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
           )
         }
       },
-      onOk: (cycles) => process.stderr.write(c.green(`\n[verify] ok after ${cycles} fix cycles\n`)),
+      onOk: (cycles) => {
+        process.stderr.write(c.green(`\n[verify] ok after ${cycles} fix cycles\n`))
+        // P13 P1 — turn yang lolos verify adalah bukti cara kerja yang valid:
+        // simpan ringkasnya sebagai snippet (opt-out sama seperti summary).
+        // Fire-and-forget: memori tak boleh menggagalkan run yang sudah hijau.
+        if (process.env.MINICODE_AUTO_MEMORY !== "0") {
+          void addMemory(buildVerifySnippet(p, verifyCommand, session.state.turnCount), {
+            category: "snippet",
+            cwd: cwd ?? process.cwd(),
+          }).catch(() => {})
+        }
+      },
     })
     await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
   }
@@ -338,6 +371,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     allLoadedSkills,
     usage,
     budget,
+    budgetStrict,
     memoryHits,
     detachSimple,
     persistCurrent,

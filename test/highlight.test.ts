@@ -38,6 +38,7 @@ describe("highlight: TypeScript", () => {
     "export class Parser extends Base {",
     "  private count = 42",
     "  async run(): Promise<void> {",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: sampel kode TS yang di-highlight, bukan template
     "    const tpl = `nilai ${this.count}`",
     "    if (tpl === null) return undefined",
     "  }",
@@ -121,6 +122,7 @@ describe("highlight: shell", () => {
   const code = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: sampel skrip bash yang di-highlight, bukan template
     'NAME="${1:-dunia}"',
     "for f in $(find . -name '*.ts'); do",
     '  if grep -q TODO "$f"; then',

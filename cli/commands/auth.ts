@@ -76,6 +76,14 @@ export async function handleAuth(args: string[]): Promise<never> {
   }
 
   // ── login ──
+  // Device flow butuh browser + persetujuan manusia — di non-TTY (CI/pipe)
+  // gagalkan cepat dengan pesan jelas, bukan menembak jaringan lalu gagal 400.
+  if (!process.stdin.isTTY) {
+    console.error(
+      "auth login needs an interactive terminal (device-code approval happens in a browser)",
+    )
+    process.exit(1)
+  }
   const requested = args[2] ?? OAUTH_PROVIDERS[0]?.id
   if (!requested) {
     console.error("no OAuth providers registered")

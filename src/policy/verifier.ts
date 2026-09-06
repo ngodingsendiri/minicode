@@ -50,6 +50,15 @@ export function detectVerifyCommand(cwd?: string): string | undefined {
   return undefined
 }
 
+// P13 P1 — ringkasan turn verify-sukses untuk auto-extract memori snippet.
+// Disimpan sebagai kategori `snippet` (TTL 14 hari): cukup lama untuk dipakai
+// sesi berikutnya, cukup singkat agar cara basi tidak menyesatkan.
+// Pure + diekspor agar bisa diuji tanpa menjalankan verify sungguhan.
+export function buildVerifySnippet(prompt: string, verifyCommand: string, turns: number): string {
+  const task = prompt.replace(/\s+/g, " ").trim().slice(0, 200) || "(empty prompt)"
+  return `verified ok: "${task}" via \`${verifyCommand.slice(0, 120)}\` (${turns} turns)`
+}
+
 // Format LSP diagnostics items jadi string ringkas, maks 8 baris pertama.
 function formatDiagnostics(items: Record<string, unknown>[], filePath: string): string {
   const SEVERITY = ["Error", "Warning", "Info", "Hint"]

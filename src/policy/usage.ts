@@ -53,6 +53,19 @@ const emptyUsage = (): Usage => ({
   cacheWriteTokens: 0,
 })
 
+// Harness-P1: keputusan budget terpusat agar one-shot/REPL/exec sepakat.
+// strict = fail-closed: cost null (model tanpa harga) dianggap over, bukan
+// diabaikan. Non-strict mempertahankan perilaku lama (fail-open).
+export function budgetStatus(
+  budget: number | undefined,
+  cost: number | undefined,
+  strict: boolean,
+): "ok" | "over" | "unknown-strict" {
+  if (budget == null) return "ok"
+  if (cost != null) return cost > budget ? "over" : "ok"
+  return strict ? "unknown-strict" : "ok"
+}
+
 export function createUsageCollector(bus: EventBus, model?: string) {
   // DUA akumulator, bukan satu.
   //

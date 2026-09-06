@@ -265,16 +265,18 @@ test("router emits effective-model extension saat substitusi model fallback", as
   expect(eff).toEqual({ requested: "gpt-4o", effective: "substituted-model", provider: "good" })
 })
 
-test("router caps retryAfter 3600 -> 30s", async () => {
+test("router caps retryAfter + coba ulang di tempat sekali", async () => {
   const bad: any = {
     id: "bad",
     models: ["m"],
     // biome-ignore lint/correctness/useYield: fake provider yang selalu gagal - throw sebelum yield pertama
     async *stream() {
-      throw new ProviderError("rate_limit", "rl", 3600_000)
+      // retryAfter 5 dtk > cap 100 ms: dipotong tanpa mutasi error asli.
+      // Provider tunggal → tunggu-di-tempat 100 ms + coba ulang sekali.
+      throw new ProviderError("rate_limit", "rl", 5_000)
     },
   }
-  const router = createRouterProvider({ providers: [bad], maxRetryAfterMs: 30_000 })
+  const router = createRouterProvider({ providers: [bad], maxRetryAfterMs: 100 })
   try {
     for await (const _ of router.stream(
       { messages: [{ role: "user", content: "hi" }] },
@@ -283,7 +285,7 @@ test("router caps retryAfter 3600 -> 30s", async () => {
     }
     expect(false).toBe(true)
   } catch (e) {
-    expect((e as ProviderError).retryAfterMs).toBe(30_000)
+    expect((e as ProviderError).retryAfterMs).toBe(100)
   }
 })
 

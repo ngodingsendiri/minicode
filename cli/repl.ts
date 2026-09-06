@@ -15,34 +15,68 @@
 
 import { resolve as resolvePath } from "node:path"
 import { expandMentions } from "../src/app/mentions.ts"
+import { budgetStatus } from "../src/policy/usage.ts"
 import { redoLastCheckpoint, undoLastCheckpoint } from "../src/session/checkpoint.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
 import { renderSkill } from "../src/skills/loader.ts"
-import { formatError, getLastTurnText, writeClipboardOsc52 } from "../src/ui/assistant/simple.ts"
+import {
+  formatError,
+  getLastTurnText,
+  takePendingError,
+  writeClipboardOsc52,
+} from "../src/ui/assistant/simple.ts"
 import { appendHistory, askLine } from "../src/ui/input/input.ts"
 import type { PromptKey } from "../src/ui/input/prompt-engine.ts"
 import { setCompactMode } from "../src/ui/render/detail.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
 import { setReasoningVisible } from "../src/ui/render/reasoning.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
-import { BUILTIN_COMMANDS, type CommandContext, handleBuiltinCommand } from "./commands.ts"
+import {
+  BUILTIN_COMMANDS,
+  type CommandContext,
+  DRIVER_HELP_COMMANDS,
+  handleBuiltinCommand,
+} from "./commands.ts"
 import type { CliSession } from "./setup.ts"
 
 const MODES = ["auto", "ask", "plan", "allowlist", "allow-all"] as const
 
-// Perintah REPL yang ditangani driver sendiri (bukan builtin commands.ts).
-// Ikut ditawarkan di dropdown supaya bisa ditemukan.
-const DRIVER_COMMANDS = [
-  "/mode",
-  "/compact",
-  "/thinking",
-  "/undo",
-  "/redo",
-  "/cost",
-  "/resume",
-  "/clear",
-  "/copy",
-]
+// Jarak edit untuk did-you-mean — cukup untuk typo 1-2 huruf (/modle,
+// /sessons), cukup ketat untuk tidak menebak perintah yang memang asing.
+function editDistance(a: string, b: string): number {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => i)
+  for (let j = 1; j <= b.length; j++) {
+    let prev = dp[0]!
+    dp[0] = j
+    for (let i = 1; i <= a.length; i++) {
+      const cur = dp[i]!
+      dp[i] = Math.min(dp[i]! + 1, dp[i - 1]! + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1))
+      prev = cur
+    }
+  }
+  return dp[a.length]!
+}
+
+/** Saran perintah terdekat untuk typo slash; undefined bila tak ada yang dekat.
+ * Diekspor untuk test. */
+export function suggestSimilar(name: string, candidates: string[]): string | undefined {
+  let best: string | undefined
+  let bestD = 3 // ambang: >2 dianggap perintah asing, bukan typo
+  for (const cand of candidates) {
+    if (cand === name) return cand
+    const d = editDistance(name.toLowerCase(), cand.toLowerCase())
+    if (d < bestD) {
+      bestD = d
+      best = cand
+    }
+  }
+  return best
+}
+
+// Perintah REPL yang ditangani driver sendiri DAN ikut di dropdown completion.
+// Yang hanya ditampilkan di /help (bukan dropdown) tinggal di commands.ts
+// (DRIVER_HELP_COMMANDS) — dropdown tetap pendek: 3 toggle saja.
+const DRIVER_COMMANDS = ["/mode", "/compact", "/thinking"]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
@@ -56,6 +90,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     allLoadedSkills,
     usage,
     budget,
+    budgetStrict,
     persistCurrent,
     runPromptWithVerify,
     close,
@@ -124,9 +159,23 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     else mode = permissionMode ?? mode // tak ada handle: jangan tampilkan label palsu
   }
 
-  const onKey = (key: PromptKey): boolean => {
+  // Toggle cepat plan/build — pasangan mode baca vs tulis. allow-all tak
+  // pernah jadi target (lihat cycleMode): satu Tab tak boleh membuka semua.
+  const togglePlanBuild = () => {
+    mode = mode === "plan" ? "auto" : "plan"
+    if (permissions) permissions.setMode(mode as (typeof MODES)[number])
+  }
+
+  const onKey = (key: PromptKey, line: string): boolean => {
     if (key.type === "shift-tab") {
       cycleMode()
+      notify(c.muted(`mode: ${mode}`))
+      return true
+    }
+    // Tab di baris kosong = toggle plan/build (dua mode yang dipakai 90%
+    // waktu). Tab berisi teks tetap completion. Shift+Tab untuk mode lain.
+    if (key.type === "tab" && line === "") {
+      togglePlanBuild()
       notify(c.muted(`mode: ${mode}`))
       return true
     }
@@ -182,10 +231,19 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   // peringatan 80% dicetak sekali.
   async function runTurn(finalPrompt: string, original: string): Promise<void> {
     const spent = usage.getSession(modelRef.current)
-    if (budget != null && spent.cost != null && spent.cost > budget) {
+    const preStatus = budgetStatus(budget, spent.cost, budgetStrict ?? false)
+    if (preStatus === "over" && spent.cost != null && budget != null) {
       console.log(
         c.red(
           `[budget] ${formatUsd(spent.cost)} > ${formatUsd(budget)} — over budget, new prompts rejected. /exit to quit.`,
+        ),
+      )
+      return
+    }
+    if (preStatus === "unknown-strict") {
+      console.log(
+        c.red(
+          `[budget] cost unknown (model tanpa harga) — --budget-strict rejects new prompts. /exit to quit.`,
         ),
       )
       return
@@ -232,9 +290,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       !warned80
     ) {
       warned80 = true
-      console.log(
-        c.yellow(`[budget] ${formatUsd(session.cost)} / ${formatUsd(budget)} (80% terpakai)`),
-      )
+      console.log(c.yellow(`[budget] ${formatUsd(session.cost)} / ${formatUsd(budget)} (80% used)`))
     }
   }
 
@@ -248,7 +304,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       if (name === "mode") {
         if (args) {
           if (!(MODES as readonly string[]).includes(args)) {
-            console.log(c.yellow(`mode tak dikenal: ${args} — pilihan: ${MODES.join(", ")}`))
+            console.log(c.yellow(`unknown mode: ${args} — choices: ${MODES.join(", ")}`))
             return false
           }
           mode = args
@@ -266,7 +322,20 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         return false
       }
       if (name === "thinking") {
-        const visible = setReasoningVisible()
+        const arg = args.toLowerCase()
+        const next =
+          arg === ""
+            ? undefined
+            : arg === "on" || arg === "1"
+              ? true
+              : arg === "off" || arg === "0"
+                ? false
+                : null
+        if (next === null) {
+          console.log("Usage: /thinking [on|off]")
+          return false
+        }
+        const visible = setReasoningVisible(next)
         console.log(c.muted(`reasoning: ${visible ? "on" : "off"}`))
         return false
       }
@@ -283,22 +352,17 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         return false
       }
       if (name === "cost" || name === "usage") {
-        const u = usage.getSession(modelRef.current)
-        console.log(`Cost: ${u.cost != null ? formatUsd(u.cost) : "N/A"} · ${u.totalTokens} tokens`)
-        return false
+        // Opsi A: /cost tidak punya tampilan sendiri lagi — arahkan ke /status
+        // (satu-satunya sumber biaya sesi: input/output/total/cost).
+        return handleBuiltinCommand("/status", commandCtx).then((r) => !!r.shouldExit)
       }
       if (name === "resume") {
+        // Opsi A: /resume = pintas /sessions (daftar + picker, atau respawn <id>).
         if (!args) {
-          console.log("Usage: /resume <id>")
+          await pickSession()
           return false
         }
-        const sess = loadSession(args, cwd)
-        if (!sess?.messages.length) {
-          console.log(`Session "${args}" not found or empty.`)
-          return false
-        }
-        await respawnWithResume(args)
-        return false
+        return handleBuiltinCommand(`/sessions ${args}`, commandCtx).then((r) => !!r.shouldExit)
       }
       if (name === "clear") {
         // Shell-first: scrollback adalah transcript — jangan hapus, tandai saja.
@@ -320,10 +384,6 @@ export async function runRepl(ctx: CliSession): Promise<void> {
           )
         else console.log(c.dim("(clipboard needs a TTY terminal)"))
         return false
-      }
-      if (name === "quit" || name === "q") {
-        console.log("Sampai jumpa.")
-        return true
       }
       if (name === "history") {
         const { loadHistory } = await import("../src/ui/input/input.ts")
@@ -347,7 +407,20 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
       const skill = allLoadedSkills.find((s) => s.name === name)
       if (!skill) {
-        console.log(c.yellow(`Unknown command: ${name}. Try /help.`))
+        const hint = suggestSimilar(name, [
+          ...BUILTIN_COMMANDS.map((b) => b.name),
+          ...DRIVER_COMMANDS.map((d) => d.slice(1)),
+          // Alias yang diarahkan ke perintah lain tetap dikenali sebagai typo
+          // (mis. /cst → /cost → /status), walau tak muncul di dropdown.
+          ...DRIVER_HELP_COMMANDS.map((b) => b.name),
+          "cost",
+          "usage",
+          "resume",
+          ...allLoadedSkills.map((s) => s.name),
+        ])
+        console.log(
+          c.yellow(`Unknown command: /${name}.${hint ? ` Did you mean /${hint}?` : " Try /help."}`),
+        )
         return false
       }
       await runTurn(await renderSkill(skill, args), q)
@@ -359,7 +432,14 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const onSigint = () => abort?.abort()
   process.on("SIGINT", onSigint)
-  console.log(c.dim("minicode — /help for commands · Ctrl+C twice to exit"))
+  // Satu baris konteks saat start — tanpa ini user buta: model, mode, dan
+  // direktori apa yang sedang dikerjakan. Tetap satu baris (minimalis).
+  console.log(
+    c.dim(
+      `minicode · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "no model"} · ${mode} · ${cwd ?? process.cwd()}`,
+    ),
+  )
+  console.log(c.dim("/help for commands · Tab toggles plan/build · Ctrl+C twice to exit"))
 
   let shouldExit = false
   // Akumulasi baris yang diakhiri `\` — shell-like continuation di driver
@@ -404,7 +484,8 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       try {
         shouldExit = await dispatchLine(q)
       } catch (e) {
-        console.log(`${c.red(glyphs.cross)} ${formatError(e)}`)
+        const shown = takePendingError()
+        console.log(`${c.red(glyphs.cross)} ${shown ?? formatError(e)}`)
       }
       if (shouldExit) break
     }

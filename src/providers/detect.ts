@@ -6,7 +6,7 @@ export interface DetectedModel {
 
 export interface DetectResult {
   models: string[]
-  providerHint: "openai" | "anthropic" | "unknown"
+  providerHint: "openai" | "anthropic" | "responses" | "unknown"
 }
 
 // Cache in-memory per baseUrl (30 menit) — /sync yang sering dipanggil tidak
@@ -37,8 +37,9 @@ async function tryFetchModels(
   baseUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
-): Promise<string[] | null> {
+): Promise<{ models: string[] | null; contacted: boolean }> {
   const urls = [`${baseUrl.replace(/\/+$/, "")}/models`, `${baseUrl.replace(/\/+$/, "")}/v1/models`]
+  let contacted = false
   for (const url of urls) {
     // timeout PER-ATTEMPT: satu fetch yang menggantung tidak memakan seluruh
     // budget sinyal luar — kombinasi via AbortSignal.any.
@@ -46,17 +47,22 @@ async function tryFetchModels(
     const attemptSignal = signal ? AbortSignal.any([signal, perAttempt]) : perAttempt
     try {
       const res = await fetch(url, { headers, signal: attemptSignal })
+      contacted = true // server menjawab (walau 404) — bukan jaringan mati
       if (!res.ok) continue
       const json = (await res.json()) as { data?: { id: string }[]; models?: { id: string }[] }
       const data = json.data ?? json.models ?? []
-      if (Array.isArray(data) && data.length) return data.map((m) => m.id).filter(Boolean)
+      if (Array.isArray(data) && data.length)
+        return { models: data.map((m) => m.id).filter(Boolean), contacted }
       // anthropic format: {data: [{id, display_name}]}
       if (Array.isArray((json as unknown as { models: unknown }).models)) {
-        return (json as unknown as { models: { id: string }[] }).models.map((m) => m.id)
+        return {
+          models: (json as unknown as { models: { id: string }[] }).models.map((m) => m.id),
+          contacted,
+        }
       }
     } catch {}
   }
-  return null
+  return { models: null, contacted }
 }
 
 export async function detectModels(
@@ -71,17 +77,30 @@ export async function detectModels(
 
   // CAP global — jangan pernah biarkan user menunggu lama pada gateway offline
   const sig = signal ?? AbortSignal.timeout(LIMITS.DETECT_GLOBAL_TIMEOUT_MS)
+  let everContacted = false
   for (const h of hybridHeaders(apiKey)) {
     if (sig.aborted) break
-    const models = await tryFetchModels(baseUrl, h, sig)
+    const { models, contacted } = await tryFetchModels(baseUrl, h, sig)
+    everContacted = everContacted || contacted
     if (models?.length) {
-      // Prioritas: baseUrl (anthropic.com → anthropic) → nama model (claude/gpt)
-      // Gateway seperti b.ai, OpenRouter: baseUrl TIDAK anthropic → openai-compat
-      const hint = baseUrl.includes("anthropic") ? "anthropic" : "openai"
+      // P11 P1.4 — wire dari probe, bukan substring URL semata: path
+      // /responses berarti endpoint Responses API (previous_response_id).
+      // Substring host (anthropic) tetap dipakai hanya sebagai fallback
+      // terakhir, bukan penentu utama.
+      const path = baseUrl.toLowerCase()
+      const hint = path.includes("/responses")
+        ? "responses"
+        : baseUrl.includes("anthropic")
+          ? "anthropic"
+          : "openai"
       const result = { models, providerHint: hint as DetectResult["providerHint"] }
       cache.set(key, { at: Date.now(), result })
       return result
     }
   }
+  // Tak satu pun attempt mendapat respons HTTP = jaringan mati, bukan
+  // "provider tanpa model" (Anthropic menjawab 404 tapi tetap kontak).
+  // Lempar agar /sync mencatat failed, bukan diam.
+  if (!everContacted) throw new Error(`unreachable: ${baseUrl}`)
   return { models: [], providerHint: "unknown" }
 }

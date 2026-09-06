@@ -43,6 +43,15 @@ class CappedBuffer {
   }
 }
 
+// MINICODE_SANDBOX_STRICT=1: jangan pernah fallback diam-diam ke eksekusi
+// langsung bila isolasi yang diminta tak tersedia — tolak eksplisit.
+// Default (tanpa flag) tetap warn+lanjut agar kompatibel (mis. Windows yang
+// tak punya bubblewrap/seatbelt). Fail-closed opt-in, bukan default-on.
+function sandboxStrict(): boolean {
+  const v = (process.env.MINICODE_SANDBOX_STRICT ?? "").trim().toLowerCase()
+  return v === "1" || v === "true" || v === "yes" || v === "on"
+}
+
 // ── Background jobs ──
 // Perlu untuk dev server / watcher / test panjang: proses hidup melewati batas
 // satu turn, output-nya diambil bertahap lewat bash_output.
@@ -208,6 +217,11 @@ export const bashTool: Tool = {
         if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
         return text.slice(0, 20000)
       }
+      if (sandboxStrict()) {
+        throw new Error(
+          "[sandbox] MINICODE_SANDBOX=docker but docker unavailable and MINICODE_SANDBOX_STRICT=1 — refusing direct execution",
+        )
+      }
       process.stderr.write(
         "[warn] MINICODE_SANDBOX=docker but docker unavailable — falling back to direct execution\n",
       )
@@ -226,6 +240,11 @@ export const bashTool: Tool = {
         const text = scrubSecrets(res.output)
         if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
         return text.slice(0, 20000)
+      }
+      if (sandboxStrict()) {
+        throw new Error(
+          "[sandbox] OS sandbox unavailable and MINICODE_SANDBOX_STRICT=1 — refusing direct execution",
+        )
       }
       process.stderr.write(
         "[warn] MINICODE_SANDBOX=os but OS sandbox unavailable — falling back to direct execution\n",

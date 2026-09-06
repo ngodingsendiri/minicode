@@ -5,10 +5,11 @@ import { resolve as resolvePath } from "node:path"
 import { createMinicodeSession } from "../src/app/session.ts"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
+import { budgetStatus } from "../src/policy/usage.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { setSubAgentSessionFactory } from "../src/tools/task.ts"
-import { formatError } from "../src/ui/assistant/simple.ts"
+import { formatError, takePendingError } from "../src/ui/assistant/simple.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
 import { hasFlag, promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
@@ -29,7 +30,7 @@ const HELP = `Minicode - coding agent on frozen MiniCore
 Usage:
   minicode                        # interactive chat
   minicode "prompt" [options]     # one-shot run
-  minicode exec "prompt" [--json] # headless CI mode (Codex/Gemini-like, JSON stream)
+  minicode exec "prompt" [--json] # headless CI mode (JSON stream)
   echo "prompt" | minicode        # via pipe
   minicode sync                   # refresh models from all providers
 Options:
@@ -41,25 +42,22 @@ Options:
   --model <name>      override model (provider::model)
   --provider <id>     force provider id
   --session <id>      session id (default random)
-  --allow-all         allow all tools (no sandbox)
-  --ask               ask per tool (y/n/a) - human-in-loop
-  --plan              read-only mode (no file writes / bash / sub-agents)
-  --allowlist         bash allowlist only (git/bun/npm safe cmds; via MINICODE_BASH_ALLOWLIST)
+  --allow-all         allow all tools
+  --ask               ask per tool (y/n/a)
+  --plan              read-only mode (no writes, bash, or sub-agents)
+  --allowlist         bash allowlist only (see MINICODE_BASH_ALLOWLIST)
   --max-steps <n>     max tool steps (default 50)
   --context-window <n> context window tokens
-  --timeout <ms>      hard deadline per run (default 900000 = 15min; 0 = Infinity)
-  --interactive       REPL loop (linear)
-  --verify            auto-verify after run + self-heal (uses typecheck/test/tsconfig)
-  --sandbox <mode>    bash sandbox: docker (ephemeral container, --network none)
-  --ratelimit <rpm>   limit LLM requests per minute (token bucket) to avoid 429
-  --budget <usd>      session cost limit (USD)
+  --timeout <ms>      hard deadline per run (default 900000, 0 = off)
+  --interactive       REPL loop
+  --verify            auto-verify + self-heal (typecheck/test/tsconfig)
+  --sandbox <mode>    bash sandbox: docker (ephemeral, no network)
+  --ratelimit <rpm>   LLM requests per minute
+  --budget <usd>      session cost limit
+  --budget-strict     fail-closed: unknown cost counts as over budget
 
-Commands in REPL:
-  /help /provider /model /sync /status /sessions /init /mode /compact /thinking /exit
-
-Keyboard in REPL:
-  Enter submit · Tab complete · Up/Down history · Shift+Tab cycle mode
-  Ctrl+O toggle compact · Ctrl+T reasoning · Ctrl+C stop turn / ^C twice exit
+REPL: /help /provider /model /sync /status /sessions /init /mode /compact /thinking /undo /cost /exit
+Keys: Enter submit · Tab complete (empty: plan/build) · Up/Down history · Shift+Tab mode · Ctrl+C stop (2x exit)
 `
 
 const args = process.argv.slice(2)
@@ -115,6 +113,7 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--sandbox <docker|os>", desc: "bash sandbox" },
           { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
           { flag: "--budget <usd>", desc: "session cost limit" },
+          { flag: "--budget-strict", desc: "unknown cost counts as over budget" },
           { flag: "--json", desc: "JSON output (help/exec)" },
         ],
       }),
@@ -180,11 +179,10 @@ const sandbox = resolveSandbox(
 )
 if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
 else process.env.MINICODE_SANDBOX = sandbox.mode
-// Notice sandbox hanya relevan bila sesi ini berpotensi menjalankan perintah.
-// Sebelumnya ia dicetak untuk SETIAP invokasi di Windows, termasuk yang tidak
-// menyentuh tool sama sekali — kebisingan di setiap baris perintah.
-const willRunTools = !plan
-if (sandbox.notice && willRunTools) process.stderr.write(`${sandbox.notice}\n`)
+// Notice sandbox hanya relevan bila sesi ini berpotensi menjalankan perintah
+// DAN provider ada (sesi benar-benar terbentuk). Sebelumnya ia dicetak untuk
+// SETIAP invokasi di Windows — termasuk --help-semu (exec tanpa prompt) dan
+// exit no-provider. Cetaknya di setup, setelah provider layer lolos.
 const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
 let budget = budgetRaw ? Number(budgetRaw) : undefined
@@ -192,6 +190,8 @@ if (budgetRaw && (!Number.isFinite(budget) || (budget as number) < 0)) {
   process.stderr.write(`[warn] --budget requires a USD number, ignoring "${budgetRaw}"\n`)
   budget = undefined
 }
+// Harness-P1: strict lewat flag ATAU env (simetri dengan MINICODE_SANDBOX_STRICT).
+const budgetStrict = hasFlag(args, "--budget-strict") || process.env.MINICODE_BUDGET_STRICT === "1"
 const ratelimitRaw = getArg("--ratelimit")
 let rateLimiter: ReturnType<typeof createRateLimiter> | undefined
 if (ratelimitRaw) {
@@ -243,10 +243,12 @@ const ctx = await createCliSession({
   allowlist: effectiveAllowlist,
   verify,
   budget,
+  budgetStrict,
   maxSteps,
   contextWindowTokens,
   timeoutMs,
   rateLimiter,
+  sandboxNotice: sandbox.notice,
 })
 
 if (enterRepl) {
@@ -258,6 +260,7 @@ if (enterRepl) {
     usage,
     modelRef,
     budget: b,
+    budgetStrict: strict,
     cwd: wcwd,
     sessionId: sid,
     persistCurrent,
@@ -271,17 +274,21 @@ if (enterRepl) {
     // --verify/self-heal bisa menjalankan beberapa dan reset() di antaranya.
     const u = usage.getSession(modelRef.current)
     let overBudget = false
-    if (b != null && u.cost != null) {
-      if (u.cost > b) {
-        process.stderr.write(
-          c.red(`[budget] ${formatUsd(u.cost)} > ${formatUsd(b)} - over budget, stopping.\n`),
-        )
-        overBudget = true
-      } else if (u.cost > b * 0.8)
-        process.stderr.write(
-          c.yellow(`[budget] ${formatUsd(u.cost)} / ${formatUsd(b)} (80% terpakai)\n`),
-        )
-    }
+    const status = budgetStatus(b, u.cost, strict ?? false)
+    if (status === "over" && u.cost != null && b != null) {
+      process.stderr.write(
+        c.red(`[budget] ${formatUsd(u.cost)} > ${formatUsd(b)} - over budget, stopping.\n`),
+      )
+      overBudget = true
+    } else if (status === "unknown-strict" && b != null) {
+      process.stderr.write(
+        c.red(
+          `[budget] cost unknown (model tanpa harga) - over budget under --budget-strict, stopping.\n`,
+        ),
+      )
+      overBudget = true
+    } else if (b != null && u.cost != null && u.cost > b * 0.8)
+      process.stderr.write(c.yellow(`[budget] ${formatUsd(u.cost)} / ${formatUsd(b)} (80% used)\n`))
     await persistCurrent(u)
     if (overBudget) {
       await close()
@@ -318,9 +325,13 @@ if (enterRepl) {
       model: traceModel,
       ok: true,
       memoryHits: ctx.memoryHits,
+      overBudget,
     })
   } catch (e) {
-    process.stderr.write(`\n${c.red(glyphs.cross)} ${formatError(e)}\n`)
+    // Error provider biasanya sudah dirender ramah oleh event handler
+    // (takePendingError) — cetak sekali saja, jangan dua blok ✗.
+    const shown = takePendingError()
+    process.stderr.write(`\n${c.red(glyphs.cross)} ${shown ?? formatError(e)}\n`)
     const uErr = usage.getSession(modelRef.current)
     await writeTrace(wcwd, {
       sessionId: sid,
@@ -335,6 +346,7 @@ if (enterRepl) {
       ok: false,
       error: formatError(e),
       memoryHits: ctx.memoryHits,
+      overBudget: b != null && uErr.cost != null && uErr.cost > b,
     })
     await close()
     process.exit(1)

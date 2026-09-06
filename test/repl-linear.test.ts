@@ -148,7 +148,7 @@ describe("REPL linier: siklus dasar", () => {
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
     expect(h.closed).toBe(true)
-    expect(visible(tty)).toContain("Sampai jumpa")
+    expect(visible(tty)).toContain("Bye.")
   })
 
   test("/clear menandai tanpa menghapus scrollback", async () => {
@@ -208,7 +208,7 @@ describe("REPL linier: siklus dasar", () => {
     const h = makeHarness()
     const p = start(h)
     await typeLine("/xyz")
-    expect(visible(tty)).toContain("Unknown command: xyz")
+    expect(visible(tty)).toContain("Unknown command: /xyz")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -306,7 +306,7 @@ describe("REPL linier: mode & toggle", () => {
     expect(h.mode).toBe("plan")
     expect(visible(tty)).toContain("mode: plan")
     await typeLine("/mode entah")
-    expect(visible(tty)).toContain("mode tak dikenal: entah")
+    expect(visible(tty)).toContain("unknown mode: entah")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -328,6 +328,22 @@ describe("REPL linier: mode & toggle", () => {
     const h = makeHarness()
     const p = start(h)
     await typeLine("/copy")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("Tab kosong toggle plan/build, Tab berisi tetap completion", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await waitForPrompt()
+    // Baris kosong + Tab: auto -> plan (bukan completion kosong).
+    await tty.send(KEY.tab, 25)
+    expect(h.mode).toBe("plan")
+    expect(visible(tty)).toContain("mode: plan")
+    await waitForPrompt()
+    await tty.send(KEY.tab, 25)
+    expect(h.mode).toBe("auto")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -395,6 +411,52 @@ describe("REPL linier: budget", () => {
     // Slash command tidak ikut diblokir.
     await typeLine("/status")
     expect(visible(tty)).toContain("Session sess-1")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+})
+
+describe("REPL linier: did-you-mean & /thinking", () => {
+  test("suggestSimilar: typo dekat disarankan, asing tidak", async () => {
+    const { suggestSimilar } = await import("../cli/repl.ts")
+    const cmds = ["help", "model", "sessions", "thinking", "resume"]
+    expect(suggestSimilar("modle", cmds)).toBe("model")
+    expect(suggestSimilar("sessons", cmds)).toBe("sessions")
+    expect(suggestSimilar("xyzabc", cmds)).toBeUndefined()
+  })
+
+  test("/sessoons menyarankan /sessions", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("/sessoons")
+    expect(visible(tty)).toContain("Did you mean /sessions?")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("/cost dan /usage = alias /status (satu sumber biaya)", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("/cost")
+    expect(visible(tty)).toContain("Session sess-1")
+    await typeLine("/usage")
+    expect(visible(tty)).toContain("Cost:")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("/thinking on|off eksplisit, selain itu usage", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("/thinking on")
+    expect(visible(tty)).toContain("reasoning: on")
+    await typeLine("/thinking off")
+    expect(visible(tty)).toContain("reasoning: off")
+    await typeLine("/thinking ngawur")
+    expect(visible(tty)).toContain("Usage: /thinking [on|off]")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })

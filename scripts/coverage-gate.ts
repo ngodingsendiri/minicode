@@ -29,8 +29,11 @@ function getArg(name: string, fallback: number): number {
 // provider-manager flows, dan CLI subprocess: 82,36% funcs / 84,16% lines.
 // P13 P0 menambah 4 tool + safe-open + responses + swebench tanpa test yet
 // → turun ke 77,82/81,24. Turunkan sementara, naikkan lagi setelah test P1.
-const MIN_LINES = getArg("--lines", 81)
-const MIN_FUNCS = getArg("--funcs", 77)
+// P13/P11/P10 P1 mendarat (TTL hierarkis, 2 tool, Responses, branch, doctor,
+// safe-open/trash tests): 80,75/84,52. Kunci di 80/84 — sisa ke 81/83 ada di
+// area lama yang belum tersentuh (lsp 18%, config 42%, repl), bukan kode baru.
+const MIN_LINES = getArg("--lines", 84)
+const MIN_FUNCS = getArg("--funcs", 80)
 
 const res = spawnSync(
   process.execPath,

@@ -136,6 +136,7 @@ describe("fuzz regresi: fork bomb varian", () => {
     "b(){ b|b& };b",
     "boom(){ boom|boom& };boom",
     ": () { :|:& }; :",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: string serangan yang diuji, bukan template
     "V=:(){; nice ${V} :|:& };:",
   ]
   for (const cmd of cases) {
@@ -158,6 +159,7 @@ describe("fuzz regresi: batas normalisasi yang jujur", () => {
   test("indirection yang memecah target juga memecah maknanya", () => {
     // `C=find\t/` berarti assign C=find lalu jalankan `/`; rujukan berikutnya
     // menghasilkan `find -name ...` yang mencari dari cwd, bukan root.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: payload indirection yang diuji, bukan template
     const broken = "C750=find\t/; ${C750} -name\tid_rsa"
     expect(normalizeCommand(broken)).not.toContain("find /")
     // tidak diklaim aman maupun berbahaya — yang penting: tidak crash

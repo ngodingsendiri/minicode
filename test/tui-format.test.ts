@@ -8,6 +8,7 @@ import {
   attachSimpleLogger,
   formatError,
   getLastTurnText,
+  takePendingError,
   writeClipboardOsc52,
 } from "../src/ui/assistant/simple.ts"
 import { detail, setCompactMode } from "../src/ui/render/detail.ts"
@@ -644,12 +645,15 @@ describe("simple logger (one-shot)", () => {
     expect(out()).toContain("gagal")
   })
 
-  test("provider error diformat lewat kategori, bukan dump mentah", () => {
+  test("provider error ditunda ke driver (tanpa cetak ganda)", () => {
     const { bus, detach, out } = attach()
     bus.emit("provider:extension", { kind: "error", data: { category: "auth", message: "401" } })
     detach()
-    expect(out()).toContain("rejected authentication")
-    expect(out()).not.toContain("[auth]")
+    // Event live TIDAK langsung mencetak — driver mencetak sekali via
+    // takePendingError, jadi satu kegagalan = satu blok ✗ (bukan dua).
+    expect(out()).not.toContain("rejected authentication")
+    expect(takePendingError()).toContain("rejected authentication")
+    expect(takePendingError()).toBeNull() // consume-once
   })
 
   test("reasoning tampil bila /thinking aktif walau tanpa --verbose", () => {

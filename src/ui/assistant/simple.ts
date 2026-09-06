@@ -56,6 +56,18 @@ export function writeClipboardOsc52(text: string): boolean {
 const wOut = (s: string) => runWithoutStatus(() => process.stdout.write(s))
 const wErr = (s: string) => runWithoutStatus(() => process.stderr.write(s))
 
+// Error provider terakhir turn ini — diingat, BUKAN dicetak langsung.
+// Alasan: error tengah-turn sering pulih via fallback router; mencetak tiap
+// event + sekali lagi di catch driver = dua blok ✗ untuk satu kegagalan.
+// Driver (index.ts/repl.ts) mencetak sekali via takePendingError().
+let pendingError: string | null = null
+/** Ambil + kosongkan error tertunda (consume-once per turn). */
+export function takePendingError(): string | null {
+  const e = pendingError
+  pendingError = null
+  return e
+}
+
 // Batas tampilan expanded — ADAPTIF terhadap tinggi terminal, bukan konstanta
 // mati. Scrollback memang tak terbatas, tapi satu tool yang memuntahkan 10
 // ribu baris di terminal 10 baris tetap menenggelamkan konteks; sebaliknya di
@@ -121,6 +133,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   offs.push(
     bus.on("turn:started", (e) => {
       lastTurnText = ""
+      pendingError = null
       if (opts.verbose) wErr(c.muted(`\n── Turn ${e.turn} ──\n`))
     }),
   )
@@ -166,7 +179,7 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         }
       } else if (e.kind === "error") {
         const d = e.data as { message?: string; category?: string }
-        wErr(c.error(`\n✗ ${formatProviderError(d)}\n`))
+        pendingError = formatProviderError(d)
       } else if (e.kind === "content_filter") {
         wErr(c.warning(`\n! Content filter blocked\n`))
       }

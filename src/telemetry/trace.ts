@@ -19,6 +19,8 @@ export interface RunTrace {
   error?: string
   /** P2.3: jumlah hit RAG memory yang di-inject ke system prompt run ini. */
   memoryHits?: number
+  /** Harness-P0: true bila cost sesi melewati --budget (fail-open bila cost null). */
+  overBudget?: boolean
 }
 
 // Opt-out privasi: MINICODE_TELEMETRY=0/false/off → tidak ada file ditulis.

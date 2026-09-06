@@ -13,6 +13,17 @@ export interface ResponsesConfig {
 // Minimal Responses API adapter — /v1/responses, previous_response_id chaining, store:false
 // Untuk P11 P1.1: providerHint "responses" → wire ini, bukan chat/completions.
 // Implementasi streaming SSE mirip openai-compat, tapi endpoint berbeda.
+//
+// Chaining: response id terakhir per model disimpan di memori proses dan
+// dikirim sebagai previous_response_id pada call berikutnya — tanpa ini tiap
+// turn adalah sesi baru dan server tak bisa merujuk konteks sebelumnya.
+// Satu proses CLI = satu sesi, jadi state modul cukup (best-effort).
+const lastResponseByModel = new Map<string, string>()
+
+export function clearResponsesChain(): void {
+  lastResponseByModel.clear()
+}
+
 export function createResponsesProvider(config: ResponsesConfig): ModelProvider {
   const baseUrl = config.baseUrl.replace(/\/+$/, "")
   const endpoint = `${baseUrl}/responses`
@@ -20,6 +31,8 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
     id: config.id ?? "responses",
     models: config.models,
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
+      const modelKey = request.model ?? config.defaultModel ?? config.models[0] ?? "default"
+      const prev = lastResponseByModel.get(modelKey)
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
         input: request.messages.map((m) => ({
@@ -37,7 +50,9 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
         stream: true,
         store: false,
         ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
-        // previous_response_id akan diisi dari request.messages metadata bila ada (stub)
+        // Rantai konteks antar turn; tanpa ini server memperlakukan tiap
+        // request sebagai sesi baru (biaya konteks + hilang ingatan server).
+        ...(prev ? { previous_response_id: prev } : {}),
       })
       const headers: Record<string, string> = {
         "content-type": "application/json",
@@ -87,13 +102,29 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
               if (payload === "[DONE]") return
               try {
                 const data = JSON.parse(payload) as Record<string, unknown>
-                const delta = (data.delta as Record<string, unknown> | undefined) ?? data
+                // response.completed → simpan id untuk chaining turn berikut.
+                // Format nyata: {type:"response.completed", response:{id:"resp_…"}}.
+                const dtype = data.type as string | undefined
+                if (dtype === "response.completed" || dtype === "completed") {
+                  const resp = data.response as { id?: unknown } | undefined
+                  const rid = resp?.id ?? data.id
+                  if (typeof rid === "string" && rid) lastResponseByModel.set(modelKey, rid)
+                }
+                const rawDelta: unknown = (data.delta as unknown) ?? data
+                const drec = (
+                  typeof rawDelta === "object" && rawDelta !== null
+                    ? (rawDelta as Record<string, unknown>)
+                    : {}
+                ) as Record<string, unknown> & { output_text?: string }
                 const text =
-                  delta.text ?? delta.content ?? (delta as { output_text?: string }).output_text
+                  (typeof rawDelta === "string" ? rawDelta : undefined) ??
+                  drec.text ??
+                  drec.content ??
+                  drec.output_text
                 if (typeof text === "string" && text) yield { type: "text", text }
                 const finish =
                   (data as { finish_reason?: string }).finish_reason ??
-                  (delta as { finish_reason?: string }).finish_reason
+                  (drec as { finish_reason?: string }).finish_reason
                 if (finish)
                   yield {
                     type: "finish",

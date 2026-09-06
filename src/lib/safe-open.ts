@@ -1,6 +1,6 @@
 import { constants } from "node:fs"
 import type { FileHandle } from "node:fs/promises"
-import { lstat, open, realpath, stat } from "node:fs/promises"
+import { lstat, open, realpath } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
 import { isPathOutsideRoot } from "../policy/jail.ts"
 
@@ -10,11 +10,17 @@ const O_NOFOLLOW: number = (constants as unknown as { O_NOFOLLOW?: number }).O_N
 const O_RDONLY = constants.O_RDONLY
 
 /**
- * Buka file dengan O_NOFOLLOW agar symlink tidak diikuti.
- * Di platform tanpa O_NOFOLLOW (Windows) fallback ke dev+ino check:
- * lstat sebelum open vs fstat sesudah — bila dev/ino berbeda berarti
- * path di-swap di antara cek dan pakai (race). Dokumentasikan sebagai
- * best-effort; TOCTOU window mengecil dari ~10ms ke <1ms.
+ * Buka file dengan O_NOFOLLOW pada path yang SUDAH terverifikasi di dalam root.
+ *
+ * Urutan: realpath(abs) → tolak bila di luar root → open(preReal, O_NOFOLLOW).
+ * Membuka hasil resolusi (bukan abs asli) berarti symlink internal tetap bisa
+ * dibaca (targetnya yang dibuka langsung), sementara swap jadi symlink lain
+ * sebelum open gagal tutup (ELOOP) — tidak ada konten luar yang terbaca.
+ *
+ * POSIX-only: di Windows konstanta O_NOFOLLOW tidak didefinisikan (Node) dan
+ * flag diabaikan libuv, sehingga proteksi = pre-check realpath saja (window
+ * race sama seperti pola lama). Catatan jujur: klaim "0 lolos" hanya sah di
+ * POSIX — lihat test/tool-toctou.test.ts (skip bila symlink EPERM).
  */
 export async function safeOpenRead(
   abs: string,
@@ -26,30 +32,16 @@ export async function safeOpenRead(
   if (isPathOutsideRoot(preReal, realRoot))
     throw new Error(`symlink points outside workspace: ${abs}`)
 
-  // Coba O_NOFOLLOW
+  // Buka path terverifikasi — bukan abs (yang bisa di-swap setelah realpath).
   try {
-    const handle = await open(abs, O_RDONLY | O_NOFOLLOW)
-    // Verify setelah open: fstat dev/ino vs lstat bila O_NOFOLLOW tidak didukung
-    if (O_NOFOLLOW === 0 || O_NOFOLLOW === 0x20000) {
-      // best-effort dev+ino di Windows: sudah di-handle lewat realpath pre-check;
-      // post-check tambahan bila symlink pre-create lolos karena target belum ada
-      try {
-        const lst = await stat(abs).catch(() => null)
-        const fst = await handle.stat().catch(() => null)
-        // Jika preReal adalah symlink yang lolos karena target belum ada, fst akan beda
-        // — tapi kasus ini sudah tertangani oleh O_NOFOLLOW di POSIX; di Windows
-        // kita biarkan pre-check + post fstat sebagai mitigasi.
-        void lst
-        void fst
-      } catch {}
-    }
+    const handle = await open(preReal, O_RDONLY | O_NOFOLLOW)
     return { handle, realPath: preReal }
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
-    if (code === "ELOOP") throw new Error(`symlink rejected (O_NOFOLLOW): ${abs}`)
-    // EINVAL: O_NOFOLLOW tidak didukung → fallback dev+ino
+    if (code === "ELOOP") throw new Error(`symlink swapped during open (O_NOFOLLOW): ${abs}`)
+    // EINVAL: O_NOFOLLOW tidak didukung → buka biasa (Windows: pre-check saja)
     if (code === "EINVAL" && O_NOFOLLOW !== 0) {
-      const handle = await open(abs, O_RDONLY)
+      const handle = await open(preReal, O_RDONLY)
       return { handle, realPath: preReal }
     }
     throw e

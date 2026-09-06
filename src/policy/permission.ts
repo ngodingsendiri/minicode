@@ -45,6 +45,7 @@ const INTERNAL_WRITE_TOOLS = new Set([
   "write_memory",
   "forget_memory",
   "todo_write",
+  "submit_result",
   "bash_output",
   "bash_kill",
 ])
@@ -53,8 +54,9 @@ const FILE_WRITE_TOOLS = new Set(["write_file", "edit", "apply_patch", "move_fil
 
 // Subset INTERNAL_WRITE_TOOLS yang juga tidak perlu prompt di mode `ask`.
 // `write_memory`/`forget_memory` TIDAK termasuk: itu menulis MEMORY.md yang
-// persisten lintas sesi, jadi user berhak menyetujuinya.
-const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
+// persisten lintas sesi, jadi user berhak menyetujuinya. `submit_result`
+// termasuk: ia hanya menyerahkan jawaban akhir, tanpa efek samping.
+const NO_PROMPT_TOOLS = new Set(["todo_write", "submit_result", "bash_output", "bash_kill"])
 
 // Tool yang memperbesar serangan / menembus dunia luar: tidak auto-allowed.
 //
@@ -66,7 +68,18 @@ const NO_PROMPT_TOOLS = new Set(["todo_write", "bash_output", "bash_kill"])
 // dari server pihak ketiga langsung ke konteks model, yang merupakan jalur
 // prompt-injection. `mcp_list` TIDAK di-gate karena hanya melaporkan metadata
 // server yang sudah user daftarkan sendiri.
-const GATED_TOOLS = new Set(["delegate_task", "mcp_call", "mcp_read", "mcp_prompt", "git_commit"])
+//
+// `ask_user` di-gate: model yang bisa bertanya tanpa batas bisa membanjiri
+// user (atau memancing jawaban kredensial) — persetujuan sekali per sesi
+// via `[a] Always` tetap tersedia.
+const GATED_TOOLS = new Set([
+  "delegate_task",
+  "mcp_call",
+  "mcp_read",
+  "mcp_prompt",
+  "git_commit",
+  "ask_user",
+])
 
 // Denylist bash kini di src/policy/bash-guard.ts — pemeriksaan dilakukan pada
 // bentuk TERNORMALISASI (quote dibuang, variabel sederhana disubstitusi), bukan
@@ -113,6 +126,9 @@ const DEFAULT_BASH_ALLOWLIST = [
 // 6.4 — npm exec / npx hanya di-allow bila arg "known-good": tak ada
 // ekspansi shell ($/backtick) atau redirection (< >). Chaining ;|& sudah
 // diblokir oleh matchBashAllowlist (pattern tak mengandungnya).
+// Berlaku juga untuk `bun run`/`bun x`: keduanya menjalankan script/paket
+// arbitrer dari package.json repo — tanpa cek ini `bun run test` di repo
+// jahat lolos dengan ekspansi shell di argumennya.
 function npmNpxSafe(cmd: string): boolean {
   return !/[`$<>]/.test(cmd)
 }
@@ -185,7 +201,8 @@ export function createPermissionHandler(
         if (!cmd.trim() || bashDenied(cmd)) return "deny"
         const matched = bashAllowlist.filter((pat) => matchBashAllowlist(cmd, pat))
         if (matched.length === 0) return "deny"
-        if (matched.some((p) => /^(npx|npm exec)\b/i.test(p)) && !npmNpxSafe(cmd)) return "deny"
+        if (matched.some((p) => /^(npx|npm exec|bun x|bun run)\b/i.test(p)) && !npmNpxSafe(cmd))
+          return "deny"
         return "allow"
       }
       if (isGated(call.name)) return "deny"
@@ -243,10 +260,26 @@ export function createPermissionHandler(
         call.name === "write_file" ||
         call.name === "edit" ||
         call.name === "apply_patch" ||
-        call.name === "read_file"
+        call.name === "read_file" ||
+        call.name === "delete_file"
       ) {
         const p = (earlyArgs?.path as string) ?? ""
         if (!p || isRealPathOutsideRoot(p, root) || isSensitive(p)) return "deny"
+      }
+      // move_file punya dua ujung (from+to): keduanya dijail. `to` yang belum
+      // ada jatuh ke cek logis di isRealPathOutsideRoot (fallback ENOENT).
+      if (call.name === "move_file") {
+        const f = (earlyArgs?.from as string) ?? ""
+        const t = (earlyArgs?.to as string) ?? ""
+        if (
+          !f ||
+          !t ||
+          isRealPathOutsideRoot(f, root) ||
+          isRealPathOutsideRoot(t, root) ||
+          isSensitive(f) ||
+          isSensitive(t)
+        )
+          return "deny"
       }
       if (call.name.startsWith("lsp_")) {
         const f = (earlyArgs?.file as string) ?? ""
