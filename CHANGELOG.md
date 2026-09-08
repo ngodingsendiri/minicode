@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — Harness P0–P3 (uncommitted)
+## [Unreleased] — Review P0 + Minimalis (0.9.9)
 
 ### Added
 - **Jail simetris**: `move_file`/`delete_file` dijail di lapisan permission (sebelumnya hanya tool-layer) — berlaku di semua mode termasuk `--allow-all`.
@@ -15,9 +15,13 @@
 - **`config --cwd` diperbaiki**: branch list/add sebelumnya mengabaikan `--cwd` (baca/tulis ke `process.cwd()`); flag-sebagai-id ditolak. Ditemukan saat kejar coverage 81/83 (81,69/85,25; min dikunci 81/83).
 - **SWE docker per-era**: `bench/docker/` (5 image Python 3.6–3.10 + `manifest.json` 20 instance dari tanggal base_commit + classifiers setup.py) + flag `--docker` di `bench/swebench.ts`. Image ter-build semua (py36 butuh fix apt kedaluwarsa); requests-1963 collect+run OK di py3.8, pytest-11143 FAIL dengan benar di py3.10.
 - **Run POSIX pertama (WSL)**: TOCTOU 1000× 0 lolos (temukan bug test: swapper tanpa yield menggantung); full suite Linux 1334/8/0. Perbaiki 5 fail platform-spesifik (`node -e` → runtime sendiri; stripAnsi markdown; mount-test cabang platform; `MINICODE_HOME` untuk global-DB hermetic).
+- **Provider minimalis + auto-switch**: `Gateway >` hanya `[0] Label` tanpa URL; `router` per-stream `getById()` + `reloadProviders()` setelah `Gateway >2` — pilih `openrouter::inkling:free` otomatis pindah provider tanpa substitusi `claude-fable-5`.
+- **Thinking effort picker**: `/thinking` + `Ctrl+T` dihapus, diganti picker `default/low/medium/high` di `/model` (`Enter` → picker, `t` untuk ubah) — simpan `ProviderEntry.reasoningEffort` via `saveProvider`, wire `build.ts:low=1024 medium=2048 high=4096`.
+- **Hardening P0 review**: `read_image` TOCTOU `safeOpenRead` + `handle.stat` + b64 cap, `edit`/`patch` jail `safeReadFile`, `responses` instance-local `allChains Set`, `shadow-git` `+randomUUID`, `router` abort-aware `Promise.race`, `git` scrub, `pricing` dedup `toModelPrice`.
 
 ### Docs
 - `docs/HARNESS.md` baru (riset + posisi + uji live 7 model); `README`/`USAGE`/`PLAN`/`AGENTS.md`/`ARCHITECTURE.html` sinkron (angka gate, path, flag baru; referensi arsip mati dihapus).
+- `docs/USAGE.md`: `/thinking` → `t` di `/model`, dropdown `builtin + /compact` saja, `provider add` minimalis, `read_image` cap 2M + b64 est.
 
 ## [0.9.6] - 2026-09-06 — Audit UX: Tab plan/build, did-you-mean, banner konteks, English-only, sync jujur
 

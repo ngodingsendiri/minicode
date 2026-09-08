@@ -49,7 +49,7 @@ minicode sync           # refresh model baru dari semua provider
 
 Kernel MiniCore di-vendor ke `vendor/minicore` (19 file, ~72 KB) sehingga repo ini self-contained. Sumber kebenaran tetap repo `minicore`; kontributor yang punya clone sibling `../minicore` menyinkronkan dengan `bun run vendor:minicore`, dan CI menjaga kesinkronan lewat `bun run vendor:check`.
 
-Wizard & `/provider-add` menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google, Ollama, Qwen, Groq, dll), API Key ter-masking, auto-detect models.
+Wizard & `/provider` (add: `[0] OpenAI` … `[14] Custom URL` — hanya label, tanpa URL) + `/model` (Enter = pilih `provider::model` → picker `default/low/medium/high` untuk thinking effort, `t` untuk ubah tanpa re-select) menyajikan preset gateway (OpenAI, Anthropic, OpenRouter, DeepSeek, OpenCode Zen, Google, Ollama, Qwen, Groq, dll), API Key ter-masking, auto-detect models, dan provider otomatis pindah saat pilih model beda provider (tanpa restart).
 
 ```bash
 minicode --interactive                  # REPL linier (agentic Unix shell, output di scrollback)
