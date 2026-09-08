@@ -10,6 +10,20 @@ import type { ToolSchema } from "./tool.ts";
 import type { ToolCall, ToolResult } from "./types.ts";
 import type { SessionInternal, Step, TurnResult } from "./session.ts";
 
+/** Resolve mode permission sesi untuk deps turn ini (string langsung atau
+ * getter live). Tak pernah melempar — gagal = undefined. */
+function resolvePermissionMode(mode: SessionInternal["permissionMode"]): string | undefined {
+  try {
+    if (typeof mode === "function") {
+      const v = (mode as () => unknown)();
+      return typeof v === "string" ? v : undefined;
+    }
+    return mode;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function executeTurn(
   s: SessionInternal,
   input: string,
@@ -40,11 +54,9 @@ export async function executeTurn(
       limitTokens: s.contextWindowTokens,
     });
     if (s.budget.shouldCompact(pressure)) {
-      const didCompact = await compactStore(s, signal);
-      if (didCompact) {
-        compacted = true;
-        s.events.emit({ type: "context:compacted", reason: `pressure:${pressure}` });
-      }
+      await compactStore(s, signal);
+      compacted = true;
+      s.events.emit({ type: "context:compacted", reason: `pressure:${pressure}` });
       pressure = s.budget.evaluate({
         usedTokens: contextTokens(s),
         limitTokens: s.contextWindowTokens,
@@ -170,6 +182,9 @@ export async function executeTurn(
       state: snapshotState(s.state),
       maxResultTokens: s.toolResultMaxTokens,
       cwd: s.cwd,
+      // Resolve per turn agar getter live (mis. ganti mode via Shift+Tab)
+      // tercermin di ctx tool berikutnya. Gagal resolve = undefined (aman).
+      permissionMode: resolvePermissionMode(s.permissionMode),
     };
     let rawResults: readonly ToolResult[];
     try {
@@ -293,20 +308,17 @@ function contextTokens(s: SessionInternal): number {
 // The single compaction seam. Prefers the strategy's optional async method
 // (LLM summary) and always falls back to the sync strategy on failure — an
 // async compactor must never be able to crash the loop.
-async function compactStore(s: SessionInternal, signal: AbortSignal): Promise<boolean> {
-  const before = s.store.messages.length
+async function compactStore(s: SessionInternal, signal: AbortSignal): Promise<void> {
   const opts = { keepRecentTurns: s.keepRecentTurns };
   if (s.compaction.compactAsync) {
     try {
       const messages = await s.compaction.compactAsync(s.store, opts, signal);
       s.store.replace(0, s.store.messages.length, messages);
-      return s.store.messages.length !== before
+      return;
     } catch (error) {
       if (signal.aborted) throw abortError(signal);
       // fall through to sync mechanical compaction
     }
   }
-  const compacted = s.compaction.compact(s.store, opts)
-  s.store.replace(0, s.store.messages.length, compacted)
-  return s.store.messages.length !== before
+  s.store.replace(0, s.store.messages.length, s.compaction.compact(s.store, opts));
 }

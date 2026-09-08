@@ -101,7 +101,12 @@ export const delegateTaskTool: Tool = {
     additionalProperties: false,
   },
   async execute({ prompt, mode, maxSteps }, ctx) {
-    const m = (mode as string) ?? "explore"
+    // Parent plan/readonly memaksa sub-agen read-only agar tidak jadi celah
+    // izin (paksa explore). Mode live diambil dari ToolContext.permissionMode
+    // yang diteruskan kernel per turn, bukan dari teks prompt.
+    const parentMode = (ctx as unknown as { permissionMode?: string }).permissionMode
+    const forcedExplore = parentMode === "plan" || parentMode === "readonly"
+    const m = forcedExplore ? "explore" : ((mode as string) ?? "explore")
     const requested = Number(maxSteps)
     const cap =
       Number.isFinite(requested) && requested > 0

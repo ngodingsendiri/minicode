@@ -1,12 +1,10 @@
 import type { UiBus } from "../contract.ts"
-import { sanitizeAnsiLine } from "../render/sanitize.ts"
-import { glyphs } from "../render/theme.ts"
+import { c } from "../render/theme.ts"
 import { registerStatusLine } from "../runtime/statusline.ts"
 
-// Turn status line — satu baris di stderr: `·· model` (dots + label saja).
-// Kata status ("reasoning"/"working") sengaja tidak ditampilkan — indikator
-// cukup dari animasi dots. Selalu single-line, tidak merusak streaming:
-// output lain memakai runWithoutStatus() yang menahan repaint sesaat.
+// Turn status line — satu baris di stderr: `Thinking` berdenyut redup-terang
+// (bukan nama model). Selalu single-line, tidak merusak streaming: output lain
+// memakai runWithoutStatus() yang menahan repaint sesaat.
 export function attachTurnStatus(
   bus: UiBus,
   opts: {
@@ -31,11 +29,9 @@ export function attachTurnStatus(
     )
   if (isWinLegacy) return () => {}
 
-  let label = opts.initialModel ?? "..."
   let spinner: ReturnType<typeof setInterval> | undefined
   let fi = 0
   // Satu sumber frames dengan spinner wizard (MINICODE_ASCII konsisten).
-  const F = glyphs.spinnerFrames
 
   const paint = () => {
     let extra = ""
@@ -43,7 +39,12 @@ export function attachTurnStatus(
       const s = opts.getStats?.()
       if (s) extra = ` · ${s}`
     } catch {}
-    process.stderr.write(`\r\x1b[2K${F[fi % F.length]!} ${label}${extra}`)
+    // Hanya teks "Thinking" berdenyut: setengah periode redup, setengah
+    // terang (siklus ~1,2 dtk @150ms). Tanpa dots/prefix lain.
+    // Getter c.* dibaca tiap frame (jangan dibekukan — lihat P0.1). Di NO_COLOR
+    // keduanya polos: denyut menjadi statis.
+    const thinking = fi % 8 < 4 ? c.muted("Thinking") : "Thinking"
+    process.stderr.write(`\r\x1b[2K${thinking}${extra}`)
     fi++
   }
 
@@ -77,27 +78,12 @@ export function attachTurnStatus(
 
   const onStarted = () => {
     stopPainting()
-    if (opts.getModel) {
-      const cur = opts.getModel()
-      if (cur) label = cur
-    }
     paint()
     spinner = setInterval(paint, 150)
   }
 
   const onExt = (e: { kind: string; data: unknown }) => {
-    if (e.kind === "error") {
-      stopPainting()
-    } else if (e.kind === "effective-model") {
-      const d = e.data as { effective?: string; provider?: string }
-      if (d.effective) {
-        // Nama model/provider bisa memuat teks dari provider — sanitasi agar
-        // status line tidak bisa menyembunyikan kursor/mengubah judul terminal.
-        const raw = d.provider ? `${d.provider}/${d.effective}` : d.effective
-        label = sanitizeAnsiLine(raw)
-        if (!spinner) paint()
-      }
-    }
+    if (e.kind === "error") stopPainting()
   }
 
   const onDone = () => stopPainting()

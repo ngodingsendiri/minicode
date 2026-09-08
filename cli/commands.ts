@@ -54,9 +54,11 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
 
 /** Perintah yang ditangani DRIVER REPL (bukan handleBuiltinCommand) —
  * ditampilkan di /help agar bisa ditemukan, tapi sengaja TIDAK masuk dropdown
- * completion (di dropdown cukup /mode /compact /thinking + builtin).
+ * completion (di dropdown cukup /compact /thinking + builtin; /mode tak perlu
+ * karena Tab/Shift+Tab sudah memutar mode tanpa baris baru).
  * Opsi A audit UX: undo/redo/clear/copy/history tidak punya duplikat lain. */
 export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
+  { name: "mode", args: "[name]", desc: "Show or set permission mode" },
   { name: "undo", desc: "Revert file changes from the last turn" },
   { name: "redo", desc: "Re-apply reverted changes" },
   { name: "clear", desc: "Mark a boundary (scrollback preserved)" },
@@ -68,7 +70,7 @@ export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
 const KEYBOARD_HELP: [string, string][] = [
   ["enter", "submit"],
   ["shift+tab", "cycle permission mode"],
-  ["tab", "complete command (empty line: toggle plan/build)"],
+  ["tab", "complete command (empty line: cycle mode)"],
   ["up / down", "history or picker navigation"],
   ["ctrl+o", "toggle compact/expanded tool output"],
   ["ctrl+t", "toggle reasoning"],

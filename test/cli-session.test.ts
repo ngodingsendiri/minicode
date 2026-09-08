@@ -623,6 +623,12 @@ describe("cli: --max-steps", () => {
 })
 
 describe("cli: notice sandbox", () => {
+  test("start rutin tanpa --sandbox: senyap (mode terlihat di prefiks)", async () => {
+    const { run: r } = await runWithProvider([{ kind: "text", text: "ok" }], ["apa saja"])
+    expect(r.code).toBe(0)
+    expect(r.stderr).not.toContain("[sandbox]")
+  })
+
   test("run yang memakai tool menyebut notice paling banyak sekali", async () => {
     const { run: r } = await runWithProvider([{ kind: "text", text: "ok" }], ["apa saja"])
     // Di Windows/CI tanpa bubblewrap notice muncul sekali, bukan per langkah.

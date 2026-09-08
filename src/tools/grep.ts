@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
+import { isIgnored, loadIgnoreMatchers } from "../lib/ignore.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
@@ -14,6 +15,7 @@ async function walkGrep(
   limit: number,
   signal: AbortSignal,
   includeRe?: RegExp | null,
+  ignoreMatchers: ((rel: string) => boolean)[] = [],
 ) {
   if (signal.aborted) throw new Error("aborted")
   if (out.length >= limit) return
@@ -23,8 +25,9 @@ async function walkGrep(
     if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue
     const full = join(dir, e.name)
     const rel = relative(root, full).replace(/\\/g, "/")
+    if (isIgnored(rel, ignoreMatchers)) continue
     if (e.isDirectory()) {
-      await walkGrep(full, re, out, root, limit, signal, includeRe)
+      await walkGrep(full, re, out, root, limit, signal, includeRe, ignoreMatchers)
     } else {
       if (includeRe && !includeRe.test(rel) && !includeRe.test(e.name)) continue
       if (/\.(png|jpg|jpeg|gif|webp|pdf|zip|exe|dll|bin)$/i.test(e.name)) continue
@@ -243,8 +246,9 @@ export const grepTool: Tool = {
     }
 
     const incRe = include ? includeToRegExp(include as string) : null
+    const ignoreMatchers = await loadIgnoreMatchers(root)
     const out: string[] = []
-    await walkGrep(root, re, out, root, lim, ctx.signal, incRe)
+    await walkGrep(root, re, out, root, lim, ctx.signal, incRe, ignoreMatchers)
     return out.length === 0 ? noMatch() : out.join("\n")
   },
 }

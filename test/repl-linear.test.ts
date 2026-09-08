@@ -217,7 +217,7 @@ describe("REPL linier: siklus dasar", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("dropdown '/' menawarkan builtin + perintah driver", async () => {
+  test("dropdown '/' menawarkan builtin + perintah driver (tanpa /mode)", async () => {
     tty = installFakeTty()
     const h = makeHarness({ skills: [{ name: "revu", description: "d", body: "b" }] })
     const p = start(h)
@@ -226,7 +226,9 @@ describe("REPL linier: siklus dasar", () => {
     await tty.send("/", 25)
     let out = visible(tty)
     expect(out).toContain("/help")
-    expect(out).toContain("/mode")
+    // /mode sengaja tak masuk dropdown (Tab/Shift+Tab memutar mode),
+    // tapi tetap ada di /help. Cocokkan batas kata: "/model" mengandung "/mode".
+    expect(out).not.toMatch(/\/mode[\s\r\n]/)
     expect(out).toContain("/compact")
     // Setelah mengetik lebih jauh, skill ikut tampil di grup sendiri.
     await tty.send("revu", 25)
@@ -235,6 +237,8 @@ describe("REPL linier: siklus dasar", () => {
     // Kosongkan baris (ctrl+u) sebelum /exit — karakter yang dikirim via
     // tty.send APPEND ke baris yang sedang diedit.
     await tty.send(KEY.ctrlU, 25)
+    await typeLine("/help")
+    expect(visible(tty)).toContain("/mode")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -293,7 +297,8 @@ describe("REPL linier: mode & toggle", () => {
     await tty.send(KEY.shiftTab, 25)
     expect(h.mode).toBe("ask") // auto -> ask
     const out = visible(tty)
-    expect(out).toContain("mode: ask")
+    // Tanpa baris "mode: ..." baru: prefiks prompt yang menunjukkan mode.
+    expect(out).not.toContain("mode:")
     expect(out).toContain("ask ›")
     await waitForPrompt()
     await tty.send(KEY.ctrlC, 20)
@@ -336,18 +341,27 @@ describe("REPL linier: mode & toggle", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("Tab kosong toggle plan/build, Tab berisi tetap completion", async () => {
+  test("Tab kosong putar semua mode, Tab berisi tetap completion", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)
     await waitForPrompt()
-    // Baris kosong + Tab: auto -> plan (bukan completion kosong).
-    await tty.send(KEY.tab, 25)
-    expect(h.mode).toBe("plan")
-    expect(visible(tty)).toContain("mode: plan")
-    await waitForPrompt()
-    await tty.send(KEY.tab, 25)
-    expect(h.mode).toBe("auto")
+    // Baris kosong + Tab: auto -> ask -> plan -> allowlist -> auto
+    // (allow-all dilewati; bukan completion kosong).
+    const seq: [string, string][] = [
+      ["ask", "ask ›"],
+      ["plan", "plan ›"],
+      ["allowlist", "allowlist ›"],
+      ["auto", "auto ›"],
+    ]
+    for (const [m, prefix] of seq) {
+      await tty.send(KEY.tab, 25)
+      expect(h.mode).toBe(m)
+      // Tanpa baris "mode: ..." baru: prefiks prompt yang menunjukkan mode.
+      expect(visible(tty)).not.toContain("mode:")
+      expect(visible(tty)).toContain(prefix)
+      await waitForPrompt()
+    }
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -439,6 +453,49 @@ describe("REPL linier: budget", () => {
     expect(h.ran).toEqual(["prompt jalan"])
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+})
+
+describe("REPL linier: default ringkas", () => {
+  test("env unset -> REPL mengaktifkan compact", async () => {
+    const prev = process.env.MINICODE_COMPACT
+    delete process.env.MINICODE_COMPACT
+    try {
+      tty = installFakeTty()
+      const h = makeHarness()
+      const p = start(h)
+      await waitForPrompt()
+      const { detail } = await import("../src/ui/render/detail.ts")
+      expect(detail.compact).toBe(true)
+      await typeLine("/exit")
+      await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+    } finally {
+      if (prev === undefined) delete process.env.MINICODE_COMPACT
+      else process.env.MINICODE_COMPACT = prev
+    }
+  })
+
+  test("env eksplisit dihormati (0 tetap expanded, 1 tetap compact)", async () => {
+    const prev = process.env.MINICODE_COMPACT
+    try {
+      for (const [env, want] of [
+        ["0", false],
+        ["1", true],
+      ] as const) {
+        process.env.MINICODE_COMPACT = env
+        tty = installFakeTty()
+        const h = makeHarness()
+        const p = start(h)
+        await waitForPrompt()
+        const { detail } = await import("../src/ui/render/detail.ts")
+        expect(detail.compact).toBe(want)
+        await typeLine("/exit")
+        await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+      }
+    } finally {
+      if (prev === undefined) delete process.env.MINICODE_COMPACT
+      else process.env.MINICODE_COMPACT = prev
+    }
   })
 })
 

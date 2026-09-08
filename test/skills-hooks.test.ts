@@ -103,7 +103,7 @@ test("auto allows local trusted surface", async () => {
   ).toBe("allow")
 })
 
-test("plan mode: read-only — writes/bash/delegate denied", async () => {
+test("plan mode: readonly plus todo_write/delegate (dipaksa explore)", async () => {
   const h = createPermissionHandler({ mode: "plan" })
   expect(
     await h.check({ id: "1", name: "read_file", args: { path: "a.ts" } } as never, {} as never),
@@ -111,6 +111,7 @@ test("plan mode: read-only — writes/bash/delegate denied", async () => {
   expect(
     await h.check({ id: "1", name: "grep", args: { pattern: "x" } } as never, {} as never),
   ).toBe("allow")
+  // File tulis & bash tetap ditolak — daftarnya disembunyikan dari model.
   expect(
     await h.check(
       { id: "1", name: "write_file", args: { path: "a.txt", content: "x" } } as never,
@@ -126,9 +127,13 @@ test("plan mode: read-only — writes/bash/delegate denied", async () => {
   expect(
     await h.check({ id: "1", name: "bash", args: { cmd: "echo hi" } } as never, {} as never),
   ).toBe("deny")
+  // Dua perkecualian aman yang penting buat planning panjang.
+  expect(
+    await h.check({ id: "1", name: "todo_write", args: { todos: [] } } as never, {} as never),
+  ).toBe("allow")
   expect(
     await h.check({ id: "1", name: "delegate_task", args: { prompt: "x" } } as never, {} as never),
-  ).toBe("deny")
+  ).toBe("allow")
 })
 
 test("allowlist mode: safe bash allowed, unsafe/unknown denied", async () => {

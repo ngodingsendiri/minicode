@@ -39,10 +39,8 @@ export async function handleExec(
   // Sama seperti jalur interaktif: OS sandbox otomatis, dan tanpa isolasi nyata
   // permission default turun ke allowlist. Headless CI justru paling butuh ini —
   // di sana tak ada manusia yang bisa menyetujui prompt.
-  const sandbox = resolveSandbox(
-    getArg("--sandbox") ?? process.env.MINICODE_SANDBOX,
-    allowAll || ask || plan || allowlistFlag,
-  )
+  const requestedSandbox = getArg("--sandbox") ?? process.env.MINICODE_SANDBOX
+  const sandbox = resolveSandbox(requestedSandbox, allowAll || ask || plan || allowlistFlag)
   if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
   else process.env.MINICODE_SANDBOX = sandbox.mode
   const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
@@ -90,9 +88,8 @@ export async function handleExec(
     budgetStrict,
     toolScope,
     rateLimiter,
-    // Notice dicetak di setup setelah provider lolos — bukan di sini, supaya
-    // `exec --help` (prompt kosong, exit di atas) tetap senyap.
-    sandboxNotice: sandbox.notice,
+    // Notice hanya bila user eksplisit meminta mode (daemon mati / tak dikenal).
+    sandboxNotice: requestedSandbox ? sandbox.notice : undefined,
   })
   const t0 = Date.now()
   const events: unknown[] = []

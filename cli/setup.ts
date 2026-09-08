@@ -8,6 +8,8 @@ import { createRagLayer } from "../src/app/rag-layer.ts"
 import { createMinicodeSession, type PermissionControl } from "../src/app/session.ts"
 import { setupToolLayer } from "../src/app/tool-layer.ts"
 import type { MinicodeConfig } from "../src/config.ts"
+import { loadLastModel } from "../src/config.ts"
+import { homeDir } from "../src/lib/db-path.ts"
 import { runRunHooks } from "../src/hooks/run.ts"
 import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
@@ -67,9 +69,11 @@ export interface CliSessionOptions {
   rateLimiter?: RateLimiter
   concurrency?: number
   writeConcurrency?: number
-  /** Notice sandbox dari composition root — dicetak di sini (setelah provider
-   * layer lolos) supaya invokasi yang mati sebelum sesi (help-semu, exit
-   * no-provider) tidak berisik. */
+  /** Notice sandbox — hanya bila user eksplisit meminta mode (flag/env tak
+   * kosong): mis. daemon tak tersedia atau mode tak dikenal. Notice rutin
+   * (auto-os / auto-allowlist) sengaja disembunyikan: mode sudah terlihat di
+   * prefiks prompt. Dicetak di sini (setelah provider layer lolos) supaya
+   * invokasi yang mati sebelumnya tetap senyap. */
   sandboxNotice?: string
 }
 
@@ -132,6 +136,31 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     effectiveTimeoutMs = 900_000
   }
 
+  const permissionMode = allowAll
+    ? "allow-all"
+    : ask
+      ? "ask"
+      : plan
+        ? "plan"
+        : allowlist
+          ? "allowlist"
+          : "auto"
+
+  // Home guard: sesi dibuka di home berisiko (glob rame, write berbahaya).
+  // Standar industri: percaya-tapi-ingatkan, jangan tolak diam-diam maupun
+  // pindahkan workspace (menyesatkan resume/checkpoint).
+  try {
+    const home = homeDir()
+    const cur = resolvePath(cwd ?? process.cwd())
+    if (resolvePath(home) === cur) {
+      process.stderr.write(
+        c.yellow(
+          `[warn] workspace is home directory — consider --cwd <project> to avoid scanning the entire home\n`,
+        ),
+      )
+    }
+  } catch {}
+
   const { cfg, router } = await createProviderLayer({
     cwd,
     prompt,
@@ -140,9 +169,18 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     providerOverride,
     setupWhenEmpty: runSetupWizard,
   })
-  // Provider ada (atau wizard sukses) — sesi benar-benar terbentuk. Di sinilah
-  // notice sandbox relevan; invokasi yang mati sebelumnya tetap senyap.
   if (sandboxNotice && !plan) process.stderr.write(`${sandboxNotice}\n`)
+  // Default model = terakhir dipakai (global), bila tanpa --model dan masih
+  // ada di config. Flag selalu menang; tak ada simpanan = provider pertama.
+  if (!modelRef.current) {
+    const saved = await loadLastModel().catch(() => undefined)
+    if (
+      saved &&
+      cfg.providers.some((p) => p.models.some((m) => `${p.id}::${m}` === saved))
+    ) {
+      modelRef.current = saved
+    }
+  }
   const {
     systemExtra,
     skills: allLoadedSkills,
@@ -188,7 +226,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       })
     : undefined
 
-  const { sessionTools } = await setupToolLayer(cfg, toolScope ?? "full")
+  const { sessionTools } = await setupToolLayer(cfg, toolScope ?? "full", permissionMode)
 
   // todo_write/todo_read menyimpan state per sesi di .minicode/todos/<id>.json
   todoSession.id = sessionId
@@ -196,16 +234,6 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   // View pertanyaan ask_user — composition root meng-inject, tool menolak
   // jalan tanpanya (fail-closed, sama seperti `ask` pada permission).
   setAskTextFn(promptAskText)
-
-  const permissionMode = allowAll
-    ? "allow-all"
-    : ask
-      ? "ask"
-      : plan
-        ? "plan"
-        : allowlist
-          ? "allowlist"
-          : "auto"
 
   let permissions: PermissionControl | undefined
   // Validasi concurrency: 0, NaN, Infinity → fallback ke default (jangan teruskan 0 ke executor)

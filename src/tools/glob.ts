@@ -2,6 +2,7 @@ import { readdir, realpath, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
+import { loadIgnoreMatchers, isIgnored } from "../lib/ignore.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 async function walk(
@@ -11,6 +12,7 @@ async function walk(
   root: string,
   limit: number,
   signal: AbortSignal,
+  ignoreMatchers: ((rel: string) => boolean)[],
 ) {
   if (signal.aborted) throw new Error("aborted")
   if (out.length >= limit) return
@@ -20,8 +22,10 @@ async function walk(
     if (e.name.startsWith(".") || e.name === "node_modules" || e.name === ".git") continue
     const full = join(dir, e.name)
     const rel = relative(root, full).replace(/\\/g, "/")
+    // Hormati .gitignore subset (bukan hard-coded saja).
+    if (isIgnored(rel, ignoreMatchers)) continue
     if (e.isDirectory()) {
-      await walk(full, pattern, out, root, limit, signal)
+      await walk(full, pattern, out, root, limit, signal, ignoreMatchers)
     } else if (pattern.test(rel) || pattern.test(e.name)) {
       const real = await realpath(full).catch(() => full)
       if (isPathOutsideRoot(real, resolve(root)) || isSensitive(real) || isSensitive(rel)) continue
@@ -42,6 +46,9 @@ function globToRegExp(glob: string): RegExp {
         .join("|")})`,
   )
   esc = esc.replace(/\*\*/g, "§§")
+  // **/ di awal/pola rekursif harus cocok file root juga: **/* sekarang jadi
+  // (.*/)?[^/]*, bukan .*/[^/]* yang butuh slash dan membuat root kosong.
+  esc = esc.replace(/§§\//g, "(.*/)?")
   esc = esc.replace(/\*/g, "[^/]*")
   esc = esc.replace(/§§/g, ".*")
   esc = esc.replace(/\?/g, ".")
@@ -72,8 +79,9 @@ export const globTool: Tool = {
       ? Math.min(Math.max(Math.floor(rawLim!), 1), LIMITS.SEARCH_MAX_LIMIT)
       : LIMITS.SEARCH_DEFAULT_LIMIT
     const re = globToRegExp(pattern as string)
+    const ignoreMatchers = await loadIgnoreMatchers(root)
     const out: string[] = []
-    await walk(root, re, out, root, lim, ctx.signal)
+    await walk(root, re, out, root, lim, ctx.signal, ignoreMatchers)
     const st = await stat(root).catch(() => null)
     if (!st) return `cwd not found: ${rawRoot}`
     if (out.length === 0) return `no files match ${pattern} in ${rawRoot}`

@@ -58,8 +58,38 @@ export const webSearchTool: Tool = {
         }
       } catch {}
     }
-    // Fallback: DuckDuckGo html lite (no API key, SSRF-guarded via web_fetch logic)
-    // Use ddg search via html.duckduckgo.com/html/?q=
+    // Fallback 2: Brave Search API (gratis, JSON bersih) bila BRAVE_API_KEY ada.
+    const braveKey = process.env.BRAVE_API_KEY
+    if (braveKey) {
+      try {
+        const controller = new AbortController()
+        const t = setTimeout(() => controller.abort(), 8000)
+        const res = await fetch(
+          `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=${n}`,
+          {
+            headers: { "X-Subscription-Token": braveKey, accept: "application/json" },
+            signal: controller.signal,
+          },
+        )
+        clearTimeout(t)
+        if (res.ok) {
+          const data = (await res.json()) as {
+            web?: { results?: { title: string; url: string; description: string }[] }
+          }
+          const results = (data.web?.results ?? []).slice(0, n)
+          if (results.length) {
+            const out = results
+              .map(
+                (r, i) =>
+                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${scrubSecrets(r.description ?? "").slice(0, 400)}`,
+              )
+              .join("\n\n")
+            return `[brave ${results.length} results for "${q}"]\n${out}`.slice(0, 20000)
+          }
+        }
+      } catch {}
+    }
+    // Fallback 3: DuckDuckGo html lite (gratis, tanpa key).
     const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`
     try {
       const parsed = new URL(ddgUrl)
@@ -73,12 +103,20 @@ export const webSearchTool: Tool = {
       clearTimeout(t)
       const html = await res.text()
       const scrubbed = scrubSecrets(html)
-      // naive parse: extract result links
-      const re = /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
-      const results: { url: string; title: string }[] = []
-      for (const m of scrubbed.matchAll(re)) {
+      // DDG markup berubah-ubah; coba dua pola kelas umum.
+      const resRe =
+        /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
+      const altRe = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
+      let results: { url: string; title: string }[] = []
+      for (const m of scrubbed.matchAll(resRe)) {
         if (results.length >= n) break
         results.push({ url: m[1] ?? "", title: (m[2] ?? "").trim() })
+      }
+      if (results.length === 0) {
+        for (const m of scrubbed.matchAll(altRe)) {
+          if (results.length >= n) break
+          results.push({ url: m[1] ?? "", title: (m[2] ?? "").trim() })
+        }
       }
       if (results.length) {
         return `[duckduckgo ${results.length} results for "${q}"]\n${results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}`).join("\n")}`.slice(
@@ -86,7 +124,7 @@ export const webSearchTool: Tool = {
           8000,
         )
       }
-      return `[web_search] no structured results, raw snippet:\n${scrubbed.slice(0, 3000)}`
+      return `[web_search] no structured results for "${q}" — coba set TAVILY_API_KEY atau BRAVE_API_KEY untuk hasil lebih baik.`
     } catch (e) {
       throw new Error(`web_search failed: ${(e as Error).message}`)
     }

@@ -15,6 +15,7 @@
 
 import { resolve as resolvePath } from "node:path"
 import { expandMentions } from "../src/app/mentions.ts"
+import { saveLastModel } from "../src/config.ts"
 import { budgetStatus } from "../src/policy/usage.ts"
 import { redoLastCheckpoint, undoLastCheckpoint } from "../src/session/checkpoint.ts"
 import { listSessions, loadSession } from "../src/session/persistence.ts"
@@ -73,10 +74,19 @@ export function suggestSimilar(name: string, candidates: string[]): string | und
   return best
 }
 
+/** Terapkan pilihan model + ingat untuk sesi berikutnya (global,
+ * fire-and-forget). Diekspor untuk test. */
+export function persistModelChoice(m: string, modelRef: { current?: string }): void {
+  modelRef.current = m
+  void saveLastModel(m).catch(() => {})
+}
+
 // Perintah REPL yang ditangani driver sendiri DAN ikut di dropdown completion.
 // Yang hanya ditampilkan di /help (bukan dropdown) tinggal di commands.ts
-// (DRIVER_HELP_COMMANDS) — dropdown tetap pendek: 3 toggle saja.
-const DRIVER_COMMANDS = ["/mode", "/compact", "/thinking"]
+// (DRIVER_HELP_COMMANDS) — dropdown tetap pendek. /mode pindah ke sana:
+// Tab/Shift+Tab sudah memutar mode tanpa baris baru, jadi /mode tak perlu
+// memenuhi dropdown.
+const DRIVER_COMMANDS = ["/compact", "/thinking"]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
@@ -100,6 +110,10 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   // createMinicodeSession lewat CliSession. Tanpa ini Shift+Tab hanya mengubah
   // label prompt sementara mode sebenarnya tidak berubah.
   let mode: string = permissions?.getMode() ?? permissionMode ?? "auto"
+  // REPL default ringkas (minimize): output tool minimize, bisa di-expand via
+  // /compact atau Ctrl+O. Env eksplisit selalu menang; one-shot/exec/CI tak
+  // tersentuh (tetap expanded). Lihat detail.compact.
+  if (process.env.MINICODE_COMPACT === undefined) setCompactMode(true)
   let nullStreak = 0
   let warned80 = false
   // Non-null selama turn berjalan — target abort SIGINT/Ctrl+C.
@@ -119,7 +133,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     toolsCount: sessionTools.length,
     providerHint: cfg.providers[0]?.providerHint,
     setModelOverride: (m) => {
-      modelRef.current = m
+      persistModelChoice(m, modelRef)
     },
   }
 
@@ -150,7 +164,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
 
   const cycleMode = () => {
     const idx = MODES.indexOf(mode as (typeof MODES)[number])
-    // allow-all hanya via flag --allow-all, tidak di-cycle Shift+Tab
+    // allow-all hanya via flag --allow-all, tidak di-cycle tombol
     // — mencegah aktivasi tak sengaja mode paling permisif.
     let next = MODES[(idx + 1) % MODES.length]!
     if (next === "allow-all") next = MODES[(idx + 2) % MODES.length]!
@@ -159,24 +173,20 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     else mode = permissionMode ?? mode // tak ada handle: jangan tampilkan label palsu
   }
 
-  // Toggle cepat plan/build — pasangan mode baca vs tulis. allow-all tak
-  // pernah jadi target (lihat cycleMode): satu Tab tak boleh membuka semua.
-  const togglePlanBuild = () => {
-    mode = mode === "plan" ? "auto" : "plan"
-    if (permissions) permissions.setMode(mode as (typeof MODES)[number])
-  }
-
   const onKey = (key: PromptKey, line: string): boolean => {
+    // Ganti mode TANPA baris scrollback baru: prefiks prompt memuat mode dan
+    // askLine me-render ulang baris berjalan setelah onKey (lihat input.ts).
+    // notify() di sini hanya menambah histori "mode: x" tiap tekan tombol.
+    // (compact/reasoning di bawah tetap notify: statusnya tak ada di prefiks.)
     if (key.type === "shift-tab") {
       cycleMode()
-      notify(c.muted(`mode: ${mode}`))
       return true
     }
-    // Tab di baris kosong = toggle plan/build (dua mode yang dipakai 90%
-    // waktu). Tab berisi teks tetap completion. Shift+Tab untuk mode lain.
+    // Tab di baris kosong = putar mode (sama seperti Shift+Tab): auto →
+    // ask → plan → allowlist → auto, allow-all selalu dilewati (lihat
+    // cycleMode). "Build" = mode auto (tulis); tak ada mode bernama build.
     if (key.type === "tab" && line === "") {
-      togglePlanBuild()
-      notify(c.muted(`mode: ${mode}`))
+      cycleMode()
       return true
     }
     if (key.type === "ctrl-o") {
@@ -439,7 +449,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       `minicode · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "no model"} · ${mode} · ${cwd ?? process.cwd()}`,
     ),
   )
-  console.log(c.dim("/help for commands · Tab toggles plan/build · Ctrl+C twice to exit"))
+  console.log(c.dim("/help for commands · Tab cycles mode · Ctrl+C twice to exit"))
 
   let shouldExit = false
   // Akumulasi baris yang diakhiri `\` — shell-like continuation di driver

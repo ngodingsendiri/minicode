@@ -87,7 +87,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
 | `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna |
 | `MINICODE_ASCII` | `1` → paksa glyph ASCII (`[OK]`, `>`, `.`) untuk konsol tanpa UTF-8 |
-| `MINICODE_COMPACT` | `1` → tool call satu baris ringkas (default: expanded; juga `/compact`, Ctrl+O) |
+| `MINICODE_COMPACT` | `1` → tool call ringkas, `0` → expanded. Default: compact di REPL, expanded di one-shot/exec (juga `/compact`, Ctrl+O) |
 | `MINICODE_JUSTIFY` | `0` → matikan rata kanan-kiri pada keluaran teks model |
 | `MINICODE_DROPDOWN` | `0` → matikan floating dropdown, pakai hint inline (konsol legacy) |
 | `MINICODE_BELL` | `0` → matikan bell `\x07` saat approval (aksesibilitas) |
@@ -130,7 +130,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/help` | Daftar perintah + skill + tombol penting |
 | `/help tombol` | Daftar pintasan papan tombol lengkap |
 | `/provider` | Kelola provider: tambah (`a`), hapus (`d`), ubah (`e`). Provider aktif ditandai `(aktif)`; konfirmasi hapus menyebut jumlah model yang ikut hilang |
-| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider |
+| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider. Enter = pilih model + atur effort (`default`/`low`/`medium`/`high`, tersimpan di provider, berlaku sesi berikutnya) |
 | `/sync` | Segarkan daftar model dari semua provider |
 | `/undo` | Batalkan perubahan berkas dari turn terakhir |
 | `/redo` | Terapkan ulang perubahan yang dibatalkan |
@@ -146,7 +146,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 
 Alias yang juga dikenali (tidak muncul di `/help`): `/models` → `/model`, `/providers` → `/provider`, `/usage` & `/cost` → `/status`, `/resume [id]` → `/sessions [id]`, `/compact`.
 
-Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/mode` + `/compact` + `/thinking`** — tetap pendek dan minimalis. Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help`.
+Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact` + `/thinking`** — tetap pendek dan minimalis. `/mode` tak masuk dropdown (Tab/Shift+Tab sudah memutar mode). Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help` (termasuk `/mode`).
 
 ### Papan tombol (REPL)
 
@@ -154,7 +154,7 @@ Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/mode` +
 |---|---|
 | `enter` | Kirim prompt |
 | `shift+tab` | Putar mode permission (`auto` → `ask` → `plan` → `allowlist`) |
-| `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih); di baris kosong = toggle plan/build |
+| `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih); di baris kosong = putar mode (`auto` → `ask` → `plan` → `allowlist`, tanpa baris baru) |
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
 | `ctrl+t` | Tampilkan/sembunyikan reasoning model |
 | `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |

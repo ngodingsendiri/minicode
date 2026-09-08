@@ -1,7 +1,8 @@
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { atomicWriteText } from "./lib/atomic-write.ts"
+import { homeDir } from "./lib/db-path.ts"
 
 // In-process lock per path untuk mencegah lost-update saat Pool(3) sub-agent
 // menulis config yang sama secara paralel. Untuk lintas proses, atomicWriteText
@@ -165,6 +166,31 @@ export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
       ? { bashAllowlist: localCfg.bashAllowlist ?? globalCfg.bashAllowlist }
       : {}),
   }
+}
+
+// Model terakhir dipakai (satu nilai global) — default sesi berikutnya bila
+// tanpa --model dan modelnya masih ada di config. File kecil terpisah
+// (~/.minicode/state.json, bukan config provider) agar tak ikut ter-commit
+// dan tak bercampur merge global/lokal. Fire-and-forget oleh pemanggil:
+// IO gagal tak boleh menggagalkan sesi.
+const statePath = () => join(homeDir(), ".minicode", "state.json")
+
+export async function loadLastModel(): Promise<string | undefined> {
+  try {
+    const raw = await readFile(statePath(), "utf8")
+    const m = (JSON.parse(raw) as { lastModel?: unknown }).lastModel
+    return typeof m === "string" && m ? m : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export async function saveLastModel(id: string): Promise<void> {
+  const path = statePath()
+  return withConfigLock(path, async () => {
+    await mkdir(join(homeDir(), ".minicode"), { recursive: true, mode: 0o700 }).catch(() => {})
+    await atomicWriteText(path, JSON.stringify({ lastModel: id }))
+  })
 }
 
 export async function saveMcpServer(

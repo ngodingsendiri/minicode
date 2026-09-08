@@ -22,6 +22,7 @@ export interface ExecutorDeps {
   readonly state: Readonly<SessionState>;
   readonly maxResultTokens: number;
   readonly cwd?: string;
+  readonly permissionMode?: string;
 }
 
 export interface ToolExecutor {
@@ -65,6 +66,7 @@ export async function runCall(call: ToolCall, deps: ExecutorDeps): Promise<ToolR
     state: snapshotState(deps.state),
     emit: deps.events.emit,
     cwd: deps.cwd,
+    permissionMode: deps.permissionMode,
   };
   // Started and completed events carry separate result objects so listeners
   // that retain the execution reference never observe later mutation.

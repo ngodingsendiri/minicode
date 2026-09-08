@@ -38,6 +38,13 @@ export interface SessionConfig {
   model?: string;
   cwd?: string;
   /**
+   * Mode permission sesi, diteruskan ke ToolContext tiap turn agar tool
+   * (mis. delegate_task) bisa menyesuaikan perilaku. String atau getter
+   * live — getter disarankan bila mode bisa berubah saat runtime.
+   * Opsional; absen = perilaku lama (ctx.permissionMode undefined).
+   */
+  permissionMode?: string | (() => string);
+  /**
    * Seed history untuk sesi baru (mis. resume dari storage). Messages akan
    * di-append ke ContextStore saat createSession, jadi `session.state.history`
    * langsung memuatnya dan turn berikutnya meneruskan konteks penuh.
@@ -125,6 +132,7 @@ export interface SessionInternal {
   readonly system?: string;
   readonly model?: string;
   readonly cwd?: string;
+  readonly permissionMode?: string | (() => string);
   readonly budget: BudgetPolicy;
   readonly estimator: TokenEstimator;
   readonly compaction: CompactionStrategy;
@@ -164,6 +172,7 @@ export function createSession(config: SessionConfig): Session {
     system: config.system,
     model: config.model,
     cwd: config.cwd,
+    permissionMode: config.permissionMode,
     budget: config.budget ?? defaultBudgetPolicy,
     estimator: config.estimator ?? defaultTokenEstimator,
     compaction: config.compaction ?? mechanicalCompaction,

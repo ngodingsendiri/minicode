@@ -194,7 +194,14 @@ export function createPermissionHandler(
   > = {
     "allow-all": async () => "allow",
     readonly: async (call) => (READONLY_TOOLS.has(call.name) ? "allow" : "deny"),
-    plan: async (call) => (READONLY_TOOLS.has(call.name) ? "allow" : "deny"),
+    // Plan = readonly + dua perkecualian aman: todo_write (artefak rencana
+    // .minicode/plans, bukan file workspace) dan delegate_task (penelahan
+    // rencana, bukan eksekusi). Delegate dipaksa read-only di task.ts bila
+    // parent plan/readonly — permission hanya membuka gerbangnya.
+    plan: async (call) =>
+      READONLY_TOOLS.has(call.name) || call.name === "todo_write" || call.name === "delegate_task"
+        ? "allow"
+        : "deny",
     allowlist: async (call, args) => {
       if (call.name === "bash") {
         const cmd = (args?.cmd as string) ?? ""

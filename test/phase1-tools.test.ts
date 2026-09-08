@@ -354,10 +354,11 @@ describe("permission: tool Fase 1", () => {
     }
   })
 
-  test("plan mengizinkan todo_read tapi menolak todo_write", async () => {
+  test("plan mengizinkan todo_read dan todo_write (artefak rencana)", async () => {
     h.__setMode("plan")
     expect(await check("todo_read")).toBe("allow")
-    expect(await check("todo_write")).toBe("deny")
+    expect(await check("todo_write")).toBe("allow")
+    expect(await check("delegate_task")).toBe("allow")
     h.__setMode("auto")
   })
 

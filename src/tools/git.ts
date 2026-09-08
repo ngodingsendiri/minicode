@@ -38,6 +38,15 @@ function assertCwd(cwd: string | undefined, sessionRoot: string): void {
   }
 }
 
+async function isGitRepo(cwd: string, signal: AbortSignal): Promise<boolean> {
+  try {
+    const out = await runGit(["rev-parse", "--is-inside-work-tree"], cwd, signal)
+    return out.trim() === "true"
+  } catch {
+    return false
+  }
+}
+
 export const gitStatusTool: Tool = {
   name: "git_status",
   description: "git status --porcelain + diff --stat + log --oneline -10",
@@ -52,6 +61,7 @@ export const gitStatusTool: Tool = {
     const sessionRoot = (ctx as { cwd?: string }).cwd ?? process.cwd()
     assertCwd(c, sessionRoot)
     const resolvedCwd = c ? resolve(sessionRoot, c) : sessionRoot
+    if (!(await isGitRepo(resolvedCwd, ctx.signal))) return "not a git repository"
     const [a, b, d] = await Promise.all([
       runGit(["status", "--porcelain"], resolvedCwd, ctx.signal),
       runGit(["diff", "--stat"], resolvedCwd, ctx.signal),
@@ -79,6 +89,7 @@ export const gitDiffTool: Tool = {
     const resolvedCwd = (cwd as string | undefined)
       ? resolve(sessionRoot, cwd as string)
       : sessionRoot
+    if (!(await isGitRepo(resolvedCwd, ctx.signal))) return "not a git repository"
     const args = staged ? ["diff", "--staged"] : ["diff"]
     return await runGit(args, resolvedCwd, ctx.signal)
   },
@@ -102,6 +113,7 @@ export const gitLogTool: Tool = {
     const resolvedCwd = (cwd as string | undefined)
       ? resolve(sessionRoot, cwd as string)
       : sessionRoot
+    if (!(await isGitRepo(resolvedCwd, ctx.signal))) return "not a git repository"
     const n = String(Math.min(Math.max((limit as number) ?? 20, 1), 100))
     return await runGit(["log", "--oneline", `-${n}`], resolvedCwd, ctx.signal)
   },

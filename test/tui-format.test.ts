@@ -792,6 +792,41 @@ describe("simple logger (one-shot)", () => {
     expect(stripAnsi(tty!.combined())).toContain("5 tok")
   })
 
+  test("statusline: Thinking berdenyut, tanpa nama model", async () => {
+    // Warna deterministik: NO_COLOR mematikan denyut (attr jadi identity).
+    const prevNoColor = process.env.NO_COLOR
+    delete process.env.NO_COLOR
+    tty = installFakeTty({ columns: 80, rows: 24 })
+    const bus = createFakeBus()
+    const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
+    const chunks: string[] = []
+    const prevWrite = process.stderr.write.bind(process.stderr)
+    ;(process.stderr as unknown as { write: unknown }).write = (c: string | Uint8Array) => {
+      chunks.push(typeof c === "string" ? c : Buffer.from(c).toString("utf8"))
+      return true
+    }
+    try {
+      const detach = attachTurnStatus(bus as unknown as EventBus, {
+        initialModel: "model-rahasia-xyz",
+      })
+      bus.emit("turn:started", { turn: 1 })
+      await new Promise((r) => setTimeout(r, 900))
+      detach()
+      const raw = chunks.join("")
+      const ESC = String.fromCharCode(27)
+      expect(stripAnsi(raw)).toContain("Thinking")
+      expect(raw).not.toContain("model-rahasia-xyz")
+      // Denyut: ada frame redup DAN frame terang dalam satu siklus.
+      expect(raw).toContain(`${ESC}[2mThinking`)
+      const tanpaRedup = raw.split(`${ESC}[2mThinking${ESC}[22m`).join("")
+      expect(tanpaRedup).toContain("Thinking")
+    } finally {
+      ;(process.stderr as unknown as { write: unknown }).write = prevWrite
+      if (prevNoColor === undefined) delete process.env.NO_COLOR
+      else process.env.NO_COLOR = prevNoColor
+    }
+  })
+
   test("copy: envelope OSC52 benar saat TTY", () => {
     const prevTty = process.stdout.isTTY
     const prevWrite = process.stdout.write.bind(process.stdout)

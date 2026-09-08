@@ -77,21 +77,25 @@ export async function createMinicodeSession(
   } = opts
   if (!provider) throw new Error("createMinicodeSession: provider is required")
   const permissions = createPermissionHandler({ mode: permissionMode ?? "auto", root: cwd, ask })
+  const withMode = permissions as typeof permissions & {
+    __setMode(m: PermissionMode): void
+    __getMode(): PermissionMode
+  }
   if (onPermissions) {
-    const withMode = permissions as typeof permissions & {
-      __setMode(m: PermissionMode): void
-      __getMode(): PermissionMode
-    }
     onPermissions({
       setMode: (m) => withMode.__setMode(m),
       getMode: () => withMode.__getMode(),
     })
   }
+  // Teruskan mode live ke kernel agar ToolContext.permissionMode selalu
+  // mencerminkan Shift+Tab saat itu (bukan snapshot saat sesi dibuat).
+  const livePermissionMode = (): PermissionMode => withMode.__getMode()
   return createCoreSession({
     ...rest,
     provider,
     system,
     permissions,
+    permissionMode: livePermissionMode,
     estimator: minicodeEstimator,
     recovery: cappedRecovery,
     executor: parallelExecutor({

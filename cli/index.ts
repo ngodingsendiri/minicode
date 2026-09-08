@@ -58,7 +58,7 @@ Options:
   --tool-scope <s>    full (default) | explore (read-only subset)
 
 REPL: /help /provider /model /sync /status /sessions /init /mode /compact /thinking /undo /cost /exit
-Keys: Enter submit · Tab complete (empty: plan/build) · Up/Down history · Shift+Tab mode · Ctrl+C stop (2x exit)
+Keys: Enter submit · Tab complete (empty: cycle mode) · Up/Down history · Shift+Tab mode · Ctrl+C stop (2x exit)
 `
 
 const args = process.argv.slice(2)
@@ -175,16 +175,13 @@ if (timeoutRaw && (!Number.isFinite(timeoutMs) || (timeoutMs as number) < 0)) {
 // `allowlist` — lebih baik membatasi perintah daripada menjalankan apa pun
 // sambil menampilkan label aman. Lihat src/policy/sandbox-policy.ts.
 const explicitPermission = allowAll || ask || plan || allowlist
-const sandbox = resolveSandbox(
-  getArg("--sandbox") ?? process.env.MINICODE_SANDBOX,
-  explicitPermission,
-)
+const requestedSandbox = getArg("--sandbox") ?? process.env.MINICODE_SANDBOX
+const sandbox = resolveSandbox(requestedSandbox, explicitPermission)
 if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
 else process.env.MINICODE_SANDBOX = sandbox.mode
-// Notice sandbox hanya relevan bila sesi ini berpotensi menjalankan perintah
-// DAN provider ada (sesi benar-benar terbentuk). Sebelumnya ia dicetak untuk
-// SETIAP invokasi di Windows — termasuk --help-semu (exec tanpa prompt) dan
-// exit no-provider. Cetaknya di setup, setelah provider layer lolos.
+// Notice sandbox hanya bila user eksplisit meminta mode (mis. daemon mati,
+// mode tak dikenal). Notice rutin disembunyikan: mode terlihat di prefiks.
+// Cetaknya di setup, setelah provider layer lolos.
 const effectiveAllowlist = allowlist || sandbox.fallbackPermission === "allowlist"
 const budgetRaw = getArg("--budget")
 let budget = budgetRaw ? Number(budgetRaw) : undefined
@@ -254,7 +251,7 @@ const ctx = await createCliSession({
   contextWindowTokens,
   timeoutMs,
   rateLimiter,
-  sandboxNotice: sandbox.notice,
+  sandboxNotice: requestedSandbox ? sandbox.notice : undefined,
 })
 
 if (enterRepl) {

@@ -245,6 +245,82 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
   })
 })
 
+describe("last-model: default = terakhir dipakai", () => {
+  const withHome = async <T>(fn: (home: string) => Promise<T>): Promise<T> => {
+    const prev = process.env.MINICODE_HOME
+    const home = mkdtempSync(join(tmpdir(), "minicode-home-"))
+    tmpRoots.push(home)
+    process.env.MINICODE_HOME = home
+    try {
+      return await fn(home)
+    } finally {
+      if (prev === undefined) delete process.env.MINICODE_HOME
+      else process.env.MINICODE_HOME = prev
+    }
+  }
+
+  test("save/load roundtrip; korup/hilang -> undefined", async () => {
+    await withHome(async (home) => {
+      const { loadLastModel, saveLastModel } = await import("../src/config.ts")
+      expect(await loadLastModel()).toBeUndefined()
+      await saveLastModel("prov::m1")
+      expect(await loadLastModel()).toBe("prov::m1")
+      await saveLastModel("prov::m2")
+      expect(await loadLastModel()).toBe("prov::m2")
+      const { writeFile } = await import("node:fs/promises")
+      await writeFile(join(home, ".minicode", "state.json"), "{bukan json", "utf8")
+      expect(await loadLastModel()).toBeUndefined()
+    })
+  })
+
+  test("sesi memakai simpanan valid; --model menang; simpanan basi diabaikan", async () => {
+    await withHome(async () => {
+      const { saveLastModel } = await import("../src/config.ts")
+      const base = {
+        prompt: "hi",
+        enterRepl: false,
+        verbose: false,
+        allowAll: false,
+        ask: false,
+        plan: false,
+        allowlist: false,
+        verify: false,
+      } as const
+      // tanpa simpanan -> model pertama config (global+lokal merge, apa pun isinya)
+      const cwd = makeWorkspace()
+      let s = await createCliSession({ ...base, cwd, sessionId: "lm1" })
+      const first = s.effectiveInitialModel
+      await s.close()
+      // simpanan valid (provider fake ada di config workspace) -> dipakai
+      await saveLastModel("fake::gpt-4o-mini")
+      s = await createCliSession({ ...base, cwd, sessionId: "lm2" })
+      expect(s.effectiveInitialModel).toBe("fake::gpt-4o-mini")
+      await s.close()
+      // --model selalu menang atas simpanan
+      s = await createCliSession({ ...base, cwd, sessionId: "lm3", modelOverride: "x::y" })
+      expect(s.effectiveInitialModel).toBe("x::y")
+      await s.close()
+      // simpanan basi (provider dihapus) -> fallback pertama
+      await saveLastModel("hilang::m9")
+      s = await createCliSession({ ...base, cwd, sessionId: "lm4" })
+      expect(s.effectiveInitialModel).toBe(first)
+      await s.close()
+    })
+  })
+
+  test("persistModelChoice update ref + simpan", async () => {
+    await withHome(async () => {
+      const { persistModelChoice } = await import("../cli/repl.ts")
+      const { loadLastModel } = await import("../src/config.ts")
+      const ref: { current?: string } = {}
+      persistModelChoice("p::m", ref)
+      expect(ref.current).toBe("p::m")
+      await new Promise((r) => setTimeout(r, 50))
+      expect(await loadLastModel()).toBe("p::m")
+    })
+  })
+})
+
 describe("cli/index helpers via args", () => {
   test("getArg & promptFromArgs ter-cover via import", async () => {
     const { getArg, promptFromArgs } = await import("../cli/args.ts")
