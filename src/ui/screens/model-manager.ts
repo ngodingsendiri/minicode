@@ -199,7 +199,10 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
           else if (item.key.type === "enter") {
             const row = rows[sel]
-            if (row) opts.onSelect(row.id)
+            if (row) {
+              const maybe = opts.onSelect(row.id) as unknown as Promise<void> | void
+              if (maybe && typeof (maybe as Promise<void>).then === "function") void (maybe as Promise<void>).catch(() => {})
+            }
             finish()
             return
           } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {

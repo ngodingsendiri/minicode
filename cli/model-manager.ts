@@ -30,7 +30,12 @@ export async function runModelManager(opts: {
 
   return runModelManagerView({
     initialRows: rowsOf(cfg.providers),
-    onSelect: (id) => opts.setModelOverride?.(id),
+    onSelect: async (id) => {
+      // Opsi A: reload providers agar router langsung kenal provider baru tanpa restart
+      const { reloadProviders } = await import("../src/app/provider-layer.ts")
+      await reloadProviders(opts.cwd).catch(() => {})
+      opts.setModelOverride?.(id)
+    },
     loadRows: async () => rowsOf((await loadConfig(opts.cwd)).providers),
     onAdd: async (providerId, model) => {
       const next = await loadConfig(opts.cwd)
