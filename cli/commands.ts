@@ -54,8 +54,9 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
 
 /** Perintah yang ditangani DRIVER REPL (bukan handleBuiltinCommand) —
  * ditampilkan di /help agar bisa ditemukan, tapi sengaja TIDAK masuk dropdown
- * completion (di dropdown cukup /compact /thinking + builtin; /mode tak perlu
+ * completion (di dropdown cukup /compact + builtin; /mode tak perlu
  * karena Tab/Shift+Tab sudah memutar mode tanpa baris baru).
+ * /thinking dihapus — diganti low/medium/high di /model (t).
  * Opsi A audit UX: undo/redo/clear/copy/history tidak punya duplikat lain. */
 export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
   { name: "mode", args: "[name]", desc: "Show or set permission mode" },
@@ -73,7 +74,6 @@ const KEYBOARD_HELP: [string, string][] = [
   ["tab", "complete command (empty line: cycle mode)"],
   ["up / down", "history or picker navigation"],
   ["ctrl+o", "toggle compact/expanded tool output"],
-  ["ctrl+t", "toggle reasoning"],
   ["esc", "close dropdown or picker"],
   ["ctrl+c", "stop turn when busy; twice to exit"],
 ]
@@ -86,7 +86,7 @@ function pad(text: string, width: number): string {
  * Penanda hasil aksi yang seragam.
  *
  * Sebelumnya bercampur: `[OK]`/`[FAIL]` ASCII di /undo dan /model, kalimat biasa
- * di /thinking dan /compact, tanpa penanda di /sync. `glyphs` sudah punya
+ * di /compact, tanpa penanda di /sync. `glyphs` sudah punya
  * fallback ASCII untuk konsol legacy Windows, jadi memakainya aman di semua
  * terminal.
  */

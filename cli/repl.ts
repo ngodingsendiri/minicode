@@ -30,7 +30,6 @@ import { appendHistory, askLine } from "../src/ui/input/input.ts"
 import type { PromptKey } from "../src/ui/input/prompt-engine.ts"
 import { setCompactMode } from "../src/ui/render/detail.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
-import { setReasoningVisible } from "../src/ui/render/reasoning.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
 import {
   BUILTIN_COMMANDS,
@@ -85,8 +84,8 @@ export function persistModelChoice(m: string, modelRef: { current?: string }): v
 // Yang hanya ditampilkan di /help (bukan dropdown) tinggal di commands.ts
 // (DRIVER_HELP_COMMANDS) — dropdown tetap pendek. /mode pindah ke sana:
 // Tab/Shift+Tab sudah memutar mode tanpa baris baru, jadi /mode tak perlu
-// memenuhi dropdown.
-const DRIVER_COMMANDS = ["/compact", "/thinking"]
+// memenuhi dropdown. /thinking dihapus — diganti low/medium/high di /model (t).
+const DRIVER_COMMANDS = ["/compact"]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
   const {
@@ -192,11 +191,6 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     if (key.type === "ctrl-o") {
       const compact = setCompactMode()
       notify(c.muted(`tool call: ${compact ? "compact" : "expanded"}`))
-      return true
-    }
-    if (key.type === "ctrl-t") {
-      const visible = setReasoningVisible()
-      notify(c.muted(`reasoning: ${visible ? "on" : "off"}`))
       return true
     }
     return false
@@ -329,24 +323,6 @@ export async function runRepl(ctx: CliSession): Promise<void> {
         const next = args === "" ? undefined : args === "on" || args === "1"
         const compact = setCompactMode(next)
         console.log(c.muted(`tool call: ${compact ? "compact" : "expanded"}`))
-        return false
-      }
-      if (name === "thinking") {
-        const arg = args.toLowerCase()
-        const next =
-          arg === ""
-            ? undefined
-            : arg === "on" || arg === "1"
-              ? true
-              : arg === "off" || arg === "0"
-                ? false
-                : null
-        if (next === null) {
-          console.log("Usage: /thinking [on|off]")
-          return false
-        }
-        const visible = setReasoningVisible(next)
-        console.log(c.muted(`reasoning: ${visible ? "on" : "off"}`))
         return false
       }
       if (name === "undo") {

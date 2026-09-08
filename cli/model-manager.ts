@@ -52,5 +52,16 @@ export async function runModelManager(opts: {
       }
       return rowsOf((await loadConfig(opts.cwd)).providers)
     },
+    onSetEffort: async (id, effort) => {
+      const sep = id.indexOf("::")
+      const next = await loadConfig(opts.cwd)
+      const provider = next.providers.find((p) => p.id === id.slice(0, sep))
+      if (provider) {
+        if (effort === "default") delete (provider as { reasoningEffort?: string }).reasoningEffort
+        else (provider as ProviderEntry).reasoningEffort = effort
+        await saveProvider(provider, { global: await saveGlobal(), cwd: opts.cwd })
+      }
+      return rowsOf((await loadConfig(opts.cwd)).providers)
+    },
   })
 }

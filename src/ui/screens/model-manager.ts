@@ -22,6 +22,7 @@ export interface ModelManagerViewOptions {
   loadRows(): Promise<ModelRow[]>
   onAdd(providerId: string, model: string): Promise<ModelRow[]>
   onDelete(id: string): Promise<ModelRow[]>
+  onSetEffort?(id: string, effort: "default" | "low" | "medium" | "high"): Promise<ModelRow[]>
 }
 
 export async function runModelManagerView(opts: ModelManagerViewOptions): Promise<void> {
@@ -70,7 +71,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       lines.push("")
       lines.push(
         cut(
-          `${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
+          `${DIM}Enter:${RESTORE}${c.accent("select")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}t:${RESTORE}${c.accent("thinking")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
         ),
       )
       return lines
@@ -155,6 +156,24 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       })
     }
 
+    const setEffort = () => {
+      if (rows.length === 0 || !opts.onSetEffort) return
+      const row = rows[sel]
+      if (!row) return
+      return runAction(async () => {
+        const ans = await askLine({ prompt: "Thinking [default/low/medium/high]: " })
+        const v = ans?.trim().toLowerCase()
+        if (!v || !["default", "low", "medium", "high"].includes(v)) {
+          console.log("Canceled — use default/low/medium/high")
+          rows = await opts.loadRows()
+          return
+        }
+        rows = await opts.onSetEffort!(row.id, v as "default" | "low" | "medium" | "high")
+        console.log(`Thinking: ${v}`)
+        sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      })
+    }
+
     const decoder: DecoderState = createDecoderState()
     const onData = (chunk: Buffer) => {
       if (busy) return
@@ -176,6 +195,9 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
             return
           } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "d") {
             void deleteModel()
+            return
+          } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "t") {
+            void setEffort()
             return
           }
         }

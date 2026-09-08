@@ -366,16 +366,14 @@ describe("REPL linier: mode & toggle", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("Ctrl+T toggle reasoning lewat onKey", async () => {
+  test("Ctrl+T tidak lagi toggle reasoning (diganti t di /model)", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)
     await waitForPrompt()
     await tty.send(KEY.ctrlT, 25)
-    expect(visible(tty)).toContain("reasoning: on")
-    await waitForPrompt()
-    await tty.send(KEY.ctrlT, 25)
-    expect(visible(tty)).toContain("reasoning: off")
+    // Ctrl+T sekarang no-op — tidak ada notifikasi reasoning
+    expect(visible(tty)).not.toContain("reasoning:")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
@@ -499,10 +497,10 @@ describe("REPL linier: default ringkas", () => {
   })
 })
 
-describe("REPL linier: did-you-mean & /thinking", () => {
+describe("REPL linier: did-you-mean & thinking", () => {
   test("suggestSimilar: typo dekat disarankan, asing tidak", async () => {
     const { suggestSimilar } = await import("../cli/repl.ts")
-    const cmds = ["help", "model", "sessions", "thinking", "resume"]
+    const cmds = ["help", "model", "sessions", "resume"]
     expect(suggestSimilar("modle", cmds)).toBe("model")
     expect(suggestSimilar("sessons", cmds)).toBe("sessions")
     expect(suggestSimilar("xyzabc", cmds)).toBeUndefined()
@@ -530,16 +528,12 @@ describe("REPL linier: did-you-mean & /thinking", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("/thinking on|off eksplisit, selain itu usage", async () => {
+  test("/thinking dihapus — jadi unknown command (diganti t di /model)", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)
     await typeLine("/thinking on")
-    expect(visible(tty)).toContain("reasoning: on")
-    await typeLine("/thinking off")
-    expect(visible(tty)).toContain("reasoning: off")
-    await typeLine("/thinking ngawur")
-    expect(visible(tty)).toContain("Usage: /thinking [on|off]")
+    expect(visible(tty)).toContain("Unknown command")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })

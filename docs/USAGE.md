@@ -93,7 +93,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_BELL` | `0` → matikan bell `\x07` saat approval (aksesibilitas) |
 | `MINICODE_STATUSLINE` | `rich` → statusline turn menampilkan token kumulatif + biaya sesi (default hemat) |
 | `MINICODE_A11Y` | `1` → live-region approval untuk screen reader (baris polos tanpa ANSI) |
-| `MINICODE_SHOW_THINKING` | `1` → tampilkan reasoning model (`/thinking` on) |
+| `MINICODE_SHOW_THINKING` | `1` → tampilkan reasoning model (`--verbose` atau env) |
 | `MINICODE_THINKING` | `off` → kirim `enable_thinking:false` ke OpenAI-compat (DeepSeek) |
 | `MINICODE_EMBED_MODEL` | Model embedding untuk memory/vector (default `text-embedding-3-small`) |
 | `MINICODE_MEMORY_SCOPE` | Scope baca memory: `cwd` (default) \| `global` \| `all` (gabung, tanpa silent shadowing) |
@@ -130,14 +130,13 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/help` | Daftar perintah + skill + tombol penting |
 | `/help tombol` | Daftar pintasan papan tombol lengkap |
 | `/provider` | Kelola provider: tambah (`a`), hapus (`d`), ubah (`e`). Provider aktif ditandai `(aktif)`; konfirmasi hapus menyebut jumlah model yang ikut hilang |
-| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider. Enter = pilih model + atur effort (`default`/`low`/`medium`/`high`, tersimpan di provider, berlaku sesi berikutnya) |
+| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider. Enter = pilih model, `t` = atur thinking effort (`default`/`low`/`medium`/`high`, tersimpan di provider) |
 | `/sync` | Segarkan daftar model dari semua provider |
 | `/undo` | Batalkan perubahan berkas dari turn terakhir |
 | `/redo` | Terapkan ulang perubahan yang dibatalkan |
 | `/sessions` | Daftar sesi terbaru; tanpa argumen = pilih untuk di-resume (picker); `/sessions <id>` = langsung resume |
 | `/status` | Info runtime + pemakaian & biaya **kumulatif sesi** (ID sesi, model, provider, token, cost) |
 | `/mode [nama]` | Ganti mode permission (`auto`, `ask`, `plan`, `allowlist`); tanpa argumen = putar |
-| `/thinking [on\|off]` | Tampilkan/sembunyikan reasoning model (tanpa argumen = toggle) |
 | `/init` | Buat `AGENTS.md` untuk proyek ini |
 | `/copy` | Salin output turn terakhir ke clipboard (OSC 52) |
 | `/clear` | Tandai batas layar: banner `--- cleared (scrollback preserved) ---` (scrollback tetap jadi transcript) |
@@ -146,7 +145,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 
 Alias yang juga dikenali (tidak muncul di `/help`): `/models` → `/model`, `/providers` → `/provider`, `/usage` & `/cost` → `/status`, `/resume [id]` → `/sessions [id]`, `/compact`.
 
-Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact` + `/thinking`** — tetap pendek dan minimalis. `/mode` tak masuk dropdown (Tab/Shift+Tab sudah memutar mode). Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help` (termasuk `/mode`).
+Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact`** — tetap pendek dan minimalis. `/mode` tak masuk dropdown (Tab/Shift+Tab sudah memutar mode). `/thinking` dihapus — atur effort via `/model` `t`. Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help` (termasuk `/mode`).
 
 ### Papan tombol (REPL)
 
@@ -156,7 +155,6 @@ Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact
 | `shift+tab` | Putar mode permission (`auto` → `ask` → `plan` → `allowlist`) |
 | `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih); di baris kosong = putar mode (`auto` → `ask` → `plan` → `allowlist`, tanpa baris baru) |
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
-| `ctrl+t` | Tampilkan/sembunyikan reasoning model |
 | `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |
 | `ctrl+r` | Reverse-i-search history (substring; Esc/Ctrl+C batal) |
 | `ctrl+j` | Sisipkan newline (multiline opt-in; Enter tetap submit) |

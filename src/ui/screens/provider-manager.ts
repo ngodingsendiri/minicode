@@ -176,7 +176,6 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         console.log("\nAdd provider\n")
         opts.presets.forEach((p, i) => {
           console.log(`  [${i}] ${p.label}`)
-          console.log(`      ${p.baseUrl}`)
         })
         const customIdx = opts.presets.length
         console.log(`  [${customIdx}] Custom URL\n`)
