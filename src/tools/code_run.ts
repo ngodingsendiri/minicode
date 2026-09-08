@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
@@ -68,8 +68,6 @@ export const codeRunTool: Tool = {
       const killTree = () => {
         try {
           if (process.platform === "win32" && p.pid !== undefined) {
-            const { spawnSync } =
-              require("node:child_process") as typeof import("node:child_process")
             const r = spawnSync("taskkill", ["/pid", String(p.pid), "/T", "/F"], {
               stdio: "ignore",
             })

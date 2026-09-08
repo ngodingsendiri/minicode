@@ -93,6 +93,7 @@ export const readFileTool: Tool = {
     // TOCTOU: gunakan O_NOFOLLOW agar symlink swap di antara cek dan pakai gagal
     const real = await realpath(abs).catch(() => abs)
     if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
+    if (isSensitive(real)) throw new Error(`blocked sensitive file: ${p}`)
     const st = await stat(real).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.isDirectory()) throw new Error(`path is a directory, not a file: ${p}`)

@@ -104,9 +104,6 @@ describe("model-manager: alur interactive", () => {
     await tty.ready()
     await tty.send(KEY.down, 20) // highlight prov::m2
     await tty.send(KEY.enter, 30)
-    // Enter sekarang buka picker effort (default/low/medium/high) — pilih default
-    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
-    await tty.send(KEY.enter, 30)
     await p
     expect(overrideLog).toEqual(["prov::m2"])
   })
@@ -182,9 +179,6 @@ describe("model-manager: alur interactive", () => {
     await tty.ready()
     tty.clear()
     await tty.send(KEY.up, 20) // sudah di atas: tidak melewati 0
-    // Enter sekarang buka picker effort — perlu pilih default juga
-    await tty.send(KEY.enter, 30)
-    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
     await tty.send(KEY.enter, 30)
     await p
     expect(overrideLog).toEqual([])

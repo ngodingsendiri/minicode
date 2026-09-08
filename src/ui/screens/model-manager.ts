@@ -199,46 +199,8 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
           else if (item.key.type === "enter") {
             const row = rows[sel]
-            if (!row) {
-              finish()
-              return
-            }
-            if (!opts.onSetEffort) {
-              opts.onSelect(row.id)
-              finish()
-              return
-            }
-            if (busy) return
-            busy = true
-            suspend()
-            ;(async () => {
-              try {
-                opts.onSelect(row.id)
-                const picked = await new Promise<string | null>((resolve) => {
-                  void runPicker({
-                    title: "Thinking effort",
-                    items: [
-                      { name: "default", provider: "", value: "default" },
-                      { name: "low", provider: "", value: "low" },
-                      { name: "medium", provider: "", value: "medium" },
-                      { name: "high", provider: "", value: "high" },
-                    ],
-                    onPick: (v) => resolve(v),
-                    onCancel: () => resolve(null),
-                  })
-                })
-                const v = picked || "default"
-                if (["default", "low", "medium", "high"].includes(v)) {
-                  await opts.onSetEffort!(row.id, v as "default" | "low" | "medium" | "high")
-                  if (v !== "default") console.log(`Thinking: ${v}`)
-                }
-              } catch (e) {
-                console.error(`[model-manager] ${(e as Error).message}`)
-              } finally {
-                busy = false
-                finish()
-              }
-            })()
+            if (row) opts.onSelect(row.id)
+            finish()
             return
           } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
             void addModel()
