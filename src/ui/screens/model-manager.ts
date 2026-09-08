@@ -5,6 +5,7 @@ import { createDecoderState, type DecoderState, decodeKeysStream } from "../inpu
 import { c } from "../render/theme.ts"
 import { padToWidth, truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
+import { runPicker } from "./picker.ts"
 
 const DIM = "\x1b[2m",
   RESTORE = "\x1b[22m"
@@ -161,15 +162,26 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       const row = rows[sel]
       if (!row) return
       return runAction(async () => {
-        const ans = await askLine({ prompt: "Thinking [default/low/medium/high]: " })
-        const v = ans?.trim().toLowerCase()
-        if (!v || !["default", "low", "medium", "high"].includes(v)) {
+        const picked = await new Promise<string | null>((resolve) => {
+          void runPicker({
+            title: "Thinking effort",
+            items: [
+              { name: "default", provider: "", value: "default" },
+              { name: "low", provider: "", value: "low" },
+              { name: "medium", provider: "", value: "medium" },
+              { name: "high", provider: "", value: "high" },
+            ],
+            onPick: (v) => resolve(v),
+            onCancel: () => resolve(null),
+          })
+        })
+        if (!picked || !["default", "low", "medium", "high"].includes(picked)) {
           console.log("Canceled — use default/low/medium/high")
           rows = await opts.loadRows()
           return
         }
-        rows = await opts.onSetEffort!(row.id, v as "default" | "low" | "medium" | "high")
-        console.log(`Thinking: ${v}`)
+        rows = await opts.onSetEffort!(row.id, picked as "default" | "low" | "medium" | "high")
+        console.log(`Thinking: ${picked}`)
         sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
       })
     }
@@ -187,8 +199,46 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
           else if (item.key.type === "enter") {
             const row = rows[sel]
-            if (row) opts.onSelect(row.id)
-            finish()
+            if (!row) {
+              finish()
+              return
+            }
+            if (!opts.onSetEffort) {
+              opts.onSelect(row.id)
+              finish()
+              return
+            }
+            if (busy) return
+            busy = true
+            suspend()
+            ;(async () => {
+              try {
+                opts.onSelect(row.id)
+                const picked = await new Promise<string | null>((resolve) => {
+                  void runPicker({
+                    title: "Thinking effort",
+                    items: [
+                      { name: "default", provider: "", value: "default" },
+                      { name: "low", provider: "", value: "low" },
+                      { name: "medium", provider: "", value: "medium" },
+                      { name: "high", provider: "", value: "high" },
+                    ],
+                    onPick: (v) => resolve(v),
+                    onCancel: () => resolve(null),
+                  })
+                })
+                const v = picked || "default"
+                if (["default", "low", "medium", "high"].includes(v)) {
+                  await opts.onSetEffort!(row.id, v as "default" | "low" | "medium" | "high")
+                  if (v !== "default") console.log(`Thinking: ${v}`)
+                }
+              } catch (e) {
+                console.error(`[model-manager] ${(e as Error).message}`)
+              } finally {
+                busy = false
+                finish()
+              }
+            })()
             return
           } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
             void addModel()
