@@ -51,12 +51,20 @@ function requestFor(
 
 export function createRouterProvider(config: RouterConfig): ModelProvider {
   const maxRetry = config.maxRetryAfterMs ?? LIMITS.RETRY_AFTER_MAX_MS
-  const byId = new Map(config.providers.map((p) => [p.id, p]))
-  const defaultId = config.defaultProviderId ?? config.providers[0]?.id ?? "router"
+  // byId dan defaultId dihitung per-stream agar provider yang baru ditambah via /provider
+  // langsung dikenali tanpa restart. Provider list bisa berubah mid-session.
+  const getById = () => new Map(config.providers.map((p) => [p.id, p]))
+  const getDefaultId = () => config.defaultProviderId ?? config.providers[0]?.id ?? "router"
+  const getModels = () => config.providers.flatMap((p) => [...p.models])
 
-  return {
+  const router: ModelProvider & { updateProviders: (list: ModelProvider[]) => void } = {
     id: "router",
-    models: config.providers.flatMap((p) => [...p.models]),
+    get models() {
+      return getModels()
+    },
+    updateProviders(list: ModelProvider[]) {
+      config.providers.splice(0, config.providers.length, ...list)
+    },
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       // route by model name — first match wins (default/daftar urutan provider)
       // Format "providerId::modelName" → paksa provider spesifik
@@ -66,7 +74,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
         const sep = model.indexOf("::")
         const pid = model.slice(0, sep)
         const m = model.slice(sep + 2)
-        target = byId.get(pid)
+        target = getById().get(pid)
         model = m || undefined
       }
       if (!target && model) {
@@ -76,7 +84,7 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
             break
           }
       }
-      target ??= byId.get(defaultId) ?? config.providers[0]
+      target ??= getById().get(getDefaultId()) ?? config.providers[0]
       if (!target) throw new ProviderError("unknown", "no provider configured")
 
       // fallback on rate_limit/server/network

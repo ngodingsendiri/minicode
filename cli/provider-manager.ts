@@ -4,6 +4,7 @@
 import { loadConfig, type MinicodeConfig } from "../src/config.ts"
 import { GATEWAY_PRESETS } from "../src/providers/presets.ts"
 import { detectAndSave, removeProvider } from "../src/providers/provision.ts"
+import { reloadProviders } from "../src/app/provider-layer.ts"
 import {
   type ProviderActionResult,
   type ProviderRow,
@@ -52,6 +53,7 @@ export async function runProviderManager(opts: {
           cwd: opts.cwd,
           fallbackModels,
         })
+        await reloadProviders(opts.cwd).catch(() => {})
         return { ok: `Provider "${entry.id}" saved (${entry.models.length} models, ${scope}).` }
       } catch (e) {
         return { err: `Model detection failed: ${(e as Error).message.slice(0, 80)}` }
@@ -60,6 +62,7 @@ export async function runProviderManager(opts: {
     onDelete: async (row): Promise<ProviderActionResult> => {
       await removeProvider(row.id, { global: true })
       if (opts.cwd) await removeProvider(row.id, { global: false, cwd: opts.cwd })
+      await reloadProviders(opts.cwd).catch(() => {})
       return { ok: `Provider "${row.id}" deleted.` }
     },
     onEditDefaults: async (row) => {
@@ -80,6 +83,7 @@ export async function runProviderManager(opts: {
           cwd: opts.cwd,
           fallbackModels: cur.models,
         })
+        await reloadProviders(opts.cwd).catch(() => {})
         return { ok: `Provider "${entry.id}" updated (${entry.models.length} models)` }
       } catch (e) {
         await detectAndSave(cur.baseUrl, cur.apiKey, cur.id, {
@@ -87,6 +91,7 @@ export async function runProviderManager(opts: {
           cwd: opts.cwd,
           fallbackModels: cur.models,
         }).catch(() => {})
+        await reloadProviders(opts.cwd).catch(() => {})
         return { err: `Update failed: ${(e as Error).message.slice(0, 80)}` }
       }
     },

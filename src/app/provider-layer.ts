@@ -5,6 +5,18 @@ import { createAnthropicProvider } from "../providers/anthropic.ts"
 import { buildProviderListAsync } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
 
+let currentRouter: ReturnType<typeof createRouterProvider> | null = null
+export function getCurrentRouter(): ReturnType<typeof createRouterProvider> | null {
+  return currentRouter
+}
+export async function reloadProviders(cwd?: string): Promise<void> {
+  if (!currentRouter) return
+  const cfg = await loadConfig(cwd)
+  const providers = await buildProviderListAsync(cfg)
+  const r = currentRouter as unknown as { updateProviders: (list: unknown[]) => void }
+  if (typeof r.updateProviders === "function") r.updateProviders(providers)
+}
+
 export async function createProviderLayer(opts: {
   cwd?: string
   prompt: string
@@ -89,5 +101,6 @@ export async function createProviderLayer(opts: {
     providers,
     ...(opts.rateLimiter ? { limiter: opts.rateLimiter } : {}),
   })
+  currentRouter = router
   return { cfg, router }
 }
