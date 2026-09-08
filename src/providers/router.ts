@@ -184,4 +184,5 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       }
     },
   }
+  return router as ModelProvider
 }
