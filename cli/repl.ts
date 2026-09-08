@@ -416,7 +416,16 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     return false
   }
 
-  const onSigint = () => abort?.abort()
+  const onSigint = () => {
+    if (abort) abort.abort()
+    else {
+      // Idle: jangan biarkan SIGINT bocor ke PowerShell batch (Terminate batch job)
+      // Kirim byte Ctrl+C ke stdin agar askLine tangani sebagai null (idle) — konsisten dengan raw mode
+      try {
+        process.stdin.emit("data", Buffer.from([0x03]))
+      } catch {}
+    }
+  }
   process.on("SIGINT", onSigint)
   // Satu baris konteks saat start — tanpa ini user buta: model, mode, dan
   // direktori apa yang sedang dikerjakan. Tetap satu baris (minimalis).
