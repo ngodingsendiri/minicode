@@ -1,4 +1,5 @@
-import { isAbsolute, resolve } from "node:path"
+import { realpath } from "node:fs/promises"
+import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
@@ -152,18 +153,20 @@ export const editTool: Tool = {
     // Jail simetris: cek parent + file symlink keluar workspace. Pakai realpath
     // manual (bukan assertSafeWriteTarget yang menolak semua symlink) agar
     // symlink internal tetap bisa diedit — targetnya yang diverifikasi.
-    const { realpath } = await import("node:fs/promises")
-    const { basename, dirname } = await import("node:path")
     const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
     const fileReal = await realpath(abs).catch(() => null)
     const realAbs = fileReal ?? resolve(realDir, basename(abs))
     if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
+    // Cek ukuran sebelum baca penuh — hindari OOM 1GB via safeReadFile.
+    // Pakai byte length via stat pada realAbs (handle belum ada), fallback ke content length.
+    const { stat } = await import("node:fs/promises")
+    const st = await stat(realAbs).catch(() => null)
+    if (!st) throw new Error(`file not found: ${p}`)
+    if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
     // Baca via safeReadFile (O_NOFOLLOW) agar TOCTOU swap gagal ELOOP, bukan baca luar.
     const content = await safeReadFile(abs, root).catch(() => {
       throw new Error(`file not found: ${p}`)
     })
-    if (content.length > LIMITS.READ_FILE_MAX_BYTES)
-      throw new Error(`file too large: ${p} (${content.length})`)
     const oldS = oldString as string
     const newS = newString as string
     if (oldS === newS) throw new Error("oldString == newString (no change)")

@@ -24,7 +24,7 @@ function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): P
     p.on("close", (code) => {
       const text = scrubSecrets((out + (err ? `\n${err}` : "")).trim())
       if (code !== 0 && !text) reject(new Error(`git ${args.join(" ")} exit ${code}`))
-      else resolve(scrubSecrets(text) || `(exit ${code})`)
+      else resolve(text || `(exit ${code})`)
     })
     signal.addEventListener("abort", () => p.kill("SIGTERM"), { once: true })
   })

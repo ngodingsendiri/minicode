@@ -81,8 +81,8 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
 
       // fallback on rate_limit/server/network
       const tried = new Set<string>()
+      const retried429For = new Set<string>()
       let current: ModelProvider | undefined = target
-      let retried429 = false
       while (current) {
         tried.add(current.id)
         try {
@@ -125,18 +125,27 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
             // provider terbakar sia-sia. Bila tak ada provider tersisa, coba
             // ulang provider SAMA sekali (tunggu-di-tempat), baru menyerah.
             // Sleep abort-aware: Ctrl+C/timeout tidak boleh hang 30 dtk.
-            if (err.category === "rate_limit" && err.retryAfterMs != null && !retried429) {
-              retried429 = true
+            if (
+              err.category === "rate_limit" &&
+              err.retryAfterMs != null &&
+              !retried429For.has(current.id)
+            ) {
+              retried429For.add(current.id)
               const waitMs = Math.min(err.retryAfterMs, maxRetry)
               if (signal.aborted) throw new DOMException("Aborted", "AbortError")
-              await Promise.race([
-                Bun.sleep(waitMs),
-                new Promise<void>((_, rej) => {
-                  const onAbort = () => rej(new DOMException("Aborted", "AbortError"))
-                  if (signal.aborted) onAbort()
-                  else signal.addEventListener("abort", onAbort, { once: true })
-                }),
-              ])
+              let onAbort: (() => void) | undefined
+              try {
+                await Promise.race([
+                  Bun.sleep(waitMs),
+                  new Promise<void>((_, rej) => {
+                    onAbort = () => rej(new DOMException("Aborted", "AbortError"))
+                    if (signal.aborted) onAbort()
+                    else signal.addEventListener("abort", onAbort, { once: true })
+                  }),
+                ])
+              } finally {
+                if (onAbort) signal.removeEventListener("abort", onAbort)
+              }
               const next = config.providers.find((p) => !tried.has(p.id))
               if (next) {
                 current = next

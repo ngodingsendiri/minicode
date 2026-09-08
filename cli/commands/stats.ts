@@ -73,8 +73,9 @@ export async function handleStats(getArg: (name: string) => string | undefined):
   if (total === 0) console.log(c.dim(`  (no traces yet in ${file})`))
   if (steps.tools > 0) {
     const topDeny = steps.topDenied.map((t) => `${t.tool}×${t.n}`).join(", ")
+    const topReason = steps.topDenyReasons.map((r) => `${r.reason}×${r.n}`).join(", ")
     console.log(
-      `Tools: ${steps.tools} · Denied: ${steps.denied} (${(steps.denyRate * 100).toFixed(1)}%) · Errors: ${steps.errors}${topDeny ? ` · Top denied: ${topDeny}` : ""}${steps.sandboxes.length ? ` · Sandbox: ${steps.sandboxes.join(",")}` : ""}`,
+      `Tools: ${steps.tools} · Denied: ${steps.denied} (${(steps.denyRate * 100).toFixed(1)}%) · Errors: ${steps.errors}${topDeny ? ` · Top denied: ${topDeny}` : ""}${topReason ? ` · Reason: ${topReason}` : ""}${steps.sandboxes.length ? ` · Sandbox: ${steps.sandboxes.join(",")}` : ""}`,
     )
   }
   process.exit(0)

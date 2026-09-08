@@ -17,14 +17,17 @@ export interface ResponsesConfig {
 // Chaining: response id terakhir per model disimpan per-instance provider,
 // bukan global — global bocor antar sesi CLI paralel yang sharing model sama.
 // Instance dibuat per sesi via buildProviderList, jadi isolasi sesi gratis.
+const allChains = new Set<Map<string, string>>()
 export function clearResponsesChain(): void {
-  // Global clear untuk compat test lama — instance-local clear via provider.clearResponsesChain
+  // Global clear untuk compat — bersihkan semua instance yang pernah dibuat
+  for (const m of allChains) m.clear()
 }
 
 export function createResponsesProvider(config: ResponsesConfig): ModelProvider {
   const baseUrl = config.baseUrl.replace(/\/+$/, "")
   const endpoint = `${baseUrl}/responses`
   const lastResponseByModel = new Map<string, string>()
+  allChains.add(lastResponseByModel)
   const provider: ModelProvider & { clearResponsesChain?: () => void } = {
     id: config.id ?? "responses",
     models: config.models,

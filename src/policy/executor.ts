@@ -96,13 +96,9 @@ export function parallelExecutor(
         if (!WRITE_TOOLS.has(call.name)) return null
         const p = (call.args as Record<string, unknown>)?.path
         if (typeof p !== "string" || !p) return null
-        // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock.
-        // deps.cwd berasal dari permission.root yang diset cli/setup.ts:cwd — fallback ke
-        // process.cwd() hanya untuk compat test lama. Jangan pakai process.cwd() bila
-        // --cwd sub-dir aktif, kunci harus konsisten dengan jail.
+        // normalisasi: resolve abs + lowerCase di Windows agar ./a.ts vs a.ts tidak miss lock
         try {
-          const base =
-            (deps as unknown as { cwd?: string; root?: string }).root ?? deps.cwd ?? process.cwd()
+          const base = deps.cwd ?? process.cwd()
           const abs = resolve(base, p)
           return process.platform === "win32" ? abs.toLowerCase() : abs
         } catch {

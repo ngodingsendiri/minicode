@@ -35,7 +35,12 @@ import {
 import { loadSession, saveSession } from "../src/session/persistence.ts"
 import { snapshotTree } from "../src/session/shadow-git.ts"
 import type { Skill } from "../src/skills/loader.ts"
-import { classifyToolResult, summarizeArgs, writeStepTrace } from "../src/telemetry/trace.ts"
+import {
+  classifyToolResult,
+  denyReasonOf,
+  summarizeArgs,
+  writeStepTrace,
+} from "../src/telemetry/trace.ts"
 import { setAskTextFn } from "../src/tools/ask_user.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
@@ -331,6 +336,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       const t0 = toolStarts.get(call.id)
       if (t0 !== undefined) toolStarts.delete(call.id)
       const kind = classifyToolResult(result)
+      const reason = kind === "denied" ? denyReasonOf(result) : undefined
       void writeStepTrace(cwd, {
         sessionId,
         timestamp: new Date().toISOString(),
@@ -339,6 +345,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
         tool: call.name,
         ok: kind === "ok",
         ...(kind === "denied" ? { denied: true } : {}),
+        ...(reason ? { denyReason: reason } : {}),
         ...(t0 !== undefined ? { durationMs: Date.now() - t0 } : {}),
         args: summarizeArgs(call.args),
         sandbox: process.env.MINICODE_SANDBOX ?? "none",

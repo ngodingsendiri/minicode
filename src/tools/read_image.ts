@@ -31,18 +31,27 @@ export const readImageTool: Tool = {
       ;({ handle } = await safeOpenRead(abs, root))
     } catch (e) {
       const msg = (e as Error).message ?? ""
-      if ((e as NodeJS.ErrnoException).code === "ENOENT" || msg.includes("ENOENT"))
-        throw new Error(`file not found: ${p}`)
-      if (msg.includes("outside workspace") || msg.includes("symlink")) throw e
-      throw new Error(`file not found: ${p}`)
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === "ENOENT" || msg.includes("ENOENT")) throw new Error(`file not found: ${p}`)
+      if (msg.includes("outside workspace") || msg.includes("symlink") || msg.includes("ELOOP"))
+        throw e
+      // Pertahankan error asli untuk EACCES/EPERM/dll — jangan sembunyikan sebagai not found
+      throw e
     }
     let buf: Buffer
     let st: { size: number } | null = null
     try {
       st = await handle.stat().catch(() => null)
       if (!st) throw new Error(`file not found: ${p}`)
-      if (st.size > LIMITS.BASH_OUTPUT_MAX_CHARS) throw new Error(`image too large: ${st.size}`)
+      if (st.size > LIMITS.READ_FILE_MAX_BYTES)
+        throw new Error(`image too large: ${st.size} bytes (max 2M)`)
       buf = await handle.readFile()
+      // Cek b64 agar tidak terpotong diam-diam oleh serializeContent (maxTokens*4)
+      const estB64 = Math.ceil((buf.byteLength * 4) / 3) + 30
+      if (estB64 > LIMITS.BASH_OUTPUT_MAX_CHARS * 5)
+        throw new Error(
+          `image too large: base64 ~${estB64} chars > cap — compress first (e.g. via code_run sharp)`,
+        )
     } finally {
       await handle.close().catch(() => {})
     }

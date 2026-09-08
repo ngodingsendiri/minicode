@@ -17,12 +17,13 @@ export function compileIgnoreMatchers(patterns: string[]): ((rel: string) => boo
     const core = isDir ? pat.slice(0, -1) : pat
     const hasSlash = core.includes("/")
     const normalized = core.replace(/^\//, "")
-    // Build regex via glob simple: * -> [^/]*, ** -> .*
+    // Build regex via glob simple: * -> [^/]*, ** -> .* (pakai placeholder agar ** tidak rusak oleh * berikutnya)
     const escapeGlob = (s: string) =>
       s
         .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-        .replace(/\*\*/g, ".*")
+        .replace(/\*\*/g, "§§")
         .replace(/\*/g, "[^/]*")
+        .replace(/§§/g, ".*")
         .replace(/\?/g, ".")
     if (hasSlash) {
       // path pattern: cocok terhadap rel path (anchored)

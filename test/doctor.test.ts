@@ -45,6 +45,7 @@ test("doctor --json: skema stabil untuk skrip", () => {
     "fallbackNote",
     "configGlobal",
     "configLocal",
+    "hardening",
   ]) {
     expect(k in j).toBe(true)
   }
@@ -87,6 +88,7 @@ test("renderDoctorText: semua bagian tampil + cabang warn", () => {
     fallbackNote: "sandbox available",
     configGlobal: true,
     configLocal: false,
+    hardening: { bashGuard: true, jail: true, scrub: true, perms: true },
   }
   const ok = renderDoctorText(base)
   for (const part of ["runtime", "providers", "pricing", "memory", "sandbox", "config"]) {

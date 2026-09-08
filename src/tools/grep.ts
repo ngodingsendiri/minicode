@@ -154,11 +154,12 @@ function runRipgrep(
     }
     signal.addEventListener("abort", onAbort, { once: true })
     const timer = setTimeout(() => {
-      // Timeout: kembalikan partial tapi beri penanda agar model tahu tidak lengkap
-      if (out.length > 0)
-        out.push(`… [truncated: ripgrep timeout ${LIMITS.GREP_RIPGREP_TIMEOUT_MS}ms]`)
       p.kill("SIGTERM")
-      finish(() => resolveOut(out))
+      finish(() => {
+        if (out.length > 0 && out.length < limit)
+          out.push(`… [truncated: ripgrep timeout ${LIMITS.GREP_RIPGREP_TIMEOUT_MS}ms]`)
+        resolveOut(out)
+      })
     }, LIMITS.GREP_RIPGREP_TIMEOUT_MS)
 
     p.stdout.on("data", (d: Buffer) => {

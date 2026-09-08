@@ -111,18 +111,29 @@ export function pricingOverlayMeta(): { fetchedAt: number; count: number; stale:
   }
 }
 
+function toModelPrice(
+  input: unknown,
+  output: unknown,
+  cacheRead: unknown,
+  cacheWrite: unknown,
+): ModelPrice | null {
+  if (typeof input !== "number" || typeof output !== "number") return null
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return null
+  return {
+    input,
+    output,
+    ...(typeof cacheRead === "number" ? { cacheRead } : {}),
+    ...(typeof cacheWrite === "number" ? { cacheWrite } : {}),
+  }
+}
+
 function normalizePriceMap(src: Record<string, unknown>): Record<string, ModelPrice> {
   const out: Record<string, ModelPrice> = {}
   for (const [k, v] of Object.entries(src)) {
     const p = v as Partial<ModelPrice>
-    if (typeof p?.input !== "number" || typeof p?.output !== "number") continue
-    if (!Number.isFinite(p.input) || !Number.isFinite(p.output)) continue
-    out[k.toLowerCase()] = {
-      input: p.input,
-      output: p.output,
-      ...(typeof p.cacheRead === "number" ? { cacheRead: p.cacheRead } : {}),
-      ...(typeof p.cacheWrite === "number" ? { cacheWrite: p.cacheWrite } : {}),
-    }
+    const parsed = toModelPrice(p.input, p.output, p.cacheRead, p.cacheWrite)
+    if (!parsed) continue
+    out[k.toLowerCase()] = parsed
   }
   return out
 }
@@ -161,16 +172,10 @@ export function extractPricing(payload: ModelsDevPayload): Record<string, ModelP
   for (const provider of Object.values(payload ?? {})) {
     for (const [key, model] of Object.entries(provider?.models ?? {})) {
       const cost = model?.cost
-      if (!cost || typeof cost.input !== "number" || typeof cost.output !== "number") continue
-      if (!Number.isFinite(cost.input) || !Number.isFinite(cost.output)) continue
+      const entry = toModelPrice(cost?.input, cost?.output, cost?.cache_read, cost?.cache_write)
+      if (!entry) continue
       const id = (model.id ?? key).toLowerCase()
       if (!id) continue
-      const entry: ModelPrice = {
-        input: cost.input,
-        output: cost.output,
-        ...(typeof cost.cache_read === "number" ? { cacheRead: cost.cache_read } : {}),
-        ...(typeof cost.cache_write === "number" ? { cacheWrite: cost.cache_write } : {}),
-      }
       const list = candidates.get(id)
       if (list) list.push(entry)
       else candidates.set(id, [entry])

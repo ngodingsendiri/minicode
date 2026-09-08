@@ -35,6 +35,8 @@ export interface StepTrace {
   ok?: boolean
   /** true bila hasil diawali "permission denied"/"permission error". */
   denied?: boolean
+  /** alasan deny yang sudah dinormalisasi (mis. bash-guard, jail, allowlist). */
+  denyReason?: string
   durationMs?: number
   /** ringkasan argumen yang di-scrub (tanpa isi file/kode penuh). */
   args?: string
@@ -102,6 +104,23 @@ export function classifyToolResult(result: {
   return "error"
 }
 
+/** Alasan deny yang dinormalisasi untuk observability (SPEC). */
+export function denyReasonOf(result: { isError?: boolean; content: unknown }): string | undefined {
+  const t = resultText(result.content)
+  if (!t.toLowerCase().startsWith("permission")) return undefined
+  // Ambil baris pertama, potong prefix "permission denied: "
+  const first = t.split("\n")[0] ?? t
+  const m = /permission (?:denied|error):?\s*(.*)/i.exec(first)
+  const reason = (m?.[1] ?? first).trim().slice(0, 80)
+  if (!reason) return "unknown"
+  // Normalisasi: jail, bash-guard, allowlist, sensitive, outside
+  if (/outside workspace|symlink/i.test(reason)) return "jail"
+  if (/sensitive/i.test(reason)) return "sensitive"
+  if (/allowlist/i.test(reason)) return "allowlist"
+  if (/bash|guard|destructive|interpreter|env-dump/i.test(reason)) return "bash-guard"
+  return reason.slice(0, 40)
+}
+
 // Opt-out privasi: MINICODE_TELEMETRY=0/false/off → tidak ada file ditulis.
 function telemetryEnabled(): boolean {
   const v = (process.env.MINICODE_TELEMETRY ?? "").trim().toLowerCase()
@@ -167,6 +186,7 @@ export interface StepSummary {
   topDenied: { tool: string; n: number }[]
   topErrors: { tool: string; n: number }[]
   sandboxes: string[]
+  topDenyReasons: { reason: string; n: number }[]
 }
 
 export function summarizeStepTraces(rows: StepTrace[]): StepSummary {
@@ -176,12 +196,15 @@ export function summarizeStepTraces(rows: StepTrace[]): StepSummary {
   let errors = 0
   const deniedBy = new Map<string, number>()
   const errBy = new Map<string, number>()
+  const reasonBy = new Map<string, number>()
   const sandboxes = new Set<string>()
   for (const t of tools) {
     const name = t.tool ?? "?"
     if (t.denied) {
       denied++
       deniedBy.set(name, (deniedBy.get(name) ?? 0) + 1)
+      const r = t.denyReason ?? "unknown"
+      reasonBy.set(r, (reasonBy.get(r) ?? 0) + 1)
     } else if (t.ok === false) {
       errors++
       errBy.set(name, (errBy.get(name) ?? 0) + 1)
@@ -195,6 +218,10 @@ export function summarizeStepTraces(rows: StepTrace[]): StepSummary {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([tool, n]) => ({ tool, n }))
+  const topReason = [...reasonBy.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([reason, n]) => ({ reason, n }))
   return {
     tools: tools.length,
     ok,
@@ -204,5 +231,6 @@ export function summarizeStepTraces(rows: StepTrace[]): StepSummary {
     topDenied: top(deniedBy),
     topErrors: top(errBy),
     sandboxes: [...sandboxes],
+    topDenyReasons: topReason,
   }
 }

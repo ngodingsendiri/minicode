@@ -1,8 +1,11 @@
-import { existsSync } from "node:fs"
+import { existsSync, statSync } from "node:fs"
 import { resolve } from "node:path"
 import { GLOBAL, loadConfig } from "../../src/config.ts"
 import { getMemoryStats } from "../../src/memory/vector.ts"
+import { inspectBashCommand } from "../../src/policy/bash-guard.ts"
+import { isPathOutsideRoot, isSensitive } from "../../src/policy/jail.ts"
 import { loadPricingOverlay, pricingOverlayMeta } from "../../src/policy/pricing.ts"
+import { scrubSecrets } from "../../src/policy/scrub.ts"
 import { dockerAvailable } from "../../src/sandbox/docker.ts"
 import { osSandboxAvailable, osSandboxTypeName } from "../../src/sandbox/os.ts"
 import { c } from "../../src/ui/render/theme.ts"
@@ -23,6 +26,7 @@ interface DoctorReport {
   fallbackNote: string
   configGlobal: boolean
   configLocal: boolean
+  hardening: { bashGuard: boolean; jail: boolean; scrub: boolean; perms: boolean }
 }
 
 // Agregasi status yang sebelumnya tersebar di providers/pricing/memory —
@@ -39,6 +43,23 @@ export async function buildDoctorReport(cwd?: string): Promise<DoctorReport> {
   } catch {}
   const osSandbox = osSandboxAvailable() ? osSandboxTypeName() : "none"
   const docker = dockerAvailable()
+  // Hardening probes — ringan, offline, tanpa LLM/jaringan
+  const bashGuard = !inspectBashCommand("echo hi").denied && inspectBashCommand("rm -rf /").denied
+  const jail =
+    isPathOutsideRoot("../outside", cwd ?? ".") &&
+    !isPathOutsideRoot("inside.txt", cwd ?? ".") &&
+    isSensitive(".env")
+  const scrub = scrubSecrets("sk-123456789012345678901234567890").includes("[REDACTED]")
+  let perms = true
+  try {
+    const p = resolve(cwd ?? ".", ".minicode", "sessions.db")
+    if (existsSync(p)) {
+      const mode = statSync(p).mode & 0o777
+      perms = process.platform === "win32" ? true : (mode & 0o077) === 0
+    }
+  } catch {
+    perms = true
+  }
   return {
     bun: process.version,
     platform: process.platform,
@@ -60,6 +81,7 @@ export async function buildDoctorReport(cwd?: string): Promise<DoctorReport> {
         : "sandbox available",
     configGlobal: existsSync(GLOBAL),
     configLocal: existsSync(resolve(cwd ?? ".", ".minicode", "config.json")),
+    hardening: { bashGuard, jail, scrub, perms },
   }
 }
 
@@ -87,6 +109,8 @@ export async function handleDoctor(
 export function renderDoctorText(r: DoctorReport): string {
   const ok = c.green("ok")
   const warn = c.yellow("warn")
+  const hk = r.hardening
+  const hardOk = hk.bashGuard && hk.jail && hk.scrub && hk.perms
   const lines = [
     `\n${c.bold("minicode doctor")}`,
     `  runtime    ${r.bun} on ${r.platform}`,
@@ -98,6 +122,7 @@ export function renderDoctorText(r: DoctorReport): string {
     `  memory     ${r.memoryRows} rows`,
     `  sandbox    os=${r.sandboxOs} docker=${r.sandboxDocker ? "yes" : "no"} — ${r.fallbackNote}`,
     `  config     global=${r.configGlobal ? "yes" : "no"} ~/.minicode/config.json local=${r.configLocal ? "yes" : "no"}`,
+    `  hardening  bash-guard:${hk.bashGuard ? ok : warn} jail:${hk.jail ? ok : warn} scrub:${hk.scrub ? ok : warn} perms:${hk.perms ? ok : warn} ${hardOk ? ok : warn}`,
   ]
   return lines.join("\n")
 }
