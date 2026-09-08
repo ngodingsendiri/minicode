@@ -38,6 +38,18 @@ export interface MatchResult {
   mode: "exact" | "crlf" | "trimmed" | "fuzzy"
 }
 
+// Helper: hitung range byte di cLf dari indeks baris — dipakai trimmed & fuzzy
+function lineRange(
+  cLfLines: string[],
+  startLine: number,
+  lineCount: number,
+  content: string,
+): { start: number; end: number } {
+  const startInLf = cLfLines.slice(0, startLine).join("\n").length + (startLine > 0 ? 1 : 0)
+  const endInLf = startInLf + cLfLines.slice(startLine, startLine + lineCount).join("\n").length
+  return { start: mapOriginalIndex(content, startInLf), end: mapOriginalIndex(content, endInLf) }
+}
+
 // Search needle dengan toleransi bertingkat:
 // 1. Exact match
 // 2. CRLF vs LF match
@@ -46,86 +58,57 @@ export interface MatchResult {
 export function flexibleMatch(content: string, needle: string): MatchResult | null {
   // 1. Exact match
   const direct = content.indexOf(needle)
-  if (direct !== -1) {
-    return { start: direct, end: direct + needle.length, mode: "exact" }
-  }
+  if (direct !== -1) return { start: direct, end: direct + needle.length, mode: "exact" }
 
   const cLf = normalizeLf(content)
   const nLf = normalizeLf(needle)
 
   // 2. CRLF vs LF match
   const nStart = cLf.indexOf(nLf)
-  if (nStart !== -1) {
+  if (nStart !== -1)
     return {
       start: mapOriginalIndex(content, nStart),
       end: mapOriginalIndex(content, nStart + nLf.length),
       mode: "crlf",
     }
-  }
 
+  const cLfLines = cLf.split("\n")
   // 3. Trailing whitespace tolerance
   const cTrimmed = stripTrailingWhitespace(cLf)
   const nTrimmed = stripTrailingWhitespace(nLf)
   const trimStart = cTrimmed.indexOf(nTrimmed)
   if (trimStart !== -1) {
-    // Map back to cLf line positions
-    const beforeTrim = cTrimmed.slice(0, trimStart)
-    const lineCountBefore = beforeTrim.split("\n").length - 1
+    const lineCountBefore = cTrimmed.slice(0, trimStart).split("\n").length - 1
     const needleLineCount = nTrimmed.split("\n").length
-
-    const cLfLines = cLf.split("\n")
     if (lineCountBefore + needleLineCount <= cLfLines.length) {
-      const matchedLines = cLfLines.slice(lineCountBefore, lineCountBefore + needleLineCount)
-      const startInLf =
-        cLfLines.slice(0, lineCountBefore).join("\n").length + (lineCountBefore > 0 ? 1 : 0)
-      const endInLf = startInLf + matchedLines.join("\n").length
-
-      return {
-        start: mapOriginalIndex(content, startInLf),
-        end: mapOriginalIndex(content, endInLf),
-        mode: "trimmed",
-      }
+      const r = lineRange(cLfLines, lineCountBefore, needleLineCount, content)
+      return { ...r, mode: "trimmed" }
     }
   }
 
-  // 4. Fuzzy line-by-line match (ignoring leading/trailing whitespace difference per line)
-  const cLines = cLf.split("\n")
+  // 4. Fuzzy line-by-line match (ignoring leading/trailing whitespace per line)
+  const cLines = cLfLines
   const nLines = nLf.split("\n")
-
   if (nLines.length > 0 && nLines.length <= cLines.length) {
     const nStripped = nLines.map((l) => l.trim())
     let matchLineIdx = -1
-
     for (let i = 0; i <= cLines.length - nLines.length; i++) {
-      let isMatch = true
-      for (let j = 0; j < nLines.length; j++) {
+      let ok = true
+      for (let j = 0; j < nLines.length; j++)
         if (cLines[i + j]?.trim() !== nStripped[j]) {
-          isMatch = false
+          ok = false
           break
         }
-      }
-      if (isMatch) {
-        if (matchLineIdx !== -1) {
-          // Ambiguous multiple fuzzy matches
-          return null
-        }
+      if (ok) {
+        if (matchLineIdx !== -1) return null // ambiguous
         matchLineIdx = i
       }
     }
-
     if (matchLineIdx !== -1) {
-      const matchedLines = cLines.slice(matchLineIdx, matchLineIdx + nLines.length)
-      const startInLf = cLines.slice(0, matchLineIdx).join("\n").length + (matchLineIdx > 0 ? 1 : 0)
-      const endInLf = startInLf + matchedLines.join("\n").length
-
-      return {
-        start: mapOriginalIndex(content, startInLf),
-        end: mapOriginalIndex(content, endInLf),
-        mode: "fuzzy",
-      }
+      const r = lineRange(cLfLines, matchLineIdx, nLines.length, content)
+      return { ...r, mode: "fuzzy" }
     }
   }
-
   return null
 }
 
