@@ -5,7 +5,7 @@ import { join, relative, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
-import { restoreTree, snapshotTree } from "./shadow-git.ts"
+import { diffTrees, ephemeralTree, restoreTree, snapshotTree } from "./shadow-git.ts"
 
 function sanitizeSessionId(id: string): string {
   return (
@@ -114,6 +114,56 @@ export async function saveCheckpointManifest(
   await mkdir(dir, { recursive: true }).catch(() => {})
   const path = getManifestPath(manifest.sessionId, cwd)
   await atomicWriteText(path, JSON.stringify(manifest, null, 2))
+}
+
+// P3 — validasi resume: workspace berubah sejak checkpoint terakhir?
+// Bukan replay buta: mode git bandingkan treeAfter terakhir vs tree sekarang
+// (tanpa pin ref baru); mode files bandingkan snapshot post (redo) vs isi
+// sekarang. Best-effort: null bila tak bisa dipastikan — resume tetap jalan.
+export async function validateResumeWorkspace(
+  cwd: string,
+  sessionId: string,
+): Promise<{ mode: "git" | "files" | "none"; diverged: number } | null> {
+  try {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    if (manifest.checkpoints.length === 0) return { mode: "none", diverged: 0 }
+    const last =
+      manifest.checkpoints[manifest.currentIndex] ??
+      manifest.checkpoints[manifest.checkpoints.length - 1]!
+    if (last.treeAfter) {
+      const now = await ephemeralTree(cwd)
+      if (!now) return null
+      if (now === last.treeAfter) return { mode: "git", diverged: 0 }
+      const changes = await diffTrees(cwd, last.treeAfter, now)
+      // Pembukuan harness sendiri (.minicode/: manifest, trace, todos berubah
+      // tiap run) bukan divergensi user — keluarkan agar resume di repo tanpa
+      // gitignore .minicode tidak selalu kuning.
+      const userChanges = changes.filter(
+        (ch) => ch.path !== ".minicode" && !ch.path.startsWith(".minicode/"),
+      )
+      return { mode: "git", diverged: userChanges.length }
+    }
+    const refs = last.redoSnapshots?.length ? last.redoSnapshots : last.snapshots
+    if (refs.length === 0) return { mode: "none", diverged: 0 }
+    let diverged = 0
+    for (const s of refs.slice(0, LIMITS.WORKSPACE_SNAPSHOT_LIMIT)) {
+      // Jail: manifest bisa usang/rusak — jangan baca di luar workspace.
+      if (isPathOutsideRoot(s.path, cwd)) {
+        diverged++
+        continue
+      }
+      let cur: string | null
+      try {
+        cur = await readFile(resolve(cwd, s.path), "utf8")
+      } catch {
+        cur = null
+      }
+      if (cur !== s.content) diverged++
+    }
+    return { mode: "files", diverged }
+  } catch {
+    return null
+  }
 }
 
 export async function captureFileSnapshot(

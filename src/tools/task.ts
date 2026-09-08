@@ -8,6 +8,25 @@ import { createRouterProvider } from "../providers/router.ts"
 
 const pool = new Pool(LIMITS.SUB_AGENT_POOL_SIZE)
 
+// Harness-P2: scope read-only bersama untuk sub-agen explore DAN sesi utama
+// (--tool-scope explore). Satu daftar, satu makna: scoping per fase (pelajaran
+// Vercel: tool minimum per fase, bukan semua 36 sekaligus). Diuji oleh
+// test/harness-p2 + audit invariant bench/harness-audit.
+export const EXPLORE_TOOL_NAMES: readonly string[] = [
+  "read_file",
+  "glob",
+  "grep",
+  "read_memory",
+  "todo_read",
+  "git_status",
+  "git_log",
+  "lsp_diagnostics",
+  "lsp_definition",
+  "lsp_hover",
+  "lsp_workspace_symbols",
+  "mcp_list",
+]
+
 // Factory sesi sub-agen di-inject dari composition root (cli/index.ts memakai
 // createMinicodeSession). Lapisan tool tidak lagi mengimpor lapisan sesi/app
 // secara langsung — tanpa injeksi tool menolak jalan, konsisten dengan pola DI
@@ -109,24 +128,7 @@ export const delegateTaskTool: Tool = {
         ].includes(t.name),
     )
     const subTools =
-      m === "explore"
-        ? base.filter((t) =>
-            [
-              "read_file",
-              "glob",
-              "grep",
-              "read_memory",
-              "todo_read",
-              "git_status",
-              "git_log",
-              "lsp_diagnostics",
-              "lsp_definition",
-              "lsp_hover",
-              "lsp_workspace_symbols",
-              "mcp_list",
-            ].includes(t.name),
-          )
-        : base
+      m === "explore" ? base.filter((t) => EXPLORE_TOOL_NAMES.includes(t.name)) : base
     return await pool.run(async () => {
       ctx.signal.throwIfAborted()
       // Cek factory dulu: fail-closed deterministik tanpa menyentuh config/env.

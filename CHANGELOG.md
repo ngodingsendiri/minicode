@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased] — Harness P0–P3 (uncommitted)
+
+### Added
+- **Jail simetris**: `move_file`/`delete_file` dijail di lapisan permission (sebelumnya hanya tool-layer) — berlaku di semua mode termasuk `--allow-all`.
+- **`MINICODE_SANDBOX_STRICT=1`**: fail-closed bila isolasi yang diminta tak tersedia (default tetap warn + lanjut).
+- **Allowlist `bun run`/`bun x`**: tolak ekspansi shell/redirection seperti `npx`.
+- **`--budget-strict` / `MINICODE_BUDGET_STRICT`**: cost tak dikenal dianggap over budget di one-shot/REPL/`exec`. Sekaligus perbaiki `exec` yang mengabaikan `--budget` total.
+- **`step-traces.jsonl`**: satu baris per tool/step + klasifikasi deny + mode sandbox; `minicode stats` tampilkan deny-rate (`summarizeStepTraces`).
+- **`bun run audit:harness`**: 60 cek deterministik tanpa API key (safety 6-mode, guard bypass-rate, budget, scope, fake-detector).
+- **Baseline-first**: `--verify` menguji baseline sebelum agen jalan (catatan Health-Check bila merah).
+- **`--tool-scope explore` / `MINICODE_TOOL_SCOPE`**: subset read-only bersama sub-agen (`EXPLORE_TOOL_NAMES`).
+- **Validasi resume**: peringatan bila workspace berubah sejak checkpoint terakhir (`.minicode/` dikecualikan).
+- **`config --cwd` diperbaiki**: branch list/add sebelumnya mengabaikan `--cwd` (baca/tulis ke `process.cwd()`); flag-sebagai-id ditolak. Ditemukan saat kejar coverage 81/83 (81,69/85,25; min dikunci 81/83).
+- **SWE docker per-era**: `bench/docker/` (5 image Python 3.6–3.10 + `manifest.json` 20 instance dari tanggal base_commit + classifiers setup.py) + flag `--docker` di `bench/swebench.ts`. Image ter-build semua (py36 butuh fix apt kedaluwarsa); requests-1963 collect+run OK di py3.8, pytest-11143 FAIL dengan benar di py3.10.
+- **Run POSIX pertama (WSL)**: TOCTOU 1000× 0 lolos (temukan bug test: swapper tanpa yield menggantung); full suite Linux 1334/8/0. Perbaiki 5 fail platform-spesifik (`node -e` → runtime sendiri; stripAnsi markdown; mount-test cabang platform; `MINICODE_HOME` untuk global-DB hermetic).
+
+### Docs
+- `docs/HARNESS.md` baru (riset + posisi + uji live 7 model); `README`/`USAGE`/`PLAN`/`AGENTS.md`/`ARCHITECTURE.html` sinkron (angka gate, path, flag baru; referensi arsip mati dihapus).
+
 ## [0.9.6] - 2026-09-06 — Audit UX: Tab plan/build, did-you-mean, banner konteks, English-only, sync jujur
 
 ### Added

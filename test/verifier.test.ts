@@ -10,18 +10,21 @@ import {
 } from "../src/policy/verifier.ts"
 
 test("runVerify: success returns ok", async () => {
-  const r = await runVerify("node -e \"console.log('ok')\"", process.cwd())
+  const rt = JSON.stringify(process.execPath)
+  const r = await runVerify(`${rt} -e "console.log('ok')"`, process.cwd())
   expect(r.ok).toBe(true)
   expect(r.output).toContain("ok")
 })
 
 test("runVerify: failure returns not ok", async () => {
-  const r = await runVerify('node -e "process.exit(1)"', process.cwd())
+  const rt = JSON.stringify(process.execPath)
+  const r = await runVerify(`${rt} -e "process.exit(1)"`, process.cwd())
   expect(r.ok).toBe(false)
 })
 
 test("runVerify: respects timeout", async () => {
-  const r = await runVerify('node -e "setTimeout(()=>{}, 5000)"', process.cwd(), 300)
+  const rt = JSON.stringify(process.execPath)
+  const r = await runVerify(`${rt} -e "setTimeout(()=>{}, 5000)"`, process.cwd(), 300)
   expect(r.ok).toBe(false)
 })
 

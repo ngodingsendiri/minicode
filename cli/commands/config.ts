@@ -49,6 +49,14 @@ function showHelp(text: string, asked: boolean, unknown?: string): never {
 const isHelpFlag = (s: string | undefined): boolean =>
   s === undefined || s === "--help" || s === "-h"
 
+/** Positional yang diawali `-` hampir pasti flag yang salah tempat
+ * (mis. `config lsp remove --cwd X` menghapus server bernama "--cwd").
+ * Tolak dengan usage, jangan anggap sebagai id/ext. */
+function positionalArg(args: string[], i: number): string | undefined {
+  const v = args[i]
+  return v && !v.startsWith("-") ? v : undefined
+}
+
 export async function handleConfig(
   args: string[],
   getArg: (name: string) => string | undefined,
@@ -65,13 +73,16 @@ export async function handleConfig(
     }
     const entry = await detectAndSave(baseUrl, apiKey, id, {
       global: args.includes("--global"),
+      cwd: getArg("--cwd"),
     })
     console.log(
       `${c.green(glyphs.check)} Saved provider "${c.bold(entry.id)}" (${entry.providerHint}) models: ${entry.models.slice(0, 5).join(", ")}${entry.models.length > 5 ? " ..." : ""} (${entry.models.length} total)`,
     )
     process.exit(0)
   } else if (sub === "list") {
-    const cfg = await loadConfig()
+    // P10: list branch WAJIB menghormati --cwd seperti branch tulis —
+    // sebelumnya membaca process.cwd() diam-diam (config yang salah).
+    const cfg = await loadConfig(getArg("--cwd"))
     if (cfg.providers.length === 0)
       console.log(c.dim("(no providers yet - add one via `minicode config add` or the wizard)"))
     else {
@@ -97,7 +108,7 @@ export async function handleConfig(
     }
     process.exit(0)
   } else if (sub === "remove") {
-    const id = args[2]
+    const id = positionalArg(args, 2)
     if (!id) {
       console.error("usage: minicode config remove <id> [--global|--local] [--cwd <dir>]")
       process.exit(1)
@@ -132,7 +143,7 @@ export async function handleConfig(
   } else if (sub === "mcp") {
     const mcpSub = args[2]
     if (mcpSub === "add") {
-      const id = args[3]
+      const id = positionalArg(args, 3)
       const command = getArg("--command")
       const cmdArgsRaw = getArg("--args")
       const url = getArg("--url")
@@ -167,6 +178,8 @@ export async function handleConfig(
           console.error(`Invalid URL: ${url}`)
           process.exit(1)
         }
+        // P10: add branch WAJIB menghormati --cwd seperti remove —
+        // sebelumnya menulis ke process.cwd() diam-diam (salah direktori).
         await saveMcpServer(
           {
             id,
@@ -174,7 +187,7 @@ export async function handleConfig(
             ...(Object.keys(headers).length ? { headers } : {}),
             ...(args.includes("--allow-private") ? { allowPrivateHost: true } : {}),
           },
-          { global: !args.includes("--local") },
+          { global: !args.includes("--local"), cwd: getArg("--cwd") },
         )
         console.log(`${c.green(glyphs.check)} Saved MCP server "${c.bold(id)}" (http): ${url}`)
         process.exit(0)
@@ -186,14 +199,14 @@ export async function handleConfig(
         .filter(Boolean)
       await saveMcpServer(
         { id, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) },
-        { global: !args.includes("--local") },
+        { global: !args.includes("--local"), cwd: getArg("--cwd") },
       )
       console.log(
         `${c.green(glyphs.check)} Saved MCP server "${c.bold(id)}": ${command} ${cmdArgs.join(" ")}`,
       )
       process.exit(0)
     } else if (mcpSub === "list") {
-      const cfg = await loadConfig()
+      const cfg = await loadConfig(getArg("--cwd"))
       if (!cfg.mcpServers?.length)
         console.log(c.dim("(no MCP servers configured - add via minicode config mcp add)"))
       else {
@@ -219,7 +232,7 @@ export async function handleConfig(
       }
       process.exit(0)
     } else if (mcpSub === "remove") {
-      const id = args[3]
+      const id = positionalArg(args, 3)
       if (!id) {
         console.error("usage: minicode config mcp remove <id> [--global|--local]")
         process.exit(1)
@@ -235,7 +248,7 @@ export async function handleConfig(
   } else if (sub === "lsp") {
     const lspSub = args[2]
     if (lspSub === "add") {
-      const ext = args[3]
+      const ext = positionalArg(args, 3)
       const command = getArg("--command")
       const cmdArgsRaw = getArg("--args") ?? ""
       if (!ext || !command) {
@@ -255,14 +268,14 @@ export async function handleConfig(
       }
       await saveLspServer(
         { ext, command, args: cmdArgs, ...(Object.keys(env).length ? { env } : {}) },
-        { global: !args.includes("--local") },
+        { global: !args.includes("--local"), cwd: getArg("--cwd") },
       )
       console.log(
         `${c.green(glyphs.check)} Saved LSP server for ${c.bold(ext)}: ${command} ${cmdArgs.join(" ")}`,
       )
       process.exit(0)
     } else if (lspSub === "list") {
-      const cfg = await loadConfig()
+      const cfg = await loadConfig(getArg("--cwd"))
       if (!cfg.lspServers?.length)
         console.log(c.dim("(no LSP servers configured - add via minicode config lsp add)"))
       else {
@@ -286,7 +299,7 @@ export async function handleConfig(
       }
       process.exit(0)
     } else if (lspSub === "remove") {
-      const ext = args[3]
+      const ext = positionalArg(args, 3)
       if (!ext) {
         console.error("usage: minicode config lsp remove <ext> [--global|--local]")
         process.exit(1)

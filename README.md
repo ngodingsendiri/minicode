@@ -63,11 +63,12 @@ minicode exec "prompt" --json           # headless CI (JSONL stream + summary)
 bun test                                # offline/hermetic (live & docker di-skip)
 bun run test:live                       # E2E live (butuh config + jaringan)
 bun run bench:smoke                     # benchmark smoke (tanpa API key)
+bun run audit:harness                   # 60 cek harness deterministik (tanpa API key)
 bun experiments/bash-bypass-probe.ts    # ukur postur denylist bash (0 bypass = lulus)
 ```
 
 ## Tools
-FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, progres streaming, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional) · git `git_status/diff/log`(cwd jail) **`git_commit`**(di-gate; tanpa push/amend/reset) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** · agents `delegate_task` (isolasi, pool 3) · MCP `mcp_list` `mcp_call` **`mcp_read`** **`mcp_prompt`** (+dynamic `serverid.toolname`) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
+FS `read_file`(**nomor baris + offset/limit** — file besar dibaca per bagian, realpath jail, secret-scrubbed) `write_file`(atomic tmp→rename, mkdir) `edit`(unique+atomic, fuzzy CRLF/spasi + hashline) `apply_patch`(search/replace multi-hunk) `move_file`(rename atomik + backup dest) `delete_file`(soft-delete ke `.trash/`) `read_image`(gambar → konteks model) · search `glob`({a,b}, cwd jail) `grep`(**ripgrep bila tersedia**, fallback walker internal) · exec `bash`(30s SIGTERM→SIGKILL, cwd jail, env kredensial di-strip, progres streaming, **`background:true`** + `bash_output`/`bash_kill`, sandbox docker/os optional, fail-closed via `MINICODE_SANDBOX_STRICT=1`) `code_run`(python/node tanpa shell, wajib sandbox) · git `git_status/diff/log`(cwd jail) **`git_commit`**(di-gate; tanpa push/amend/reset) · web `web_fetch`(SSRF guard + DNS pinning) `web_search`(Tavily/DDG) · memory `read/write/forget_memory` (hybrid RAG WAL) · plan **`todo_write`/`todo_read`** (+artifact `.minicode/plans/`) `submit_result` (hasil terstruktur) `ask_user` (gated, fail-closed) · agents `delegate_task` (isolasi, pool 3) · MCP `mcp_list` `mcp_call` **`mcp_read`** **`mcp_prompt`** (+dynamic `serverid.toolname`) · LSP `lsp_diagnostics/definition/references/hover/symbols/workspace_symbols`
 
 Daftar pasti: `bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.map(t=>t.name))"`
 
@@ -95,7 +96,7 @@ Token OAuth disimpan di `~/.minicode/auth.json` (chmod 600), **bukan** di `confi
 
 ## Biaya & harga model
 
-17 harga bawaan tersedia offline. Untuk cakupan lebih luas, tarik sendiri:
+25 harga bawaan tersedia offline. Untuk cakupan lebih luas, tarik sendiri:
 
 ```bash
 minicode pricing sync                 # 3.162 model dari models.dev (~213 KB cache)
@@ -191,4 +192,4 @@ Catatan lingkungan:
 
 **MIT License.** Bebas pakai, modifikasi, distribusi — lihat [LICENSE](LICENSE). Copyright (c) 2026 ngodingsendiri.
 
-Lihat `docs/ARCHITECTURE.md` + `docs/PLAN_V4.md`.
+Lihat `docs/ARCHITECTURE.html` + `docs/HARNESS.md` + `PLAN.md`.

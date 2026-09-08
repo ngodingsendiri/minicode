@@ -147,6 +147,24 @@ describe("stats", () => {
     expect(r.code).toBe(0)
     expect(r.out).toContain("Runs: 0")
   })
+
+  test("step-traces.jsonl tampil sebagai baris Tools + --json memuat steps", async () => {
+    const rows = [
+      { kind: "tool", step: 0, tool: "bash", ok: false, denied: true, sandbox: "none" },
+      { kind: "tool", step: 0, tool: "read_file", ok: true, sandbox: "none" },
+      { kind: "step", step: 0, tools: 2, errors: 1 },
+    ]
+    writeFileSync(
+      join(tmp, ".minicode", "step-traces.jsonl"),
+      rows.map((r) => JSON.stringify(r)).join("\n"),
+      "utf8",
+    )
+    const r = await runDispatch(["stats", "--cwd", tmp])
+    expect(r.code).toBe(0)
+    expect(r.out).toContain("Tools: 2")
+    expect(r.out).toContain("Denied: 1 (50.0%)")
+    expect(r.out).toContain("bash×1")
+  })
 })
 
 describe("sessions", () => {

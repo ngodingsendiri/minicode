@@ -95,6 +95,9 @@ src/lib/atomic-write.ts:
 src/lib/trash.ts:
   function trashDir(...)
   function trashFile(...)
+src/lib/db-path.ts:
+  function homeDir(...)
+  function resolveDbPath(...)
 src/lib/net.ts:
   function isPrivateHost(...)
   function isPrivateHostWithDns(...)
@@ -107,6 +110,25 @@ src/tools/task.ts:
   type SubAgentSessionFactory
   function setSubAgentSessionFactory(...)
   const delegateTaskTool
+  const EXPLORE_TOOL_NAMES
+src/policy/usage.ts:
+  function budgetStatus(...)
+  function costFor(...)
+src/policy/verifier.ts:
+  function checkBaseline(...)
+  function buildBaselineNote(...)
+  function runWithSelfHeal(...)
+src/telemetry/trace.ts:
+  interface StepTrace
+  function summarizeStepTraces(...)
+  function writeStepTrace(...)
+src/session/checkpoint.ts:
+  function validateResumeWorkspace(...)
+src/app/tool-layer.ts:
+  type ToolScope
+  function setupToolLayer(...)
+bench/harness-audit.ts:
+  function runAudit(...)
 src/lsp/client.ts:
   interface LspServerEntry
   function languageIdFor(...)
@@ -182,7 +204,7 @@ test/helpers/capture.ts:
 ## Rencana kerja aktif
 
 Baca [PLAN.md](PLAN.md) sebelum mulai. Itu satu-satunya rencana yang harus
-dieksekusi; `docs/PLAN_V4.md`, `PLAN_V5.md`, dan `PLAN_UIUX_V6.md` adalah arsip
+dieksekusi; [docs/PLAN_UIUX_V6.md](docs/PLAN_UIUX_V6.md) adalah arsip
 (semua itemnya sudah selesai).
 
 Gate yang harus hijau sebelum menyatakan selesai:

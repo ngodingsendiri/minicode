@@ -78,6 +78,10 @@ describe("harness P0.4: allowlist bun run/bun x", () => {
 // P0.3 — MINICODE_SANDBOX_STRICT=1: fallback tanpa isolasi melempar, bukan warn.
 describe("harness P0.3: sandbox strict fail-closed", () => {
   test("strict menolak eksekusi langsung saat docker tak tersedia", async () => {
+    // Bila daemon ADA, cabang fallback tak terpicu (isolasi nyata dipakai,
+    // tercakup test sandbox/docker) — yang diuji di sini justru fallback-nya.
+    const { dockerAvailable } = await import("../src/sandbox/docker.ts")
+    if (dockerAvailable()) return
     process.env.MINICODE_SANDBOX = "docker"
     process.env.MINICODE_SANDBOX_STRICT = "1"
     const ctx = {

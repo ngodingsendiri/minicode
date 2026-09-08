@@ -57,7 +57,7 @@ describe("McpTransport: jalur gagal tertutup", () => {
 
   test("connect dua kali menolak (already connected)", async () => {
     const t = new McpTransport()
-    // spawn server dummy: node -e idle
+    // spawn server dummy: runtime sendiri idle (hermetic, tanpa node)
     await t.connect(process.execPath, ["-e", "setInterval(()=>{},1000)"])
     await expect(t.connect(process.execPath, ["-e", ""])).rejects.toThrow("already connected")
     await t.close()

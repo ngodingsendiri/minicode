@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { type StepTrace, summarizeStepTraces } from "../../src/telemetry/trace.ts"
 import { c } from "../../src/ui/render/theme.ts"
 
 interface TraceRow {
@@ -34,17 +35,47 @@ export async function handleStats(getArg: (name: string) => string | undefined):
   const cost = traces.reduce((s, t) => s + (t.cost ?? 0), 0)
   const avgMs = total ? Math.round(traces.reduce((s, t) => s + (t.durationMs ?? 0), 0) / total) : 0
 
+  // Harness-P3: agregat step-trace (P1.2) — deny-rate, tool bermasalah,
+  // mode sandbox. Berkas tak ada/rusak = nol, bukan crash.
+  let stepRows: StepTrace[] = []
+  try {
+    stepRows = readFileSync(resolve(cwdArg ?? ".", ".minicode", "step-traces.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .flatMap((l) => {
+        try {
+          return [JSON.parse(l) as StepTrace]
+        } catch {
+          return []
+        }
+      })
+  } catch {}
+  const steps = summarizeStepTraces(stepRows)
+
   // --json dulu diterima tanpa keluhan lalu diabaikan; kini benar-benar bekerja.
   if (asJson) {
     console.log(
-      JSON.stringify({ runs: total, resolved: ok, inputTokens, outputTokens, cost, avgMs }),
+      JSON.stringify({
+        runs: total,
+        resolved: ok,
+        inputTokens,
+        outputTokens,
+        cost,
+        avgMs,
+        steps,
+      }),
     )
     process.exit(0)
   }
-  const dot = "\u00b7"
   console.log(
-    `Runs: ${total} ${dot} Resolved: ${ok}/${total} ${dot} Tokens in=${inputTokens} out=${outputTokens} ${dot} Cost: $${cost.toFixed(4)} ${dot} Avg ${avgMs}ms`,
+    `Runs: ${total} · Resolved: ${ok}/${total} · Tokens in=${inputTokens} out=${outputTokens} · Cost: $${cost.toFixed(4)} · Avg ${avgMs}ms`,
   )
   if (total === 0) console.log(c.dim(`  (no traces yet in ${file})`))
+  if (steps.tools > 0) {
+    const topDeny = steps.topDenied.map((t) => `${t.tool}×${t.n}`).join(", ")
+    console.log(
+      `Tools: ${steps.tools} · Denied: ${steps.denied} (${(steps.denyRate * 100).toFixed(1)}%) · Errors: ${steps.errors}${topDeny ? ` · Top denied: ${topDeny}` : ""}${steps.sandboxes.length ? ` · Sandbox: ${steps.sandboxes.join(",")}` : ""}`,
+    )
+  }
   process.exit(0)
 }

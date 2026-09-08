@@ -3,8 +3,10 @@ import { resolve as resolvePath } from "node:path"
 import { createRateLimiter } from "../../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../../src/policy/sandbox-policy.ts"
 import { scrubSecrets } from "../../src/policy/scrub.ts"
+import { budgetStatus } from "../../src/policy/usage.ts"
 import { getSubmittedResult } from "../../src/tools/submit_result.ts"
 import { formatError } from "../../src/ui/assistant/simple.ts"
+import { formatUsd } from "../../src/ui/render/money.ts"
 import { hasFlag, promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
 
@@ -50,6 +52,16 @@ export async function handleExec(
     parsedBudget !== undefined && Number.isFinite(parsedBudget) && parsedBudget >= 0
       ? parsedBudget
       : undefined
+  // Harness-P1: sama seperti one-shot — strict fail-closed bila cost tak dikenal.
+  const budgetStrict =
+    hasFlag(args, "--budget-strict") || process.env.MINICODE_BUDGET_STRICT === "1"
+  // Harness-P2: scope tool sesi.
+  const toolScopeRaw = (
+    getArg("--tool-scope") ??
+    process.env.MINICODE_TOOL_SCOPE ??
+    ""
+  ).toLowerCase()
+  const toolScope = toolScopeRaw === "explore" ? ("explore" as const) : ("full" as const)
   const ratelimitRaw = getArg("--ratelimit")
   const rateLimiter = ratelimitRaw ? createRateLimiter(Number(ratelimitRaw)) : undefined
 
@@ -75,6 +87,8 @@ export async function handleExec(
     allowlist,
     verify: hasFlag(args, "--verify"),
     budget,
+    budgetStrict,
+    toolScope,
     rateLimiter,
     // Notice dicetak di setup setelah provider lolos — bukan di sini, supaya
     // `exec --help` (prompt kosong, exit di atas) tetap senyap.
@@ -96,6 +110,24 @@ export async function handleExec(
   })
   try {
     await ctx.runPromptWithVerify(effectivePrompt)
+    // Harness-P1: exec sebelumnya mengabaikan --budget total (flag diteruskan
+    // tapi tak pernah diperiksa). Samakan dengan one-shot: over → exit 1.
+    const ue = ctx.usage.getSession(ctx.modelRef.current)
+    const bStatus = budgetStatus(budget, ue.cost, budgetStrict)
+    if (bStatus !== "ok") {
+      const msg =
+        bStatus === "over" && ue.cost != null && budget != null
+          ? `[budget] ${formatUsd(ue.cost)} > ${formatUsd(budget)} - over budget, stopping.`
+          : `[budget] cost unknown (model tanpa harga) - over budget under --budget-strict, stopping.`
+      unsub()
+      await ctx.close()
+      if (jsonMode)
+        process.stdout.write(
+          `${scrubSecrets(JSON.stringify({ type: "summary", ok: false, error: msg, prompt: effectivePrompt }))}\n`,
+        )
+      else process.stderr.write(`${msg}\n`)
+      process.exit(1)
+    }
     const u = ctx.usage.get(ctx.modelRef.current)
     if (jsonMode) {
       // submit_result dari model (bila dipanggil) ikut verbatim — pipeline CI

@@ -100,15 +100,16 @@ test("P13 memory status --json: kategori + scope tampil", async () => {
 })
 
 test("P13 scope all: menggabung DB lokal + global (tanpa silent shadowing)", async () => {
-  // Global = homedir()/.minicode/vector.db — arahkan homedir ke tmp agar
-  // hermetic. Restore di finally karena env bersifat proses-global.
-  const homeKey = process.platform === "win32" ? "USERPROFILE" : "HOME"
-  const prevHome = process.env[homeKey]
+  // Global = MINICODE_HOME/.minicode/vector.db — override eksplisit agar
+  // hermetic lintas platform. (Sebelumnya memakai $HOME/$USERPROFILE, tapi
+  // os.homedir() di POSIX mengabaikan $HOME sehingga test ini gagal di Linux
+  // sekaligus mencemari home asli — ditemukan saat run WSL pertama.)
+  const prevHome = process.env.MINICODE_HOME
   const fakeHome = await mkdtemp(join(tmpdir(), "minicode-memhome-"))
   const cwd = await makeCwd()
   try {
     await mkdir(join(fakeHome, ".minicode"), { recursive: true })
-    process.env[homeKey] = fakeHome
+    process.env.MINICODE_HOME = fakeHome
     const m = randomUUID().slice(0, 6)
     // Baris "global": cwd-nya fakeHome sehingga resolveDbPath jatuh ke sana.
     await addMemory(`global recipe ${m} shared kitchen sourdough starter`, { cwd: fakeHome })
@@ -121,8 +122,8 @@ test("P13 scope all: menggabung DB lokal + global (tanpa silent shadowing)", asy
     const local = await searchHybrid(`recipe ${m} kitchen pipeline`, { cwd, scope: "cwd" })
     expect(local.map((h) => h.text).join("\n")).not.toContain(`global recipe ${m}`)
   } finally {
-    if (prevHome === undefined) delete process.env[homeKey]
-    else process.env[homeKey] = prevHome
+    if (prevHome === undefined) delete process.env.MINICODE_HOME
+    else process.env.MINICODE_HOME = prevHome
     await cleanup(cwd)
     await rm(fakeHome, { recursive: true, force: true }).catch(() => {})
   }

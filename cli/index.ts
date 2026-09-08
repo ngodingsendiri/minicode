@@ -55,6 +55,7 @@ Options:
   --ratelimit <rpm>   LLM requests per minute
   --budget <usd>      session cost limit
   --budget-strict     fail-closed: unknown cost counts as over budget
+  --tool-scope <s>    full (default) | explore (read-only subset)
 
 REPL: /help /provider /model /sync /status /sessions /init /mode /compact /thinking /undo /cost /exit
 Keys: Enter submit · Tab complete (empty: plan/build) · Up/Down history · Shift+Tab mode · Ctrl+C stop (2x exit)
@@ -114,6 +115,7 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--ratelimit <rpm>", desc: "LLM requests/min" },
           { flag: "--budget <usd>", desc: "session cost limit" },
           { flag: "--budget-strict", desc: "unknown cost counts as over budget" },
+          { flag: "--tool-scope <full|explore>", desc: "tool subset (explore = read-only)" },
           { flag: "--json", desc: "JSON output (help/exec)" },
         ],
       }),
@@ -192,6 +194,9 @@ if (budgetRaw && (!Number.isFinite(budget) || (budget as number) < 0)) {
 }
 // Harness-P1: strict lewat flag ATAU env (simetri dengan MINICODE_SANDBOX_STRICT).
 const budgetStrict = hasFlag(args, "--budget-strict") || process.env.MINICODE_BUDGET_STRICT === "1"
+// Harness-P2: scope tool sesi; nilai selain explore jatuh ke full (eksplisit di bawah).
+const toolScopeRaw = (getArg("--tool-scope") ?? process.env.MINICODE_TOOL_SCOPE ?? "").toLowerCase()
+const toolScope = toolScopeRaw === "explore" ? ("explore" as const) : ("full" as const)
 const ratelimitRaw = getArg("--ratelimit")
 let rateLimiter: ReturnType<typeof createRateLimiter> | undefined
 if (ratelimitRaw) {
@@ -244,6 +249,7 @@ const ctx = await createCliSession({
   verify,
   budget,
   budgetStrict,
+  toolScope,
   maxSteps,
   contextWindowTokens,
   timeoutMs,

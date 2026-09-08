@@ -45,6 +45,8 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `--sandbox os` | Paksa OS-native: bubblewrap (Linux) / seatbelt (macOS). Sudah otomatis bila tersedia |
 | `--ratelimit <rpm>` | Batas request LLM per menit (token bucket) |
 | `--budget <usd>` | Batas biaya sesi; warn 80%, exit/break bila lewat |
+| `--budget-strict` | Fail-closed: cost tak dikenal (model tanpa harga) dianggap over budget |
+| `--tool-scope <s>` | `full` (default) \| `explore` = subset read-only (12 tool) |
 | `--plan` | Read-only plan mode (tidak bisa edit file / bash) |
 | `--allowlist` | Bash hanya perintah aman (git/bun test/bun run/npm run) |
 | `--ask` | Tanya persetujuan setiap tool |
@@ -69,6 +71,8 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_BASH_ALLOWLIST` | Kustom allowlist bash (koma-pisah, ganti DEFAULT) |
 | `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) \| `none` |
 | `MINICODE_SANDBOX_STRICT` | `1` → fail-closed: tolak bash bila isolasi yang diminta tak tersedia (default: warn + eksekusi langsung) |
+| `MINICODE_BUDGET_STRICT` | `1` → sama dengan `--budget-strict`: cost tak dikenal dianggap over budget |
+| `MINICODE_TOOL_SCOPE` | `explore` → sesi hanya dapat subset read-only (sama dengan `--tool-scope explore`) |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
 | `MINICODE_GREP_ENGINE` | `js` → paksa walker internal, jangan pakai ripgrep |
@@ -77,6 +81,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_PLAN` | `1` → mode plan (tanpa `--plan`) |
 | `MINICODE_PERMISSION` | `allowlist` → mode allowlist |
 | `MINICODE_SESSION_TTL_DAYS` | TTL sesi (default 30; `0` = selamanya) |
+| `MINICODE_HOME` | Override home untuk DB lokal/global (sessions + vector); default `~`. Berguna agar test hermetic di POSIX (di sana `homedir()` mengabaikan `$HOME`) |
 | `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
 | `MINICODE_PROVIDER_ORDER` | Urutkan provider agnostik tanpa edit config: `openai,anthropic,deepseek` |
 | `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
@@ -91,6 +96,8 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_SHOW_THINKING` | `1` → tampilkan reasoning model (`/thinking` on) |
 | `MINICODE_THINKING` | `off` → kirim `enable_thinking:false` ke OpenAI-compat (DeepSeek) |
 | `MINICODE_EMBED_MODEL` | Model embedding untuk memory/vector (default `text-embedding-3-small`) |
+| `MINICODE_MEMORY_SCOPE` | Scope baca memory: `cwd` (default) \| `global` \| `all` (gabung, tanpa silent shadowing) |
+| `MINICODE_AUTO_MEMORY` | `0` → matikan auto-simpan summary/snippet ke memory (opt-out) |
 | `TAVILY_API_KEY` | API key untuk Tavily web_search (fallback DuckDuckGo bila kosong) |
 | `AGENT_API_KEY`, `AGENT_BASE_URL`, `AGENT_MODEL` | Fallback generik OpenAI-compat (dipakai provider-layer, memory, task) |
 | `DEEPSEEK_BASE_URL` | Base URL DeepSeek (default `https://api.deepseek.com/v1`, untuk compaction) |
@@ -319,7 +326,7 @@ Tool dinamis `serverId.toolName` juga otomatis muncul.
 
 ## Verify & Self-Healing
 
-`--verify` auto-detect perintah (typecheck → test → tsconfig). Setelah run utama, verify dijalankan. Bila gagal, agen diperintahkan memperbaiki (maks 3 siklus). Output error dibungkus dalam fence agar tidak terpengaruh prompt injection.
+`--verify` auto-detect perintah (typecheck → test → tsconfig). Sebelum run, baseline diuji dulu: bila sudah merah, catatan Health-Check ditempel ke prompt awal agar agen memperbaiki dulu, bukan menumpuk di atas kerusakan. Setelah run utama, verify dijalankan. Bila gagal, agen diperintahkan memperbaiki (maks 3 siklus). Output error dibungkus dalam fence agar tidak terpengaruh prompt injection.
 
 ## Sandbox
 
@@ -387,7 +394,7 @@ Semuanya kini tertutup (`stripCommandWrappers` membuang 14 wrapper hingga 4 lapi
 
 ## Budget
 
-`--budget <usd>` → lacak biaya LLM. Peringatan 80% → kuning. Bila lewat budget: one-shot `exit(1)`, REPL `break` loop.
+`--budget <usd>` → lacak biaya LLM. Peringatan 80% → kuning. Bila lewat budget: one-shot `exit(1)`, REPL `break` loop. `--budget-strict` (atau `MINICODE_BUDGET_STRICT=1`) = fail-closed: cost tak dikenal karena model tanpa harga dianggap over budget, bukan diabaikan. `exec` menegakkan `--budget` sama seperti one-shot.
 
 ## Checkpoint & Undo
 
@@ -410,7 +417,7 @@ Jaminannya:
 
 ## Sessions
 
-Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk daftar. `--resume <id>` untuk melanjutkan dengan history penuh (termasuk `toolCallId`/`name`). Sesi basi dihapus otomatis setelah **30 hari** (`MINICODE_SESSION_TTL_DAYS=0` = simpan selamanya; nilai lain dalam hari). `minicode sessions purge` untuk menghapus manually.
+Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk daftar. `--resume <id>` untuk melanjutkan dengan history penuh (termasuk `toolCallId`/`name`) — saat resume, workspace dibandingkan ke checkpoint terakhir dan divergensi dilaporkan (bukan replay buta). Sesi basi dihapus otomatis setelah **30 hari** (`MINICODE_SESSION_TTL_DAYS=0` = simpan selamanya; nilai lain dalam hari). `minicode sessions purge` untuk menghapus manually.
 
 ## Memory
 
@@ -428,6 +435,7 @@ Tree-sitter **tidak** dipakai. Prototipe `web-tree-sitter` berjalan dan cepat, t
 bun run bench                            # butuh provider (resolve rate nyata)
 bun run bench:smoke                      # --fake, untuk CI
 bun run bench --tasks path/to/tasks.json # external tasks (SWE-bench-format)
+bun run audit:harness                    # 60 cek harness deterministik, tanpa API key
 ```
 
 Metrik: resolve rate, steps, token, cost, durasi. Delta terhadap run sebelumnya ditampilkan.

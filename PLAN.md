@@ -1,6 +1,6 @@
 # PLAN.md — Rencana penyempurnaan aktif
 
-**Untuk agent AI yang melanjutkan pekerjaan ini.** Dokumen ini adalah satu-satunya rencana yang harus dieksekusi. Rencana lama (`docs/PLAN_V4.md`, `PLAN_V5.md`, `PLAN_UIUX_V6.md`) adalah **arsip** — semua itemnya sudah selesai; jangan dikerjakan ulang.
+**Untuk agent AI yang melanjutkan pekerjaan ini.** Dokumen ini adalah satu-satunya rencana yang harus dieksekusi. Rencana lama (`docs/PLAN_UIUX_V6.md`) adalah **arsip** — semua itemnya sudah selesai; jangan dikerjakan ulang.
 
 Basis: audit UI/UX menyeluruh (V6), uji live dua gateway nyata (V7), dan bug hunter UI tiga ronde (V8). Riwayat lengkap di [CHANGELOG.md](CHANGELOG.md).
 
@@ -22,28 +22,29 @@ bun run extreme           # harapan: 0 bypass, semua pass
 Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 
 - REPL bisa dipakai (dulu mati bisu pada prompt pertama).
-- Lebar karakter dihitung per KOLOM terminal (`src/tui/width.ts`), bukan per karakter.
-- Teks model/tool disanitasi (`src/tui/sanitize.ts`) — hanya SGR yang lewat.
-- Biaya sesi kumulatif benar; `--budget` benar-benar memutus.
+- Lebar karakter dihitung per KOLOM terminal (`src/ui/render/width.ts`), bukan per karakter.
+- Teks model/tool disanitasi (`src/ui/render/sanitize.ts`) — hanya SGR yang lewat.
+- Biaya sesi kumulatif benar; `--budget` benar-benar memutus (+ `--budget-strict` untuk model tanpa harga, yang cost-nya tak dikenal).
 - Error provider tampil ringkas + saran, bukan dump JSON.
 - Semua overlay menghormati ukuran terminal sungguhan.
 - Bahasa UI diarahkan ke English-only pada surface UI aktif; glyph tetap punya fallback ASCII.
 
 ---
 
-## Status eksekusi terbaru (update 2026-09-06)
+## Status eksekusi terbaru (update 2026-09-08)
 
 - ✅ P0-P9 tuntas dan dihapus dari plan (commit `e143db2` 0.9.0 + `b8b5749` 0.9.1): guardrail, coverage, overlay, English-only, tema, data-at-rest, session, tool-layer, env/command, CLI hardening, memory/RAG P0-P2.
 - ✅ P12 UI Shell-Max DIEKSEKUSI `b8b5749` (9.3/10): `/copy` OSC52, Ctrl+R/Ctrl+J, statusline rich, wrap/table/diff/picker, harness output-driven. Gate `tsc PASS / lint 9 warn / 1224 pass 0 fail / coverage 81.44/83.65 / pack 22/22`.
 - ✅ P13 P0 + P10 P0 + P11 P0 DIEKSEKUSI (`ff70d65` 0.9.2 + `e1c7839`/`346a932` 0.9.3/0.9.4): `--cwd` repo-wide, O_NOFOLLOW, pricing refresh, max_tokens 8192, thought_signature side-map, 4 tool, memori kategori/scope, code_run tanpa shell, trash bersama.
-- ✅ P13 P1 + P11 P1 + P10 P1 DIEKSEKUSI (0.9.5, uncommitted): submit_result, ask_user (gated+DI), plan artifact, snippet verify, branchSession, TTL hierarkis + accessCount, Responses chaining, reasoningEffort map, retry-after honori + coba-ulang-di-tempat, probe /responses, harness TUI 10/10, SWE-bench Lite (dataset 20 pin + test_patch + fake 0/20), doctor, lint 0 warning, coverage-min 80/84.
-- ✅ AUDIT UX DIEKSEKUSI (0.9.6, uncommitted): Tab kosong toggle plan/build, did-you-mean (≤2), banner konteks, /thinking on-off, sync jujur {updated,failed}, doctor warn 0-model, error tunggal, sandbox notice tepat, models --match bersih, auth non-TTY fail-fast, English-only + regex penjaga, /quit dihapus, USAGE lengkap. **Opsi A konsolidasi**: /cost & /usage → /status, /resume → /sessions; /undo /redo /clear /copy /history tetap mandiri, tampil di /help tapi TIDAK di dropdown. Gate `1284 pass 0 fail / tsc / lint 0 warn / 80.77/84.56 / pack 22/22 / bash 0`.
+- ✅ P13 P1 + P11 P1 + P10 P1 DIEKSEKUSI (`ff70d65` 0.9.2 + 0.9.5): submit_result, ask_user (gated+DI), plan artifact, snippet verify, branchSession, TTL hierarkis + accessCount, Responses chaining, reasoningEffort map, retry-after honori + coba-ulang-di-tempat, probe /responses, harness TUI 10/10, SWE-bench Lite (dataset 20 pin + test_patch + fake 0/20), doctor, lint 0 warning, coverage-min 80/84.
+- ✅ AUDIT UX DIEKSEKUSI (`d69fbec` 0.9.6): Tab kosong toggle plan/build, did-you-mean (≤2), banner konteks, /thinking on-off, sync jujur {updated,failed}, doctor warn 0-model, error tunggal, sandbox notice tepat, models --match bersih, auth non-TTY fail-fast, English-only + regex penjaga, /quit dihapus, USAGE lengkap. **Opsi A konsolidasi**: /cost & /usage → /status, /resume → /sessions; /undo /redo /clear /copy /history tetap mandiri, tampil di /help tapi TIDAK di dropdown. Gate `1284 pass 0 fail / tsc / lint 0 warn / 80.77/84.56 / pack 22/22 / bash 0`.
+- ✅ HARNESS P0–P3 DIEKSEKUSI (uncommitted, 2026-09-07/08 — detail: `docs/HARNESS.md`): P0 jail simetris move/delete, `MINICODE_SANDBOX_STRICT`, allowlist `bun run`/`bun x`, scrub `exec --json` + `overBudget`; P1 `budgetStatus` + `--budget-strict` (sekaligus perbaiki `exec` yang mengabaikan `--budget`), `step-traces.jsonl` + klasifikasi deny, `audit:harness` 60 cek, `--verify`+self-heal terverifikasi existing; P2 baseline-first + `--tool-scope explore`; P3 `stats` deny-rate + validasi resume. Uji live 7 model gateway (21 run, 20/21 execution-verified; multifile ketat 4/7). Gate `1336 pass 0 fail / 81.68/85.37 / pack 22/22 / audit 60/60`. DITOLAK sadar: verify default-on, evaluator inferential.
 
 Next action — sisa aktif (urut):
-1. **SWE-Lite valid** — `bench/docker/` + pin Python/pytest per era repo (skor 0/20 saat ini measures env, bukan model).
-2. **OAuth Copilot/ChatGPT** (P11 P2) — butuh verifikasi login sungguhan; endpoint tak boleh dikarang.
-3. **81/83 coverage** — sisa di area lama (lsp/config/repl), bukan kode baru.
-4. **TOCTOU Linux CI** — swapper 1000× jalan penuh di CI (skip di Windows tanpa privilege).
+1. **SWE-Lite valid** — `bench/docker/` + `manifest.json` 20 instance + `--docker` MENDARAT; 5 image era TER-BUILD (py36 butuh fix apt kedaluwarsa); validasi: requests-1963 collect+run OK di py3.8, pytest-11143 FAIL dengan benar di py3.10. Sisa: run agen penuh + validasi confidence-low (requests/sympy).
+2. **OAuth Copilot/ChatGPT** (P11 P2) — hanya `qwen` yang punya spec terdaftar; ChatGPT/Copilot TANPA spec (endpoint tak boleh dikarang). `auth login chatgpt` fail-fast non-TTY terverifikasi live. Login aplikasi ChatGPT Desktop tak bisa dipakai CLI (tanpa API publik; baca tokennya = pencurian kredensial). Butuh: device-flow interaktif oleh pemilik akun (`auth login qwen`), atau API key konvensional.
+3. **Coverage 81/83** ✅ TERCAPAI (81,68/85,37; min dikunci 81/83) — via test config in-process + 3 temuan bug nyata (`--cwd` diabaikan list/add branches; flag-sebagai-id; list menulis repo saat test). Sisa per-file rendah di lsp/repl bukan kode baru.
+4. **TOCTOU Linux CI** ✅ TERVALIDASI di WSL Ubuntu (swapper 1000× 0 lolos, 293ms) — temukan bug test: swapper tanpa yield menggantung selamanya (klaim lama tak pernah tervalidasi). Full suite Linux 1334/8/0; Windows (dev-mode + daemon) 1336/6/0. 5 fail platform-spesifik diperbaiki + `MINICODE_HOME` baru (global-DB hermetic di POSIX).
 
 ---
 
@@ -97,7 +98,7 @@ Audit 2026-09-06 menemukan provider skor terendah (7.5): shim Gemini drop `thoug
 
 ## P13 — Raise 3 Dimensi Tertinggal: Model 8.0→8.7, Tool 8.5→9.0, Sesi/Memori 8.5→9.0
 
-Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Berbasis riset read-only 2026-09-06 (empat fact-sheet: inventaris 31 tools `src/tools/index.ts:47`, 14 preset `src/providers/presets.ts:14`, 6 mode `src/policy/permission.ts:8`, WAL+shadow-git+FTS5/MMR). **Keputusan pemilik dikunci:** P0 dulu; memori **opt-out** (`MINICODE_AUTO_MEMORY=0`); **sandbox tidak disentuh** (skor 8.0 dibiarkan — pemilik menolak kerja sandbox Windows/Linux). Tanpa TUI, tanpa proxy universal LiteLLM, tanpa edit `vendor/minicore/**` kecuali seam aditif.
+Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Berbasis riset read-only 2026-09-06 (empat fact-sheet: inventaris 37 tools `src/tools/index.ts:59`, 14 preset `src/providers/presets.ts:14`, 6 mode `src/policy/permission.ts:8`, WAL+shadow-git+FTS5/MMR). **Keputusan pemilik dikunci:** P0 dulu; memori **opt-out** (`MINICODE_AUTO_MEMORY=0`); **sandbox tidak disentuh** (skor 8.0 dibiarkan — pemilik menolak kerja sandbox Windows/Linux). Tanpa TUI, tanpa proxy universal LiteLLM, tanpa edit `vendor/minicore/**` kecuali seam aditif.
 
 **P0 — Semua yang menaikkan skor (≤3 hari, tanpa ubah UI/API):**
 
@@ -122,7 +123,7 @@ Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Ber
 - **Sesi/Memori:** ✅ plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`, test); auto-extract snippet dari turn verify sukses (`buildVerifySnippet` + `onOk`, opt-out sama, test); branch `branchSession` (`src/session/persistence.ts`, test); TTL hierarkis `fact/decision/preference 180, summary 90, snippet 14` + `accessCount` (test).
 
 **Selesai bila (semua diukur):**
-- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` di `scripts/coverage-gate.ts` = **80/84** (naik dari 77/81; 81/83 tertunda — sisa di area lama lsp/config/repl, bukan kode baru).
+- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` di `scripts/coverage-gate.ts` = **81/83** (tercapai 2026-09-08 via test config; sisa per-file rendah di lsp/repl bukan kode baru).
 - `test/tool-toctou.test.ts` swapper 1000 iterasi **0 lolos** di POSIX (skip bila symlink EPERM; Windows CI: 3 skip by design).
 - `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global. ✅
 - `test/tui-harness.test.ts` 10× hijau. ✅ (2026-09-06)
@@ -137,7 +138,7 @@ Agar cakupan jelas dan tidak melebar diam-diam:
 - **Tidak ada framework TUI baru.** Pure ANSI tetap. Ink/blessed akan membuang seluruh `fullscreen.ts` demi masalah yang perbaikannya berukuran satu fungsi.
 - **Tidak ada mouse support.** Mouse tracking sudah dimatikan di V6 karena byte koordinatnya bocor ke input dan tidak ada konsumennya.
 - **Tidak ada tema baru.** Empat preset sudah bekerja; menambah tema tanpa pengguna yang meminta adalah spekulasi.
-- **Tidak ada virtual scroll transcript.** `RING_MAX 60` + `tail.slice(-bodyH)` memadai sampai ada keluhan nyata.
+- **Tidak ada virtual scroll transcript.** Output append-only ke scrollback terminal; layar interaktif (manager/wizard/picker) transient dan menghapus diri sendiri.
 - **Repo-map tetap regex.** Alasan lengkap (dengan tabel pengukuran) ada di komentar `extractSymbolsAsync` di `src/repo/repomap.ts`. Tree-sitter menambah dua dependensi dan ~1,4 MB wasm per bahasa untuk simbol yang hampir seluruhnya member kelas — bukan yang berguna untuk orientasi.
 
 ---

@@ -180,7 +180,7 @@ export async function diffTrees(cwd: string, from: string, to: string): Promise<
 }
 
 /** Snapshot "sekarang" tanpa mem-pin ref — untuk membandingkan saja. */
-async function ephemeralTree(cwd: string): Promise<string | null> {
+export async function ephemeralTree(cwd: string): Promise<string | null> {
   const dir = await gitDir(cwd)
   if (!dir) return null
   const idx = join(dir, `minicode-cmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)

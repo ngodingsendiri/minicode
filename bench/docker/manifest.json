@@ -1,0 +1,152 @@
+{
+  "_note": "Pin Python/pytest per instance SWE-Lite-20. Sumber tanggal: base_commit via GitHub API (2026-09-07); versi Python = maks yang didukung repo saat itu (setup.py classifiers, diverifikasi per repo). confidence=low berarti tebakan beralasan yang WAJIB divalidasi pada run docker pertama (butuh daemon — tak ada di env ini). pytest 7.4 seragam (>=3.7) agar collection stabil; 7.0 untuk 3.6.",
+  "images": {
+    "3.6": "minicode-swe:py36",
+    "3.7": "minicode-swe:py37",
+    "3.8": "minicode-swe:py38",
+    "3.9": "minicode-swe:py39",
+    "3.10": "minicode-swe:py310"
+  },
+  "instances": [
+    {
+      "id": "astropy__astropy-12907",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "astropy__astropy-14182",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "django__django-10914",
+      "python": "3.7",
+      "pytest": "7.4",
+      "runner": "django",
+      "confidence": "high"
+    },
+    {
+      "id": "django__django-10924",
+      "python": "3.7",
+      "pytest": "7.4",
+      "runner": "django",
+      "confidence": "high"
+    },
+    {
+      "id": "matplotlib__matplotlib-18869",
+      "python": "3.9",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "matplotlib__matplotlib-22711",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "mwaskom__seaborn-2848",
+      "python": "3.9",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "medium"
+    },
+    {
+      "id": "mwaskom__seaborn-3010",
+      "python": "3.9",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "medium"
+    },
+    {
+      "id": "pallets__flask-4045",
+      "python": "3.9",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "pallets__flask-4992",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "psf__requests-1963",
+      "python": "3.8",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "low"
+    },
+    {
+      "id": "psf__requests-2148",
+      "python": "3.8",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "low"
+    },
+    {
+      "id": "pydata__xarray-3364",
+      "python": "3.7",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "pydata__xarray-4094",
+      "python": "3.8",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "pylint-dev__pylint-5859",
+      "python": "3.9",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "medium"
+    },
+    {
+      "id": "pylint-dev__pylint-6506",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "medium"
+    },
+    {
+      "id": "pytest-dev__pytest-11143",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "scikit-learn__scikit-learn-10297",
+      "python": "3.6",
+      "pytest": "7.0",
+      "runner": "pytest",
+      "confidence": "medium"
+    },
+    {
+      "id": "sphinx-doc__sphinx-10325",
+      "python": "3.10",
+      "pytest": "7.4",
+      "runner": "pytest",
+      "confidence": "high"
+    },
+    {
+      "id": "sympy__sympy-11400",
+      "python": "3.6",
+      "pytest": "7.0",
+      "runner": "pytest",
+      "confidence": "low"
+    }
+  ]
+}

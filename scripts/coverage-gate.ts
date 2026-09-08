@@ -32,8 +32,10 @@ function getArg(name: string, fallback: number): number {
 // P13/P11/P10 P1 mendarat (TTL hierarkis, 2 tool, Responses, branch, doctor,
 // safe-open/trash tests): 80,75/84,52. Kunci di 80/84 — sisa ke 81/83 ada di
 // area lama yang belum tersentuh (lsp 18%, config 42%, repl), bukan kode baru.
-const MIN_LINES = getArg("--lines", 84)
-const MIN_FUNCS = getArg("--funcs", 80)
+// Harness P0-P3 + test config in-process (list/add/remove lokal, positional
+// flag ditolak): 81,69/85,25. Kunci di 81/83.
+const MIN_LINES = getArg("--lines", 83)
+const MIN_FUNCS = getArg("--funcs", 81)
 
 const res = spawnSync(
   process.execPath,

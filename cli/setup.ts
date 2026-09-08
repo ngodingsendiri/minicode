@@ -16,7 +16,9 @@ import { createLlmCompaction } from "../src/policy/compaction.ts"
 import type { RateLimiter } from "../src/policy/ratelimit.ts"
 import { createUsageCollector, primePricing } from "../src/policy/usage.ts"
 import {
+  buildBaselineNote,
   buildVerifySnippet,
+  checkBaseline,
   detectVerifyCommand,
   runVerify,
   runWithSelfHeal,
@@ -26,10 +28,12 @@ import {
   recordCheckpointFromSnapshots,
   recordCheckpointFromTrees,
   snapshotWorkspace,
+  validateResumeWorkspace,
 } from "../src/session/checkpoint.ts"
 import { loadSession, saveSession } from "../src/session/persistence.ts"
 import { snapshotTree } from "../src/session/shadow-git.ts"
 import type { Skill } from "../src/skills/loader.ts"
+import { classifyToolResult, summarizeArgs, writeStepTrace } from "../src/telemetry/trace.ts"
 import { setAskTextFn } from "../src/tools/ask_user.ts"
 import { killAllBackgroundJobs } from "../src/tools/bash.ts"
 import { todoSession } from "../src/tools/todo.ts"
@@ -55,6 +59,8 @@ export interface CliSessionOptions {
   budget?: number
   /** Harness-P1: fail-closed bila cost sesi tak dikenal (model tanpa harga). */
   budgetStrict?: boolean
+  /** Harness-P2: scope tool sesi — explore = subset read-only. */
+  toolScope?: "full" | "explore"
   maxSteps?: number
   contextWindowTokens?: number
   timeoutMs?: number
@@ -108,6 +114,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     verify,
     budget,
     budgetStrict,
+    toolScope,
     maxSteps,
     contextWindowTokens,
     timeoutMs,
@@ -152,6 +159,17 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
         initialMessages = prev.messages as readonly Message[]
         resumeTurnCount = prev.turnCount
         console.error(c.dim(`[resumed session ${resumeId} (${prev.messages.length} messages)]\n`))
+        // P3 — validasi resume: bukan replay buta. Bila workspace berubah
+        // sejak checkpoint terakhir (edit manual / run lain), beri tahu —
+        // /undo tersedia bila perlu kembali. Best-effort, tak menggagalkan resume.
+        const div = await validateResumeWorkspace(cwd ?? ".", resumeId).catch(() => null)
+        if (div && div.diverged > 0) {
+          console.error(
+            c.yellow(
+              `[resume] workspace berubah sejak checkpoint terakhir (${div.diverged} file) — /undo tersedia bila perlu kembali\n`,
+            ),
+          )
+        }
       } else {
         console.error(
           c.yellow(`[resume] session ${resumeId} not found - starting new ${sessionId}\n`),
@@ -170,7 +188,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       })
     : undefined
 
-  const { sessionTools } = await setupToolLayer(cfg)
+  const { sessionTools } = await setupToolLayer(cfg, toolScope ?? "full")
 
   // todo_write/todo_read menyimpan state per sesi di .minicode/todos/<id>.json
   todoSession.id = sessionId
@@ -271,6 +289,52 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     recordCheckpointFromSnapshots(sessionId, turn, pre.snapshots, desc, cwd, redo).catch(() => {})
   })
 
+  // ── Step trace (Harness-P1) ──
+  // Satu baris per tool + ringkasan per step ke .minicode/step-traces.jsonl.
+  // Fire-and-forget: observability tak boleh menggagalkan turn (bus kernel
+  // juga mengisolasi listener yang melempar). Deny diklasifikasi dari isi
+  // observasi karena kernel hanya meng-emit execution:* untuk call yang lolos.
+  const toolStarts = new Map<string, number>()
+  session.events.on("execution:started", (e) => {
+    try {
+      toolStarts.set(e.execution.call.id, Date.now())
+    } catch {}
+  })
+  session.events.on("execution:completed", (e) => {
+    try {
+      const { call, result } = e.execution
+      const t0 = toolStarts.get(call.id)
+      if (t0 !== undefined) toolStarts.delete(call.id)
+      const kind = classifyToolResult(result)
+      void writeStepTrace(cwd, {
+        sessionId,
+        timestamp: new Date().toISOString(),
+        kind: "tool",
+        step: session.state.stepCount,
+        tool: call.name,
+        ok: kind === "ok",
+        ...(kind === "denied" ? { denied: true } : {}),
+        ...(t0 !== undefined ? { durationMs: Date.now() - t0 } : {}),
+        args: summarizeArgs(call.args),
+        sandbox: process.env.MINICODE_SANDBOX ?? "none",
+      }).catch(() => {})
+    } catch {}
+  })
+  session.events.on("step:completed", (e) => {
+    try {
+      const s = e.step
+      void writeStepTrace(cwd, {
+        sessionId,
+        timestamp: new Date().toISOString(),
+        kind: "step",
+        step: s.index,
+        tools: s.toolCalls.length,
+        errors: s.results.filter((r) => r.isError).length,
+        sandbox: process.env.MINICODE_SANDBOX ?? "none",
+      }).catch(() => {})
+    } catch {}
+  })
+
   // ── Auto-verify & self-heal ──
   const verifyCommand = verify
     ? (process.env.MINICODE_VERIFY_CMD ?? cfg.verifyCommand ?? detectVerifyCommand(cwd) ?? "")
@@ -284,7 +348,18 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
       return
     }
-    await runWithSelfHeal(p, {
+    // P2.1 — baseline-first: bila baseline sudah merah sebelum agen menyentuh
+    // apa pun, tempelkan catatan agar agen memperbaiki dulu, bukan menumpuk
+    // fitur di atas baseline rusak (yang hanya memperparah keadaan).
+    let firstPrompt = p
+    const broken = await checkBaseline(() => runVerify(verifyCommand, cwd ?? process.cwd()))
+    if (broken) {
+      process.stderr.write(
+        c.yellow(`\n[verify] baseline failing before agent run - fixing first\n`),
+      )
+      firstPrompt = buildBaselineNote(broken) + p
+    }
+    await runWithSelfHeal(firstPrompt, {
       run: async (prompt) => {
         await session.run(prompt, { model: modelRef.current, signal })
       },

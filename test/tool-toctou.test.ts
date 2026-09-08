@@ -89,6 +89,11 @@ it("toctou: swapper 1000× inside↔outside, 0 lolos", async () => {
           symlinkSync(toInside ? join(w, "target.txt") : join(o, "secret.txt"), link)
         } catch {}
         toInside = !toInside
+        // WAJIB yield: tanpa ini loop sinkron tak pernah melepas event loop
+        // sehingga pembaca tak pernah jalan dan test gantung selamanya
+        // (ditemukan saat run POSIX nyata pertama di WSL — klaim "0 lolos"
+        // sebelumnya tak pernah tervalidasi karena hang, bukan pass).
+        await new Promise<void>((r) => setImmediate(r))
       }
     })()
     let leaks = 0

@@ -530,9 +530,9 @@ export async function searchHybrid(
     if (scope === "all") {
       try {
         const { join } = await import("node:path")
-        const { homedir } = await import("node:os")
+        const { homeDir } = await import("../lib/db-path.ts")
         const { Database } = await import("bun:sqlite")
-        const globalPath = join(homedir(), ".minicode", "vector.db")
+        const globalPath = join(homeDir(), ".minicode", "vector.db")
         const localPath = dbPath(opts.cwd)
         if (globalPath !== localPath) {
           const gdb = new Database(globalPath)

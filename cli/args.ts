@@ -22,6 +22,7 @@ const VALUE_FLAGS = new Set([
   "--sandbox",
   "--ratelimit",
   "--budget",
+  "--tool-scope", // full | explore (read-only) — tanpa ini jadi kata prompt!
   "--output-format", // `exec --output-format=json`
   "--prompt",
   // subcommand flags — harus dikenal agar tidak bocor ke prompt one-shot

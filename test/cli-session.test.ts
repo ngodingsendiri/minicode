@@ -471,19 +471,22 @@ describe("cli: trace", () => {
 
 describe("cli: --verify (self-heal)", () => {
   /**
-   * Perintah verify yang GAGAL sekali lalu BERHASIL — ditulis sebagai berkas
+   * Perintah verify yang GAGAL dua kali lalu BERHASIL — ditulis sebagai berkas
    * supaya tidak perlu menyusun quoting shell bersarang lewat env var.
+   * Dua kegagalan: baseline-first (P2.1) menghabiskan yang pertama, siklus
+   * self-heal menghabiskan yang kedua — persis skenario baseline rusak yang
+   * diperbaiki agen.
    */
   function writeFlakyVerify(ws: Workspace): void {
     writeFileSync(
       join(ws.dir, "verify-sekali-gagal.ts"),
       [
-        "// Gagal pada pemanggilan pertama, berhasil pada berikutnya.",
+        "// Gagal pada dua pemanggilan pertama, berhasil pada berikutnya.",
         'import { existsSync, readFileSync, writeFileSync } from "node:fs"',
         'const p = "verify-count.txt"',
         'const n = existsSync(p) ? Number(readFileSync(p, "utf8")) : 0',
         'writeFileSync(p, String(n + 1), "utf8")',
-        'if (n === 0) { console.error("typecheck gagal: contoh error"); process.exit(1) }',
+        'if (n <= 1) { console.error("typecheck gagal: contoh error"); process.exit(1) }',
         "process.exit(0)",
       ].join("\n"),
       "utf8",
@@ -502,10 +505,14 @@ describe("cli: --verify (self-heal)", () => {
         { MINICODE_VERIFY_CMD: `${process.execPath} verify-sekali-gagal.ts` },
       )
       expect(r.code).toBe(0)
+      // P2.1: kegagalan pertama ditelan baseline-check, bukan siklus self-heal.
+      expect(r.stderr).toContain("baseline failing before agent run")
       expect(r.stderr).toContain("[verify] attempt 1/3 failed")
       expect(r.stderr).toContain("[verify] ok after 2 fix cycles")
-      // Dua request: prompt asli + satu prompt perbaikan.
+      // Dua request: prompt asli (+catatan baseline) + satu prompt perbaikan.
       expect(provider.requestCount()).toBe(2)
+      const firstPrompt = JSON.stringify(provider.requests()[0]?.messages)
+      expect(firstPrompt).toContain("Health-Check")
       const fixPrompt = JSON.stringify(provider.requests()[1]?.messages)
       expect(fixPrompt).toContain("Auto-Verifier")
       expect(fixPrompt).toContain("typecheck gagal")

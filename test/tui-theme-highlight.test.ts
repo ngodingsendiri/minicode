@@ -37,7 +37,9 @@ test("markdown: decorates code fences with indentation", () => {
   const md = "intro\n```typescript\nconst x = 1;\n```\noutro"
   const out = decorateMarkdown(md)
   expect(out).not.toContain("```")
-  expect(out).toContain("const x = 1;")
+  // Sibling test di atas selalu stripAnsi dulu: warna aktif/nonaktif
+  // tergantung terminal (gagal di env truecolor — ditemukan saat run WSL).
+  expect(stripAnsi(out)).toContain("const x = 1;")
 })
 
 test("markdown: plain text without fences unchanged", () => {

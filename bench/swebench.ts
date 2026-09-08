@@ -2,14 +2,17 @@
 
 // SWE-bench Lite runner — 20 instance terstratifikasi, clone+checkout, verify pytest.
 // Dipakai untuk P10 P1.2: angka resolve rate TERCETAK dari run nyata sebelum boleh dikutip.
-// Usage: bun bench/swebench.ts [--fake] [--limit 20] [--dataset bench/swebench_lite.jsonl]
+// Usage: bun bench/swebench.ts [--fake] [--limit 20] [--dataset bench/swebench_lite.jsonl] [--docker]
 //   Real run tanpa menyentuh config: --api-key-env NAMA_ENV --base-url URL --model ID
 //   (kunci tetap di environment, tak pernah ditulis ke disk) [--max-steps 25]
+//   --docker: skoring pytest di container era (bench/docker/manifest.json);
+//   butuh daemon, gagal bersih bila tak ada.
 
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import type { ModelProvider } from "#minicore"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { createMinicodeSession } from "../src/app/session.ts"
@@ -17,6 +20,7 @@ import { loadConfig } from "../src/config.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { buildProviderList } from "../src/providers/build.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
+import { dockerAvailable } from "../src/sandbox/docker.ts"
 import { allTools } from "../src/tools/index.ts"
 
 interface SweInstance {
@@ -50,8 +54,9 @@ function flagVal(name: string): string | undefined {
 
 // Satu fungsi verify untuk FAIL_TO_PASS dan PASS_TO_PASS — daftar kosong
 // berarti tidak ada yang diuji (true), bukan lolos.
-function runPytest(dir: string, tests: string[]): boolean {
+function runPytest(dir: string, tests: string[], era?: DockerEra): boolean {
   if (tests.length === 0) return true
+  if (era) return runPytestDocker(dir, tests, era.image, era.runner)
   const verify = spawnSync("python", ["-m", "pytest", ...tests, "-q"], {
     cwd: dir,
     timeout: 180000,
@@ -60,14 +65,90 @@ function runPytest(dir: string, tests: string[]): boolean {
   return verify.status === 0
 }
 
+// Docker per-era (bench/docker/): skoring jalan di container Python era
+// instance, bukan Python host. Pure builder di bawah agar bisa diuji tanpa
+// daemon; eksekusi gagal bersih bila docker tak ada.
+export interface DockerEra {
+  image: string
+  runner: "pytest" | "django"
+}
+
+export function dockerMountArg(dir: string): string {
+  // Docker Desktop di Windows butuh bentuk //c/x, bukan C:\x.
+  if (process.platform === "win32") {
+    const m = /^([A-Za-z]):[\\/](.*)$/.exec(dir)
+    if (m) return `//${m[1]!.toLowerCase()}/${m[2]!.replace(/\\/g, "/")}`
+  }
+  return dir
+}
+
+export function buildDockerTestCommand(era: DockerEra, dir: string, tests: string[]): string[] {
+  const runnerCmd =
+    era.runner === "django"
+      ? ["python", "tests/runtests.py", ...tests, "-v", "0"]
+      : ["python", "-m", "pytest", ...tests, "-q"]
+  return [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    `${dockerMountArg(dir)}:/repo`,
+    "-w",
+    "/repo",
+    era.image,
+    ...runnerCmd,
+  ]
+}
+
+function runPytestDocker(
+  dir: string,
+  tests: string[],
+  image: string,
+  runner: DockerEra["runner"] = "pytest",
+): boolean {
+  const argv = buildDockerTestCommand({ image, runner }, dir, tests)
+  const verify = spawnSync(argv[0]!, argv.slice(1), { timeout: 180000, encoding: "utf8" })
+  return verify.status === 0
+}
+
+interface EraManifest {
+  images: Record<string, string>
+  instances: { id: string; python: string; pytest: string; runner: string; confidence: string }[]
+}
+
+let eraCache: EraManifest | null | undefined
+export function loadEraManifest(): EraManifest | null {
+  if (eraCache !== undefined) return eraCache
+  try {
+    const p = join(fileURLToPath(new URL(".", import.meta.url)), "docker", "manifest.json")
+    eraCache = JSON.parse(readFileSync(p, "utf8")) as EraManifest
+  } catch {
+    eraCache = null
+  }
+  return eraCache
+}
+
+export function eraForInstance(instanceId: string): DockerEra | null {
+  const m = loadEraManifest()
+  const e = m?.instances.find((i) => i.id === instanceId)
+  if (!e) return null
+  const image = m!.images[e.python]
+  if (!image) return null
+  return { image, runner: e.runner === "django" ? "django" : "pytest" }
+}
+
 async function runOne(
   inst: SweInstance,
   provider: ModelProvider,
+  useDocker: boolean,
 ): Promise<{ id: string; passed: boolean; durationMs: number }> {
   const dir = mkdtempSync(join(tmpdir(), "swe-"))
   const t0 = Date.now()
   let passed = false
   try {
+    if (useDocker && !dockerAvailable()) throw new Error("docker unavailable (daemon tak jalan)")
+    const era = useDocker ? eraForInstance(inst.instance_id) : null
+    if (useDocker && !era) throw new Error(`no era manifest for ${inst.instance_id}`)
     // clone + checkout base_commit
     const clone = spawnSync("git", ["clone", `https://github.com/${inst.repo}.git`, dir], {
       stdio: "ignore",
@@ -102,8 +183,9 @@ async function runOne(
     void usage.get()
 
     // verify: SEMUA FAIL_TO_PASS + sampel PASS_TO_PASS harus hijau via pytest.
-    const fail = runPytest(dir, inst.FAIL_TO_PASS)
-    const pass = runPytest(dir, inst.PASS_TO_PASS.slice(0, 3))
+    // --docker: skoring di container era (image dari manifest), bukan host.
+    const fail = runPytest(dir, inst.FAIL_TO_PASS, era ?? undefined)
+    const pass = runPytest(dir, inst.PASS_TO_PASS.slice(0, 3), era ?? undefined)
     passed = fail && pass
   } catch (e) {
     // Diagnosa ke stderr (ringkas, tanpa secret): tanpa ini semua FAIL terlihat
@@ -177,10 +259,16 @@ async function main() {
   instances = instances.slice(0, limit)
 
   let resolved = 0
+  const useDocker = process.argv.includes("--docker")
+  if (useDocker && !fake && !dockerAvailable()) {
+    console.error(
+      "[swebench] --docker diminta tapi docker unavailable — semua instance akan FAIL jujur (bukan skor fiksi)",
+    )
+  }
   for (const inst of instances) {
     const r = fake
       ? { id: inst.instance_id, passed: false, durationMs: 10 }
-      : await runOne(inst, provider)
+      : await runOne(inst, provider, useDocker)
     if (r.passed) resolved++
     process.stdout.write(`${r.passed ? "PASS" : "FAIL"} ${r.id} ${r.durationMs}ms\n`)
   }

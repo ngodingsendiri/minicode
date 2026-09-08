@@ -50,7 +50,10 @@ interface Harness {
 function makeHarness(
   opts: {
     budget?: number
+    budgetStrict?: boolean
     cost?: number
+    /** cost undefined = model tanpa harga (budget fail-open tanpa strict). */
+    unknownCost?: boolean
     skills?: { name: string; description: string; body: string }[]
   } = {},
 ): Harness {
@@ -59,7 +62,7 @@ function makeHarness(
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
-    cost: opts.cost ?? 0,
+    cost: opts.unknownCost ? undefined : (opts.cost ?? 0),
   }
   const skills = (opts.skills ?? []).map((s) => ({
     name: s.name,
@@ -85,6 +88,7 @@ function makeHarness(
       modelUsed: () => ({}),
     },
     budget: opts.budget,
+    budgetStrict: opts.budgetStrict,
     detachSimple: () => {},
     persistCurrent: async () => {},
     runPromptWithVerify: async (prompt: string) => {
@@ -411,6 +415,28 @@ describe("REPL linier: budget", () => {
     // Slash command tidak ikut diblokir.
     await typeLine("/status")
     expect(visible(tty)).toContain("Session sess-1")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("strict + cost tak dikenal menolak prompt baru", async () => {
+    tty = installFakeTty()
+    const h = makeHarness({ budget: 5, budgetStrict: true, unknownCost: true })
+    const p = start(h)
+    await typeLine("prompt apa saja")
+    expect(visible(tty)).toContain("[budget]")
+    expect(visible(tty)).toContain("cost unknown")
+    expect(h.ran).toEqual([])
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
+  test("tanpa strict + cost tak dikenal tetap fail-open", async () => {
+    tty = installFakeTty()
+    const h = makeHarness({ budget: 5, unknownCost: true })
+    const p = start(h)
+    await typeLine("prompt jalan")
+    expect(h.ran).toEqual(["prompt jalan"])
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })

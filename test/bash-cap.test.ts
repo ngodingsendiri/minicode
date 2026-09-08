@@ -4,9 +4,11 @@ import { bashTool } from "../src/tools/bash.ts"
 const ctx = { signal: new AbortController().signal } as never
 
 test("bash caps huge output during streaming (no OOM, marker set)", async () => {
-  // node mencetak ~1.2MB — jauh di atas cap 20k; proses tetap selesai cepat.
+  // Interpreter = runtime sendiri (bun) agar hermetic: `node` tak ada di
+  // image minimal (ditemukan saat run WSL pertama — exit 127, bukan cap).
+  const rt = JSON.stringify(process.execPath)
   const res = await bashTool.execute(
-    { cmd: 'node -e "process.stdout.write(\\"x\\".repeat(1200000))"', timeoutMs: 20_000 },
+    { cmd: `${rt} -e "process.stdout.write(\\"x\\".repeat(1200000))"`, timeoutMs: 20_000 },
     ctx,
   )
   const text = String(res)
