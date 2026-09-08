@@ -104,10 +104,9 @@ export const webSearchTool: Tool = {
       const html = await res.text()
       const scrubbed = scrubSecrets(html)
       // DDG markup berubah-ubah; coba dua pola kelas umum.
-      const resRe =
-        /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
+      const resRe = /<a[^>]+class="result__url"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
       const altRe = /<a[^>]+class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g
-      let results: { url: string; title: string }[] = []
+      const results: { url: string; title: string }[] = []
       for (const m of scrubbed.matchAll(resRe)) {
         if (results.length >= n) break
         results.push({ url: m[1] ?? "", title: (m[2] ?? "").trim() })

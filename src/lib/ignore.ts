@@ -18,7 +18,7 @@ export function compileIgnoreMatchers(patterns: string[]): ((rel: string) => boo
     const hasSlash = core.includes("/")
     const normalized = core.replace(/^\//, "")
     // Build regex via glob simple: * -> [^/]*, ** -> .*
-    const escape = (s: string) =>
+    const escapeGlob = (s: string) =>
       s
         .replace(/[.+^${}()|[\]\\]/g, "\\$&")
         .replace(/\*\*/g, ".*")
@@ -26,11 +26,11 @@ export function compileIgnoreMatchers(patterns: string[]): ((rel: string) => boo
         .replace(/\?/g, ".")
     if (hasSlash) {
       // path pattern: cocok terhadap rel path (anchored)
-      const re = new RegExp(`^${escape(normalized)}${isDir ? "(?:/.*)?" : ""}$`)
+      const re = new RegExp(`^${escapeGlob(normalized)}${isDir ? "(?:/.*)?" : ""}$`)
       matchers.push((rel) => re.test(rel))
     } else {
       // basename pattern: cocok bagian mana pun
-      const re = new RegExp(`^${escape(normalized)}$`)
+      const re = new RegExp(`^${escapeGlob(normalized)}$`)
       matchers.push((rel) => {
         const parts = rel.split("/")
         if (isDir) return parts.includes(normalized) || re.test(parts[parts.length - 1] ?? "")

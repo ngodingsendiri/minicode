@@ -154,8 +154,11 @@ function runRipgrep(
     }
     signal.addEventListener("abort", onAbort, { once: true })
     const timer = setTimeout(() => {
+      // Timeout: kembalikan partial tapi beri penanda agar model tahu tidak lengkap
+      if (out.length > 0)
+        out.push(`… [truncated: ripgrep timeout ${LIMITS.GREP_RIPGREP_TIMEOUT_MS}ms]`)
       p.kill("SIGTERM")
-      finish(() => resolveOut(out)) // kembalikan hasil sebagian, jangan gagal total
+      finish(() => resolveOut(out))
     }, LIMITS.GREP_RIPGREP_TIMEOUT_MS)
 
     p.stdout.on("data", (d: Buffer) => {
@@ -235,7 +238,9 @@ export const grepTool: Tool = {
     if (process.env.MINICODE_GREP_ENGINE !== "js" && ripgrepAvailable()) {
       try {
         const hits = await runRipgrep(pat, root, lim, ctx.signal, include as string | undefined)
-        return hits.length === 0 ? noMatch() : hits.join("\n")
+        if (hits.length === 0) return noMatch()
+        // runRipgrep tandai timeout via suffix khusus di elemen terakhir (bila timedOut)
+        return hits.join("\n")
       } catch (e) {
         if ((e as Error).message === "aborted") throw e
         // rg gagal (regex flavour berbeda, binary rusak, permission) → fallback

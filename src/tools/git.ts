@@ -3,6 +3,7 @@ import { resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,9 +22,9 @@ function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): P
     p.stderr.on("data", (d) => (err += d))
     p.on("error", reject)
     p.on("close", (code) => {
-      const text = (out + (err ? `\n${err}` : "")).trim()
+      const text = scrubSecrets((out + (err ? `\n${err}` : "")).trim())
       if (code !== 0 && !text) reject(new Error(`git ${args.join(" ")} exit ${code}`))
-      else resolve(text || `(exit ${code})`)
+      else resolve(scrubSecrets(text) || `(exit ${code})`)
     })
     signal.addEventListener("abort", () => p.kill("SIGTERM"), { once: true })
   })

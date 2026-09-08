@@ -1,7 +1,7 @@
-import { realpath, stat } from "node:fs/promises"
 import { isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
+import { safeOpenRead } from "../lib/safe-open.ts"
 import { estimateImageTokens } from "../policy/context.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
@@ -24,24 +24,24 @@ export const readImageTool: Tool = {
     if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
     if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    const real = await realpath(abs).catch(() => abs)
-    const realRoot = await realpath(root).catch(() => root)
-    if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
-    const st = await stat(real).catch(() => null)
-    if (!st) throw new Error(`file not found: ${p}`)
-    if (st.size > LIMITS.BASH_OUTPUT_MAX_CHARS) throw new Error(`image too large: ${st.size}`)
-    // baca sebagai binary lalu base64 — reuse safe open
-    const { open } = await import("node:fs/promises")
-    const { constants } = await import("node:fs")
-    const O_NOFOLLOW = (constants as unknown as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0x20000
-    let handle: import("node:fs/promises").FileHandle
+    // TOCTOU-safe: safeOpenRead = realpath(abs)→cek di dalam root→open(preReal,O_NOFOLLOW)
+    // bukan open(abs) yang bisa di-swap jadi symlink luar di antara cek dan open.
+    let handle: Awaited<ReturnType<typeof safeOpenRead>>["handle"]
     try {
-      handle = await open(abs, constants.O_RDONLY | O_NOFOLLOW)
-    } catch {
-      handle = await open(abs, constants.O_RDONLY)
+      ;({ handle } = await safeOpenRead(abs, root))
+    } catch (e) {
+      const msg = (e as Error).message ?? ""
+      if ((e as NodeJS.ErrnoException).code === "ENOENT" || msg.includes("ENOENT"))
+        throw new Error(`file not found: ${p}`)
+      if (msg.includes("outside workspace") || msg.includes("symlink")) throw e
+      throw new Error(`file not found: ${p}`)
     }
     let buf: Buffer
+    let st: { size: number } | null = null
     try {
+      st = await handle.stat().catch(() => null)
+      if (!st) throw new Error(`file not found: ${p}`)
+      if (st.size > LIMITS.BASH_OUTPUT_MAX_CHARS) throw new Error(`image too large: ${st.size}`)
       buf = await handle.readFile()
     } finally {
       await handle.close().catch(() => {})

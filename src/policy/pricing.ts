@@ -230,8 +230,19 @@ export async function syncPricing(url: string = MODELS_DEV_URL): Promise<SyncRes
     headers: { accept: "application/json" },
     redirect: "manual",
   })
-  if (res.status >= 300 && res.status < 400)
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("location")
+    if (loc) {
+      try {
+        const nextHost = new URL(loc, url).hostname
+        if (await isPrivateHostWithDns(nextHost))
+          throw new Error(`private host rejected: ${nextHost}`)
+      } catch (e) {
+        if ((e as Error).message.includes("private host")) throw e
+      }
+    }
     throw new Error(`models.dev → redirect ${res.status} not followed`)
+  }
   if (!res.ok) throw new Error(`models.dev → HTTP ${res.status}`)
   // Hard-cap agar payload spoof tidak OOM (asli 4.4 MB, cap 2 MB cukup)
   const text = await res

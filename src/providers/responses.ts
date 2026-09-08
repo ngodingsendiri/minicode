@@ -14,22 +14,21 @@ export interface ResponsesConfig {
 // Untuk P11 P1.1: providerHint "responses" → wire ini, bukan chat/completions.
 // Implementasi streaming SSE mirip openai-compat, tapi endpoint berbeda.
 //
-// Chaining: response id terakhir per model disimpan di memori proses dan
-// dikirim sebagai previous_response_id pada call berikutnya — tanpa ini tiap
-// turn adalah sesi baru dan server tak bisa merujuk konteks sebelumnya.
-// Satu proses CLI = satu sesi, jadi state modul cukup (best-effort).
-const lastResponseByModel = new Map<string, string>()
-
+// Chaining: response id terakhir per model disimpan per-instance provider,
+// bukan global — global bocor antar sesi CLI paralel yang sharing model sama.
+// Instance dibuat per sesi via buildProviderList, jadi isolasi sesi gratis.
 export function clearResponsesChain(): void {
-  lastResponseByModel.clear()
+  // Global clear untuk compat test lama — instance-local clear via provider.clearResponsesChain
 }
 
 export function createResponsesProvider(config: ResponsesConfig): ModelProvider {
   const baseUrl = config.baseUrl.replace(/\/+$/, "")
   const endpoint = `${baseUrl}/responses`
-  return {
+  const lastResponseByModel = new Map<string, string>()
+  const provider: ModelProvider & { clearResponsesChain?: () => void } = {
     id: config.id ?? "responses",
     models: config.models,
+    clearResponsesChain: () => lastResponseByModel.clear(),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const modelKey = request.model ?? config.defaultModel ?? config.models[0] ?? "default"
       const prev = lastResponseByModel.get(modelKey)
@@ -146,4 +145,5 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
       yield { type: "finish", reason: "stop" }
     },
   }
+  return provider
 }

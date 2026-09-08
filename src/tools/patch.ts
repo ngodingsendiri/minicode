@@ -1,8 +1,9 @@
-import { readFile, realpath, stat } from "node:fs/promises"
+import { realpath, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
+import { safeReadFile } from "../lib/safe-open.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 import { flexibleMatch } from "./edit.ts"
 
@@ -51,7 +52,8 @@ export const applyPatchTool: Tool = {
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)
 
-    let content = await readFile(realAbs, "utf8")
+    // Pakai safeReadFile (O_NOFOLLOW) agar swap symlink di antara cek dan baca gagal ELOOP.
+    let content = await safeReadFile(abs, root)
     const patchList = patches as { search: string; replace: string }[]
     if (patchList.length > 50) throw new Error(`too many patches: ${patchList.length} (max 50)`)
     const applied: string[] = []

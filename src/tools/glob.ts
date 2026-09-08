@@ -2,7 +2,7 @@ import { readdir, realpath, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
-import { loadIgnoreMatchers, isIgnored } from "../lib/ignore.ts"
+import { isIgnored, loadIgnoreMatchers } from "../lib/ignore.ts"
 import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 async function walk(

@@ -9,8 +9,8 @@ import { createMinicodeSession, type PermissionControl } from "../src/app/sessio
 import { setupToolLayer } from "../src/app/tool-layer.ts"
 import type { MinicodeConfig } from "../src/config.ts"
 import { loadLastModel } from "../src/config.ts"
-import { homeDir } from "../src/lib/db-path.ts"
 import { runRunHooks } from "../src/hooks/run.ts"
+import { homeDir } from "../src/lib/db-path.ts"
 import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
 import { addMemory } from "../src/memory/vector.ts"
@@ -174,10 +174,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   // ada di config. Flag selalu menang; tak ada simpanan = provider pertama.
   if (!modelRef.current) {
     const saved = await loadLastModel().catch(() => undefined)
-    if (
-      saved &&
-      cfg.providers.some((p) => p.models.some((m) => `${p.id}::${m}` === saved))
-    ) {
+    if (saved && cfg.providers.some((p) => p.models.some((m) => `${p.id}::${m}` === saved))) {
       modelRef.current = saved
     }
   }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { randomUUID } from "node:crypto"
 import { rm } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
@@ -117,7 +118,7 @@ export async function snapshotTree(
   // datang dari `--session` dan bisa memuat karakter yang ilegal sebagai nama
   // berkas (mis. `:` atau `..` di Windows → git gagal membuat file .lock).
   const safeId = sanitizeRefPart(sessionId)
-  const idx = join(dir, `minicode-idx-${safeId}-${Date.now()}`)
+  const idx = join(dir, `minicode-idx-${safeId}-${Date.now()}-${randomUUID().slice(0, 6)}`)
   const env = { GIT_INDEX_FILE: idx }
   try {
     // `-- .` membatasi ke cwd; tanpa ini `add -A` memakai toplevel repo.
@@ -250,7 +251,7 @@ export async function restoreTree(cwd: string, tree: string): Promise<RestoreRes
   if (toCheckout.length > 0) {
     const dir = await gitDir(cwd)
     if (!dir) return { applied, skipped: ["(not a git repository)"] }
-    const idx = join(dir, `minicode-restore-${Date.now()}`)
+    const idx = join(dir, `minicode-restore-${Date.now()}-${randomUUID().slice(0, 6)}`)
     const env = { GIT_INDEX_FILE: idx }
     try {
       const rt = await git(["read-tree", tree], cwd, { env })

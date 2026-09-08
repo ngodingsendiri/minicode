@@ -124,9 +124,19 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
             // request berikutnya menabrak jendela limit yang sama — daftar
             // provider terbakar sia-sia. Bila tak ada provider tersisa, coba
             // ulang provider SAMA sekali (tunggu-di-tempat), baru menyerah.
+            // Sleep abort-aware: Ctrl+C/timeout tidak boleh hang 30 dtk.
             if (err.category === "rate_limit" && err.retryAfterMs != null && !retried429) {
               retried429 = true
-              await Bun.sleep(Math.min(err.retryAfterMs, maxRetry))
+              const waitMs = Math.min(err.retryAfterMs, maxRetry)
+              if (signal.aborted) throw new DOMException("Aborted", "AbortError")
+              await Promise.race([
+                Bun.sleep(waitMs),
+                new Promise<void>((_, rej) => {
+                  const onAbort = () => rej(new DOMException("Aborted", "AbortError"))
+                  if (signal.aborted) onAbort()
+                  else signal.addEventListener("abort", onAbort, { once: true })
+                }),
+              ])
               const next = config.providers.find((p) => !tried.has(p.id))
               if (next) {
                 current = next
