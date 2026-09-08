@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { ModelProvider } from "#minicore/core/provider.ts"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import type { MinicodeConfig } from "../config.ts"
@@ -44,6 +45,9 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
         }) as unknown as ModelProvider,
       )
     } else {
+      const isZen =
+        p.baseUrl.includes("opencode.ai/zen") || p.id.includes("opencode") || p.id.includes("zen")
+      const zenHeaders = isZen ? { "x-opencode-session": randomUUID() } : undefined
       out.push(
         createOpenAICompatProvider({
           id: p.id,
@@ -52,6 +56,7 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
           models: p.models,
           defaultModel: p.models[0],
           ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
+          ...(zenHeaders ? { headers: zenHeaders } : {}),
         }),
       )
     }
