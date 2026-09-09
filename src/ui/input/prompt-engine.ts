@@ -52,7 +52,7 @@ export type PromptKey =
   | { type: "ctrl-w" } // delete previous word
   | { type: "ctrl-o" } // expand detail (TUI)
   | { type: "ctrl-r" } // reverse-i-search history
-  | { type: "ctrl-t" } // toggle reasoning visibility
+  | { type: "ctrl-t" } // reserved (dulu toggle reasoning; /thinking dihapus, kini no-op)
   | { type: "ctrl-j" } // sisipkan newline (multiline opt-in; Enter=\r tetap submit)
   | { type: "shift-tab" } // cycle mode (REPL linier) — ESC[Z didekode decodeKey
   | { type: "ignore" } // sekuens yang sengaja dibuang (mis. byte mouse)
@@ -255,7 +255,7 @@ export function applyKey(
       return { state, action: "cancel" }
     case "ctrl-o": // toggle compact — ditangani REPL lewat onKey askLine
     case "ctrl-r": // (bekas picker history fullscreen — tidak dipakai lagi)
-    case "ctrl-t": // toggle reasoning — ditangani REPL lewat onKey askLine
+    case "ctrl-t": // reserved no-op (/thinking dihapus; tidak lagi ditangani REPL)
     case "shift-tab": // cycle mode — ditangani REPL lewat onKey askLine
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks
       return { state, action: "none" }

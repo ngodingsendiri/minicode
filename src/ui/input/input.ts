@@ -94,8 +94,8 @@ export interface AskLineOptions {
    * Dipanggil untuk setiap keypress SEBELUM logika bawaan (history, applyKey).
    * Return truthy = key sudah ditangani pemanggil; askLine melewatkan handling
    * default dan tetap me-render ulang. Dipakai REPL linier untuk Shift+Tab
-   * (cycle mode), Tab kosong (toggle plan/build), Ctrl+T (reasoning), dan
-   * Ctrl+O (toggle compact). `line` = isi baris saat ini (untuk Tab kosong).
+   * (cycle mode), Tab kosong (toggle plan/build), dan Ctrl+O (toggle compact).
+   * `line` = isi baris saat ini (untuk Tab kosong).
    */
   onKey?: (key: PromptKey, line: string) => boolean
 }

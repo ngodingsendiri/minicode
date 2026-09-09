@@ -176,7 +176,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     // Ganti mode TANPA baris scrollback baru: prefiks prompt memuat mode dan
     // askLine me-render ulang baris berjalan setelah onKey (lihat input.ts).
     // notify() di sini hanya menambah histori "mode: x" tiap tekan tombol.
-    // (compact/reasoning di bawah tetap notify: statusnya tak ada di prefiks.)
+    // (compact di bawah tetap notify: statusnya tak ada di prefiks.)
     if (key.type === "shift-tab") {
       cycleMode()
       return true
