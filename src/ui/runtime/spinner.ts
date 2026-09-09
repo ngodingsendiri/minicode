@@ -1,5 +1,6 @@
 import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c, glyphs } from "../render/theme.ts"
+import { acquireTransientPaint, paintWrite } from "./statusline.ts"
 
 // Jaga agar kursor terminal selalu ter-restore meski proses dihentikan (SIGINT/dll).
 process.on("exit", () => {
@@ -20,27 +21,37 @@ export function createSpinner(initialMessage: string = ""): Spinner {
   let message = sanitizeAnsiLine(initialMessage)
   let frameIdx = 0
   let intervalId: ReturnType<typeof setInterval> | undefined
+  // Kepemilikan transient stderr selama animasi — mutual exclusion dengan
+  // garis status turn di-enforce statusline.ts (warning overlap, bukan crash).
+  let owned: { release(): void } | null = null
 
   const frames = glyphs.spinnerFrames
 
+  const tick = () => {
+    const frame = c.info(frames[frameIdx % frames.length]!)
+    frameIdx++
+    paintWrite(`\r${frame} ${message}\x1b[K`)
+  }
+
   if (isTTY) {
     // Hide cursor during spin
-    process.stderr.write("\x1b[?25l")
-
-    intervalId = setInterval(() => {
-      const frame = c.info(frames[frameIdx % frames.length]!)
-      frameIdx++
-      process.stderr.write(`\r${frame} ${message}\x1b[K`)
-    }, 120)
+    paintWrite("\x1b[?25l")
+    owned = acquireTransientPaint("spinner", tick)
+    tick()
+    intervalId = setInterval(tick, 120)
   }
 
   const stopTimer = () => {
+    if (owned) {
+      owned.release()
+      owned = null
+    }
     if (intervalId) {
       clearInterval(intervalId)
       intervalId = undefined
     }
     if (isTTY) {
-      process.stderr.write("\r\x1b[K\x1b[?25h")
+      paintWrite("\r\x1b[K\x1b[?25h")
     }
   }
 

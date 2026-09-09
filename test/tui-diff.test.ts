@@ -117,11 +117,14 @@ test("diff: kata berubah di-bold di card (COLORTERM truecolor)", () => {
   const prevNc = process.env.NO_COLOR
   process.env.COLORTERM = "truecolor"
   delete process.env.NO_COLOR
+  // Warna digate stdout.isTTY — stub TTY agar yang diuji palet, bukan gate.
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
   try {
     const card = renderDiffCard("f.ts", "const a = 1", "const a = 2")
     expect(card).toContain("const a = ")
     expect(card).toContain("\x1b[1m2\x1b[22m")
   } finally {
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true })
     if (prevCt == null) delete process.env.COLORTERM
     else process.env.COLORTERM = prevCt
     if (prevNc == null) delete process.env.NO_COLOR

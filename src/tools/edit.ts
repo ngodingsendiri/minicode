@@ -1,10 +1,7 @@
-import { realpath } from "node:fs/promises"
-import { basename, dirname, isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
-import { safeReadFile } from "../lib/safe-open.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { resolveSafePath, safeReadFile } from "../lib/safe-open.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
 import { applyHashline } from "./hashline.ts"
 
@@ -130,16 +127,9 @@ export const editTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
-    const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    // Jail simetris: cek parent + file symlink keluar workspace. Pakai realpath
-    // manual (bukan assertSafeWriteTarget yang menolak semua symlink) agar
-    // symlink internal tetap bisa diedit — targetnya yang diverifikasi.
-    const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
-    const fileReal = await realpath(abs).catch(() => null)
-    const realAbs = fileReal ?? resolve(realDir, basename(abs))
-    if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
+    // Verifikasi path terpusat (logis + target nyata, induk symlink ikut
+    // ter-resolusi) — symlink internal tetap bisa diedit, targetnya yang dicek.
+    const { abs, real: realAbs } = await resolveSafePath(p, root)
     // Cek ukuran sebelum baca penuh — hindari OOM 1GB via safeReadFile.
     // Pakai byte length via stat pada realAbs (handle belum ada), fallback ke content length.
     const { stat } = await import("node:fs/promises")

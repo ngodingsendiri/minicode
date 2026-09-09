@@ -115,7 +115,7 @@ export async function handleExec(
       const msg =
         bStatus === "over" && ue.cost != null && budget != null
           ? `[budget] ${formatUsd(ue.cost)} > ${formatUsd(budget)} - over budget, stopping.`
-          : `[budget] cost unknown (model tanpa harga) - over budget under --budget-strict, stopping.`
+          : `[budget] cost unknown (model without pricing) - over budget under --budget-strict, stopping.`
       unsub()
       await ctx.close()
       if (jsonMode)

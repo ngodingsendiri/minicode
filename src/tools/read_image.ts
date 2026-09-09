@@ -3,7 +3,6 @@ import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { safeOpenRead } from "../lib/safe-open.ts"
 import { estimateImageTokens } from "../policy/context.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 export const readImageTool: Tool = {
   name: "read_image",
@@ -21,21 +20,18 @@ export const readImageTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    // TOCTOU-safe: safeOpenRead = realpath(abs)→cek di dalam root→open(preReal,O_NOFOLLOW)
-    // bukan open(abs) yang bisa di-swap jadi symlink luar di antara cek dan open.
+    // TOCTOU-safe: safeOpenRead = realpath(abs) → cek jail+sensitif di dalam
+    // root → open(preReal, O_NOFOLLOW). Bukan open(abs) yang bisa di-swap jadi
+    // symlink luar di antara cek dan open — semua verifikasi ada di titik ini.
     let handle: Awaited<ReturnType<typeof safeOpenRead>>["handle"]
     try {
       ;({ handle } = await safeOpenRead(abs, root))
     } catch (e) {
+      // ENOENT → pesan seragam; sisanya (jail/sensitif/ELOOP/raw IO) apa adanya
       const msg = (e as Error).message ?? ""
-      const code = (e as NodeJS.ErrnoException).code
-      if (code === "ENOENT" || msg.includes("ENOENT")) throw new Error(`file not found: ${p}`)
-      if (msg.includes("outside workspace") || msg.includes("symlink") || msg.includes("ELOOP"))
-        throw e
-      // Pertahankan error asli untuk EACCES/EPERM/dll — jangan sembunyikan sebagai not found
+      if ((e as NodeJS.ErrnoException).code === "ENOENT" || msg.includes("ENOENT"))
+        throw new Error(`file not found: ${p}`)
       throw e
     }
     let buf: Buffer

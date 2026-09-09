@@ -2,6 +2,9 @@
 
 Petunjuk untuk agent yang bekerja di repo ini. Rencana aktif: [PLAN.md](PLAN.md).
 Peta struktur hidup: [docs/ARCHITECTURE.html](docs/ARCHITECTURE.html).
+Kontrak terminal FROZEN: [docs/TERMINAL_CONTRACT.md](docs/TERMINAL_CONTRACT.md) —
+baca sebelum menyentuh output/rendering apa pun; perubahan perilaku wajib
+update dokumen + test peta proteksinya.
 
 ## Gate (urutan ini, semua hijau sebelum selesai)
 

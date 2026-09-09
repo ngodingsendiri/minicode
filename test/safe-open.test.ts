@@ -6,7 +6,13 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { assertSafeWriteTarget, safeReadFile, safeStat } from "../src/lib/safe-open.ts"
+import {
+  assertSafeWriteTarget,
+  resolveSafePath,
+  safeOpenRead,
+  safeReadFile,
+  safeStat,
+} from "../src/lib/safe-open.ts"
 import { trashDir, trashFile } from "../src/lib/trash.ts"
 
 function makeRoot(): string {
@@ -86,6 +92,75 @@ test("assertSafeWriteTarget: parent luar ditolak, symlink ditolak, normal lolos"
       }
       expect(threw.length).toBeGreaterThan(0)
     }
+  } finally {
+    rmSync(w, { recursive: true, force: true })
+    rmSync(o, { recursive: true, force: true })
+  }
+})
+
+test("resolveSafePath: normal lolos, luar & sensitif logis ditolak", async () => {
+  const w = makeRoot()
+  try {
+    writeFileSync(join(w, "a.txt"), "x")
+    const r = await resolveSafePath("a.txt", w)
+    expect(r.real).toContain("a.txt")
+    // luar workspace (logis)
+    let threw = ""
+    try {
+      await resolveSafePath("../keluar.txt", w)
+    } catch (e) {
+      threw = (e as Error).message
+    }
+    expect(threw).toContain("outside workspace")
+    // sensitif logis
+    threw = ""
+    try {
+      await resolveSafePath(".env", w)
+    } catch (e) {
+      threw = (e as Error).message
+    }
+    expect(threw).toContain("blocked sensitive")
+    // file baru (ENOENT) ikut ter-resolusi via induk — untuk write_file
+    const baru = await resolveSafePath("baru.txt", w)
+    expect(baru.real).toContain("baru.txt")
+  } finally {
+    rmSync(w, { recursive: true, force: true })
+  }
+})
+
+test("resolveSafePath: symlink bernama jinak ke target sensitif/luar ditolak", async () => {
+  // Windows tanpa privilege symlink melempar EPERM — lewati seperti test TOCTOU.
+  if (!canSymlink()) return
+  const w = makeRoot()
+  const o = makeRoot()
+  try {
+    writeFileSync(join(w, ".env"), "SECRET=1")
+    symlinkSync(join(w, ".env"), join(w, "link.txt"))
+    let threw = ""
+    try {
+      await resolveSafePath("link.txt", w)
+    } catch (e) {
+      threw = (e as Error).message
+    }
+    expect(threw).toContain("blocked sensitive")
+    // symlink ke luar workspace
+    writeFileSync(join(o, "secret.txt"), "shh")
+    symlinkSync(join(o, "secret.txt"), join(w, "luar.txt"))
+    threw = ""
+    try {
+      await resolveSafePath("luar.txt", w)
+    } catch (e) {
+      threw = (e as Error).message
+    }
+    expect(threw).toContain("outside workspace")
+    // safeOpenRead mewarisi cek sensitif-nyata (pemilik tunggal di engine)
+    threw = ""
+    try {
+      await safeOpenRead(join(w, "link.txt"), w)
+    } catch (e) {
+      threw = (e as Error).message
+    }
+    expect(threw).toContain("blocked sensitive")
   } finally {
     rmSync(w, { recursive: true, force: true })
     rmSync(o, { recursive: true, force: true })

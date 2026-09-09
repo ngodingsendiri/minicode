@@ -1,9 +1,8 @@
-import { realpath, stat } from "node:fs/promises"
-import { basename, dirname, isAbsolute, resolve } from "node:path"
+import { stat } from "node:fs/promises"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { resolveSafePath } from "../lib/safe-open.ts"
 import { appendLspDiagnostics } from "../policy/verifier.ts"
 
 export const writeFileTool: Tool = {
@@ -23,16 +22,8 @@ export const writeFileTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
-    const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    // resolve symlink to prevent symlink escape (parent dir + file itself)
-    const realRoot = await realpath(root).catch(() => root)
-    const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
-    const fileReal = await realpath(abs).catch(() => null)
-    const realAbs = fileReal ?? resolve(realDir, basename(abs))
-    if (isPathOutsideRoot(realAbs, realRoot))
-      throw new Error(`symlink points outside workspace: ${p}`)
+    // Verifikasi path terpusat (logis + target nyata) — detail di safe-open.ts.
+    const { real: realAbs } = await resolveSafePath(p, root)
     // guard large write — chars vs bytes (emoji/CJK 4x)
     const c = content as string
     if (c.length > LIMITS.WRITE_FILE_MAX_CHARS)

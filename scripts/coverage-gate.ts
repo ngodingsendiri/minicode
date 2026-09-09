@@ -38,7 +38,10 @@ function getArg(name: string, fallback: number): number {
 // 80,85/84,47 — funcs turun 0,84 karena branch defensif baru belum tercakup test
 // (provider instance-local, safeOpenRead ENOENT mapping, pricing redirect check).
 // Turunkan sementara ke 80/83 agar gate tidak flaky, naikkan lagi setelah test P1 tambahan.
-const MIN_LINES = getArg("--lines", 83)
+// Enter→picker thinking + effort anti-hilang (preserve detectAndSave, scope-aware
+// model-manager, 6 test baru): 81,83/84,32. Kunci lines di 84 (stabil di
+// 84,12–84,32); funcs tetap 80 karena berayun 80,62–81,83 antar run (flaky bila 81).
+const MIN_LINES = getArg("--lines", 84)
 const MIN_FUNCS = getArg("--funcs", 80)
 
 const res = spawnSync(

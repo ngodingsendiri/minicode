@@ -1,8 +1,7 @@
-import { realpath, stat } from "node:fs/promises"
-import { isAbsolute, resolve } from "node:path"
+import { stat } from "node:fs/promises"
 import type { Tool } from "#minicore"
+import { resolveSafePath } from "../lib/safe-open.ts"
 import { trashFile } from "../lib/trash.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 export const deleteFileTool: Tool = {
   name: "delete_file",
@@ -20,13 +19,8 @@ export const deleteFileTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
-    const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    const real = await realpath(abs).catch(() => null)
-    if (!real) throw new Error(`file not found: ${p}`)
-    if (isPathOutsideRoot(real, await realpath(root).catch(() => root)))
-      throw new Error(`symlink points outside workspace: ${p}`)
+    // Verifikasi path terpusat (logis + target nyata) — detail di safe-open.ts.
+    const { abs, real } = await resolveSafePath(p, root)
     const st = await stat(real).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.isDirectory()) throw new Error(`path is directory, use bash rm -r: ${p}`)

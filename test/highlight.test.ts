@@ -7,6 +7,9 @@
 // COLORTERM dipaksa `truecolor`: tanpa itu hasil bergantung apakah stdout runner
 // tersambung ke TTY, dan pada level mono seluruh pewarnaan jadi identity sehingga
 // test lolos tanpa benar-benar menjalankan cabang pewarnaan.
+//
+// Sejak warna digate `stdout.isTTY` (output ke pipe/redirect harus polos),
+// suite ini men-stub stdout sebagai TTY — yang diuji adalah palet, bukan gate.
 import { afterAll, beforeEach, describe, expect, test } from "bun:test"
 import { formatCodeBlock, highlightCode } from "../src/ui/render/highlight.ts"
 import { stripAnsi } from "../src/ui/render/theme.ts"
@@ -17,9 +20,11 @@ const origNoColor = process.env.NO_COLOR
 beforeEach(() => {
   process.env.COLORTERM = "truecolor"
   delete process.env.NO_COLOR
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
 })
 
 afterAll(() => {
+  Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true })
   if (origColorterm == null) delete process.env.COLORTERM
   else process.env.COLORTERM = origColorterm
   if (origNoColor == null) delete process.env.NO_COLOR

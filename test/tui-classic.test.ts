@@ -259,6 +259,54 @@ describe("askLine: reverse-i-search (Ctrl+R)", () => {
     await tty.send(KEY.enter, 30)
     expect(await p).toBe("draf")
   })
+  test("Ctrl+D saat search membatalkan cari saja — draf kembali utuh", async () => {
+    // Regresi: Ctrl+D dulu jatuh ke cancel PENUH (baris dibuang + ^C di REPL),
+    // padahal Ctrl+C/Esc hanya membatalkan mode search.
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: hist })
+    await tty.ready()
+    await tty.send("draf")
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send("fitur")
+    await tty.send(KEY.ctrlD, 30)
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("draf")
+  })
+  test("Ctrl+U saat search menghapus query, bukan membuang draf", async () => {
+    tty = installFakeTty()
+    const p = askLine({ prompt: "> ", history: hist })
+    await tty.ready()
+    await tty.send("draf")
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send("zzz") // tak ada cocok — (failed reverse-i-search)
+    await tty.send(KEY.ctrlU, 30) // hapus query
+    expect(visible(tty)).toContain("(reverse-i-search)") // masih mode cari
+    await tty.send(KEY.esc, 30)
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("draf")
+  })
+  test("Tab saat search TIDAK memicu onKey (cycle mode REPL)", async () => {
+    // Regresi: Tab di tengah search dicegat onKey REPL (cycle mode) sebelum
+    // logika search — search gagal + Tab malah mengganti mode.
+    tty = installFakeTty()
+    let cycled = false
+    const p = askLine({
+      prompt: "> ",
+      history: hist,
+      onKey: (k) => {
+        if (k.type === "tab") cycled = true
+        return k.type === "tab"
+      },
+    })
+    await tty.ready()
+    await tty.send(KEY.ctrlR, 30)
+    await tty.send(KEY.tab, 30)
+    expect(cycled).toBe(false) // hook TIDAK dipanggil saat search aktif
+    // Tab saat search = terima hasil lalu proses normal; bersihkan dan submit.
+    await tty.send(KEY.ctrlU, 30)
+    await tty.send(KEY.enter, 30)
+    expect(await p).toBe("")
+  })
   test("tanpa history, Ctrl+R diabaikan", async () => {
     tty = installFakeTty()
     const p = askLine({ prompt: "> ", history: [] })

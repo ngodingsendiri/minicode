@@ -11,9 +11,12 @@ const origNoColor = process.env.NO_COLOR
 beforeEach(() => {
   process.env.COLORTERM = "truecolor"
   delete process.env.NO_COLOR
+  // Warna digate stdout.isTTY — stub TTY agar yang diuji palet, bukan gate.
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
 })
 
 afterAll(() => {
+  Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true })
   if (origColorterm == null) delete process.env.COLORTERM
   else process.env.COLORTERM = origColorterm
   if (origNoColor == null) delete process.env.NO_COLOR
@@ -45,6 +48,17 @@ test("palet tunggal: semua slot warna mengeluarkan SGR saat truecolor", () => {
   for (const slot of COLOR_SLOTS) {
     expect(c[slot]("X"), slot).toContain(ESC)
   }
+})
+
+test("warna mati saat stdout bukan TTY walau COLORTERM=truecolor (Unix pipe)", () => {
+  // Regresi: warna dulu digate env saja, sehingga TERM/COLORTERM dari sesi
+  // interaktif bocor ke `minicode ... > file` / pipe → ANSI garbage.
+  Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true })
+  for (const slot of [...COLOR_SLOTS, "bold", "muted"] as const) {
+    expect(c[slot]("X"), slot).toBe("X")
+  }
+  expect(c.gray("X")).toBe("X") // dim ikut mati
+  Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
 })
 
 test("palet tunggal: teks tetap utuh setelah strip", () => {

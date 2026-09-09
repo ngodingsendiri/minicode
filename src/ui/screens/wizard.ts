@@ -77,8 +77,14 @@ export async function runSetupWizardView(opts: SetupWizardViewOptions): Promise<
   if (picked === CUSTOM) {
     targetUrl = (await askLine({ prompt: "Base URL: " })) ?? ""
   } else {
-    const custom = (await askLine({ prompt: `Base URL [${picked}]: ` })) ?? ""
-    targetUrl = custom || (picked as string)
+    const custom = await askLine({ prompt: `Base URL [${picked}]: ` })
+    // Esc/Ctrl+C = batal total — dulu jatuh ke "pakai default" dan wizard
+    // lanjut ke API key padahal sapaan bilang "(Ctrl+C to cancel)".
+    if (custom == null) {
+      process.stdout.write("Setup canceled.\n")
+      return false
+    }
+    targetUrl = custom.trim() || (picked as string)
   }
 
   if (!targetUrl) {
@@ -90,7 +96,8 @@ export async function runSetupWizardView(opts: SetupWizardViewOptions): Promise<
     const u = new URL(targetUrl)
     if (!["http:", "https:"].includes(u.protocol)) throw new Error("protocol")
   } catch {
-    process.stdout.write(`${c.red(glyphs.cross)} Invalid URL: ${targetUrl}\n`)
+    // URL = input user tak terpercaya — sanitasi sebelum echo ke terminal.
+    process.stdout.write(`${c.red(glyphs.cross)} Invalid URL: ${sanitizeAnsiLine(targetUrl)}\n`)
     return false
   }
 
@@ -99,6 +106,12 @@ export async function runSetupWizardView(opts: SetupWizardViewOptions): Promise<
   const lokal = /^(https?:\/\/)(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(targetUrl)
   const apiKey = lokal ? "ollama" : await askSecret("API key: ")
 
+  if (apiKey == null) {
+    // Batal (Esc/Ctrl+C) — jangan sarankan OPENAI_API_KEY, itu untuk submit
+    // kosong (user benar-benar menyerah tanpa key).
+    process.stdout.write("Setup canceled.\n")
+    return false
+  }
   if (!apiKey) {
     process.stdout.write(`Setup canceled. Set OPENAI_API_KEY later to continue.\n`)
     return false

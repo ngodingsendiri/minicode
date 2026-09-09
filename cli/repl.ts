@@ -84,7 +84,7 @@ export function persistModelChoice(m: string, modelRef: { current?: string }): v
 // Yang hanya ditampilkan di /help (bukan dropdown) tinggal di commands.ts
 // (DRIVER_HELP_COMMANDS) — dropdown tetap pendek. /mode pindah ke sana:
 // Tab/Shift+Tab sudah memutar mode tanpa baris baru, jadi /mode tak perlu
-// memenuhi dropdown. /thinking dihapus — diganti low/medium/high di /model (t).
+// memenuhi dropdown. /thinking dihapus — diganti picker effort di /model (Enter).
 const DRIVER_COMMANDS = ["/compact"]
 
 export async function runRepl(ctx: CliSession): Promise<void> {
@@ -247,7 +247,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     if (preStatus === "unknown-strict") {
       console.log(
         c.red(
-          `[budget] cost unknown (model tanpa harga) — --budget-strict rejects new prompts. /exit to quit.`,
+          `[budget] cost unknown (model without pricing) — --budget-strict rejects new prompts. /exit to quit.`,
         ),
       )
       return
@@ -434,7 +434,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
       `minicode · ${modelRef.current ?? cfg.providers[0]?.models[0] ?? "no model"} · ${mode} · ${cwd ?? process.cwd()}`,
     ),
   )
-  console.log(c.dim("/help for commands · Tab cycles mode · Ctrl+C twice to exit"))
+  console.log(c.dim("/help for commands · Tab complete (empty: mode) · Ctrl+C 2x exit"))
 
   let shouldExit = false
   // Akumulasi baris yang diakhiri `\` — shell-like continuation di driver

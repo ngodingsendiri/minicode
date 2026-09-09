@@ -456,7 +456,10 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
       for (const d of keys) {
         // Hook pemanggil: key yang ditangani sendiri (return truthy) dilewati
         // dari logika bawaan; render() di akhir chunk tetap menggambar efeknya.
-        if (opts.onKey?.(d.key, state.line)) continue
+        // SAAT SEARCH AKTIF hook DILEWATI: tanpa ini Tab/Shift+Tab/Ctrl+O yang
+        // dicegat REPL (cycle mode/compact) membajak keypad pencarian — user
+        // yang search-nya gagal lalu menekan Tab malah mengganti mode.
+        if (!search && opts.onKey?.(d.key, state.line)) continue
         // Reverse-i-search: Ctrl+R masuk/putar, sisanya dikelola di bawah.
         if (d.key.type === "ctrl-r") {
           if (historyCache.length === 0) continue
@@ -482,8 +485,10 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
             doSubmit(false)
             return
           }
-          if (d.key.type === "esc" || d.key.type === "ctrl-c") {
-            // Batal cari saja (bukan batal baris): kembalikan draf.
+          if (d.key.type === "esc" || d.key.type === "ctrl-c" || d.key.type === "ctrl-d") {
+            // Batal cari saja (bukan batal baris): kembalikan draf. Ctrl+D ikut
+            // agar konsisten dengan Ctrl+C — tanpa ini Ctrl+D saat search
+            // membuang draf (beda dari perilaku readline).
             const back = search.saved
             search = null
             state = { ...state, line: back, cursor: pointLength(back), sel: -1, menuOpen: false }
@@ -493,6 +498,14 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           }
           if (d.key.type === "char") {
             search.query += d.key.ch
+            search.idx = 0
+            searchShow()
+            continue
+          }
+          if (d.key.type === "ctrl-u") {
+            // Hapus query — jangan auto-accept hasil lalu clear baris, karena
+            // itu membuang draf asli (search.saved) yang seharusnya pulang.
+            search.query = ""
             search.idx = 0
             searchShow()
             continue
@@ -526,6 +539,14 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
           search = null
           state = { ...state, line: m, cursor: pointLength(m), sel: -1, menuOpen: false }
           historyIdx = -1
+        }
+        // Esc pada baris KOSONG tanpa menu = batal prompt (null) — dipakai
+        // dialog (Provider >, Base URL >, dsb.) agar Esc konsisten dengan
+        // picker/manager. Esc pada baris berisi TIDAK batal: draf tidak boleh
+        // hilang karena salah tekan (menu yang terbuka tetap ditutup applyKey).
+        if (!search && d.key.type === "esc" && !state.menuOpen && state.line === "") {
+          doSubmit(true)
+          return
         }
         // Navigasi history saat dropdown tertutup.
         //
@@ -598,8 +619,14 @@ export async function askLine(opts: AskLineOptions = {}): Promise<string | null>
   })
 }
 
-export async function askSecret(promptText: string): Promise<string> {
-  if (!process.stdin.isTTY) return ""
+/**
+ * Prompt rahasia (tanpa echo). Return null = DIBATALKAN user (Esc/Ctrl+C/
+ * Ctrl+D) — beda dari submit kosong (""), supaya pemanggil bisa membedakan
+ * "batal" dari "Enter tanpa isi" (yang dulu sama-sama jatuh ke pesan
+ * "required", membuat batal dikira error).
+ */
+export async function askSecret(promptText: string): Promise<string | null> {
+  if (!process.stdin.isTTY) return null
 
   return new Promise((resolve, reject) => {
     const decoder: DecoderState = createDecoderState()
@@ -614,7 +641,7 @@ export async function askSecret(promptText: string): Promise<string> {
       process.stdin.pause()
       if (onData) process.stdin.removeListener("data", onData)
     }
-    const finish = (value: string) => {
+    const finish = (value: string | null) => {
       cleanup()
       process.stdout.write("\n")
       resolve(value)
@@ -634,19 +661,15 @@ export async function askSecret(promptText: string): Promise<string> {
           if (k.type === "enter") {
             finish(secret.trim())
             return
-          } else if (k.type === "ctrl-c" || k.type === "ctrl-d") {
-            // Ctrl+C = BATALKAN PROMPT, bukan matikan proses.
+          } else if (k.type === "esc" || k.type === "ctrl-c" || k.type === "ctrl-d") {
+            // Esc/Ctrl+C/Ctrl+D = BATALKAN PROMPT, bukan matikan proses.
             //
             // Dulu di sini `process.exit(130)`. Di raw mode Ctrl+C tidak
             // menghasilkan SIGINT, jadi itu emulasi manual — tapi `askSecret`
             // dipanggil dari `runProviderManager`, sebuah dialog di dalam REPL
             // yang hidup. Menekan Ctrl+C saat salah ketik API key mematikan
             // seluruh sesi beserta riwayatnya, bukan menutup dialognya.
-            //
-            // String kosong adalah sinyal batal yang SUDAH ditangani kedua
-            // pemanggil. Ini juga menyamakan perilakunya dengan `askLine`,
-            // yang membatalkan (null) alih-alih keluar.
-            finish("")
+            finish(null)
             return
           } else if (k.type === "backspace") {
             // Hapus satu GRAPHEME (bukan code point/UTF-16 unit): emoji ZWJ
@@ -656,6 +679,22 @@ export async function askSecret(promptText: string): Promise<string> {
               graphemes.pop()
               secret = graphemes.join("")
               process.stdout.write("\b \b")
+            }
+          } else if (k.type === "ctrl-u") {
+            // Hapus SEMUA (mis. salah paste API key) — tanpa ini satu-satunya
+            // jalan adalah Backspace satu-satu.
+            const n = toGraphemes(secret).length
+            secret = ""
+            if (n > 0) process.stdout.write(`${"\b \b".repeat(n)}`)
+          } else if (k.type === "ctrl-w") {
+            // Hapus satu "kata" (sampai spasi terakhir) — sama dengan prompt
+            // teks biasa.
+            const graphemes = toGraphemes(secret)
+            const cut = secret.replace(/\S+\s*$/, "")
+            const removed = graphemes.length - toGraphemes(cut).length
+            if (removed > 0) {
+              secret = cut
+              process.stdout.write(`${"\b \b".repeat(removed)}`)
             }
           } else if (k.type === "char") {
             // Sekuens kontrol dari paste dibuang — secret tidak boleh

@@ -6,6 +6,7 @@ import {
   decodeKeysStream,
   toGraphemes,
 } from "../input/prompt-engine.ts"
+import { sanitizeAnsiLine } from "../render/sanitize.ts"
 import { c } from "../render/theme.ts"
 import { truncateToWidth } from "../render/width.ts"
 import { clearTransientOverlay, renderTransientOverlay } from "./overlay.ts"
@@ -74,8 +75,8 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
     // dicetak — keduanya membungkus dan merusak tampilan.
     const visibleRows = () => {
       const rows = process.stdout.rows || 24
-      // Sisakan ruang untuk judul, baris filter, dan baris hint/sisa.
-      const chrome = isFilterable ? 3 : 2
+      // Sisakan ruang untuk judul, baris filter, baris footer, dan baris sisa.
+      const chrome = isFilterable ? 4 : 3
       return Math.max(1, Math.min(rows - chrome, 12))
     }
     const width = () => Math.max(8, (process.stdout.columns || 80) - 2)
@@ -84,6 +85,7 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       const items = filteredItems()
       const v = visibleRows()
       if (sel >= items.length) sel = Math.max(0, items.length - 1)
+      if (sel < 0) sel = 0
       if (sel < scroll) scroll = sel
       if (sel >= scroll + v) scroll = sel - v + 1
       if (items.length === 0) scroll = 0
@@ -94,12 +96,15 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       lines.push(cut(`${DIM}─ ${ACC(opts.title)} ${DIM}─${RESTORE}`))
       if (isFilterable) {
         const placeholderText = opts.placeholder ?? "type to filter"
-        const display = filter ? c.brightCyan(filter) : DIM + placeholderText + RESTORE
+        // Filter = input user tak terpercaya — sanitasi sebelum tampil.
+        const display = filter
+          ? c.brightCyan(sanitizeAnsiLine(filter))
+          : DIM + placeholderText + RESTORE
         const label = filter ? ACC_DIM("Filter:") : `${DIM}Filter:${RESTORE}`
         lines.push(cut(`${label} ${display}`))
       }
       if (items.length === 0) {
-        lines.push(cut(`${DIM}  No matches for "${filter}"${RESTORE}`))
+        lines.push(cut(`${DIM}  No matches for "${sanitizeAnsiLine(filter)}"${RESTORE}`))
         return lines
       }
       for (let i = 0; i < rows.length; i++) {
@@ -119,6 +124,17 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
           cut(`${DIM}  ${c.accent(String(items.length))}/${opts.items.length} matches${RESTORE}`),
         )
       }
+      // Footer hint — tanpa ini picker (mis. Thinking effort) tak memberi tahu
+      // tombol apa yang berlaku. DILEWATKAN di terminal pendek (<6 baris):
+      // di sana footer malah mendorong overlay melebihi layar (diuji ≤ rows).
+      if ((process.stdout.rows || 24) >= 6) {
+        lines.push("")
+        lines.push(
+          cut(
+            `${DIM}${isFilterable ? "type to filter · " : ""}↑↓ select · Enter confirm · Esc back${RESTORE}`,
+          ),
+        )
+      }
       return lines
     }
 
@@ -135,8 +151,12 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       done = true
       prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
-      // Ensure cursor at next line after anchor for result
-      process.stdout.write("\r\n")
+      // TIDAK menulis \r\n di sini: clearTransientOverlay sudah menaruh kursor
+      // kembali ke anchor. \r\n membuat baris kosong permanen di scrollback
+      // (append-only) tiap picker dipakai — terlihat sebagai gap saat picker
+      // nested di dalam manager (mis. Enter → Thinking effort di /model).
+      // Pemanggil lanjutan (askLine/manager resume) menulis dari anchor; baris
+      // anchor selalu baris kosong segar (pemanggil memulai dari akhir output).
       try {
         process.stdin.setRawMode(false)
       } catch {}
@@ -155,7 +175,10 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
               render()
               break
             case "down":
-              sel = Math.min(items.length - 1, sel + 1)
+              // Daftar kosong: jangan biarkan sel=-1 (Enter setelah Down lalu
+              // filter menghadirkan 1 item akan menunjuk items[-1]=undefined →
+              // onCancel padahal ada hasil ter-highlight).
+              sel = items.length ? Math.min(items.length - 1, sel + 1) : 0
               render()
               break
             case "char": {
@@ -181,6 +204,9 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
             }
             case "enter": {
               const item = items[sel]
+              // Perilaku dipertahankan: tanpa hasil, Enter = batal (dikunci
+              // test). Bug yang diperbaiki adalah sel=-1 setelah Down di
+              // daftar kosong — item "phantom" yang batal padahal ada hasil.
               cleanup()
               if (item) opts.onPick(item.value)
               else opts.onCancel()

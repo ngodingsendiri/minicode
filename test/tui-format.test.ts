@@ -164,12 +164,16 @@ describe("wrap: formatWrapped", () => {
 
 describe("markdown: fence & inline", () => {
   // Warna butuh dukungan terminal; test lain di berkas ini memakai fake TTY
-  // untuk itu. Di sini cukup paksa lewat env.
+  // untuk itu. Sejak warna digate stdout.isTTY (pipe/redirect = polos), di
+  // sini env COLORTERM saja tak cukup — stub TTY juga.
   const origColorterm = process.env.COLORTERM
+  const origIsTty = (process.stdout as unknown as { isTTY?: unknown }).isTTY
   beforeEach(() => {
     process.env.COLORTERM = "truecolor"
+    Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true })
   })
   afterEach(() => {
+    Object.defineProperty(process.stdout, "isTTY", { value: origIsTty, configurable: true })
     if (origColorterm == null) delete process.env.COLORTERM
     else process.env.COLORTERM = origColorterm
   })
@@ -733,12 +737,31 @@ describe("simple logger (one-shot)", () => {
     expect(o).toContain("2. dua")
   })
 
-  test("compact: execution:started mencetak running (verbose)", () => {
+  test("compact: execution:started SENYAP (progres = garis status, bukan baris)", () => {
+    // Baris "running x..." tanpa newline dulu menempel ke baris ✓ berikutnya
+    // dan mencemari log non-interaktif; mode compact hanya menampilkan ledger
+    // hasil (execution:completed), bukan start tool.
     setCompactMode(true)
     const { bus, detach, out } = attach(true)
     bus.emit("execution:started", { execution: { call: { name: "grep", args: {} } } })
     detach()
-    expect(out()).toContain("running grep")
+    expect(out()).toBe("")
+  })
+
+  test("compact: hasil tool konten = satu baris ✓ + target (tanpa bocor isi)", () => {
+    setCompactMode(true)
+    const { bus, detach, out } = attach()
+    bus.emit("execution:completed", {
+      execution: {
+        call: { name: "read_file", args: { path: "src/auth.ts" } },
+        result: { isError: false, content: "1: export const x = 1\n2: // rahasia implementasi" },
+      },
+    })
+    detach()
+    const o = out()
+    expect(o).toContain("✓ read_file src/auth.ts")
+    expect(o).not.toContain("rahasia implementasi")
+    expect(o.endsWith("\n")).toBe(true)
   })
 
   test("expanded: write_file menampilkan ukuran hasil", () => {
@@ -782,13 +805,16 @@ describe("simple logger (one-shot)", () => {
     tty = installFakeTty({ columns: 80, rows: 24 })
     const bus = createFakeBus()
     const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
-    const detach = attachTurnStatus(bus as unknown as EventBus, {
+    const status = attachTurnStatus(bus as unknown as EventBus, {
       initialModel: "m",
       getStats: () => "5 tok",
     })
     bus.emit("turn:started", { turn: 1 })
+    // Lukisan dimulai oleh event kerja pertama (reasoning), bukan turn:started
+    // — jendela pra-event dibiarkan polos (lihat komentar lifecycle modul).
+    bus.emit("provider:extension", { kind: "reasoning", data: {} })
     await new Promise((r) => setTimeout(r, 350))
-    detach()
+    status.detach()
     expect(stripAnsi(tty!.combined())).toContain("5 tok")
   })
 
@@ -806,12 +832,13 @@ describe("simple logger (one-shot)", () => {
       return true
     }
     try {
-      const detach = attachTurnStatus(bus as unknown as EventBus, {
+      const status = attachTurnStatus(bus as unknown as EventBus, {
         initialModel: "model-rahasia-xyz",
       })
       bus.emit("turn:started", { turn: 1 })
+      bus.emit("provider:extension", { kind: "reasoning", data: {} })
       await new Promise((r) => setTimeout(r, 900))
-      detach()
+      status.detach()
       const raw = chunks.join("")
       const ESC = String.fromCharCode(27)
       expect(stripAnsi(raw)).toContain("Thinking")
@@ -851,6 +878,71 @@ describe("simple logger (one-shot)", () => {
       Object.defineProperty(process.stdout, "isTTY", { value: prevTty, configurable: true })
       ;(process.stdout as unknown as { write: unknown }).write = prevWrite
     }
+  })
+
+  describe("simple logger: kontrak output (adversarial)", () => {
+    const toolDone = (name: string, p: string, isError = false) => ({
+      execution: {
+        call: { name, args: { path: p } },
+        result: {
+          isError,
+          content: isError ? `gagal membaca ${p}` : `1: isi ${p}\n2: rahasia-${p}`,
+        },
+      },
+    })
+
+    test("20 tool selesai beruntun: satu baris ✓ per tool, semua diakhiri newline, tanpa overlap", () => {
+      setCompactMode(true)
+      const { bus, detach, out } = attach()
+      for (let i = 0; i < 20; i++)
+        bus.emit("execution:completed", toolDone("read_file", `f${i}.ts`))
+      detach()
+      setCompactMode(false)
+      const lines = out().split("\n")
+      const nonEmpty = lines.filter((l) => l.length > 0)
+      expect(nonEmpty).toHaveLength(20)
+      // Setiap baris utuh (bukan hasil tempel/overlap) — overlap lama tampil
+      // sebagai dua marker dalam satu baris.
+      for (const l of nonEmpty) expect(l.startsWith("  ✓ read_file f"), l).toBe(true)
+      // Tanpa bocor isi file ke ledger compact.
+      expect(out()).not.toContain("rahasia-")
+    })
+
+    test("tool gagal lalu retry sukses: dua baris terpisah, urutan ✗ lalu ✓", () => {
+      setCompactMode(true)
+      const { bus, detach, out } = attach()
+      bus.emit("execution:completed", toolDone("read_file", "a.ts", true))
+      bus.emit("execution:completed", toolDone("read_file", "a.ts"))
+      detach()
+      setCompactMode(false)
+      const o = out()
+      const x = o.indexOf("✗ read_file: gagal membaca")
+      const ok = o.indexOf("✓ read_file a.ts")
+      expect(x).toBeGreaterThanOrEqual(0)
+      expect(ok).toBeGreaterThan(x)
+    })
+
+    test("tool selesai bersamaan dengan aliran teks: konten tidak menyatu dengan ledger", () => {
+      setCompactMode(true)
+      const { bus, detach } = attach()
+      bus.emit("execution:completed", toolDone("read_file", "a.ts"))
+      bus.emit("provider:text", { text: "PESAN-RAHASIA-UNIK\n" })
+      detach()
+      setCompactMode(false)
+      expect(tty!.all()).toContain("PESAN-RAHASIA-UNIK") // stdout = teks model
+      expect(tty!.all()).not.toContain("✓ read_file")
+      expect(tty!.allErr()).toContain("✓ read_file a.ts") // stderr = ledger
+      expect(tty!.allErr()).not.toContain("PESAN-RAHASIA-UNIK")
+    })
+
+    test("stdout = output program; stderr = ledger/diagnostik (kontrak Unix)", () => {
+      const { bus, detach } = attach()
+      bus.emit("provider:text", { text: "hasil analisis\n" })
+      bus.emit("execution:completed", toolDone("grep", "src", false))
+      detach()
+      expect(tty!.all()).toContain("hasil analisis")
+      expect(tty!.allErr()).toContain("✓ grep src")
+    })
   })
 })
 

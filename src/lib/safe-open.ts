@@ -1,13 +1,41 @@
 import { constants } from "node:fs"
 import type { FileHandle } from "node:fs/promises"
 import { lstat, open, realpath } from "node:fs/promises"
-import { dirname, resolve } from "node:path"
-import { isPathOutsideRoot } from "../policy/jail.ts"
+import { basename, dirname, isAbsolute, resolve } from "node:path"
+import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
 
 // O_NOFOLLOW mencegah open mengikuti symlink (TOCTOU swap).
 // Di Windows nilai tidak didefinisikan — fallback ke 0 dan pakai dev+ino check.
 const O_NOFOLLOW: number = (constants as unknown as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0x20000
 const O_RDONLY = constants.O_RDONLY
+
+/**
+ * Verifikasi path untuk tool PENULIS (write/edit/patch/delete/move): butuh
+ * path real sebagai target tulis (atomicWriteText/rename/trash), jadi cek
+ * logis + target nyata dilakukan di sini, toleran ENOENT (file baru — induk
+ * yang diverifikasi). Pembaca (read_file/read_image) tidak lewat sini: mereka
+ * open via safeOpenRead yang memverifikasi pada titik open.
+ *
+ * Tanpa state global — realpath segar tiap panggil (wajib untuk TOCTOU).
+ * Pesan error mempertahankan substring lama ("path/outside workspace",
+ * "blocked sensitive file", "symlink points outside workspace") agar test
+ * regex tetap hijau.
+ */
+export async function resolveSafePath(
+  p: string,
+  root: string,
+): Promise<{ abs: string; real: string }> {
+  if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
+  if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
+  const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
+  const realRoot = await realpath(root).catch(() => root)
+  const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
+  const fileReal = await realpath(abs).catch(() => null)
+  const real = fileReal ?? resolve(realDir, basename(abs))
+  if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
+  if (isSensitive(real)) throw new Error(`blocked sensitive file: ${p}`)
+  return { abs, real }
+}
 
 /**
  * Buka file dengan O_NOFOLLOW pada path yang SUDAH terverifikasi di dalam root.
@@ -31,6 +59,9 @@ export async function safeOpenRead(
   const preReal = await realpath(abs).catch(() => abs)
   if (isPathOutsideRoot(preReal, realRoot))
     throw new Error(`symlink points outside workspace: ${abs}`)
+  // Sensitif pada target nyata — symlink bernama jinak bisa menunjuk .env;
+  // di sini agar semua pembaca via open (read_file/read_image/stat) mewarisinya.
+  if (isSensitive(preReal)) throw new Error(`blocked sensitive file: ${abs}`)
 
   // Buka path terverifikasi — bukan abs (yang bisa di-swap setelah realpath).
   try {

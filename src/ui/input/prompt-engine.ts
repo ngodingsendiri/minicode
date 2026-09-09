@@ -254,7 +254,7 @@ export function applyKey(
     case "ctrl-d":
       return { state, action: "cancel" }
     case "ctrl-o": // toggle compact — ditangani REPL lewat onKey askLine
-    case "ctrl-r": // (bekas picker history fullscreen — tidak dipakai lagi)
+    case "ctrl-r": // reverse-i-search — ditangani askLine (input.ts) sebelum applyKey
     case "ctrl-t": // reserved no-op (/thinking dihapus; tidak lagi ditangani REPL)
     case "shift-tab": // cycle mode — ditangani REPL lewat onKey askLine
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks

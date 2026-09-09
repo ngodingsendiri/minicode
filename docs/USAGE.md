@@ -130,7 +130,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 | `/help` | Daftar perintah + skill + tombol penting |
 | `/help tombol` | Daftar pintasan papan tombol lengkap |
 | `/provider` | Kelola provider: tambah (`a`), hapus (`d`), ubah (`e`). Provider aktif ditandai `(aktif)`; konfirmasi hapus menyebut jumlah model yang ikut hilang |
-| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider. Enter = pilih model, `t` = atur thinking effort (`default`/`low`/`medium`/`high`, tersimpan di provider) |
+| `/model [cari]` | Picker semua provider·model (bisa difilter). Format `providerId::modelName` memaksa provider. Enter = pilih model + atur thinking effort (`default`/`low`/`medium`/`high` via picker, tersimpan di provider, berlaku sesi berikutnya; Esc = batal total). Effort non-default tampil sebagai badge `[low|medium|high]` di baris model |
 | `/sync` | Segarkan daftar model dari semua provider |
 | `/undo` | Batalkan perubahan berkas dari turn terakhir |
 | `/redo` | Terapkan ulang perubahan yang dibatalkan |
@@ -145,7 +145,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`), ter-look
 
 Alias yang juga dikenali (tidak muncul di `/help`): `/models` → `/model`, `/providers` → `/provider`, `/usage` & `/cost` → `/status`, `/resume [id]` → `/sessions [id]`, `/compact`.
 
-Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact`** — tetap pendek dan minimalis. `/mode` tak masuk dropdown (Tab/Shift+Tab sudah memutar mode). `/thinking` dihapus — atur effort via `/model` `t`. Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help` (termasuk `/mode`).
+Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact`** — tetap pendek dan minimalis. `/mode` tak masuk dropdown (Tab/Shift+Tab sudah memutar mode). `/thinking` dihapus — atur effort via picker `Enter` di `/model`. Perintah lain (`/undo`, `/redo`, `/clear`, `/copy`, `/history`) sengaja tidak masuk dropdown; semuanya terdaftar di `/help` (termasuk `/mode`).
 
 ### Papan tombol (REPL)
 
@@ -156,15 +156,15 @@ Catatan dropdown: Tab (dropdown) hanya menawarkan perintah **builtin + `/compact
 | `tab` | Lengkapi perintah dari dropdown (menghormati item yang sedang dipilih); di baris kosong = putar mode (`auto` → `ask` → `plan` → `allowlist`, tanpa baris baru) |
 | `↑` / `↓` | Jelajahi history, atau pilih item dropdown bila terbuka |
 | `ctrl+o` | Putar tool call compact/expanded (juga `/compact`) |
-| `ctrl+r` | Reverse-i-search history (substring; Esc/Ctrl+C batal) |
+| `ctrl+r` | Reverse-i-search history (substring; Esc/Ctrl+C/Ctrl+D batal, Ctrl+U hapus query) |
 | `ctrl+j` | Sisipkan newline (multiline opt-in; Enter tetap submit) |
 | `←` / `→` | Geser kursor (editing di tengah baris) |
 | `ctrl+a` / `ctrl+e` | Ke awal / akhir baris |
 | `home` / `end` / `del` | Sama seperti di editor |
 | `ctrl+w` | Hapus satu kata sebelum kursor |
 | `ctrl+u` | Kosongkan baris |
-| `esc` | Tutup dropdown / picker / manager |
-| `ctrl+c` | Saat busy: hentikan turn; saat idle dua kali beruntun: keluar |
+| `esc` | Tutup dropdown/picker; batal prompt yang masih kosong (di baris berisi: tidak batal — draf aman) |
+| `ctrl+c` / `ctrl+d` | Saat busy: hentikan turn; saat idle: batalkan prompt (dua kali beruntun saat idle = keluar) |
 | `\` di akhir baris | Sambung ke baris berikutnya |
 
 ## Skills

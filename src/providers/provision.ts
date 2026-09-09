@@ -95,14 +95,19 @@ export async function detectAndSave(
     }
   }
   // dedup id: id ramah via preset/slug, tanpa hash acak (lihat deriveProviderId)
-  const existing = (await loadConfig(opts.cwd)).providers.map((p) => p.id)
+  const prevCfg = await loadConfig(opts.cwd)
+  const existing = prevCfg.providers.map((p) => p.id)
   const uniqId = deriveProviderId(baseUrl, existing, id)
+  // Pertahankan knob user (thinking effort) bila provider sudah ada — tanpa
+  // ini tiap add/edit me-reset effort ke default diam-diam ("hilang").
+  const prevEffort = prevCfg.providers.find((p) => p.id === uniqId)?.reasoningEffort
   const entry: ProviderEntry = {
     id: uniqId,
     baseUrl,
     apiKey,
     models: detected.models,
     providerHint: detected.providerHint,
+    ...(prevEffort ? { reasoningEffort: prevEffort } : {}),
   }
   await saveProvider(entry, opts)
   return entry

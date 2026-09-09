@@ -196,8 +196,10 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   offs.push(
     bus.on("execution:started", (e) => {
       if (detail.compact) {
-        if (opts.verbose || !process.stderr.isTTY)
-          wErr(c.muted(`  running ${e.execution.call.name}... `))
+        // Mode compact: TIDAK ada baris start. Aktivitas ditampilkan oleh
+        // garis status "Thinking"/nama tool (TTY) atau diam (non-TTY) — baris
+        // `running x... ` lama tanpa newline menempel ke baris ✓ berikutnya
+        // di log non-interaktif, dan mencemari stderr redirect.
         return
       }
       // Expanded: user melihat tool apa yang mulai berjalan SEBELUM hasilnya,
@@ -274,8 +276,16 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         )
         return
       }
+      // Tool penghasil KONTEN (isi berkas, hasil cari) di mode compact cukup
+      // satu baris ✓ + target — isinya milik model untuk dibaca, bukan untuk
+      // membanjiri scrollback pengguna. Konten tetap bisa dilihat via expanded.
+      if (detail.compact && CONTENT_TOOLS.has(name)) {
+        const label = sanitizeAnsiLine(target ?? formatArgsPreview(args)).slice(0, 120)
+        wErr(c.success(`  ✓ ${name}${label ? ` ${label}` : ""}\n`))
+        return
+      }
       if (!detail.compact && CONTENT_TOOLS.has(name)) {
-        // Hasil berupa KONTEN (isi berkas, hasil cari) ikut mengalir expanded.
+        // Expanded: hasil berupa KONTEN (isi berkas, hasil cari) ikut mengalir.
         const raw = sanitizeAnsi(String(r.content ?? "")).trim()
         const lines = raw ? raw.split("\n") : []
         const maxPreview = CONTENT_PREVIEW_LINES()
@@ -291,10 +301,16 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
         wErr(c.success(`  ✓ ${name} ${label}\n`) + (preview ? `${c.muted(preview) + more}\n` : ""))
         return
       }
-      const raw = sanitizeAnsi(String(r.content)).trim()
-      const first = raw.split("\n")[0] ?? ""
-      const preview = first.slice(0, 80) + (raw.length > 100 || raw.includes("\n") ? "..." : "")
-      wErr(c.success(`  ✓ ${name}`) + c.muted(preview ? ` ${preview}` : "\n"))
+      // Sisa tool (compact & expanded): satu baris ✓ + label. WAJIB diakhiri
+      // newline — tanpa itu baris berikutnya menempel (overlap di stderr log).
+      const label = sanitizeAnsiLine(target ?? formatArgsPreview(args)).slice(0, 120)
+      const first = sanitizeAnsi(String(r.content)).trim().split("\n")[0] ?? ""
+      const preview = first.slice(0, 80)
+      if (!detail.compact && preview) {
+        wErr(c.success(`  ✓ ${name}${label ? ` ${label}` : ""} ${c.muted(preview)}\n`))
+        return
+      }
+      wErr(c.success(`  ✓ ${name}${label ? ` ${label}` : ""}\n`))
     }),
   )
   offs.push(bus.on("context:compacted", (e) => wErr(c.warning(`  ── compacted: ${e.reason}\n`))))

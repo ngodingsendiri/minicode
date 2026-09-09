@@ -68,8 +68,10 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
 
   return new Promise<void>((resolve) => {
     // Ukuran mengikuti terminal SUNGGUHAN (lihat picker.ts untuk alasan sama).
+    // Lantai lebar tak boleh MELEBIHI terminal: floor 12 lama membungkus di
+    // kolom ≤13 (overlay tak bisa menulis lebih lebar dari layar).
     const visibleRows = () => Math.max(1, Math.min((process.stdout.rows || 24) - 4, 14))
-    const width = () => Math.max(12, (process.stdout.columns || 80) - 2)
+    const width = () => Math.max(8, (process.stdout.columns || 80) - 2)
 
     const buildLines = (): string[] => {
       const v = visibleRows()
@@ -180,7 +182,10 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         const customIdx = opts.presets.length
         console.log(`  [${customIdx}] Custom URL\n`)
         const selStr = await askLine({ prompt: "Gateway > " })
-        if (selStr == null) {
+        // Batal (Esc/Ctrl+C) ATAU isian kosong = batal, bukan "pilih [0]".
+        // Dulu Enter kosong diam-diam memilih preset pertama (Number("")===0)
+        // — user yang mau batal malah masuk alur tambah provider.
+        if (selStr == null || !selStr.trim()) {
           console.log("Canceled")
           return
         }
@@ -191,9 +196,13 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         if (Number.isInteger(idx) && idx >= 0 && idx < customIdx) {
           preset = opts.presets[idx]!
           baseUrl = preset.baseUrl
-        } else if (idx === customIdx || (pick && !Number.isInteger(idx))) {
+        } else if (idx === customIdx || !Number.isInteger(idx)) {
           const url = await askLine({ prompt: "Base URL > " })
-          if (!url?.trim()) {
+          if (url == null) {
+            console.log("Canceled")
+            return
+          }
+          if (!url.trim()) {
             console.log("Base URL is required.")
             return
           }
@@ -202,7 +211,23 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
           console.log(`${glyphs.cross} Unknown selection`)
           return
         }
+        // Tambah dengan id yang SUDAH ADA menimpa key+models tanpa konfirmasi
+        // (deriveProviderId memakai id apa adanya) — tanya dulu, karena hapus
+        // saja butuh konfirmasi.
+        if (preset && providers.some((r) => r.id === preset.id)) {
+          const ok = await askLine({
+            prompt: `Provider "${preset.id}" exists — overwrite its key and models? [y/N] `,
+          })
+          if (ok?.trim().toLowerCase() !== "y") {
+            console.log("Canceled")
+            return
+          }
+        }
         const apiKey = await askSecret("API key: ")
+        if (apiKey == null) {
+          console.log("Canceled")
+          return
+        }
         if (!apiKey) {
           console.log("API key is required.")
           return
@@ -210,6 +235,10 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
         let scope: "global" | "local" = "global"
         if (opts.askScope) {
           const ans = await askLine({ prompt: "Save globally? [Y/n] " })
+          if (ans == null) {
+            console.log("Canceled")
+            return
+          }
           scope = ans?.trim().toLowerCase() === "n" ? "local" : "global"
         }
         console.log("Detecting models…")
@@ -233,10 +262,14 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
           console.log(`${glyphs.cross} Provider is active (${opts.currentModel}).`)
         }
         const ans = await askLine({ prompt: "Delete? [y/N] " })
-        if (ans?.trim().toLowerCase() === "y") {
+        if (ans == null) {
+          console.log("Canceled")
+          return
+        }
+        if (ans.trim().toLowerCase() === "y") {
           const res = await opts.onDelete(target)
-          if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
-          else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
+          if (res.ok) console.log(`${glyphs.check} ${sanitizeAnsiLine(res.ok)}`)
+          else if (res.err) console.log(`${glyphs.cross} ${sanitizeAnsiLine(res.err)}`)
         } else {
           console.log("Canceled")
         }
@@ -254,17 +287,28 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
           return
         }
         console.log(`\nEdit provider "${target.id}"\n`)
+        // Batal di prompt pertama/kedua harus benar-benar batal — dulu
+        // Ctrl+C jatuh ke "pertahankan nilai lama" lalu "No changes", tanpa
+        // jalan keluar dari dialog edit.
         const newUrl = await askLine({ prompt: `Base URL [${defaults.baseUrl}]: ` })
+        if (newUrl == null) {
+          console.log("Canceled")
+          return
+        }
         const newKey = await askSecret("API key [****]: ")
-        const baseUrl = newUrl?.trim() ? newUrl.trim() : defaults.baseUrl
-        const apiKey = newKey?.trim() ? newKey.trim() : defaults.apiKey
+        if (newKey == null) {
+          console.log("Canceled")
+          return
+        }
+        const baseUrl = newUrl.trim() ? newUrl.trim() : defaults.baseUrl
+        const apiKey = newKey.trim() ? newKey.trim() : defaults.apiKey
         if (baseUrl === defaults.baseUrl && apiKey === defaults.apiKey) {
           console.log("No changes.")
         } else {
           console.log("Detecting models…")
           const res = await opts.onEditSave(target, { baseUrl, apiKey })
-          if (res.ok) console.log(`${glyphs.check} ${res.ok}`)
-          else if (res.err) console.log(`${glyphs.cross} ${res.err}`)
+          if (res.ok) console.log(`${glyphs.check} ${sanitizeAnsiLine(res.ok)}`)
+          else if (res.err) console.log(`${glyphs.cross} ${sanitizeAnsiLine(res.err)}`)
         }
       })
     }
@@ -280,7 +324,8 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
               render()
               break
             case "down":
-              sel = Math.min(providers.length - 1, sel + 1)
+              // Daftar kosong: jangan biarkan sel=-1 (Enter lalu salah tutup).
+              sel = providers.length ? Math.min(providers.length - 1, sel + 1) : 0
               render()
               break
             case "char": {
@@ -300,10 +345,10 @@ export async function runProviderManagerView(opts: ProviderManagerViewOptions): 
               break
             }
             case "enter": {
-              // Set model sync dari data yang sudah dimuat - tidak ada console.log
-              // dan tidak ada async yang nembak setelah resolve (menghentikan REPL).
+              // Footer bilang "select"; daftar kosong tak boleh menutup layar.
               const p = providers[sel]
-              if (p) opts.onSelect(p)
+              if (!p) return
+              opts.onSelect(p)
               cleanup()
               resolve()
               return

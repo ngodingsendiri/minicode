@@ -57,8 +57,8 @@ Options:
   --budget-strict     fail-closed: unknown cost counts as over budget
   --tool-scope <s>    full (default) | explore (read-only subset)
 
-REPL: /help /provider /model /sync /status /sessions /init /mode /compact /undo /cost /exit
-Keys: Enter submit · Tab complete (empty: cycle mode) · Up/Down history · Shift+Tab mode · Ctrl+C stop (2x exit)
+REPL: /help /provider /model /sync /status /sessions /init /exit /mode /undo /redo /clear /copy /history /compact
+Keys: Enter submit · Tab complete (empty: cycle mode) · Up/Down history · Shift+Tab mode · Ctrl+R search · Ctrl+C stop (2x exit)
 `
 
 const args = process.argv.slice(2)
@@ -286,7 +286,7 @@ if (enterRepl) {
     } else if (status === "unknown-strict" && b != null) {
       process.stderr.write(
         c.red(
-          `[budget] cost unknown (model tanpa harga) - over budget under --budget-strict, stopping.\n`,
+          `[budget] cost unknown (model without pricing) - over budget under --budget-strict, stopping.\n`,
         ),
       )
       overBudget = true

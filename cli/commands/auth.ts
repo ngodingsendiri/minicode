@@ -146,6 +146,8 @@ export async function handleAuth(args: string[]): Promise<never> {
         apiKey: "",
         auth: "oauth",
         models,
+        // Login ulang tak boleh me-reset knob user (thinking effort).
+        ...(existing?.reasoningEffort ? { reasoningEffort: existing.reasoningEffort } : {}),
       },
       { global: true },
     )

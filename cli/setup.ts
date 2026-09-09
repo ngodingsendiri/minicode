@@ -374,9 +374,22 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   const verifyActive = verifyCommand.length > 0
 
   async function runPromptWithVerify(p: string, signal?: AbortSignal): Promise<void> {
+    // Bersihkan state garis status turn SEBELUMNYA bila kernel tidak sempat
+    // emit turn:completed (gagal/abort) — lihat lifecycle turn-status.ts.
+    turnStatus.endTurn()
     await runRunHooks("pre", { phase: "pre", prompt: p, cwd })
+    // Semua session.run settle lewat sini: finally memastikan garis status
+    // berhenti pada sukses MAUPUN gagal/abort (kernel hanya emit
+    // turn:completed di jalur sukses — tanpa ini painter basi menimpa prompt).
+    const runOnce = async (prompt: string, s?: AbortSignal) => {
+      try {
+        await session.run(prompt, { model: modelRef.current, signal: s })
+      } finally {
+        turnStatus.endTurn()
+      }
+    }
     if (!verifyActive) {
-      await session.run(p, { model: modelRef.current, signal })
+      await runOnce(p, signal)
       await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
       return
     }
@@ -393,7 +406,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
     await runWithSelfHeal(firstPrompt, {
       run: async (prompt) => {
-        await session.run(prompt, { model: modelRef.current, signal })
+        await runOnce(prompt)
       },
       verify: () => runVerify(verifyCommand, cwd ?? process.cwd()),
       onCycle: (cycle, max, v) => {
@@ -424,8 +437,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
   }
 
-  // Printer linier + status turn: dipakai one-shot DAN REPL linier — tidak ada
-  // sudah tidak ada, jadi tidak ada lagi jalur renderer kedua untuk dibedakan.
+  // Printer linier + status turn: dipakai one-shot DAN REPL linier.
   const detachSimple = attachSimpleLogger(session.events, { verbose })
   const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
   const { formatUsd } = await import("../src/ui/render/money.ts")
@@ -433,7 +445,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   // Statusline kaya = opt-in (default mati, shell tetap bersih). Data biaya
   // disuntik sebagai callback agar UI tak mengimpor lapisan policy.
   const richStatus = process.env.MINICODE_STATUSLINE === "rich"
-  const detachStatus = attachTurnStatus(session.events, {
+  const turnStatus = attachTurnStatus(session.events, {
     initialModel: effectiveInitialModel,
     getModel: () => modelRef.current ?? effectiveInitialModel,
     ...(richStatus
@@ -457,7 +469,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   }
 
   async function close(): Promise<void> {
-    detachStatus()
+    turnStatus.detach()
     detachSimple()
     // background job harus mati bersama CLI — jangan tinggalkan proses yatim
     killAllBackgroundJobs()

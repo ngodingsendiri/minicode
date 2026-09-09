@@ -14,7 +14,7 @@ Jalankan sendiri, jangan percaya angka di dokumen:
 bun test                  # harapan: semua hijau, 0 fail
 bun x tsc --noEmit        # harapan: tanpa keluaran
 bun run lint              # harapan: exit 0 (warning boleh ada)
-bun run gate:coverage     # harapan: melewati min 81 funcs / 83 lines
+bun run gate:coverage     # harapan: melewati min 80 funcs / 84 lines
 bun run gate:pack         # harapan: 22 pemeriksaan lulus
 bun run extreme           # harapan: 0 bypass, semua pass
 ```
@@ -31,7 +31,7 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 
 ---
 
-## Status eksekusi terbaru (update 2026-09-08)
+## Status eksekusi terbaru (update 2026-09-09)
 
 - ✅ P0-P9 tuntas dan dihapus dari plan (commit `e143db2` 0.9.0 + `b8b5749` 0.9.1): guardrail, coverage, overlay, English-only, tema, data-at-rest, session, tool-layer, env/command, CLI hardening, memory/RAG P0-P2.
 - ✅ P12 UI Shell-Max DIEKSEKUSI `b8b5749` (9.3/10): `/copy` OSC52, Ctrl+R/Ctrl+J, statusline rich, wrap/table/diff/picker, harness output-driven. Gate `tsc PASS / lint 9 warn / 1224 pass 0 fail / coverage 81.44/83.65 / pack 22/22`.
@@ -39,6 +39,7 @@ Kondisi yang sudah dicapai dan **tidak boleh mundur**:
 - ✅ P13 P1 + P11 P1 + P10 P1 DIEKSEKUSI (`ff70d65` 0.9.2 + 0.9.5): submit_result, ask_user (gated+DI), plan artifact, snippet verify, branchSession, TTL hierarkis + accessCount, Responses chaining, reasoningEffort map, retry-after honori + coba-ulang-di-tempat, probe /responses, harness TUI 10/10, SWE-bench Lite (dataset 20 pin + test_patch + fake 0/20), doctor, lint 0 warning, coverage-min 80/84.
 - ✅ AUDIT UX DIEKSEKUSI (`d69fbec` 0.9.6): Tab kosong toggle plan/build, did-you-mean (≤2), banner konteks, /thinking on-off, sync jujur {updated,failed}, doctor warn 0-model, error tunggal, sandbox notice tepat, models --match bersih, auth non-TTY fail-fast, English-only + regex penjaga, /quit dihapus, USAGE lengkap. **Opsi A konsolidasi**: /cost & /usage → /status, /resume → /sessions; /undo /redo /clear /copy /history tetap mandiri, tampil di /help tapi TIDAK di dropdown. Gate `1284 pass 0 fail / tsc / lint 0 warn / 80.77/84.56 / pack 22/22 / bash 0`.
 - ✅ HARNESS P0–P3 DIEKSEKUSI (uncommitted, 2026-09-07/08 — detail: `docs/HARNESS.md`): P0 jail simetris move/delete, `MINICODE_SANDBOX_STRICT`, allowlist `bun run`/`bun x`, scrub `exec --json` + `overBudget`; P1 `budgetStatus` + `--budget-strict` (sekaligus perbaiki `exec` yang mengabaikan `--budget`), `step-traces.jsonl` + klasifikasi deny, `audit:harness` 60 cek, `--verify`+self-heal terverifikasi existing; P2 baseline-first + `--tool-scope explore`; P3 `stats` deny-rate + validasi resume. Uji live 7 model gateway (21 run, 20/21 execution-verified; multifile ketat 4/7). Gate `1336 pass 0 fail / 81.68/85.37 / pack 22/22 / audit 60/60`. DITOLAK sadar: verify default-on, evaluator inferential.
+- ✅ SESI UX MODEL+INPUT (uncommitted, 2026-09-09): alur thinking effort DIKUNCI (`Enter` = pilih + picker effort, Esc = batal total; `t` dihapus; badge effort; berlaku sesi berikutnya); effort anti-hilang (`detectAndSave`/`auth login` preserve `reasoningEffort`; mutasi `/model` ditulis ke scope asal — hapus fallback race + `saveProvider` di controller); audit UX lain: Esc batal prompt kosong + `askSecret` null = batal, search keys diperbaiki (Ctrl+D/Ctrl+U, onKey tak membajak), `Gateway >` kosong = batal, konfirmasi timpa provider, umpan balik ✓/✗ menyeluruh, picker clamp/footer/sanitasi, `/sync` restart kondisional, help/keys akurat. Struktur path-guard: `resolveSafePath` = tool PENULIS, `safeOpenRead` = pembaca (read_file/read_image single-open, tanpa verifikasi ganda). Gate `1357 pass 0 fail / 81.84/84.26 / pack 22/22`; min dikunci **80 funcs / 84 lines** (funcs berayun 80.6–81.8 antar run — menaikkan ke 81 membuat gate flaky).
 
 Next action — sisa aktif (urut):
 1. **SWE-Lite valid** — `bench/docker/` + `manifest.json` 20 instance + `--docker` MENDARAT; 5 image era TER-BUILD (py36 butuh fix apt kedaluwarsa); validasi: requests-1963 collect+run OK di py3.8, pytest-11143 FAIL dengan benar di py3.10. Sisa: run agen penuh + validasi confidence-low (requests/sympy).
@@ -123,7 +124,7 @@ Skor saat ini **8.2**. Target **P0 (≤3 hari): 8.4**, **P1 (sprint): 8.6**. Ber
 - **Sesi/Memori:** ✅ plan artifact `.minicode/plans/<id>.md` (`src/tools/todo.ts`, test); auto-extract snippet dari turn verify sukses (`buildVerifySnippet` + `onOk`, opt-out sama, test); branch `branchSession` (`src/session/persistence.ts`, test); TTL hierarkis `fact/decision/preference 180, summary 90, snippet 14` + `accessCount` (test).
 
 **Selesai bila (semua diukur):**
-- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` di `scripts/coverage-gate.ts` = **81/83** (tercapai 2026-09-08 via test config; sisa per-file rendah di lsp/repl bukan kode baru).
+- Gate: `bun x tsc --noEmit && bun run lint && bun test && bun run gate:coverage && bun run gate:pack` hijau; `MIN_LINES/MIN_FUNCS` di `scripts/coverage-gate.ts` = **80/84** (funcs sengaja tidak dinaikkan ke 81: hasil terukur berayun 80.62–81.84 antar run, mengunci 81 membuat gate flaky; tercapai 2026-09-09 `1357 pass / 81.84/84.26`).
 - `test/tool-toctou.test.ts` swapper 1000 iterasi **0 lolos** di POSIX (skip bila symlink EPERM; Windows CI: 3 skip by design).
 - `test/cli-subcommands.test.ts`: tiap subcommand `--cwd tmp` → artefak lokal, bukan repo/global. ✅
 - `test/tui-harness.test.ts` 10× hijau. ✅ (2026-09-06)

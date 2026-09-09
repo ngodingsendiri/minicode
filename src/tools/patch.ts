@@ -1,10 +1,8 @@
-import { realpath, stat } from "node:fs/promises"
-import { basename, dirname, isAbsolute, resolve } from "node:path"
+import { stat } from "node:fs/promises"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
-import { safeReadFile } from "../lib/safe-open.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { resolveSafePath, safeReadFile } from "../lib/safe-open.ts"
 import { flexibleMatch } from "./edit.ts"
 
 // Apply SEARCH/REPLACE block (a la Aider) ke file. Search block harus match
@@ -41,13 +39,8 @@ export const applyPatchTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
-    const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    const realDir = await realpath(dirname(abs)).catch(() => dirname(abs))
-    const fileReal = await realpath(abs).catch(() => null)
-    const realAbs = fileReal ?? resolve(realDir, basename(abs))
-    if (isPathOutsideRoot(realAbs, root)) throw new Error(`symlink points outside workspace: ${p}`)
+    // Verifikasi path terpusat (logis + target nyata) — detail di safe-open.ts.
+    const { abs, real: realAbs } = await resolveSafePath(p, root)
     const st = await stat(realAbs).catch(() => null)
     if (!st) throw new Error(`file not found: ${p}`)
     if (st.size > LIMITS.READ_FILE_MAX_BYTES) throw new Error(`file too large: ${p} (${st.size})`)

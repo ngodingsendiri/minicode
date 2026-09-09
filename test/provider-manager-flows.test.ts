@@ -211,9 +211,71 @@ describe.serial("provider-manager: add (a)", () => {
     })()
     await tty.send("a")
     await seq
-    expect(visible(tty)).toContain("API key is required")
+    // Batal (null) BUKAN "API key is required" (submit kosong) — dibedakan.
+    expect(visible(tty)).toContain("Canceled")
     // Manager is still alive: Esc can still close it (if process died, this
     // would never complete).
+    await mgr.close()
+  })
+
+  test("Ctrl+U di askSecret menghapus isian (bukan mati/backspace satu-satu)", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const mgr = await openManager()
+    const seq = (async () => {
+      const afterPick = await tty.waitForNewListener(tty.listenerEpoch())
+      await tty.send("0\r")
+      await tty.waitForNewListener(afterPick)
+      await tty.send("sk-1")
+      await tty.send(KEY.ctrlU, 30) // hapus semua
+      await tty.send("\r", 30) // submit kosong
+    })()
+    await tty.send("a")
+    await seq
+    // Isian sudah terhapus → submit kosong = "required", bukan "saved".
+    expect(visible(tty)).toContain("API key is required")
+    expect((await readConfig(globalPath)).providers).toHaveLength(0)
+    await mgr.close()
+  })
+
+  test("empty Enter at Gateway prompt cancels — does NOT pick preset [0]", async () => {
+    // Regresi: Number("")===0 dulu membuat Enter kosong diam-diam memilih
+    // preset pertama dan lanjut ke API key.
+    tty = installFakeTty({ rows: 24 })
+    const mgr = await openManager()
+    const seq = tty.answerSequence([""])
+    await tty.send("a")
+    await seq
+    expect(visible(tty)).toContain("Canceled")
+    expect((await readConfig(globalPath)).providers).toHaveLength(0)
+    await mgr.close()
+  })
+
+  test("adding a preset whose id already exists asks for overwrite confirmation", async () => {
+    // Regresi: detectAndSave(id preset) menimpa key+models tanpa konfirmasi.
+    await writeFile(
+      globalPath,
+      JSON.stringify({
+        providers: [
+          { id: "openai", baseUrl: "https://lama.example/v1", apiKey: "lama", models: ["lama-1"] },
+        ],
+      }),
+      "utf8",
+    )
+    tty = installFakeTty({ rows: 24 })
+    const mgr = await openManager()
+    const t = tty
+    if (!t) throw new Error("fake tty is missing")
+    // Jawab "n" pada konfirmasi timpa → batal, config lama utuh.
+    const seq = t.answerSequence(["0", "n"], {
+      expect: [(out) => out.includes("Gateway > "), (out) => out.includes("exists — overwrite")],
+    })
+    await t.send("a")
+    await seq
+    await waitFor(() => visible(t).includes("Canceled"))
+    const cfg = JSON.parse(await readFile(globalPath, "utf8")) as {
+      providers: { id: string; apiKey: string }[]
+    }
+    expect(cfg.providers.find((p) => p.id === "openai")?.apiKey).toBe("lama")
     await mgr.close()
   })
 

@@ -183,6 +183,37 @@ describe("REPL linier: siklus dasar", () => {
     expect(h.ran).toEqual([])
   })
 
+  test("Esc di baris kosong membatalkan prompt seperti Ctrl+C", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await waitForPrompt()
+    // Esc sekali = batal (^C, nullStreak 1); REPL masih hidup.
+    await tty.send(KEY.esc, 25)
+    expect(visible(tty)).toContain("^C")
+    await waitForPrompt()
+    // Esc dua kali beruntun = keluar, sama seperti Ctrl+C dua kali.
+    await tty.send(KEY.esc, 25)
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+    expect(h.ran).toEqual([])
+    expect(h.closed).toBe(true)
+  })
+
+  test("Esc pada baris BERISI tidak membatalkan (draf aman)", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await waitForPrompt()
+    await tty.send("draf penting", 25)
+    await tty.send(KEY.esc, 25)
+    // Bukan cancel: tidak ada ^C, dan draf masih bisa dikirim utuh.
+    expect(visible(tty)).not.toContain("^C")
+    await tty.send("\r", 25)
+    expect(h.ran).toEqual(["draf penting"])
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
   test("baris kosong tidak dihitung sebagai cancel", async () => {
     tty = installFakeTty()
     const h = makeHarness()
@@ -366,7 +397,7 @@ describe("REPL linier: mode & toggle", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("Ctrl+T tidak lagi toggle reasoning (diganti t di /model)", async () => {
+  test("Ctrl+T tidak lagi toggle reasoning (diganti picker Enter di /model)", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)
@@ -528,7 +559,7 @@ describe("REPL linier: did-you-mean & thinking", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("/thinking dihapus — jadi unknown command (diganti t di /model)", async () => {
+  test("/thinking dihapus — jadi unknown command (diganti picker Enter di /model)", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)

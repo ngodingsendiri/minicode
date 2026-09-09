@@ -94,7 +94,7 @@ describe("model-manager: alur interactive", () => {
     await p
   }, 5000)
 
-  test("Enter memilih model ter-highlight (setModelOverride dipanggil)", async () => {
+  test("Enter memilih model + picker effort default (tanpa kunci effort)", async () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({
       cwd: workspace,
@@ -104,8 +104,95 @@ describe("model-manager: alur interactive", () => {
     await tty.ready()
     await tty.send(KEY.down, 20) // highlight prov::m2
     await tty.send(KEY.enter, 30)
+    // Enter sekarang membuka picker effort — pilih default
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.enter, 30)
     await p
     expect(overrideLog).toEqual(["prov::m2"])
+    // default = hapus kunci (jangan simpan "default" harfiah)
+    const cfg = await readConfig(localConfigPath())
+    expect(cfg.providers[0]).not.toHaveProperty("reasoningEffort")
+  })
+
+  test("Enter + pilih high menyimpan effort ke provider + tetap override", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      currentModel: "prov::m1",
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send(KEY.down, 20) // highlight prov::m2
+    await tty.send(KEY.enter, 30)
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.down, 20) // low
+    await tty.send(KEY.down, 20) // medium
+    await tty.send(KEY.down, 20) // high
+    await tty.send(KEY.enter, 30)
+    await p
+    expect(overrideLog).toEqual(["prov::m2"])
+    const cfg = await readConfig(localConfigPath())
+    expect(cfg.providers[0]?.models).toContain("m2")
+    const prov = (cfg.providers as { id: string; reasoningEffort?: string }[]).find(
+      (x) => x.id === "prov",
+    )
+    expect(prov?.reasoningEffort).toBe("high")
+  })
+
+  test("Esc di picker effort = batal total (model tak jadi dipilih)", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      currentModel: "prov::m1",
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send(KEY.enter, 30) // pilih prov::m1 → picker terbuka
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.esc, 30) // batal: kembali ke daftar, tanpa select
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // tutup manager
+    await p
+    expect(overrideLog).toEqual([])
+  })
+
+  test("effort tersimpan di scope asal provider (global), tanpa duplikat lokal", async () => {
+    // Provider di global, config lokal ada (isi lain) — regresi shadowing:
+    // effort wajib tertulis di file global, bukan salinan di lokal.
+    await writeFile(
+      globalPath,
+      JSON.stringify({
+        providers: [{ id: "prov", baseUrl: "https://api.test/v1", apiKey: "k", models: ["m1"] }],
+      }),
+      "utf8",
+    )
+    await writeFile(
+      localConfigPath(),
+      JSON.stringify({
+        providers: [{ id: "lokal", baseUrl: "https://lokal.test/v1", apiKey: "k", models: ["x"] }],
+      }),
+      "utf8",
+    )
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      currentModel: "prov::m1",
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send(KEY.enter, 30)
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.down, 20) // low
+    await tty.send(KEY.down, 20) // medium
+    await tty.send(KEY.enter, 30)
+    await p
+    expect(overrideLog).toEqual(["prov::m1"])
+    const g = JSON.parse(await readFile(globalPath, "utf8")) as {
+      providers: { id: string; reasoningEffort?: string }[]
+    }
+    expect(g.providers.find((x) => x.id === "prov")?.reasoningEffort).toBe("medium")
+    const l = await readConfig(localConfigPath())
+    expect(l.providers.some((x) => x.id === "prov")).toBe(false)
   })
 
   test("a menambah model ke provider via prompt berurutan", async () => {
@@ -173,13 +260,21 @@ describe("model-manager: alur interactive", () => {
     await p
   })
 
-  test("up/down menjepit di batas daftar", async () => {
+  test("up di batas atas + Esc di picker = tanpa perubahan model", async () => {
     tty = installFakeTty({ rows: 24 })
-    const p = runModelManager({ cwd: workspace, currentModel: "prov::m1" })
+    const p = runModelManager({
+      cwd: workspace,
+      currentModel: "prov::m1",
+      setModelOverride: (m) => overrideLog.push(m),
+    })
     await tty.ready()
     tty.clear()
     await tty.send(KEY.up, 20) // sudah di atas: tidak melewati 0
-    await tty.send(KEY.enter, 30)
+    await tty.send(KEY.enter, 30) // buka picker effort
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.esc, 30) // batal total
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // tutup manager
     await p
     expect(overrideLog).toEqual([])
   })
@@ -199,7 +294,7 @@ describe("model-manager: alur interactive", () => {
 })
 
 describe("model-manager: daftar kosong", () => {
-  test("pesan no models & Enter tanpa baris tidak memanggil onSelect", async () => {
+  test("pesan no models & Enter tanpa baris TIDAK menutup layar", async () => {
     // Config lokal diutamakan -- kosongkan keduanya.
     await writeFile(localConfigPath(), JSON.stringify({ providers: [] }), "utf8")
     await writeFile(globalPath, JSON.stringify({ providers: [] }), "utf8")
@@ -210,8 +305,74 @@ describe("model-manager: daftar kosong", () => {
     })
     await tty.ready()
     expect(visible()).toContain("No models configured")
+    // Enter di daftar kosong = no-op (footer bilang select, bukan close) —
+    // dulu menutup layar; Esc tetap jalan untuk keluar.
     await tty.send(KEY.enter, 30)
+    await tty.waitForListener(500)
+    await tty.send(KEY.esc, 30)
     await p
     expect(overrideLog).toEqual([])
+  })
+
+  test("a + provider tak dikenal menampilkan error, bukan diam", async () => {
+    // Regresi: add dengan Provider > typo dulu tak menambah apa pun TANPA
+    // pesan — user mengira berhasil.
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({ cwd: workspace })
+    await tty.ready()
+    const seq = tty.answerSequence(["prov-typo", "m9"], {
+      expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
+    })
+    await tty.send("a", 30)
+    await seq
+    expect(visible()).toContain("provider not found: prov-typo")
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30)
+    await p
+  }, 5000)
+
+  test("a dengan model yang SUDAH ADA bilang 'already exists', bukan 'added'", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({ cwd: workspace })
+    await tty.ready()
+    const seq = tty.answerSequence(["prov", "m1"], {
+      expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
+    })
+    await tty.send("a", 30)
+    await seq
+    expect(visible()).toContain("already exists")
+    expect(visible()).not.toContain("added prov::m1")
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30)
+    await p
+  }, 5000)
+
+  test("Esc di prompt Provider > membatalkan add tanpa perubahan", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({ cwd: workspace })
+    await tty.ready()
+    await tty.send("a", 30)
+    await tty.waitForOutput((out) => out.includes("Provider > "), 2000)
+    await tty.send(KEY.esc, 30) // batal prompt (baris kosong)
+    await tty.waitForOutput((out) => out.includes("Canceled"), 2000)
+    expect((await readConfig(localConfigPath())).providers[0]?.models).toEqual(["m1", "m2"])
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30)
+    await p
+  }, 5000)
+
+  test("menghapus model AKTIF memperingatkan di konfirmasi", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({ cwd: workspace, currentModel: "prov::m1" })
+    await tty.ready()
+    const seq = tty.answerSequence(["n"], {
+      expect: [(out) => out.includes("Delete ACTIVE model prov::m1")],
+    })
+    await tty.send("d", 30)
+    await seq
+    expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m1")
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30)
+    await p
   })
 })

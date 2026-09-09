@@ -1,9 +1,7 @@
-﻿import { realpath, stat } from "node:fs/promises"
-import { isAbsolute, resolve } from "node:path"
+﻿import { isAbsolute, resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
-import { safeReadFile } from "../lib/safe-open.ts"
-import { isPathOutsideRoot, isSensitive } from "../policy/jail.ts"
+import { safeOpenRead } from "../lib/safe-open.ts"
 import { scrubSecrets } from "../policy/scrub.ts"
 
 // defense-in-depth: also jail inside tool (permission layer is primary)
@@ -86,32 +84,43 @@ export const readFileTool: Tool = {
     ctx.signal.throwIfAborted()
     const p = path as string
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
-    if (isPathOutsideRoot(p, root)) throw new Error(`path outside workspace: ${p}`)
-    if (isSensitive(p)) throw new Error(`blocked sensitive file: ${p}`)
     const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)
-    const realRoot = await realpath(root).catch(() => root)
-    // TOCTOU: gunakan O_NOFOLLOW agar symlink swap di antara cek dan pakai gagal
-    const real = await realpath(abs).catch(() => abs)
-    if (isPathOutsideRoot(real, realRoot)) throw new Error(`symlink points outside workspace: ${p}`)
-    if (isSensitive(real)) throw new Error(`blocked sensitive file: ${p}`)
-    const st = await stat(real).catch(() => null)
-    if (!st) throw new Error(`file not found: ${p}`)
-    if (st.isDirectory()) throw new Error(`path is a directory, not a file: ${p}`)
-
-    const paged = offset != null || limit != null
-    // Hard cap absolut 50M bahkan untuk paged — cegah OOM 1GB via offset/limit
-    const HARD_CAP = 50 * 1024 * 1024
-    if (st.size > HARD_CAP)
-      throw new Error(`file too large: ${p} (${st.size} bytes > ${HARD_CAP}) — hard cap`)
-    // File raksasa tetap bisa dibaca SELAMA pemanggil menyebut rentang baris.
-    // Tanpa offset/limit kita menolak seperti sebelumnya agar tidak diam-diam
-    // memotong konteks yang model kira utuh.
-    if (st.size > LIMITS.READ_FILE_MAX_BYTES && !paged) {
-      throw new Error(
-        `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — read it in chunks with offset/limit`,
-      )
+    // Semua verifikasi path (jail + sensitif + O_NOFOLLOW) terjadi di SATU
+    // titik saat open — detail di safe-open.ts. Tidak ada resolve/stat
+    // terpisah: handle dipakai untuk stat (cap ukuran) lalu baca.
+    let handle: Awaited<ReturnType<typeof safeOpenRead>>["handle"]
+    try {
+      ;({ handle } = await safeOpenRead(abs, root))
+    } catch (e) {
+      // ENOENT → pesan seragam; sisanya (jail/sensitif/ELOOP/raw IO) apa adanya
+      const msg = (e as Error).message ?? ""
+      if ((e as NodeJS.ErrnoException).code === "ENOENT" || msg.includes("ENOENT"))
+        throw new Error(`file not found: ${p}`)
+      throw e
     }
-    const raw = await safeReadFile(abs, root)
+    let raw: string
+    try {
+      const st = await handle.stat().catch(() => null)
+      if (!st) throw new Error(`file not found: ${p}`)
+      if (st.isDirectory()) throw new Error(`path is a directory, not a file: ${p}`)
+
+      const paged = offset != null || limit != null
+      // Hard cap absolut 50M bahkan untuk paged — cegah OOM 1GB via offset/limit
+      const HARD_CAP = 50 * 1024 * 1024
+      if (st.size > HARD_CAP)
+        throw new Error(`file too large: ${p} (${st.size} bytes > ${HARD_CAP}) — hard cap`)
+      // File raksasa tetap bisa dibaca SELAMA pemanggil menyebut rentang baris.
+      // Tanpa offset/limit kita menolak seperti sebelumnya agar tidak diam-diam
+      // memotong konteks yang model kira utuh.
+      if (st.size > LIMITS.READ_FILE_MAX_BYTES && !paged) {
+        throw new Error(
+          `file too large: ${p} (${st.size} bytes > ${LIMITS.READ_FILE_MAX_BYTES}) — read it in chunks with offset/limit`,
+        )
+      }
+      raw = await handle.readFile("utf8")
+    } finally {
+      await handle.close().catch(() => {})
+    }
     const { text } = formatLines(raw, {
       offset: offset as number | undefined,
       limit: limit as number | undefined,

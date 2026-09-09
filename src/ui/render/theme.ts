@@ -38,9 +38,13 @@ function hasTruecolorEnv(): boolean {
 /** 0=mono, 1=16-color, 2=256-color, 3=truecolor */
 function colorLevel(): number {
   if (noColorEnv()) return 0
+  // Determinisme Unix: output ke pipe/redirect/file tidak boleh memuat ANSI,
+  // apa pun TERM/COLORTERM di env (env sesi interaktif sering bocor ke proses
+  // yang di-pipe). Warna hanya untuk stdout yang benar-benar terminal.
+  if (!process.stdout.isTTY) return 0
   if (hasTruecolorEnv()) return 3
   if (process.env.TERM?.includes("256color")) return 2
-  return process.stdout.isTTY ? 1 : 0
+  return 1
 }
 
 type Paint = (s: string) => string

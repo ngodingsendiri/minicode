@@ -18,7 +18,7 @@ export interface CommandContext {
   usage: {
     /** Pemakaian turn terakhir. */
     get: (model?: string) => Usage
-    /** Pemakaian kumulatif seluruh sesi — yang dilaporkan `/cost`. */
+    /** Pemakaian kumulatif seluruh sesi — yang dilaporkan `/status` (/cost = alias). */
     getSession: (model?: string) => Usage
     reset: () => void
     modelUsed: () => { effective?: string; provider?: string }
@@ -56,7 +56,7 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
  * ditampilkan di /help agar bisa ditemukan, tapi sengaja TIDAK masuk dropdown
  * completion (di dropdown cukup /compact + builtin; /mode tak perlu
  * karena Tab/Shift+Tab sudah memutar mode tanpa baris baru).
- * /thinking dihapus — diganti low/medium/high di /model (t).
+ * /thinking dihapus — diganti picker effort di /model (Enter).
  * Opsi A audit UX: undo/redo/clear/copy/history tidak punya duplikat lain. */
 export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
   { name: "mode", args: "[name]", desc: "Show or set permission mode" },
@@ -70,12 +70,22 @@ export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
 /** Pintasan papan tombol — didokumentasikan di /help, bukan hanya di kode. */
 const KEYBOARD_HELP: [string, string][] = [
   ["enter", "submit"],
-  ["shift+tab", "cycle permission mode"],
   ["tab", "complete command (empty line: cycle mode)"],
+  ["shift+tab", "cycle permission mode"],
   ["up / down", "history or picker navigation"],
+  ["left / right", "move cursor"],
+  ["home / end", "jump to line start / end"],
+  ["delete", "delete character at cursor"],
+  ["ctrl+a / ctrl+e", "line start / end"],
+  ["ctrl+r", "reverse-i-search prompt history"],
+  ["ctrl+j", "insert newline (multiline input)"],
+  ["ctrl+w", "delete previous word"],
+  ["ctrl+u", "clear line"],
   ["ctrl+o", "toggle compact/expanded tool output"],
-  ["esc", "close dropdown or picker"],
-  ["ctrl+c", "stop turn when busy; twice to exit"],
+  ["esc", "close dropdown / picker / cancel empty prompt"],
+  ["ctrl+c", "stop turn when busy; cancel prompt when idle (twice = exit)"],
+  ["ctrl+d", "cancel prompt like ctrl+c"],
+  ["\\ at end of line", "continue input on the next line"],
 ]
 
 function pad(text: string, width: number): string {
@@ -126,7 +136,11 @@ export async function handleBuiltinCommand(
         const withArgs = b.args ? `${b.name} ${b.args}` : b.name
         console.log(`  /${pad(withArgs, 22)}${b.desc}`)
       }
-      console.log("\nEnter submit · Tab complete · Shift+Tab mode · Ctrl+O compact · Ctrl+C exit\n")
+      // Ringkas: perintah utama + skill + pintasan yang paling sering dipakai.
+      // Panjang baris di bawah ≤80 kolom (dijaga test) dan tak boleh menyebut
+      // /help tombol (juga dijaga test) — Ctrl+R satu-satunya yang paling
+      // sering dicari yang muat setelah Enter/Tab/Shift+Tab.
+      console.log("\nEnter · Tab(empty:mode) · Shift+Tab mode · Ctrl+R search · Ctrl+C 2x exit\n")
       return { handled: true }
     }
 
@@ -214,8 +228,12 @@ export async function handleBuiltinCommand(
         for (const f of failed) {
           console.log(`  ${glyphs.cross} ${f.id}: ${f.reason}`)
         }
+        // "Restart" hanya jujur bila ADA model baru — tanpa updated, restart
+        // tak mengubah apa pun (sebelumnya selalu dicetak, menyesatkan saat
+        // semua provider gagal).
+        if (updated.length > 0) console.log("  Restart to use updated models.")
+        else console.log("  Nothing updated — check API keys and network above, then retry /sync.")
       }
-      console.log("  Restart to use updated models.\n")
       return { handled: true }
     }
 

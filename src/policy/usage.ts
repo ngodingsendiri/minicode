@@ -72,8 +72,8 @@ export function createUsageCollector(bus: EventBus, model?: string) {
   // `turn` di-reset setiap kali pemanggil menyimpan hasil satu turn
   // (REPL memanggil reset() setelah persistCurrent). `session`
   // TIDAK pernah di-reset. Tanpa pemisahan ini, satu-satunya total yang ada
-  // ikut terhapus setiap turn, sehingga `/cost` yang berjudul "biaya sesi"
-  // selalu melaporkan 0 setelah turn pertama selesai, header REPL kembali ke
+  // ikut terhapus setiap turn, sehingga total yang dilaporkan `/status`
+  // (/cost = alias) selalu 0 setelah turn pertama selesai, header REPL kembali ke
   // $0.0000, dan `--budget` tidak akan pernah terpicu berapa pun yang dipakai.
   // Terlihat pada uji live: 51.915 token nyata dilaporkan sebagai 0 token.
   let turn: Usage = emptyUsage()
@@ -176,8 +176,8 @@ export function createUsageCollector(bus: EventBus, model?: string) {
     /** Pemakaian turn saat ini (di-reset oleh reset()). */
     get: (m?: string) => withCost(turn, effectiveModel ?? m ?? model),
     /**
-     * Pemakaian KUMULATIF seluruh sesi — dipakai `/cost`, header REPL, dan
-     * pemeriksaan `--budget`. Tidak terpengaruh reset().
+     * Pemakaian KUMULATIF seluruh sesi — dipakai `/status` (/cost = alias),
+     * header REPL, dan pemeriksaan `--budget`. Tidak terpengaruh reset().
      */
     getSession: (m?: string) => withCost(session, m ?? effectiveModel ?? sessionModel ?? model),
     modelUsed: () => ({ effective: effectiveModel, provider: effectiveProvider }),
