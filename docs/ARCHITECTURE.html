@@ -566,10 +566,10 @@
       <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: whitelist flag, bentuk <code>--f v</code> &amp; <code>--f=v</code>, baca stdin.</div><div class="exports">getArg · promptFromArgs · readPrompt</div></div>
       <div class="mod"><div class="fname">setup.ts</div><div class="fdesc">Composition root: rakit config + kernel session + tools + permission; inject wizard (setupWhenEmpty) dan approval (ask) ke lapisan logika.</div><div class="exports">createCliSession · CliSession</div></div>
       <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Dispatch prompt ke provider dengan retry/backoff sisi CLI.</div><div class="exports">dispatch</div></div>
-      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya. DRIVER_HELP_COMMANDS = perintah driver yang tampil di /help tapi TIDAK di dropdown (undo/redo/clear/copy/history).</div><div class="exports">handleBuiltinCommand · BUILTIN_COMMANDS · DRIVER_HELP_COMMANDS · /help /provider /model /sync /status /sessions /init /exit /thinking</div></div>
+      <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya. DRIVER_HELP_COMMANDS = perintah driver yang tampil di /help tapi TIDAK di dropdown (undo/redo/clear/copy/history). /thinking dihapus — effort via /model (t).</div><div class="exports">handleBuiltinCommand · BUILTIN_COMMANDS · DRIVER_HELP_COMMANDS · /help /provider /model /sync /status /sessions /init /exit /compact</div></div>
       <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver; Tab kosong toggle plan/build; did-you-mean untuk typo slash.</div><div class="exports">runRepl · suggestSimilar</div></div>
       <div class="mod"><div class="fname">commands/ — 11 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts · memory.ts (status RAG: rows/size/hit-rate) · doctor.ts (diagnosis lokal)</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats · handleMemory · handleDoctor</div></div>
-      <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/.</div></div>
+      <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/. /model Enter = select + reload providers; t = picker thinking effort (default/low/medium/high) via onSetEffort.</div></div>
     </div>
   </details>
 
@@ -577,7 +577,7 @@
     <summary><span class="chip c2">L2</span> src/app/ <span class="role">— perakitan agen (termasuk session.ts)</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">app/session.ts</div><div class="fdesc">Sambungkan kernel session dengan permission handler, recovery, event.</div><div class="exports">createMinicodeSession · PermissionControl</div></div>
-      <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Rakit provider dari config ke bentuk kernel; first-run via callback setupWhenEmpty.</div></div>
+      <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Rakit provider dari config ke bentuk kernel; first-run via callback setupWhenEmpty; simpan currentRouter + reloadProviders agar /provider dan /model langsung routing tanpa restart.</div><div class="exports">createProviderLayer · reloadProviders · getCurrentRouter</div></div>
       <div class="mod"><div class="fname">app/tool-layer.ts</div><div class="fdesc">Rakit daftar tool bawaan + MCP.</div></div>
       <div class="mod"><div class="fname">app/rag-layer.ts</div><div class="fdesc">Lapisan RAG/memory untuk konteks; lapor memoryHits (jumlah hit ter-inject) untuk trace.</div></div>
       <div class="mod"><div class="fname">app/mentions.ts</div><div class="fdesc">Ekspansi @mention berkas dalam prompt (lewat cek jail path sensitif).</div><div class="exports">parseMentions · resolveMentionContent · expandMentions</div></div>
@@ -620,7 +620,7 @@
   <details class="group" id="g-providers">
     <summary><span class="chip c2">L2</span> src/providers/ <span class="role">— koneksi model</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (fallback berantai; 429 + retry-after ditunggu — cap 30 dtk — lalu fallback, atau coba-ulang-di-tempat bila provider tunggal).</div></div>
+      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (byId per-stream + updateProviders agar provider baru langsung dikenali; fallback berantai; 429 + retry-after ditunggu — cap 30 dtk — lalu fallback, atau coba-ulang-di-tempat bila provider tunggal).</div><div class="exports">createRouterProvider · updateProviders</div></div>
       <div class="mod"><div class="fname">anthropic.ts</div><div class="fdesc">Adapter Anthropic native (stream SSE).</div></div>
       <div class="mod"><div class="fname">responses.ts</div><div class="fdesc">Adapter Responses API (/v1/responses, store:false, chaining previous_response_id per model).</div><div class="exports">createResponsesProvider · clearResponsesChain</div></div>
       <div class="mod"><div class="fname">build.ts · detect.ts · presets.ts</div><div class="fdesc">Bangun adapter (termasuk Responses API + peta reasoningEffort); deteksi tipe dari probe (path /responses → responses), bukan substring URL; preset provider populer.</div></div>
@@ -837,7 +837,7 @@ export const kalkulatorTool: Tool = {
     <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts</td></tr>
     <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts</td></tr>
     <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts</td></tr>
-    <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (juga ditulis ulang oleh /thinking)</td><td>src/ui/render/reasoning.ts</td></tr>
+    <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (via --verbose atau env; /thinking dihapus)</td><td>src/ui/render/reasoning.ts</td></tr>
     <tr><td>MINICODE_THINKING</td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td>vendor/minicore/src/providers/openai-compat.ts</td></tr>
     <tr><td>MINICODE_HOOKS</td><td><code>1</code> → opt-in jalankan hook eksternal</td><td>src/hooks/run.ts</td></tr>
     <tr><td>MINICODE_LIVE</td><td><code>1</code> → izinkan test live ber-secrets (di-set oleh <code>bun run test:live</code>)</td><td>test/extreme-live.test.ts</td></tr>

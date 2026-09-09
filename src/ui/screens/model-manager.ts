@@ -18,7 +18,7 @@ export interface ModelRow {
 
 export interface ModelManagerViewOptions {
   initialRows: ModelRow[]
-  onSelect(id: string): void
+  onSelect(id: string): void | Promise<void>
   /** Ambil baris terbaru setelah mutasi (atau saat add batal). */
   loadRows(): Promise<ModelRow[]>
   onAdd(providerId: string, model: string): Promise<ModelRow[]>
@@ -199,11 +199,22 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           else if (item.key.type === "down") sel = Math.min(rows.length - 1, sel + 1)
           else if (item.key.type === "enter") {
             const row = rows[sel]
-            if (row) {
-              const maybe = opts.onSelect(row.id) as unknown as Promise<void> | void
-              if (maybe && typeof (maybe as Promise<void>).then === "function") void (maybe as Promise<void>).catch(() => {})
+            if (!row) {
+              finish()
+              return
             }
-            finish()
+            if (busy) return
+            busy = true
+            suspend()
+            ;(async () => {
+              try {
+                await opts.onSelect(row.id)
+              } catch {
+                // onSelect sudah tangani error sendiri (reload catch) — tutup saja
+              } finally {
+                finish()
+              }
+            })()
             return
           } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
             void addModel()

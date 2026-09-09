@@ -16,7 +16,7 @@
 - **SWE docker per-era**: `bench/docker/` (5 image Python 3.6–3.10 + `manifest.json` 20 instance dari tanggal base_commit + classifiers setup.py) + flag `--docker` di `bench/swebench.ts`. Image ter-build semua (py36 butuh fix apt kedaluwarsa); requests-1963 collect+run OK di py3.8, pytest-11143 FAIL dengan benar di py3.10.
 - **Run POSIX pertama (WSL)**: TOCTOU 1000× 0 lolos (temukan bug test: swapper tanpa yield menggantung); full suite Linux 1334/8/0. Perbaiki 5 fail platform-spesifik (`node -e` → runtime sendiri; stripAnsi markdown; mount-test cabang platform; `MINICODE_HOME` untuk global-DB hermetic).
 - **Provider minimalis + auto-switch**: `Gateway >` hanya `[0] Label` tanpa URL; `router` per-stream `getById()` + `reloadProviders()` setelah `Gateway >2` — pilih `openrouter::inkling:free` otomatis pindah provider tanpa substitusi `claude-fable-5`.
-- **Thinking effort picker**: `/thinking` + `Ctrl+T` dihapus, diganti picker `default/low/medium/high` di `/model` (`Enter` → picker, `t` untuk ubah) — simpan `ProviderEntry.reasoningEffort` via `saveProvider`, wire `build.ts:low=1024 medium=2048 high=4096`.
+- **Thinking effort picker**: `/thinking` + `Ctrl+T` dihapus, diganti picker `default/low/medium/high` di `/model` (`Enter` = pilih saja + reload providers, `t` untuk ubah effort) — simpan `ProviderEntry.reasoningEffort` via `saveProvider`, wire `build.ts:low=1024 medium=2048 high=4096`.
 - **Hardening P0 review**: `read_image` TOCTOU `safeOpenRead` + `handle.stat` + b64 cap, `edit`/`patch` jail `safeReadFile`, `responses` instance-local `allChains Set`, `shadow-git` `+randomUUID`, `router` abort-aware `Promise.race`, `git` scrub, `pricing` dedup `toModelPrice`.
 
 ### Docs

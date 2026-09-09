@@ -1,7 +1,7 @@
 // Satu sumber state "tampilkan reasoning".
 //
 // Getter — jangan simpan `reasoning.visible` ke const di module scope; lihat
-// detail.ts. Perubahan env (mis. /thinking) harus terbaca saat pakai.
+// detail.ts. Perubahan env harus terbaca saat pakai.
 export const reasoning = {
   get visible(): boolean {
     return process.env.MINICODE_SHOW_THINKING === "1"
