@@ -1,6 +1,6 @@
 $schema: https://api.gitbook.com/gitbook-docs.yaml
 site:
-  title: startupmini Docs
+  title: minicode
   structure:
     - type: space
       key: space-1
