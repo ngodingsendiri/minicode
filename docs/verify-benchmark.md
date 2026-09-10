@@ -1,0 +1,49 @@
+# Verify & Benchmark
+
+## Auto-verify & self-heal
+
+`--verify` auto-detect perintah (`typecheck` → `test` → `tsconfig`) atau `MINICODE_VERIFY_CMD` / `verifyCommand` di config.
+
+Alur: baseline diuji dulu (bila merah, Health-Check ditempel ke prompt awal) → run utama → verify → bila gagal, agen perbaiki (maks 3 siklus). Output error dibungkus fence agar tidak jadi prompt injection.
+
+Checkpoint shadow-git: snapshot per turn sebagai SHA tree (O(delta), tanpa cap file, `HEAD`/index tak tersentuh, ref menunjuk *tree* sehingga tak muncul di `git log`). `.gitignore` dihormati. Non-repo fallback snapshot file.
+
+Repo-map: simbol per file (regex, 9 bahasa) di-cache `.minicode/repomap.json`, disuntik ke system prompt. Tree-sitter tidak dipakai — alasan terukur di `extractSymbolsAsync` (`src/repo/repomap.ts`).
+
+Secret scrubber meredaksi `sk-`, `ghp_`, `AKIA`, PEM, JWT, Bearer, `api_key=...` sebelum ke LLM.
+
+## Benchmark
+
+```bash
+bun run bench                            # butuh provider (resolve rate nyata)
+bun run bench:smoke                      # --fake, untuk CI
+bun run bench --tasks path/to/tasks.json # external tasks (SWE-bench-format)
+bun run audit:harness                    # 60 cek deterministik, tanpa API key
+bun run bench --runs 2                   # median 2 runs
+```
+
+Metrik: resolve rate, steps, token, cost, durasi + delta vs run sebelumnya. Hasil `bench/results.json`.
+
+Format `tasks.json`:
+
+```json
+[
+  {
+    "id": "fix-issue-1",
+    "prompt": "Fix the bug in buggy.ts",
+    "files": [{ "path": "buggy.ts", "content": "export function f(){ return 1 }" }],
+    "verify": ["export function f()", "!return 1"]
+  }
+]
+```
+
+SWE-bench Lite: `bench/swebench.ts` + `bench/swebench_lite_20.jsonl` (20 instance nyata, 12 repo, base_commit spot-check) + `bench/docker/` (5 image Python 3.6–3.10 + `manifest.json` + `--docker`). Harness apply `test_patch` dulu (tanpanya skor fiksi). Run nyata tercatat 0/20 (`nemotron-3.5-lightning-free`, 25 steps) dengan catatan validitas lingkungan (Python 3.14 vs era 2022) — skor comparable butuh Docker per-instance.
+
+Eksperimen adversarial (terpisah dari gate default):
+
+```bash
+bun run extreme:fuzz        # fuzz bash-guard (--seed N reproduksi)
+bun run extreme:git         # stress shadow-git (--files N --sessions N)
+bun run extreme:mcp         # server MCP jahat (hang, flood, redirect, SSRF)
+bun experiments/bash-bypass-probe.ts  # postur denylist (0 bypass = lulus)
+```
