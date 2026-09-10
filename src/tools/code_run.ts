@@ -1,17 +1,31 @@
-import { spawn, spawnSync } from "node:child_process"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
-import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
+import { scrubSecrets } from "../policy/scrub.ts"
+import { dockerAvailable, runInDocker } from "../sandbox/docker.ts"
+import { osSandboxAvailable, runInOsSandbox } from "../sandbox/os.ts"
+import { capMarked } from "./bash.ts"
 
-// code_run: jalankan snippet python/node TANPA shell (spawn langsung dengan
-// argv) — versi lama merangkai `node -e ${JSON.stringify(code)}` lewat
-// `shell:true`, sehingga `$(...)`/backtick di dalam kode dieksekusi shell
-// SEBELUM interpreter (injeksi). Direct spawn menutup itu; isolasi proses
-// tetap digate MINICODE_SANDBOX seperti sebelumnya.
+// code_run: snippet python/node dieksekusi LEWAT sandbox runner (docker atau
+// OS sandbox), bukan spawn host langsung — versi lama hanya mengecek env flag
+// lalu spawn host tanpa isolasi (klaim "sandboxed" yang salah).
+//
+// Batasan jujur:
+// - Backend HARUS tersedia; flag tanpa backend = tolak (fail-closed, tanpa
+//   fallback diam-diam ke host).
+// - docker image default (node:22-alpine) membawa node, bukan python3 —
+//   python butuh MINICODE_SANDBOX_IMAGE yang menyediakannya.
+// - Pembatalan menghentikan PENUNGGUAN; container/proses bisa hidup sampai
+//   timeout runner-nya sendiri (terdokumentasi, sama seperti MCP stdio).
+
+/** Escape untuk disisip sebagai satu argumen single-quoted di `sh -c`. */
+export function shSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
 export const codeRunTool: Tool = {
   name: "code_run",
   description:
-    "Run a code snippet (python -c / node -e) inside the sandboxed bash. Requires MINICODE_SANDBOX=os|docker; otherwise use bash tool.",
+    "Run a code snippet (python -c / node -e) inside the configured sandbox (docker or OS sandbox, network-isolated). Requires MINICODE_SANDBOX=os|docker with a working backend; refuses otherwise. Python needs an image containing python3.",
   parameters: {
     type: "object",
     properties: {
@@ -30,84 +44,53 @@ export const codeRunTool: Tool = {
         `code_run requires MINICODE_SANDBOX=os|docker (current: ${sandbox || "none"})`,
       )
     }
+    const src = code as string
+    if (src.includes("\0")) throw new Error("code contains NUL byte")
     const root = (ctx as { cwd?: string }).cwd ?? process.cwd()
     const timeoutMs =
       typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : 10000
-    const bin = lang === "python" ? "python3" : process.execPath
-    const args = lang === "python" ? ["-c", code as string] : ["-e", code as string]
-    return await new Promise<string>((resolveOut, reject) => {
-      let p: ReturnType<typeof spawn>
-      try {
-        p = spawn(bin, args, {
-          cwd: root,
-          env: sanitizeSpawnEnv(process.env),
-          stdio: ["ignore", "pipe", "pipe"],
-          // tanpa shell:true — argv diteruskan verbatim, $()/backtick tak dieksekusi
-          detached: process.platform !== "win32",
-        })
-      } catch (e) {
-        reject(e)
-        return
-      }
-      let out = ""
-      const cap = LIMITS.BASH_OUTPUT_MAX_CHARS
-      const push = (d: Buffer) => {
-        if (out.length < cap) out += d.toString().slice(0, Math.max(0, cap - out.length))
-      }
-      p.stdout?.on("data", push)
-      p.stderr?.on("data", (d: Buffer) => {
-        if (out.length < cap) out += d.toString().slice(0, Math.max(0, cap - out.length))
-      })
-      let done = false
-      const finish = (fn: () => void) => {
-        if (done) return
-        done = true
-        fn()
-      }
-      const killTimerHolder: { t?: ReturnType<typeof setTimeout> } = {}
-      const killTree = () => {
-        try {
-          if (process.platform === "win32" && p.pid !== undefined) {
-            const r = spawnSync("taskkill", ["/pid", String(p.pid), "/T", "/F"], {
-              stdio: "ignore",
-            })
-            if (r.status === 0) return
-          } else if (p.pid !== undefined) {
-            try {
-              process.kill(-p.pid, "SIGKILL")
-              return
-            } catch {}
+    // Tanpa shell perantara di sisi kita: kode jadi SATU argumen single-quoted
+    // untuk `sh -c` runner — $()/backtick milik snippet, bukan shell luar.
+    const inner =
+      lang === "python" ? `python3 -c ${shSingleQuote(src)}` : `node -e ${shSingleQuote(src)}`
+    // Fail-closed: backend yang diminta harus benar-benar ada. Fallback diam
+    // ke eksekusi host akan mengkhianati janji sandbox.
+    const runSandboxed =
+      sandbox === "docker"
+        ? () => {
+            if (!dockerAvailable()) {
+              throw new Error("code_run: MINICODE_SANDBOX=docker but docker is not available")
+            }
+            return runInDocker(inner, root, { timeoutMs })
           }
-        } catch {}
-        try {
-          p.kill("SIGKILL")
-        } catch {}
-      }
-      const t = setTimeout(() => {
-        if (process.platform === "win32") killTree()
-        else p.kill("SIGTERM")
-        killTimerHolder.t = setTimeout(killTree, 2000)
-      }, timeoutMs)
-      ctx.signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(t)
-          if (killTimerHolder.t) clearTimeout(killTimerHolder.t)
-          killTree()
-        },
-        { once: true },
-      )
-      p.on("error", (e) => {
-        clearTimeout(t)
-        finish(() => reject(e))
-      })
-      p.on("close", (code) => {
-        clearTimeout(t)
-        if (killTimerHolder.t) clearTimeout(killTimerHolder.t)
-        const text = scrubSecrets(out.trim())
-        if (code !== 0) finish(() => resolveOut(`exit ${code}\n${text}`))
-        else finish(() => resolveOut(text))
-      })
-    })
+        : () => {
+            if (!osSandboxAvailable()) {
+              throw new Error(
+                `code_run: MINICODE_SANDBOX=${sandbox} but no OS sandbox is available`,
+              )
+            }
+            return runInOsSandbox(inner, root, { timeoutMs })
+          }
+    const started = runSandboxed()
+    // Runner tak menerima signal: balapan agar pembatalan menolak menunggu.
+    // (Container/proses bisa hidup sampai timeout runner — lihat komentar atas.)
+    const onAbort = (): Promise<never> =>
+      Promise.reject(ctx.signal.reason instanceof Error ? ctx.signal.reason : new Error("aborted"))
+    const settled: { code: number | null; output: string } = ctx.signal.aborted
+      ? await onAbort()
+      : await Promise.race([
+          started,
+          new Promise<never>((_, rej) =>
+            ctx.signal.addEventListener(
+              "abort",
+              () =>
+                rej(ctx.signal.reason instanceof Error ? ctx.signal.reason : new Error("aborted")),
+              { once: true },
+            ),
+          ),
+        ])
+    const text = capMarked(scrubSecrets(settled.output), LIMITS.BASH_OUTPUT_MAX_CHARS).trim()
+    if (settled.code !== 0) return `exit ${settled.code}\n${text}`
+    return text
   },
 }

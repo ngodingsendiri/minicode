@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import type { ModelProvider, Tool } from "#minicore"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import { Pool } from "../agents/pool.ts"
@@ -5,6 +6,8 @@ import { loadConfig } from "../config.ts"
 import { LIMITS } from "../constants.ts"
 import { buildProviderListAsync } from "../providers/build.ts"
 import { createRouterProvider } from "../providers/router.ts"
+import { appendMutationIntent, appendMutationTerminal, hashArgs } from "../session/journal.ts"
+import { todoSession } from "./todo.ts"
 
 const pool = new Pool(LIMITS.SUB_AGENT_POOL_SIZE)
 
@@ -39,6 +42,12 @@ export interface SubAgentSpec {
   maxSteps: number
   timeoutMs: number
   systemExtra: string
+  // Journal wiring anak (AUDIT #01C §14): factory-site memasang jurnal sesi
+  // anak memakai identity ini. Tanpa ini efek anak tak tercatat di mana pun.
+  journal?: {
+    sessionId: string
+    parentSessionId?: string
+  }
 }
 
 /** Subset struktural sesi yang dibutuhkan tool ini — tanpa tipe lapisan app. */
@@ -56,6 +65,12 @@ let sessionFactory: SubAgentSessionFactory | undefined
 
 export function setSubAgentSessionFactory(factory: SubAgentSessionFactory): void {
   sessionFactory = factory
+}
+
+// Seam uji: kembalikan ke fail-closed tanpa factory (isolasi antar test file,
+// karena factory adalah state module-global).
+export function clearSubAgentSessionFactory(): void {
+  sessionFactory = undefined
 }
 
 async function getProvider() {
@@ -134,61 +149,100 @@ export const delegateTaskTool: Tool = {
     )
     const subTools =
       m === "explore" ? base.filter((t) => EXPLORE_TOOL_NAMES.includes(t.name)) : base
-    return await pool.run(async () => {
-      ctx.signal.throwIfAborted()
-      // Cek factory dulu: fail-closed deterministik tanpa menyentuh config/env.
-      const factory = sessionFactory
-      if (!factory) return "[sub-agent error] session factory not configured"
-      let provider: Awaited<ReturnType<typeof getProvider>>
-      try {
-        provider = await getProvider()
-      } catch (e) {
-        return `[sub-agent error] provider: ${(e as Error).message}`
-      }
-
-      // inherit parent cwd if available (for --cwd case)
-      const parentCwd = (ctx as unknown as { cwd?: string })?.cwd ?? process.cwd()
-      const session = await factory({
-        provider,
-        tools: subTools,
-        cwd: parentCwd,
-        permissionMode: "auto",
-        maxSteps: cap,
-        timeoutMs: LIMITS.SUB_AGENT_TIMEOUT_MS,
-        systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory, forget_memory, or todo_write (isolated — those belong to the parent). Parent task: ${String(prompt).slice(0, 200)}`,
-      })
-
-      // forward sub-agent observability to parent (usage + progress) so cost tracking
-      // dan TUI/checkpoint ikut; text/history tetap terisolasi
-      const offUsage = session.events.on("provider:extension", (e) => {
+    // Intent parent-side eksplisit (wiring generik sengaja melewati
+    // delegate_task — childSessionId hanya diketahui di sini). Kebenaran efek
+    // anak = jurnal anak, BUKAN finalText di bawah.
+    const parentCwd = (ctx as unknown as { cwd?: string })?.cwd ?? process.cwd()
+    const parentId = todoSession.id || "main"
+    const childId = `sub_${randomUUID().slice(0, 8)}`
+    const intent = await appendMutationIntent({
+      session: parentId,
+      tool: "delegate_task",
+      cwd: parentCwd,
+      childSessionId: childId,
+      argsHash: hashArgs({ prompt: String(prompt), mode: m }),
+    })
+    let terminal: "committed" | "failed" = "committed"
+    // committed = delegasi benar-benar jalan di sesi anak (efeknya di jurnal
+    // anak). Factory/provider gagal = tak ada yang jalan = failed.
+    let childRan = false
+    try {
+      const out = await pool.run(async () => {
+        ctx.signal.throwIfAborted()
+        // Cek factory dulu: fail-closed deterministik tanpa menyentuh config/env.
+        const factory = sessionFactory
+        if (!factory) return "[sub-agent error] session factory not configured"
+        let provider: Awaited<ReturnType<typeof getProvider>>
         try {
-          ctx.emit(e)
-        } catch {}
-      })
-      const offExec = session.events.on("execution:completed", (e) => {
-        try {
-          ctx.emit(e)
-        } catch {}
-      })
-      // forward execution:started juga → parent bisa capture pre-edit state untuk
-      // /undo atas perubahan file yang dilakukan sub-agent
-      const offExecStarted = session.events.on("execution:started", (e) => {
-        try {
-          ctx.emit(e)
-        } catch {}
-      })
+          provider = await getProvider()
+        } catch (e) {
+          return `[sub-agent error] provider: ${(e as Error).message}`
+        }
 
-      try {
-        const res = await session.run(String(prompt), { signal: ctx.signal })
-        return `sub-agent (${m}) done: ${res.finalText?.slice(0, 2000) ?? "(no output)"} [steps ${res.usage.steps}]`
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        return `[sub-agent ${m} error] ${msg.slice(0, 500)}`
-      } finally {
-        offUsage()
-        offExec()
-        offExecStarted()
-      }
-    }, ctx.signal)
+        const session = await factory({
+          provider,
+          tools: subTools,
+          cwd: parentCwd,
+          permissionMode: "auto",
+          maxSteps: cap,
+          timeoutMs: LIMITS.SUB_AGENT_TIMEOUT_MS,
+          systemExtra: `You are a sub-agent (${m}). Be concise, return summary only. Do not use write_memory, forget_memory, or todo_write (isolated — those belong to the parent). Parent task: ${String(prompt).slice(0, 200)}`,
+          journal: { sessionId: childId, parentSessionId: parentId },
+        })
+        childRan = true
+
+        // forward sub-agent observability to parent (usage + progress) so cost tracking
+        // dan TUI/checkpoint ikut; text/history tetap terisolasi
+        const offUsage = session.events.on("provider:extension", (e) => {
+          try {
+            ctx.emit(e)
+          } catch {}
+        })
+        const offExec = session.events.on("execution:completed", (e) => {
+          try {
+            ctx.emit(e)
+          } catch {}
+        })
+        // forward execution:started juga → parent bisa capture pre-edit state untuk
+        // /undo atas perubahan file yang dilakukan sub-agent
+        const offExecStarted = session.events.on("execution:started", (e) => {
+          try {
+            ctx.emit(e)
+          } catch {}
+        })
+
+        try {
+          const res = await session.run(String(prompt), { signal: ctx.signal })
+          return `sub-agent (${m}) done: ${res.finalText?.slice(0, 2000) ?? "(no output)"} [steps ${res.usage.steps}]`
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          return `[sub-agent ${m} error] ${msg.slice(0, 500)}`
+        } finally {
+          offUsage()
+          offExec()
+          offExecStarted()
+        }
+      }, ctx.signal)
+      if (!childRan) terminal = "failed"
+      return out
+    } catch (e) {
+      // Abort/pool-reject: delegasi tak selesai → failed (ambigu, verifikasi).
+      // Efek anak yang telat tetap tercatat di jurnal ANAK, bukan di sini.
+      terminal = "failed"
+      throw e
+    } finally {
+      await appendMutationTerminal(
+        parentId,
+        parentCwd,
+        intent.id,
+        intent.seq,
+        "delegate_task",
+        terminal,
+        {
+          note: childId,
+        },
+        childId,
+      )
+    }
   },
 }

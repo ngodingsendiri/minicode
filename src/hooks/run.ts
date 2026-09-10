@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync, readdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 export interface RunHookCtx {
   phase: "pre" | "post"
@@ -29,13 +30,24 @@ export function findRunHooks(cwd?: string): { pre: string[]; post: string[] } {
   return out
 }
 
-export async function runRunHooks(phase: "pre" | "post", ctx: RunHookCtx): Promise<void> {
+export async function runRunHooks(
+  phase: "pre" | "post",
+  ctx: RunHookCtx,
+  signal?: AbortSignal,
+): Promise<void> {
   if (process.env.MINICODE_HOOKS !== "1") return
+  // Hook = arbitrary Node.js di luar permission system (berjalan di SEMUA
+  // mode bila opt-in) — karenanya: tanpa secret di env (baca dari berkas bila
+  // perlu), dan hormati pembatalan sesi (lewati sisa hook bila aborted).
+  // MINICODE_HOOK_CTX sendiri memuat prompt user apa adanya — prompt yang
+  // ditempeli kredensial akan terlihat hook; itu inheren dari desain.
+  if (signal?.aborted) return
   const hooks = findRunHooks(ctx.cwd)
   for (const file of hooks[phase]) {
+    if (signal?.aborted) return
     await new Promise<void>((res) => {
       const p = spawn(process.execPath, [file], {
-        env: { ...process.env, MINICODE_HOOK_CTX: JSON.stringify(ctx) },
+        env: sanitizeSpawnEnv(process.env, { MINICODE_HOOK_CTX: JSON.stringify(ctx) }),
         stdio: "ignore",
       })
       const timer = setTimeout(() => {

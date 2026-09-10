@@ -4,6 +4,21 @@ import { scrubSecrets } from "../policy/scrub.ts"
 import { McpHttpTransport, type McpTransportLike } from "./http-transport.ts"
 import { McpTransport } from "./transport.ts"
 
+// MODEL KEPERCAYAAN MCP (baca sebelum mengubah file ini):
+//
+// Permission MiniCode HANYA mengontrol pemanggilan (invocation): tool apa di
+// server mana dengan argumen apa, satu approval per panggilan (di auto/ask;
+// ditolak di readonly/plan/allowlist; bebas di allow-all).
+//
+// Server TIDAK dianggap trusted wrapper: capability di balik server
+// (filesystem, network, process, state, API eksternal, kredensial) TIDAK
+// dapat diketahui statis dan TIDAK diklasifikasikan — anggap setiap
+// `tools/call` sebagai UNCLASSIFIED EXTERNAL CAPABILITY dengan efek arbitrer.
+// Satu-satunya batas sisi-MiniCode: validasi server-id, scrubSecrets +
+// cap 100k pada hasil, dan SSRF guard untuk transport HTTP.
+// Pembatalan parent menghentikan penungguan (dan request HTTP), tetapi TIDAK
+// membunuh proses stdio server maupun membatalkan efek yang sudah terjadi.
+
 export interface McpServerConfig {
   id: string
   /** stdio: perintah yang di-spawn. */
@@ -144,8 +159,8 @@ class McpConnection {
   }
 
   /** Baca satu resource. Return teks gabungan dari semua `contents`. */
-  async readResource(uri: string): Promise<string> {
-    const res = (await this.transport.request("resources/read", { uri })) as
+  async readResource(uri: string, signal?: AbortSignal): Promise<string> {
+    const res = (await this.transport.request("resources/read", { uri }, undefined, signal)) as
       | { contents?: unknown[] }
       | undefined
     const contents = Array.isArray(res?.contents) ? res.contents : []
@@ -166,11 +181,20 @@ class McpConnection {
   }
 
   /** Ambil prompt template yang sudah di-render server. */
-  async getPrompt(name: string, args: Record<string, unknown>): Promise<string> {
-    const res = (await this.transport.request("prompts/get", {
-      name,
-      arguments: args,
-    })) as { messages?: unknown[]; description?: string } | undefined
+  async getPrompt(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const res = (await this.transport.request(
+      "prompts/get",
+      {
+        name,
+        arguments: args,
+      },
+      undefined,
+      signal,
+    )) as { messages?: unknown[]; description?: string } | undefined
     const msgs = Array.isArray(res?.messages) ? res.messages : []
     const lines: string[] = []
     if (res?.description) lines.push(`# ${res.description}`)
@@ -193,11 +217,20 @@ class McpConnection {
     return lines.join("\n")
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const result = (await this.transport.request("tools/call", {
-      name,
-      arguments: args,
-    })) as Record<string, unknown>
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const result = (await this.transport.request(
+      "tools/call",
+      {
+        name,
+        arguments: args,
+      },
+      undefined,
+      signal,
+    )) as Record<string, unknown>
     if (result && typeof result.isError === "boolean" && result.isError) {
       const content = Array.isArray(result.content)
         ? result.content.map((c: any) => c.text ?? JSON.stringify(c)).join("\n")
@@ -219,9 +252,10 @@ class McpConnection {
       async execute(input: Record<string, unknown>, _ctx: ToolContext): Promise<string> {
         const conn = activeConnections.get(serverId)
         if (!conn) throw new Error(`MCP server ${serverId} not connected`)
-        const result = await conn.callTool(t.name, input ?? {})
+        _ctx.signal.throwIfAborted()
+        const result = await conn.callTool(t.name, input ?? {}, _ctx.signal)
         const content = extractMcpText(result)
-        return scrubSecrets(content).slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS)
+        return capMcpText(content)
       },
     }))
   }
@@ -245,6 +279,18 @@ export function extractMcpText(result: unknown): string {
       return JSON.stringify(c)
     })
     .join("\n")
+}
+
+/**
+ * Cap + penanda truncation MCP (temuan audit #02: slice 100k diam-diam
+ * tampak utuh). Scrub dulu agar pola rahasia di dekat batas tak lolos.
+ */
+export function capMcpText(content: string): string {
+  const clean = scrubSecrets(content)
+  const cap = LIMITS.MCP_OUTPUT_MAX_CHARS
+  return clean.length > cap
+    ? `${clean.slice(0, cap)}\n… [mcp truncated: showing first ${cap} chars]`
+    : clean
 }
 
 export async function connectAll(configs: McpServerConfig[]): Promise<Tool[]> {
@@ -282,10 +328,11 @@ export async function callMcpTool(
   serverId: string,
   toolName: string,
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const conn = activeConnections.get(serverId)
   if (!conn) throw new Error(`MCP server ${serverId} not connected`)
-  return conn.callTool(toolName, args)
+  return conn.callTool(toolName, args, signal)
 }
 
 export async function listMcpTools(serverId: string): Promise<McpToolDef[]> {
@@ -306,20 +353,25 @@ export function listMcpPrompts(serverId: string): McpPromptDef[] {
   return conn.prompts
 }
 
-export async function readMcpResource(serverId: string, uri: string): Promise<string> {
+export async function readMcpResource(
+  serverId: string,
+  uri: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const conn = activeConnections.get(serverId)
   if (!conn) throw new Error(`MCP server ${serverId} not connected`)
-  return conn.readResource(uri)
+  return conn.readResource(uri, signal)
 }
 
 export async function getMcpPrompt(
   serverId: string,
   name: string,
   args: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<string> {
   const conn = activeConnections.get(serverId)
   if (!conn) throw new Error(`MCP server ${serverId} not connected`)
-  return conn.getPrompt(name, args)
+  return conn.getPrompt(name, args, signal)
 }
 
 /** Ringkasan seluruh kapabilitas server terhubung (dipakai `mcp_list`). */

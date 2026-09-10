@@ -52,6 +52,14 @@ function sandboxStrict(): boolean {
   return v === "1" || v === "true" || v === "yes" || v === "on"
 }
 
+// Penanda truncation: output yang dipotong diam-diam tampak lengkap dan
+// menyesatkan model (temuan audit #02). Selalu tandai bila dipotong.
+export function capMarked(text: string, cap: number): string {
+  return text.length > cap
+    ? `${text.slice(0, cap)}\n… [truncated: showing first ${cap} chars]`
+    : text
+}
+
 // ── Background jobs ──
 // Perlu untuk dev server / watcher / test panjang: proses hidup melewati batas
 // satu turn, output-nya diambil bertahap lewat bash_output.
@@ -214,8 +222,9 @@ export const bashTool: Tool = {
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
         const text = scrubSecrets(res.output)
-        if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
-        return text.slice(0, 20000)
+        if (res.code !== 0 && res.code !== null)
+          return `exit ${res.code}\n${capMarked(text, 20000)}`
+        return capMarked(text, 20000)
       }
       if (sandboxStrict()) {
         throw new Error(
@@ -238,8 +247,9 @@ export const bashTool: Tool = {
           env: sanitizeSpawnEnv(process.env) as Record<string, string>,
         })
         const text = scrubSecrets(res.output)
-        if (res.code !== 0 && res.code !== null) return `exit ${res.code}\n${text.slice(0, 20000)}`
-        return text.slice(0, 20000)
+        if (res.code !== 0 && res.code !== null)
+          return `exit ${res.code}\n${capMarked(text, 20000)}`
+        return capMarked(text, 20000)
       }
       if (sandboxStrict()) {
         throw new Error(
@@ -340,7 +350,7 @@ export const bashOutputTool: Tool = {
     job.cursor = job.chunks.length
     const status = job.done ? `finished (exit ${job.exitCode ?? "?"})` : "running"
     if (fresh.length === 0) return `[${job.id}] ${status} — no new output yet`
-    return `[${job.id}] ${status}\n${fresh.join("")}`.slice(0, LIMITS.BASH_OUTPUT_MAX_CHARS)
+    return capMarked(`[${job.id}] ${status}\n${fresh.join("")}`, LIMITS.BASH_OUTPUT_MAX_CHARS)
   },
 }
 

@@ -14,6 +14,21 @@ import { scrubSecrets } from "../policy/scrub.ts"
 
 const SEVERITY = ["Error", "Warn", "Info", "Hint"]
 
+// Balapan request LSP melawan abort: server daemon tetap hidup (seperti MCP
+// stdio), tetapi tool berhenti menunggu — late result tidak kembali sebagai
+// success ke turn yang sudah dibatalkan.
+function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error("aborted"))
+  return Promise.race([
+    p,
+    new Promise<never>((_, rej) =>
+      signal.addEventListener("abort", () => rej(signal.reason ?? new Error("aborted")), {
+        once: true,
+      }),
+    ),
+  ])
+}
+
 function toUri(abs: string): string {
   return pathToFileURL(abs).href
 }
@@ -62,7 +77,7 @@ async function resolvePosition(
   return { abs, text, position }
 }
 
-function formatHover(result: unknown): string {
+export function formatHover(result: unknown): string {
   const c = (result as { contents?: unknown })?.contents
   const txt =
     typeof c === "object" && c !== null && "value" in (c as Record<string, unknown>)
@@ -70,7 +85,17 @@ function formatHover(result: unknown): string {
       : typeof c === "string"
         ? c
         : JSON.stringify(c)
-  return txt.slice(0, 4_000) || "(empty hover)"
+  // Temuan audit #02: slice diam-diam tampak utuh — tandai bila dipotong.
+  return txt.length > 4_000
+    ? `${txt.slice(0, 4_000)}\n… [truncated: hover too long]`
+    : txt || "(empty hover)"
+}
+
+// Potong daftar lokasi dengan penanda (def/refs tak boleh tampak lengkap).
+// Diekspor untuk test (perilaku cap adalah kontrak audit #02).
+export function capLocations(lines: string[], limit: number): string {
+  if (lines.length <= limit) return lines.join("\n")
+  return `${lines.slice(0, limit).join("\n")}\n… [truncated: showing first ${limit} of ${lines.length}]`
 }
 
 function posTool(
@@ -101,15 +126,17 @@ function posTool(
         const resolved = await resolvePosition(args as PosArgs, cwd)
         if (typeof resolved === "string") return resolved
         const { abs, text, position } = resolved
-        const result = await lspCall(abs, text, method, {
-          textDocument: { uri: toUri(abs) },
-          position,
-          ...extraParams,
-        })
+        const result = await raceAbort(
+          lspCall(abs, text, method, {
+            textDocument: { uri: toUri(abs) },
+            position,
+            ...extraParams,
+          }),
+          ctx.signal,
+        )
         if (!result || (Array.isArray(result) && result.length === 0)) return "(not found)"
         if (method === "textDocument/hover") return scrubSecrets(formatHover(result))
-        if (Array.isArray(result))
-          return scrubSecrets(result.map(formatPos).slice(0, limit).join("\n"))
+        if (Array.isArray(result)) return scrubSecrets(capLocations(result.map(formatPos), limit))
         return scrubSecrets(formatPos(result))
       } catch (e) {
         return `[lsp] ${scrubSecrets((e as Error).message)}`
@@ -133,7 +160,7 @@ export const lspDiagnosticsTool: Tool = {
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     try {
       const { abs, text } = await readTarget(String(file), cwd)
-      const { items } = await lspDiagnostics(abs, text)
+      const { items } = await raceAbort(lspDiagnostics(abs, text), ctx.signal)
       if (!items.length) return "(no diagnostics)"
       return scrubSecrets(
         items
@@ -190,9 +217,12 @@ export const lspSymbolsTool: Tool = {
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     try {
       const { abs, text } = await readTarget(String(file), cwd)
-      const result = await lspCall(abs, text, "textDocument/documentSymbol", {
-        textDocument: { uri: toUri(abs) },
-      })
+      const result = await raceAbort(
+        lspCall(abs, text, "textDocument/documentSymbol", {
+          textDocument: { uri: toUri(abs) },
+        }),
+        ctx.signal,
+      )
       if (!result || !Array.isArray(result) || result.length === 0) return "(no symbols)"
       const KIND = [
         "File",
@@ -253,7 +283,7 @@ export const lspWorkspaceSymbolsTool: Tool = {
     if (getConfiguredExts().length === 0)
       return "(no LSP servers configured — add via minicode config lsp add)"
     try {
-      const symbols = await workspaceSymbols((query as string) ?? "", 5000)
+      const symbols = await raceAbort(workspaceSymbols((query as string) ?? "", 5000), ctx.signal)
       if (!symbols.length) return "(no symbols)"
       const KIND = [
         "File",
@@ -283,14 +313,12 @@ export const lspWorkspaceSymbolsTool: Tool = {
         "Operator",
         "TypeParameter",
       ]
-      return symbols
-        .slice(0, 50)
-        .map((s) => {
-          const kind = KIND[(s.kind ?? 1) - 1] ?? "?"
-          const uri = s.location.uri ?? "?"
-          return `[${kind}] ${s.name}${s.containerName ? ` (${s.containerName})` : ""} — ${uri}`
-        })
-        .join("\n")
+      const rows = symbols.map((s) => {
+        const kind = KIND[(s.kind ?? 1) - 1] ?? "?"
+        const uri = s.location.uri ?? "?"
+        return `[${kind}] ${s.name}${s.containerName ? ` (${s.containerName})` : ""} — ${uri}`
+      })
+      return capLocations(rows, 50)
     } catch (e) {
       return `[lsp] ${(e as Error).message}`
     }

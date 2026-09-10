@@ -1,347 +1,589 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>Minicode — Peta Struktur untuk Developer</title>
+<!-- Ikon: Material Symbols via CDN Google. Hanya untuk dok statis ini (bukan runtime CLI, jadi tidak melanggar postur zero-dep);
+     bila offline, JS menyembunyikan ikon agar tidak tampil teks ligatur mentah. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+<!-- Tipografi: Inter untuk teks (fallback stack sistem bila offline); mono sistem untuk kode/pembeda. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
+/* ── Token ala GitBook: terang lembut + gelap pekat, satu file tanpa dependensi ── */
 :root {
-    --bg: #fff;
-    --ink: #16171b;
-    --mut: #5e636e;
-    --faint: #8b91a0;
-    --line: #e7e8eb;
-    --acc: #2751c7;
-    --acc-soft: #eef1f8;
-    --ok: #177245;
-    --warn: #92570a;
-    --err: #b02e24;
-    --pur: #5b46c7;
-    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-    --side: 248px;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body {
-    background: var(--bg); color: var(--ink);
-    font: 15px/1.7 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  ::selection { background: rgba(39, 81, 199, 0.12); }
-  code, .mono { font-family: var(--mono); }
-  code {
-    background: #f2f3f5; border: 1px solid #e4e5e9; color: #31343c;
-    padding: 0.08em 0.32em; border-radius: 5px; font-size: 0.83em; overflow-wrap: anywhere;
-  }
-  pre code { background: none; border: 0; padding: 0; color: inherit; }
-  a { color: var(--acc); text-decoration: none; }
-  main a:hover { text-decoration: underline; text-underline-offset: 2px; }
-  :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-  .skip { position: absolute; left: -9999px; top: 0; background: var(--acc); color: #fff; padding: 6px 12px; }
+  --bg: #ffffff;
+  --bg-subtle: #f7f7f5;
+  --sidebar-bg: #fbfbfa;
+  --code-bg: #0d1117;
+  --code-fg: #e6edf3;
+  --ink: #1d1d1f;
+  --mut: #5f6368;
+  --faint: #8a8f98;
+  --line: #e8e8e6;
+  --line-soft: #f0f0ee;
+  --acc: #346ddb;
+  --acc-ink: #2549a8;
+  --acc-soft: #edf2fd;
+  --ok: #1a7f4b;
+  --ok-soft: #e9f6ee;
+  --warn: #9a5b00;
+  --warn-soft: #fdf3e3;
+  --err: #c0362c;
+  --err-soft: #fdecea;
+  --pur: #6a4fd0;
+  --pur-soft: #efecfc;
+  --card-shadow: none;
+  --radius: 8px;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+  --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --topbar-h: 60px;
+  --side-w: 284px;
+  --toc-w: 232px;
+}
+html[data-theme="dark"] {
+  --bg: #1b1b1d;
+  --bg-subtle: #131315;
+  --sidebar-bg: #161618;
+  --code-bg: #0d1117;
+  --code-fg: #e6edf3;
+  --ink: #ececee;
+  --mut: #a7abb3;
+  --faint: #7c818a;
+  --line: #2b2b2e;
+  --line-soft: #232326;
+  --acc: #6b9bff;
+  --acc-ink: #a9c4ff;
+  --acc-soft: #22304f;
+  --ok: #4cc38a;
+  --ok-soft: #16382a;
+  --warn: #e8a13d;
+  --warn-soft: #3d2c14;
+  --err: #f26d5f;
+  --err-soft: #42201c;
+  --pur: #a893ff;
+  --pur-soft: #2c2650;
+  --card-shadow: none;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.7 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(52, 109, 219, 0.22); }
+code, .mono { font-family: var(--mono); }
+code {
+  background: var(--bg-subtle); color: var(--ink);
+  padding: 0.08em 0.34em; border-radius: 6px; font-size: 0.83em; overflow-wrap: anywhere;
+}
+pre code { background: none; border: 0; padding: 0; color: inherit; }
+a { color: var(--acc); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: 4px; }
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 200;
+  background: var(--acc); color: #fff; padding: 8px 14px; border-radius: 0 0 8px 0;
+}
+.skip:focus { left: 0; color: #fff; }
 
-  /* ── Sidebar ── */
-  aside {
-    position: fixed; inset: 0 auto 0 0; width: var(--side);
-    border-right: 1px solid var(--line); overflow-y: auto; padding: 26px 12px 60px;
-    background: #fff;
+/* ── Ikon Material Symbols: ligatur font, bukan emoji (konsisten di semua OS) ── */
+.mi {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal; font-style: normal; line-height: 1;
+  letter-spacing: normal; text-transform: none; white-space: nowrap;
+  direction: ltr; -webkit-font-smoothing: antialiased;
+  display: inline-block; font-size: 18px; vertical-align: -3px; user-select: none;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+}
+/* Sembunyikan ikon bila font gagal dimuat (offline) — semuanya dekoratif. */
+body.no-mi .mi { display: none; }
+.mark .mi { font-size: 19px; vertical-align: 0; }
+.hint .ico .mi { font-size: 20px; }
+.search-pill .mi, .side-search .mag .mi { font-size: 17px; vertical-align: 0; }
+.snav .mi { font-size: 15px; }
+.codehead button { display: inline-flex; align-items: center; gap: 6px; }
+.codehead .mi { font-size: 14px; vertical-align: 0; }
+
+/* ── Scrollbar minimalis: tipis, tanpa trek, hanya jempol samar ── */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+/* ══ Topbar ala GitBook ══ */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px;
+  background: var(--bg);
+}
+.burger {
+  display: none; background: var(--bg-subtle);
+  color: var(--mut); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 15px;
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mark {
+  width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
+  background: var(--ink);
+  color: var(--bg); font-weight: 800; font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+}
+.brand .name { font-size: 15px; font-weight: 750; letter-spacing: -0.2px; white-space: nowrap; }
+.brand .name b { color: var(--acc); font-weight: 800; }
+.tag-docs { font-size: 11px; font-weight: 600; color: var(--faint); white-space: nowrap; }
+.search-pill {
+  flex: 1; max-width: 460px; margin: 0 auto;
+  display: flex; align-items: center; gap: 8px;
+  border-radius: 9px;
+  background: var(--bg-subtle); color: var(--faint);
+  padding: 7px 12px; font-size: 13px; cursor: text;
+}
+.search-pill:hover { background: var(--line-soft); }
+.search-pill kbd { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.top-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.vpill { font-size: 11.5px; font-family: var(--mono); color: var(--faint); white-space: nowrap; }
+.iconbtn {
+  background: var(--bg-subtle); color: var(--mut);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.iconbtn:hover { color: var(--acc); }
+
+/* ══ Kerangka 3 kolom ══ */
+.shell {
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--toc-w);
+  align-items: start;
+  max-width: 1480px; margin: 0 auto;
+}
+
+/* ── Sidebar kiri ── */
+.sidebar {
+  position: sticky; top: var(--topbar-h);
+  height: calc(100vh - var(--topbar-h));
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--sidebar-bg);
+  padding: 18px 14px 60px;
+}
+.side-search { position: relative; margin: 2px 2px 12px; }
+.side-search input {
+  width: 100%; border-radius: 8px;
+  background: var(--bg); color: var(--ink);
+  padding: 8px 12px 8px 32px; font-size: 13px; font-family: var(--sans);
+}
+.side-search input::placeholder { color: var(--faint); }
+.side-search input:focus { outline: 2px solid var(--acc); outline-offset: -1px; }
+.side-search .mag { position: absolute; left: 11px; top: 8px; color: var(--faint); font-size: 14px; }
+.side-group { margin-bottom: 6px; }
+.side-group > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  font-size: 11px; font-weight: 750; letter-spacing: 0.9px; text-transform: uppercase;
+  color: var(--faint); padding: 14px 10px 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.side-group > summary::-webkit-details-marker { display: none; }
+.side-group > summary::after { content: ""; width: 6px; height: 6px; margin-left: auto; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: rotate(45deg); flex: 0 0 auto; align-self: center; }
+.side-group:not([open]) > summary::after { transform: rotate(-45deg); }
+.snav { display: block; padding: 5px 10px; margin: 1px 0; font-size: 13.5px; color: var(--mut); border-radius: 7px; }
+.snav:hover { background: var(--line-soft); color: var(--ink); text-decoration: none; }
+.snav.active { background: var(--acc-soft); color: var(--acc-ink); font-weight: 650; }
+html[data-theme="light"] .snav.active { color: var(--acc); }
+.snav.sub { padding-left: 28px; font-size: 12.5px; position: relative; }
+.snav.sub::before { content: "·"; position: absolute; left: 16px; color: var(--acc); font-weight: 700; }
+.snav .cnt { float: right; font-size: 10.5px; font-family: var(--mono); color: var(--faint); }
+.snav.frozen { color: var(--pur); }
+.snav[hidden] { display: none; }
+.side-foot { margin: 16px 10px 0; font-size: 12px; color: var(--faint); }
+.side-foot b { color: var(--mut); }
+
+/* ── Konten tengah ── */
+.content { padding: 40px 48px 80px; min-width: 0; }
+.content-inner { max-width: 800px; margin: 0 auto; }
+.crumb { font-size: 12.5px; color: var(--faint); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.crumb b { color: var(--ink); font-weight: 650; }
+.crumb .sep { opacity: 0.5; }
+h1 { font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; margin: 2px 0 10px; }
+.lede { color: var(--mut); margin: 8px 0 18px; font-size: 15.5px; }
+section { margin-bottom: 12px; scroll-margin-top: calc(var(--topbar-h) + 18px); }
+h2.sec {
+  font-size: 21px; font-weight: 700; letter-spacing: -0.01em;
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 54px 0 8px;
+}
+h2.sec .hn { font-size: 11.5px; font-weight: 700; color: var(--faint); letter-spacing: 1.2px; font-family: var(--mono); }
+h2.sec .anchor { opacity: 0; font-size: 15px; margin-left: 2px; }
+h2.sec:hover .anchor { opacity: 1; }
+h3.hsub { font-size: 16px; font-weight: 700; margin: 28px 0 8px; scroll-margin-top: calc(var(--topbar-h) + 18px); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 22px; }
+.pill {
+  font-size: 12px; color: var(--mut);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.meta .pill + .pill::before { content: "·"; color: var(--faint); }
+.pill.blue, .pill.green { color: var(--mut); }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+
+/* ── Hint/callout ala GitBook ── */
+.hint {
+  display: flex; gap: 12px; padding: 12px 16px; margin: 14px 0;
+  border-radius: var(--radius);
+  background: var(--bg-subtle); font-size: 13.5px; color: var(--mut);
+}
+.hint .ico { flex: 0 0 auto; font-size: 16px; line-height: 1.5; }
+.hint b, .hint strong { color: var(--ink); }
+.hint .ico { color: var(--faint); }
+.hint-info { background: var(--acc-soft); }
+.hint-warn { background: var(--warn-soft); }
+.hint-danger { background: var(--err-soft); }
+.hint-ok { background: var(--ok-soft); }
+.hint-purple { background: var(--pur-soft); }
+.hint .body { min-width: 0; }
+.hint .title { display: block; font-weight: 700; color: var(--ink); font-size: 13.5px; margin-bottom: 2px; }
+
+/* ── Kartu lapisan ── */
+.card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 8px; }
+.card {
+  border-radius: var(--radius);
+  background: var(--bg-subtle); padding: 16px;
+}
+.card .k { font-size: 11px; font-weight: 800; font-family: var(--mono); letter-spacing: 0.6px; }
+.card h3 { font-size: 15px; margin: 4px 0; }
+.card p { font-size: 13px; color: var(--mut); }
+.card code { font-size: 11.5px; }
+.k1, .k2, .k3 { color: var(--faint); }
+.layer-stack { margin: 14px 0; display: grid; gap: 10px; }
+.layer { display: grid; grid-template-columns: 52px 1fr; gap: 2px 16px; padding: 18px 20px; background: var(--bg-subtle); border-radius: var(--radius); }
+.layer .lnum { font-size: 20px; font-weight: 800; color: var(--faint); font-variant-numeric: tabular-nums; }
+.layer .ltitle { font-weight: 700; font-size: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.layer .lpath { font-size: 12px; color: var(--faint); font-family: var(--mono); }
+.layer .ldesc { grid-column: 2; font-size: 13.5px; color: var(--mut); }
+.chip { font-size: 10.5px; font-weight: 700; font-family: var(--mono); color: var(--faint); }
+.chip.c1, .chip.c2, .chip.c3, .chip.cx { color: var(--faint); }
+.flow-note { text-align: center; font-size: 11.5px; color: var(--faint); padding: 2px; }
+
+/* ── Tabel ala GitBook ── */
+.tscroll { overflow-x: auto; margin: 12px 0; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.tscroll table { min-width: 640px; }
+th, td { text-align: left; padding: 9px 14px; vertical-align: top; }
+thead th, tr:first-child th {
+  background: none; color: var(--ink);
+  font-weight: 650; font-size: 13px;
+  white-space: nowrap;
+}
+/* Zebra flat + hover tint sebagai pengganti garis sel */
+tbody tr:nth-child(even) td { background: var(--bg-subtle); }
+tbody tr:nth-child(even) td:first-child { border-radius: 8px 0 0 8px; }
+tbody tr:nth-child(even) td:last-child { border-radius: 0 8px 8px 0; }
+tbody tr:hover td { background: var(--acc-soft); }
+tbody tr:hover td:first-child { border-radius: 8px 0 0 8px; }
+tbody tr:hover td:last-child { border-radius: 0 8px 8px 0; }
+table.matrix td { text-align: center; }
+table.matrix td:first-child, table.matrix th:first-child { text-align: left; }
+.ok { color: var(--ok); font-weight: 650; }
+.no { color: var(--err); font-weight: 650; }
+.na { color: var(--faint); }
+td small { color: var(--faint); display: block; }
+
+/* ── Kerapian teks: cegah baris yatim, angka tabel rata kolom ── */
+.lede, .step .what, .mod .fdesc, .uxcard p, ul.plain li, .hint .body { text-wrap: pretty; }
+h3.hsub { text-wrap: balance; }
+table { font-variant-numeric: tabular-nums; }
+ul.plain { list-style: none; margin: 10px 0; }
+ul.plain li { position: relative; padding: 0 0 10px 22px; font-size: 13.5px; color: var(--mut); }
+ul.plain li::before { content: "›"; position: absolute; left: 6px; color: var(--acc); font-weight: 800; }
+ul.plain li b { color: var(--ink); }
+
+/* ── Steps ── */
+.steps { margin: 14px 0; display: grid; gap: 10px; }
+.step { display: flex; gap: 14px; padding: 16px 18px; background: var(--bg-subtle); border-radius: var(--radius); }
+.step .dot {
+  flex: 0 0 28px; color: var(--faint); font-size: 13px; font-weight: 700;
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 2px;
+}
+.step .card-b b { font-size: 14.5px; }
+.step .where { font-size: 12px; color: var(--faint); font-family: var(--mono); display: block; margin-top: 2px; overflow-wrap: anywhere; }
+.step .what { font-size: 13.5px; color: var(--mut); margin-top: 3px; }
+
+/* ── Kelompok modul ── */
+.toolbar { display: flex; gap: 8px; margin: 16px 0; }
+.toolbar button {
+  background: var(--bg-subtle); color: var(--mut); border-radius: 8px;
+  padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.toolbar button:hover { color: var(--acc); }
+details.group {
+  margin: 0 0 10px; border-radius: var(--radius);
+  background: var(--bg-subtle);
+  scroll-margin-top: calc(var(--topbar-h) + 18px); overflow: hidden;
+}
+details.group.flash { background: var(--acc-soft); }
+details.group[hidden] { display: none; }
+details.group summary {
+  cursor: pointer; list-style: none; padding: 14px 16px; user-select: none;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 14.5px; font-weight: 700;
+}
+details.group summary::-webkit-details-marker { display: none; }
+details.group summary::after { content: ""; width: 7px; height: 7px; margin-left: auto; border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint); transform: rotate(45deg); flex: 0 0 auto; align-self: center; }
+details.group[open] summary::after { transform: rotate(225deg); }
+details.group summary .role { color: var(--faint); font-size: 12px; font-weight: 400; }
+details.group summary .cnt { font-size: 11px; font-family: var(--mono); color: var(--faint); }
+.mods { padding: 4px 18px 10px; }
+.mod { padding: 16px 0; }
+.mod + .mod { margin-top: 4px; }
+.mod[hidden] { display: none; }
+.mod .fname { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.mod .fdesc { font-size: 13.5px; color: var(--mut); margin-top: 3px; }
+.mod .exports { font-size: 12px; color: var(--mut); margin-top: 6px; font-family: var(--mono); overflow-wrap: anywhere; }
+.mod .exports::before { content: "⇢ "; font-weight: 700; }
+
+/* ── Resep ── */
+.recipes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.recipe { border-radius: var(--radius); padding: 18px; background: var(--bg-subtle); }
+.recipe h3 { font-size: 14.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.recipe ol { margin: 0 0 0 20px; font-size: 13.5px; color: var(--mut); }
+.recipe ol li { margin-bottom: 5px; }
+.recipe .guard { margin-top: 10px; font-size: 12.5px; color: var(--mut); background: var(--warn-soft); border-radius: 7px; padding: 8px 12px; }
+
+/* ── Blok kode ala GitBook ── */
+.codeblock { margin: 12px 0; border-radius: var(--radius); overflow: hidden; }
+.codehead {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--code-bg); color: #8b949e; font-size: 11.5px; font-family: var(--mono);
+  padding: 12px 16px 0;
+}
+.codehead .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.codehead button {
+  margin-left: auto; background: none; border: 0; color: var(--faint);
+  border-radius: 6px; font-size: 11px; padding: 3px 6px; cursor: pointer; font-family: var(--mono);
+}
+.codehead button:hover { color: var(--acc); }
+pre.kod {
+  background: var(--code-bg); color: var(--code-fg);
+  padding: 16px; overflow-x: auto; font-family: var(--mono);
+  font-size: 12.5px; line-height: 1.7; margin: 0;
+}
+pre.kod .cm { color: #7d8590; }
+
+/* ── Rantai keamanan ── */
+.chain { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 14px 0; }
+.chain .link { border-radius: var(--radius); padding: 14px; background: var(--bg-subtle); font-size: 12.5px; color: var(--mut); }
+.chain .link b { display: block; font-size: 13.5px; color: var(--ink); margin-bottom: 4px; }
+.chain .link .mono { display: block; margin-top: 8px; font-size: 11px; color: var(--faint); font-family: var(--mono); overflow-wrap: anywhere; }
+.chain .link .gnum {
+  display: block; color: var(--faint); font-weight: 700; font-size: 11px; font-family: var(--mono);
+  margin-bottom: 6px;
+}
+
+/* ── §09 ── */
+.uxgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 12px 0; }
+.uxcard { border-radius: var(--radius); padding: 14px 16px; background: var(--bg-subtle); }
+.uxcard h4 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; color: var(--faint); margin-bottom: 6px; }
+.uxcard p { margin: 0; font-size: 13px; color: var(--mut); }
+.uxcard code { font-size: 11.5px; }
+
+/* ── TOC kanan ── */
+.toc { position: sticky; top: var(--topbar-h); height: calc(100vh - var(--topbar-h)); overflow-y: auto; padding: 28px 20px 60px 8px; font-size: 12.5px; }
+.toc .tlabel { font-size: 11px; font-weight: 800; letter-spacing: 0.9px; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+.toc a { display: block; padding: 4px 10px; color: var(--mut); border-radius: 6px; }
+.toc a:hover { color: var(--ink); text-decoration: none; background: var(--bg-subtle); }
+.toc a.active { color: var(--acc-ink); background: var(--acc-soft); font-weight: 650; }
+html[data-theme="light"] .toc a.active { color: var(--acc); }
+.toc a.sub { padding-left: 24px; font-size: 12px; }
+
+/* ── Navigasi bawah ala GitBook ── */
+.pagenav { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 48px; }
+.pagenav a { border-radius: var(--radius); padding: 14px 16px; background: var(--bg-subtle); color: var(--mut); }
+.pagenav a:hover { text-decoration: none; }
+.pagenav a:hover b { color: var(--acc); }
+.pagenav a span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: var(--faint); font-weight: 700; }
+.pagenav a b { color: var(--ink); font-size: 14px; }
+.pagenav a.next { text-align: right; }
+footer.site { margin-top: 32px; padding-top: 16px; color: var(--faint); font-size: 12.5px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+footer.site .spacer { flex: 1; }
+
+.backdrop { display: none; }
+.empty-note { display: none; border-radius: var(--radius); background: var(--bg-subtle); padding: 18px; color: var(--faint); font-size: 13px; margin: 12px 0; text-align: center; }
+.empty-note.show { display: block; }
+
+/* ── Responsif ── */
+@media (max-width: 1220px) {
+  .shell { grid-template-columns: var(--side-w) minmax(0, 1fr); }
+  .toc { display: none; }
+  .chain { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .burger { display: inline-block; }
+  .search-pill { display: none; }
+  .sidebar {
+    position: fixed; top: var(--topbar-h); bottom: 0; left: 0; width: min(320px, 88vw);
+    height: calc(100vh - var(--topbar-h)); z-index: 120;
+    transform: translateX(-105%); transition: transform 0.2s ease;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.12);
   }
-  aside .brand { padding: 0 10px 18px; border-bottom: 1px solid var(--line); }
-  aside .brand .name { font-size: 15px; font-weight: 700; letter-spacing: -0.2px; }
-  aside .brand .name b { color: var(--acc); }
-  aside .brand .sub, aside .vbadge { font-size: 12px; color: var(--faint); margin-top: 2px; }
-  aside .vbadge { display: block; margin-top: 8px; font-size: 11px; }
-  aside .sec-label {
-    font-size: 10px; font-weight: 650; letter-spacing: 1px; text-transform: uppercase;
-    color: var(--faint); padding: 20px 12px 6px;
-  }
-  aside nav a.nav { display: block; padding: 4px 12px; margin: 1px 0; font-size: 13px; color: var(--mut); border-radius: 6px; }
-  aside nav a.nav .n { display: none; }
-  aside nav a.nav:hover { background: #f3f4f6; color: var(--ink); }
-  aside nav a.nav.active { background: var(--acc-soft); color: var(--acc); font-weight: 600; }
-  aside .tree a { display: block; padding: 3px 12px 3px 24px; font-size: 12px; color: var(--mut); }
-  aside .tree a::before { content: "·"; position: absolute; transform: translateX(-13px); color: var(--acc); }
-  aside .tree a:hover { color: var(--ink); }
-  aside .doclink { padding: 2px 0 8px; }
-  aside .doclink a { display: block; padding: 3px 12px; font-size: 12px; color: var(--mut); }
-  aside .doclink a:hover { color: var(--acc); }
-  aside .doclink a.frozen, aside .doclink a.frozen:hover { color: var(--pur); }
-  aside .rule { margin: 12px 8px 0; padding: 12px 12px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); }
-  aside .rule b { color: var(--mut); font-weight: 600; }
-
-  /* ── Konten ── */
-  main { margin-left: var(--side); padding: 52px 68px 130px; }
-  main > * { max-width: 900px; }
-  main > .tscroll, main > pre.kod { max-width: 980px; }
-  section { margin-bottom: 26px; scroll-margin-top: 22px; }
-  h1 { font-size: 30px; line-height: 1.2; font-weight: 750; letter-spacing: -0.4px; margin: 4px 0 10px; }
-  h2 { font-size: 19px; font-weight: 720; letter-spacing: -0.2px; display: flex; align-items: baseline; gap: 10px; margin: 58px 0 6px; }
-  h2 .hn { font-size: 11.5px; font-weight: 700; color: var(--acc); letter-spacing: 1px; flex: 0 0 auto; }
-  h3.hsub { font-size: 15.5px; font-weight: 700; margin: 26px 0 8px; }
-  .lede { color: var(--mut); margin: 6px 0 20px; max-width: 700px; }
-  .crumb { font-size: 12px; color: var(--faint); margin-bottom: 12px; }
-  .crumb b { color: var(--ink); font-weight: 600; }
-  .muted { color: var(--mut); }
-
-  .meta { font-size: 12.5px; color: var(--faint); margin: 2px 0 22px; }
-  .meta .badge + .badge::before { content: "·"; margin: 0 8px; color: var(--line); }
-  .badge.blue { color: var(--acc); }
-  .badge.green { color: var(--ok); }
-
-  .chip { font-size: 10.5px; font-weight: 700; }
-  .chip.c1 { color: var(--acc); }
-  .chip.c2 { color: var(--ok); }
-  .chip.c3 { color: var(--pur); }
-  .chip.cx { color: var(--warn); }
-
-  /* Ringkasan lapisan di hero (pengganti diagram raksasa) */
-  .quicklayers { margin: 8px 0 30px; }
-  .quicklayers div {
-    display: flex; align-items: baseline; gap: 10px; padding: 7px 0;
-    border-top: 1px solid var(--line); font-size: 13.5px; color: var(--mut);
-  }
-  .quicklayers div:last-child { border-bottom: 1px solid var(--line); }
-  .quicklayers code { font-size: 12px; }
-
-  /* Lapisan */
-  .layer { display: grid; grid-template-columns: 40px 1fr; gap: 2px 18px; padding: 18px 0; border-top: 1px solid var(--line); }
-  .layer .lnum { font-size: 18px; font-weight: 750; color: var(--faint); font-variant-numeric: tabular-nums; }
-  .layer .ltitle { font-weight: 680; font-size: 15px; display: flex; gap: 10px; align-items: center; }
-  .layer .lpath { font-size: 12px; color: var(--acc); font-family: var(--mono); }
-  .layer .ldesc { grid-column: 2; font-size: 14px; color: var(--mut); max-width: 740px; }
-  .stackarrow { font-size: 10.5px; color: var(--faint); padding: 7px 0 2px 48px; }
-  .dirnote {
-    margin: 24px 0 8px; padding: 4px 0 4px 16px; border-left: 3px solid var(--acc);
-    font-size: 14px; color: var(--mut); max-width: 800px;
-  }
-  .dirnote b { color: var(--ink); font-weight: 600; }
-
-  /* Tabel: garis tipis saja */
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  .tscroll { overflow-x: auto; margin: 10px 0; }
-  th, td { text-align: left; padding: 8px 12px; vertical-align: top; }
-  th { border-bottom: 1.5px solid var(--ink); color: var(--mut); font-weight: 600; font-size: 12.5px; }
-  td { border-bottom: 1px solid var(--line); }
-  tr:last-child td { border-bottom: 0; }
-  .tscroll table { min-width: 620px; }
-  table.matrix td { text-align: center; }
-  table.matrix td:first-child, table.matrix th:first-child { text-align: left; white-space: nowrap; }
-  table.matrix .ok { color: var(--ok); }
-  table.matrix .no { color: var(--err); }
-  table.matrix .na { color: var(--faint); }
-  table.matrix small { display: block; color: var(--faint); font-size: 11px; font-weight: 400; }
-  td small { color: var(--faint); }
-  ul.plain { list-style: none; margin: 8px 0; }
-  ul.plain li { position: relative; padding: 0 0 10px 20px; font-size: 13.5px; color: var(--mut); max-width: 820px; }
-  ul.plain li::before { content: "·"; position: absolute; left: 4px; color: var(--acc); font-weight: 700; }
-  ul.plain li b { color: var(--ink); font-weight: 600; }
-
-  /* Steps */
-  .step { display: flex; gap: 14px; }
-  .step .rail { display: flex; flex-direction: column; align-items: center; flex: 0 0 24px; }
-  .step .dot {
-    width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto;
-    background: var(--acc-soft); color: var(--acc); font-size: 11.5px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .step .line { width: 1px; flex: 1; background: var(--line); margin: 4px 0; }
-  .step:last-child .line { display: none; }
-  .step .card { flex: 1; padding: 1px 0 18px; max-width: 820px; }
-  .step .card b { font-size: 14.5px; }
-  .step .card .where { font-size: 12px; color: var(--acc); font-family: var(--mono); display: block; margin-top: 2px; }
-  .step .card .what { font-size: 13.5px; color: var(--mut); margin-top: 2px; }
-
-  /* Kelompok modul: sederhana, tanpa kotak */
-  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
-  .toolbar input {
-    flex: 1; min-width: 200px; border: 1px solid var(--line); border-radius: 7px;
-    padding: 7px 12px; font-size: 13px; font-family: var(--mono); color: var(--ink);
-  }
-  .toolbar input:focus { outline: 2px solid var(--acc); outline-offset: -1px; border-color: transparent; }
-  .toolbar button {
-    border: 1px solid var(--line); background: #fff; color: var(--mut); border-radius: 7px;
-    padding: 7px 12px; font-size: 12.5px; cursor: pointer;
-  }
-  .toolbar button:hover { color: var(--acc); border-color: var(--acc); }
-  details.group { margin: 0; scroll-margin-top: 22px; }
-  details.group.flash summary { color: var(--acc); }
-  details.group[hidden] { display: none; }
-  details.group summary {
-    cursor: pointer; list-style: none; padding: 13px 2px; user-select: none;
-    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 15px; font-weight: 680;
-    border-top: 1px solid var(--line);
-  }
-  details.group:first-of-type summary { border-top: 0; }
-  details.group summary::-webkit-details-marker { display: none; }
-  details.group summary .role { color: var(--faint); font-size: 12px; font-weight: 400; }
-  details.group summary::after { content: "＋"; margin-left: auto; color: var(--faint); font-weight: 400; }
-  details.group[open] summary::after { content: "－"; }
-  .mods { display: grid; grid-template-columns: 1fr; gap: 0; padding: 4px 0 14px; }
-  .mod { padding: 13px 2px; }
-  .mod + .mod { border-top: 1px solid var(--line); }
-  .mod[hidden] { display: none; }
-  .mod .fname { font-size: 13px; font-weight: 650; font-family: var(--mono); color: var(--ink); }
-  .mod .fdesc { font-size: 13.5px; color: var(--mut); margin-top: 3px; max-width: 830px; }
-  .mod .exports { font-size: 12px; color: var(--ok); margin-top: 5px; font-family: var(--mono); overflow-wrap: anywhere; }
-
-  /* Resep & rantai */
-  .recipes { display: grid; grid-template-columns: 1fr 1fr; gap: 0 46px; }
-  .recipe { padding: 16px 0; }
-  .recipe + .recipe { border-top: 1px solid var(--line); }
-  .recipe h3 { font-size: 15px; margin-bottom: 5px; font-weight: 700; }
-  .recipe ol { margin: 0 0 0 20px; font-size: 13.5px; color: var(--mut); }
-  .recipe ol li { margin-bottom: 4px; }
-  .recipe .guard { margin-top: 8px; font-size: 12.5px; color: var(--warn); }
-  pre.kod {
-    background: #12151d; color: #dfe3ea; border-radius: 8px;
-    padding: 14px 16px; overflow-x: auto; font-family: var(--mono);
-    font-size: 12.5px; line-height: 1.7; margin: 12px 0;
-  }
-  pre.kod .cm { color: #7b8494; }
-  .chain { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 20px; }
-  .chain .link { padding: 10px 0; font-size: 13px; color: var(--mut); }
-  .chain .link b { display: block; font-size: 13.5px; color: var(--ink); font-weight: 650; margin-bottom: 2px; }
-  .chain .link .mono { display: block; margin-top: 4px; font-size: 11.5px; color: var(--acc); }
-  .chain .sep { display: none; }
-
-  footer { margin-top: 56px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; }
-
-  /* §09 */
-  .uxgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px 40px; margin: 10px 0 6px; }
-  .uxcard h4 { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--acc); margin-bottom: 4px; }
-  .uxcard p { margin: 0; font-size: 13px; color: var(--mut); }
-  .uxcard code { font-size: 11.5px; }
-  .invtable td:nth-child(1) { white-space: nowrap; color: var(--acc); font-weight: 650; }
-  .invtable td:nth-child(3) { color: var(--mut); font-family: var(--mono); font-size: 11.5px; }
-  .invtable { min-width: 500px; }
-
-  @media (max-width: 1020px) {
-    aside { position: static; width: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px 18px; }
-    main { margin-left: 0; padding: 26px 22px 90px; }
-    aside .brand { border-bottom: 0; padding-bottom: 4px; }
-    aside nav a.nav { display: inline-block; margin: 0 2px 4px 0; }
-    aside .tree a { display: inline-block; }
-    aside .tree a::before { content: none; }
-    .layer { grid-template-columns: 1fr; }
-    .layer .lnum { display: none; }
-    .layer .ldesc { grid-column: 1; }
-    .mods, .recipes { grid-template-columns: 1fr; }
-  }
-
-  @media print {
-    aside, .toolbar, .skip { display: none !important; }
-    main { margin: 0; padding: 6px; }
-    body { color: #111; }
-    pre.kod { background: #f4f4f5; color: #111; }
-    pre.kod .cm { color: #777; }
-    details.group { break-inside: avoid; }
-    details.group summary::after { content: none; }
-    details.group summary { border-top: 0; }
-  }
+  body.nav-open .sidebar { transform: none; }
+  body.nav-open .backdrop { display: block; position: fixed; inset: var(--topbar-h) 0 0 0; background: rgba(0, 0, 0, 0.35); z-index: 110; }
+  .content { padding: 26px 20px 70px; }
+  h1 { font-size: 26px; }
+  .card-grid, .recipes, .pagenav { grid-template-columns: 1fr; }
+  .layer { grid-template-columns: 1fr; }
+  .layer .lnum { display: none; }
+  .layer .ldesc { grid-column: 1; }
+  .vpill.hide-m { display: none; }
+}
+@media print {
+  .topbar, .sidebar, .toc, .toolbar, .skip, .backdrop, .pagenav, .search-pill { display: none !important; }
+  .shell { display: block; }
+  .content { padding: 0; }
+  body { color: #111; }
+  pre.kod { background: #f4f4f5; color: #111; }
+  details.group { break-inside: avoid; }
+}
 </style>
 </head>
 <body>
 <a class="skip" href="#sekilas">Langsung ke konten</a>
 
-<!-- ══════════════════ SIDEBAR ══════════════════ -->
-<aside>
+<!-- ══ Topbar ══ -->
+<header class="topbar">
+  <button class="burger" id="burger" aria-label="Buka navigasi"><span class="mi">menu</span></button>
   <div class="brand">
-    <div class="name">mini<b>code</b></div>
-    <div class="sub">Peta struktur untuk developer</div>
-    <span class="vbadge">v0.9.0 · Bun-only · 0 deps</span>
+    <span class="mark"><span class="mi">terminal</span></span>
+    <span class="name">mini<b>code</b></span>
+    <span class="tag-docs">docs</span>
   </div>
-  <nav id="nav">
-    <div class="sec-label">Peta</div>
-    <a class="nav" href="#sekilas"><span class="n">0</span> Sekilas — satu diagram</a>
-    <a class="nav" href="#batas"><span class="n">1</span> Lapisan &amp; Batas Impor</a>
-    <a class="nav" href="#alur"><span class="n">2</span> Alur Satu Prompt</a>
-    <a class="nav" href="#pohon"><span class="n">3</span> Modul &amp; Ekspor</a>
-    <div class="tree">
-      <a href="#g-cli">cli/</a>
-      <a href="#g-app">src/app/</a>
-      <a href="#g-policy">src/policy/</a>
-      <a href="#g-tools">src/tools/</a>
-      <a href="#g-providers">src/providers/</a>
-      <a href="#g-session">src/session/</a>
-      <a href="#g-ui">src/ui/</a>
-      <a href="#g-lain">src/ lainnya</a>
-      <a href="#g-kernel">vendor/minicore/</a>
-      <a href="#g-quality">test · scripts · bench</a>
-    </div>
-    <a class="nav" href="#resep"><span class="n">4</span> Resep Ekstensi</a>
-    <a class="nav" href="#keamanan"><span class="n">5</span> Rantai Keamanan</a>
-    <a class="nav" href="#env"><span class="n">6</span> Env &amp; Perintah</a>
-    <a class="nav" href="#persistensi"><span class="n">7</span> Data Persisten</a>
-    <a class="nav" href="#invarian"><span class="n">8</span> Invarian Struktural</a>
-    <a class="nav" href="#ux"><span class="n">9</span> UI/UX — Kontrak Terminal</a>
-  </nav>
-  <div class="doclink">
-    <div class="sec-label">Dokumentasi</div>
-    <a class="frozen" href="TERMINAL_CONTRACT.md">TERMINAL_CONTRACT.md — FROZEN</a>
-    <a href="USAGE.md">USAGE.md — panduan pengguna</a>
-    <a href="HARNESS.md">HARNESS.md — jaminan kualitas</a>
-    <a href="../CHANGELOG.md">CHANGELOG.md — riwayat</a>
-    <a href="../PLAN.md">PLAN.md — rencana aktif</a>
+  <div class="search-pill" id="searchPill" role="button" tabindex="0" aria-label="Cari di halaman ini">
+    <span class="mi">search</span><span>Cari modul, simbol, env…</span><kbd>Ctrl K</kbd>
   </div>
-  <div class="rule">
+  <div class="top-actions">
+    <span class="vpill hide-m">v0.9.6 · Bun-only · 0 deps</span>
+    <button class="iconbtn" id="themeBtn" aria-label="Ganti tema terang/gelap" title="Ganti tema"><span class="mi">dark_mode</span></button>
+  </div>
+</header>
+
+<div class="shell">
+<!-- ══════════ SIDEBAR KIRI ══════════ -->
+<aside class="sidebar" id="sidebar" aria-label="Navigasi dokumen">
+  <div class="side-search">
+    <span class="mag"><span class="mi">search</span></span>
+    <input id="filter" type="search" placeholder="Saring modul / simbol…" aria-label="Saring modul dan navigasi">
+  </div>
+
+  <details class="side-group" open>
+    <summary>Memulai</summary>
+    <a class="snav" href="#sekilas">Sekilas — satu diagram</a>
+    <a class="snav" href="#batas">Lapisan &amp; batas impor</a>
+    <a class="snav" href="#alur">Alur satu prompt</a>
+  </details>
+
+  <details class="side-group" open>
+    <summary>Referensi modul</summary>
+    <a class="snav" href="#pohon">Modul &amp; ekspor kunci</a>
+    <a class="snav sub" href="#g-cli">cli/ <span class="cnt">L1</span></a>
+    <a class="snav sub" href="#g-app">src/app/</a>
+    <a class="snav sub" href="#g-policy">src/policy/</a>
+    <a class="snav sub" href="#g-tools">src/tools/ <span class="cnt">37</span></a>
+    <a class="snav sub" href="#g-providers">src/providers/</a>
+    <a class="snav sub" href="#g-session">src/session/</a>
+    <a class="snav sub" href="#g-ui">src/ui/ <span class="cnt">L1</span></a>
+    <a class="snav sub" href="#g-lain">src/ lainnya</a>
+    <a class="snav sub" href="#g-kernel">vendor/minicore/ <span class="cnt">L3</span></a>
+    <a class="snav sub" href="#g-quality">test · scripts · bench</a>
+  </details>
+
+  <details class="side-group" open>
+    <summary>Panduan</summary>
+    <a class="snav" href="#resep">Resep ekstensi</a>
+    <a class="snav" href="#keamanan">Rantai keamanan</a>
+    <a class="snav" href="#env">Env &amp; perintah</a>
+    <a class="snav" href="#persistensi">Data persisten</a>
+    <a class="snav" href="#invarian">Invarian struktural</a>
+    <a class="snav" href="#ux">UI/UX — kontrak terminal</a>
+  </details>
+
+  <details class="side-group" open>
+    <summary>Dokumentasi</summary>
+    <a class="snav frozen" href="TERMINAL_CONTRACT.md">TERMINAL_CONTRACT — frozen <span class="mi">ac_unit</span></a>
+    <a class="snav" href="USAGE.md">USAGE — panduan pengguna</a>
+    <a class="snav" href="HARNESS.md">HARNESS — jaminan kualitas</a>
+    <a class="snav" href="../CHANGELOG.md">CHANGELOG — riwayat</a>
+    <a class="snav" href="../PLAN.md">PLAN — rencana aktif</a>
+  </details>
+
+  <div class="side-foot">
     <b>Aturan repo:</b> setiap perubahan struktur wajib memperbarui file ini
     (lihat AGENTS.md). Jangan biarkan peta ini usang.
   </div>
 </aside>
+<div class="backdrop" id="backdrop"></div>
 
-<!-- ══════════════════ KONTEN ══════════════════ -->
+<!-- ══════════ KONTEN ══════════ -->
+<main class="content">
+<div class="content-inner">
 
 <!-- ── 0 · SEKILAS ── -->
 <section id="sekilas">
-  <p class="crumb">Documentation&nbsp;&nbsp;<b>Architecture — peta struktur</b></p>
+  <p class="crumb">minicode <span class="sep">/</span> architecture <span class="sep">/</span> <b>peta struktur</b></p>
   <h1>Satu diagram untuk memahami seluruh minicode</h1>
   <p class="lede">
-    Jalur utama mengalir atas→bawah: prompt masuk, melewati tiga lapisan, loop
-    model↔tool berputar, hasil keluar sebagai tampilan + data tersimpan. Jalur
-    samping (garis kuning) menunjukkan jalan keluar/masuk alternatif: subcommand
-    admin dan mode MCP server. Bagian lain halaman ini adalah detail yang bisa
-    kamu lompat langsung: ekspor per modul (§3), resep menambah kode (§4), env
-    &amp; perintah (§6).
+    Jalur utama mengalir atas → bawah: prompt masuk, melewati tiga lapisan, loop
+    model ↔ tool berputar, hasil keluar sebagai tampilan + data tersimpan. Jalur
+    samping menunjukkan jalan keluar/masuk alternatif: subcommand admin dan mode
+    MCP server. Detailnya bisa dilompat langsung: ekspor per modul (§3), resep
+    menambah kode (§4), env &amp; perintah (§6).
   </p>
   <div class="meta">
-    <span class="badge blue">entry: cli/index.ts</span>
-    <span class="badge">37 tool bawaan</span>
-    <span class="badge">kernel 05fc595a (lihat vendor/minicore/VENDOR.md)</span>
+    <span class="pill blue"><span class="dot"></span>entry: cli/index.ts</span>
+    <span class="pill green"><span class="dot"></span>37 tool bawaan</span>
+    <span class="pill">kernel 05fc595a · lihat vendor/minicore/VENDOR.md</span>
   </div>
 
-    <div class="quicklayers">
-    <div><span class="chip c1">L1</span> antarmuka&nbsp;&nbsp;<code>cli/ &middot; src/ui/</code></div>
-    <div><span class="chip c2">L2</span> logika agen&nbsp;&nbsp;<code>src/ (non-ui)</code></div>
-    <div><span class="chip c3">L3</span> kernel beku&nbsp;&nbsp;<code>vendor/minicore/</code></div>
+  <div class="card-grid">
+    <div class="card"><div class="k k1">L1 · ANTARMUKA</div><h3>CLI &amp; UI</h3><p>Terminal, REPL, picker, wizard, tema, rendering.</p><p><code>cli/ · src/ui/</code></p></div>
+    <div class="card"><div class="k k2">L2 · LOGIKA AGEN</div><h3>Agen Minicode</h3><p>Sesi, izin, tool, provider, MCP/LSP, memory.</p><p><code>src/ (non-ui)</code></p></div>
+    <div class="card"><div class="k k3">L3 · KERNEL BEKU</div><h3>MiniCore</h3><p>Loop agen inti. Hanya seam aditif.</p><p><code>vendor/minicore/</code></p></div>
   </div>
+
+  <div class="hint hint-info"><span class="ico"><span class="mi">info</span></span><div class="body"><span class="title">Cara membaca halaman ini</span>Mulai dari <a href="#batas">§1 lapisan</a> untuk batas impor, lalu <a href="#alur">§2 alur prompt</a> untuk file per tahap. Butuh simbol spesifik? Ketik di pencarian atas (Ctrl+K) — filter mencari sampai ke nama ekspor.</div></div>
 </section>
 
 <!-- ── 1 · LAPISAN & BATAS IMPOR ── -->
 <section id="batas">
-  <h2><span class="hn">01</span> <span class="ht">Lapisan &amp; Batas Impor</span></h2>
-  <p class="lede">Tiga lapisan logis, satu matriks ketergantungan. Semua sel "DILARANG" dijaga otomatis oleh <code>test/ui-boundary.test.ts</code> yang jalan di <code>bun test</code> — melanggar = CI merah, bukan sekadar gaya.</p>
-  <div class="stack">
-    <div class="layer l1">
+  <h2 class="sec"><span class="hn">01</span> Lapisan &amp; batas impor <a class="anchor" href="#batas">#</a></h2>
+  <p class="lede">Tiga lapisan logis, satu matriks ketergantungan. Semua sel “DILARANG” dijaga otomatis oleh <code>test/ui-boundary.test.ts</code> yang jalan di <code>bun test</code> — melanggar = CI merah, bukan sekadar gaya.</p>
+
+  <div class="layer-stack">
+    <div class="layer">
       <div class="lnum">1</div>
-      <div class="ltitle">CLI &amp; UI <span class="chip c1">L1</span></div>
-      <div class="lpath">cli/ · src/ui/</div>
-      <div class="ldesc">Semua yang menyentuh terminal: argv, REPL, picker, wizard, tema, rendering. Tidak ada logika agen di sini; layar interaktif = view murni (props data + callback) di <code>src/ui/screens/</code>, controller tipis di <code>cli/</code>.</div>
+      <div><div class="ltitle">CLI &amp; UI <span class="chip c1">L1</span></div>
+      <div class="lpath">cli/ · src/ui/</div></div>
+      <div class="ldesc">Semua yang menyentuh terminal: argv, REPL, picker, wizard, tema, rendering. Layar interaktif = view murni (props data + callback) di <code>src/ui/screens/</code>, controller tipis di <code>cli/</code>.</div>
     </div>
-    <div class="stackarrow">▼ memakai</div>
-    <div class="layer l2">
+    <div class="flow-note">▼ memakai</div>
+    <div class="layer">
       <div class="lnum">2</div>
-      <div class="ltitle">Agen Minicode <span class="chip c2">L2</span></div>
-      <div class="lpath">src/ (non-ui)</div>
+      <div><div class="ltitle">Agen Minicode <span class="chip c2">L2</span></div>
+      <div class="lpath">src/ (non-ui)</div></div>
       <div class="ldesc">Perakit sesi (app/), keamanan &amp; izin (policy/), 37 tool, provider, MCP/LSP, hooks, memory, skills, persistensi sesi.</div>
     </div>
-    <div class="stackarrow">▼ lewat <code>#minicore</code></div>
-    <div class="layer l3">
+    <div class="flow-note">▼ lewat <code>#minicore</code></div>
+    <div class="layer">
       <div class="lnum">3</div>
-      <div class="ltitle">Kernel MiniCore <span class="chip c3">L3</span></div>
-      <div class="lpath">vendor/minicore/ · pin 4591de2f</div>
+      <div><div class="ltitle">Kernel MiniCore <span class="chip c3">L3</span></div>
+      <div class="lpath">vendor/minicore/ · pin 05fc595a</div></div>
       <div class="ldesc">Loop agen inti. Beku: hanya seam aditif yang boleh diubah (<code>compactAsync</code>, <code>initialMessages</code>, <code>cwd</code>); sinkron via <code>bun run vendor:minicore</code>, cek via <code>bun run vendor:check</code>.</div>
     </div>
   </div>
 
+  <div class="tscroll">
   <table class="matrix">
     <tr><th>pengimpor ↓ · mengimpor →</th><th><code>cli/</code></th><th><code>src/</code> non-ui</th><th><code>src/ui/</code></th><th><code>#minicore</code></th></tr>
     <tr><td><b><code>cli/</code></b> <span class="chip c1">L1</span></td><td class="na">—</td><td class="ok">boleh</td><td class="ok">boleh</td><td class="ok">hanya tipe<small>cli/setup.ts</small></td></tr>
@@ -349,95 +591,63 @@
     <tr><td><b><code>src/ui/</code></b> <span class="chip c1">L1</span></td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="ok">internal</td><td class="no">DILARANG</td></tr>
     <tr><td><b><code>vendor/minicore/</code></b> <span class="chip c3">L3</span></td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="no">DILARANG</td><td class="ok">internal</td></tr>
   </table>
+  </div>
 
-  <div class="dirnote">
-    <b>Lapisan logis ≠ struktur direktori.</b> <code>src/ui/</code> secara fisik ada di
-    <code>src/</code> tetapi bermain di <span class="chip c1">L1</span> — lapisan ditentukan
-    peran, bukan lokasi folder.
-  </div>
-  <div class="dirnote">
-    <b>Satu-satunya jembatan UI ↔ agen.</b> Data masuk UI lewat kontrak tipe struktural di
-    <code>src/ui/contract.ts</code> (<code>UiEvent</code>, <code>UiBus</code>, <code>UiStep</code>,
-    <code>UiExecution</code>, <code>UiToolCallRef</code> — EventBus kernel kompatibel struktural).
-    Kemampuan agen masuk UI lewat <b>callback yang di-inject</b> dari composition root
-    <code>cli/setup.ts</code> (contoh: <code>ask</code> untuk approval, <code>setupWhenEmpty</code>
-    untuk wizard). UI tidak pernah menyentuh config, disk, atau kernel.
-  </div>
-  <div class="dirnote">
-    <b>Pola DI yang sama berlaku di luar UI.</b> Kebutuhan lintas-lapisan selalu disuntikkan dari
-    composition root, bukan diimpor langsung: <code>setSubAgentSessionFactory</code>
-    (cli/index.ts → delegate_task, supaya <code>src/tools/</code> tidak mengimpor lapisan app),
-    <code>ask</code> (approval), <code>setupWhenEmpty</code> (wizard). Tanpa injeksi, perilaku
-    default selalu aman: deny / tolak jalan.
-  </div>
-  <div class="dirnote">
-    <b>Subpath <code>#minicore</code></b> dideklarasikan di blok <code>imports</code> package.json
-    (<code>#minicore</code> → <code>vendor/minicore/src/core/index.ts</code>,
-    <code>#minicore/*</code> → subtree src kernel) — satu-satunya pintu kode ke L3.
-  </div>
-  <div class="dirnote">
-    <b>Mengapa tiga lapisan?</b> Kernel dapat disinkron/diganti tanpa menyentuh aplikasi;
-    kebijakan keamanan berdiri di L2 sehingga otomatis berlaku untuk semua tool (bawaan
-    maupun MCP); UI bebas berubah tanpa memengaruhi logika — dan sebaliknya.
-  </div>
+  <div class="hint hint-info"><span class="ico"><span class="mi">layers</span></span><div class="body"><span class="title">Lapisan logis ≠ struktur direktori</span><code>src/ui/</code> secara fisik ada di <code>src/</code> tetapi bermain di <span class="chip c1">L1</span> — lapisan ditentukan peran, bukan lokasi folder.</div></div>
+  <div class="hint hint-purple"><span class="ico"><span class="mi">cable</span></span><div class="body"><span class="title">Satu-satunya jembatan UI ↔ agen</span>Data masuk UI lewat kontrak tipe struktural di <code>src/ui/contract.ts</code> (<code>UiEvent</code>, <code>UiBus</code>, <code>UiStep</code>, <code>UiExecution</code>, <code>UiToolCallRef</code>). Kemampuan agen masuk UI lewat <b>callback yang di-inject</b> dari composition root <code>cli/setup.ts</code> (<code>ask</code>, <code>setupWhenEmpty</code>). UI tidak pernah menyentuh config, disk, atau kernel.</div></div>
+  <div class="hint hint-ok"><span class="ico"><span class="mi">link</span></span><div class="body"><span class="title">Pola DI yang sama berlaku di luar UI</span><code>setSubAgentSessionFactory</code> (cli/index.ts → delegate_task), <code>ask</code> (approval), <code>setupWhenEmpty</code> (wizard). Tanpa injeksi, perilaku default selalu aman: deny / tolak jalan. Subpath <code>#minicore</code> (package.json <code>imports</code>) adalah satu-satunya pintu kode ke L3.</div></div>
+  <div class="hint hint-warn"><span class="ico"><span class="mi">warning</span></span><div class="body"><span class="title">Mengapa tiga lapisan?</span>Kernel dapat disinkron/diganti tanpa menyentuh aplikasi; kebijakan keamanan berdiri di L2 sehingga otomatis berlaku untuk semua tool (bawaan maupun MCP); UI bebas berubah tanpa memengaruhi logika — dan sebaliknya.</div></div>
 </section>
 
 <!-- ── 2 · ALUR ── -->
 <section id="alur">
-  <h2><span class="hn">02</span> <span class="ht">Alur Eksekusi Satu Prompt</span></h2>
-  <p class="lede">Tujuh tahap jalur utama, lengkap dengan file tempat tiap tahap hidup. Subcommand admin dan mode MCP server tidak lewat alur ini (lihat jalur samping diagram).</p>
+  <h2 class="sec"><span class="hn">02</span> Alur eksekusi satu prompt <a class="anchor" href="#alur">#</a></h2>
+  <p class="lede">Tujuh tahap jalur utama, lengkap dengan file tempat tiap tahap hidup. Subcommand admin dan mode MCP server tidak lewat alur ini.</p>
   <div class="steps">
-    <div class="step"><div class="rail"><div class="dot">1</div><div class="line"></div></div>
-      <div class="card"><b>Entry &amp; parsing</b>
-        <span class="where">cli/index.ts → cli/args.ts → cli/router.ts</span>
-        <span class="what">argv dipisah jadi flag &amp; prompt; dispatch ke subcommand (auth/config/exec/mcp/pricing/providers/sessions/skills/stats) atau REPL. Flag tak dikenal tidak error — ia jadi kata prompt (§8).</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">2</div><div class="line"></div></div>
-      <div class="card"><b>Perakitan sesi</b>
-        <span class="where">cli/setup.ts → src/app/session.ts → src/app/{provider,tool,rag}-layer.ts</span>
-        <span class="what">Config dimuat; session kernel dibuat; provider + tools + permission dirakit; checkpoint &amp; callback UI (ask, wizard) di-inject di sini — titik komposisi seluruh aplikasi.</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">3</div><div class="line"></div></div>
-      <div class="card"><b>Loop agen</b>
-        <span class="where">vendor/minicore/src/core/{session,loop}.ts</span>
-        <span class="what">session.run menjalankan executeTurn berulang (maxSteps default 50) di atas salinan ContextStore transaksional per turn — bisa di-rollback oleh checkpoint.</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">4</div><div class="line"></div></div>
-      <div class="card"><b>Streaming provider</b>
-        <span class="where">src/providers/router.ts → anthropic.ts · vendor openai-compat.ts</span>
-        <span class="what">Model dipilih, request dikirim, token di-stream sebagai event bus kernel → diterima presentation sebagai UiEvent.</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">5</div><div class="line"></div></div>
-      <div class="card"><b>Eksekusi tool</b>
-        <span class="where">vendor core/executor.ts → src/policy/executor.ts → src/tools/*</span>
-        <span class="what">Rantai gerbang §5: jail → permission → bash-guard → validateArgs → execute → truncation. Tool MCP eksternal dirutekan lewat src/mcp/client.ts dengan nama "serverid.toolname".</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">6</div><div class="line"></div></div>
-      <div class="card"><b>Rendering output</b>
-        <span class="where">src/ui/render/{sanitize,markdown,highlight,wrap,width}.ts → src/ui/assistant/simple.ts</span>
-        <span class="what">Teks tidak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu mengalir append-only ke scrollback (printer linier, tanpa alternate screen). Assistant hanya mengonsumsi event UiBus — tidak memanggil agen langsung.</span>
-      </div></div>
-    <div class="step"><div class="rail"><div class="dot">7</div><div class="line"></div></div>
-      <div class="card"><b>Persistensi</b>
-        <span class="where">src/session/{persistence,shadow-git,checkpoint}.ts · src/telemetry/trace.ts</span>
-        <span class="what">Pesan disimpan inkremental ke sqlite (WAL, TTL 30 hari); tree per turn dicatat shadow-git di refs/minicode/*; trace jsonl untuk diagnostik &amp; statistik biaya.</span>
-      </div></div>
+    <div class="step"><div class="dot">1</div><div class="card-b"><b>Entry &amp; parsing</b>
+      <span class="where">cli/index.ts → cli/args.ts → cli/router.ts</span>
+      <span class="what">argv dipisah jadi flag &amp; prompt; dispatch ke subcommand (auth/config/exec/mcp/pricing/providers/sessions/skills/stats) atau REPL. Flag tak dikenal tidak error — ia jadi kata prompt (§8).</span>
+    </div></div>
+    <div class="step"><div class="dot">2</div><div class="card-b"><b>Perakitan sesi</b>
+      <span class="where">cli/setup.ts → src/app/session.ts → src/app/{provider,tool,rag}-layer.ts</span>
+      <span class="what">Config dimuat; session kernel dibuat; provider + tools + permission dirakit; checkpoint &amp; callback UI (ask, wizard) di-inject — titik komposisi seluruh aplikasi.</span>
+    </div></div>
+    <div class="step"><div class="dot">3</div><div class="card-b"><b>Loop agen</b>
+      <span class="where">vendor/minicore/src/core/{session,loop}.ts</span>
+      <span class="what">session.run menjalankan executeTurn berulang (maxSteps default 50) di atas salinan ContextStore transaksional per turn — bisa di-rollback oleh checkpoint.</span>
+    </div></div>
+    <div class="step"><div class="dot">4</div><div class="card-b"><b>Streaming provider</b>
+      <span class="where">src/providers/router.ts → anthropic.ts · vendor openai-compat.ts</span>
+      <span class="what">Model dipilih, request dikirim, token di-stream sebagai event bus kernel → diterima presentation sebagai UiEvent.</span>
+    </div></div>
+    <div class="step"><div class="dot">5</div><div class="card-b"><b>Eksekusi tool</b>
+      <span class="where">vendor core/executor.ts → src/policy/executor.ts → src/tools/*</span>
+      <span class="what">Rantai gerbang §5: jail → permission → bash-guard → validateArgs → execute → truncation. Tool MCP eksternal dirutekan lewat src/mcp/client.ts (“serverid.toolname”).</span>
+    </div></div>
+    <div class="step"><div class="dot">6</div><div class="card-b"><b>Rendering output</b>
+      <span class="where">src/ui/render/{sanitize,markdown,highlight,wrap,width}.ts → src/ui/assistant/simple.ts</span>
+      <span class="what">Teks tak terpercaya disanitasi, didekorasi markdown, diukur dalam kolom, lalu mengalir append-only ke scrollback. Assistant hanya mengonsumsi event UiBus.</span>
+    </div></div>
+    <div class="step"><div class="dot">7</div><div class="card-b"><b>Persistensi</b>
+      <span class="where">src/session/{persistence,shadow-git,checkpoint}.ts · src/telemetry/trace.ts</span>
+      <span class="what">Pesan disimpan inkremental ke sqlite (WAL, TTL 30 hari); tree per turn dicatat shadow-git di refs/minicode/*; trace jsonl untuk diagnostik &amp; biaya.</span>
+    </div></div>
   </div>
 </section>
 
 <!-- ── 3 · POHON MODUL ── -->
 <section id="pohon">
-  <h2><span class="hn">03</span> <span class="ht">Modul &amp; Ekspor Kunci</span></h2>
-  <p class="lede">Satu kartu = satu berkas/dir: peran, lalu baris <span style="color:var(--ok)">⇢</span> berisi simbol ekspor yang aman kamu konsumsi dari lapisan yang boleh. Saring dengan kata kunci (mencari sampai ke nama simbol), lompat lewat sidebar.</p>
+  <h2 class="sec"><span class="hn">03</span> Modul &amp; ekspor kunci <a class="anchor" href="#pohon">#</a></h2>
+  <p class="lede">Satu kartu = satu berkas/dir: peran, lalu baris <span class="ok">⇢</span> berisi simbol ekspor yang aman dikonsumsi dari lapisan yang boleh. Saring dengan kata kunci, lompat lewat sidebar.</p>
 
   <div class="toolbar">
-    <input id="filter" type="search" placeholder="saring modul / simbol… (mis. bash, checkpoint, inspectBash)" aria-label="Saring modul">
     <button id="openAll" type="button">Buka semua</button>
     <button id="closeAll" type="button">Tutup semua</button>
   </div>
+  <div class="empty-note" id="emptyNote">Tidak ada modul yang cocok. Kosongkan saringan untuk melihat semua.</div>
 
   <details class="group" id="g-cli" open>
-    <summary><span class="chip c1">L1</span> cli/ <span class="role">— entry point, subcommand, penggerak REPL, controller layar</span></summary>
+    <summary><span class="chip c1">L1</span> cli/ <span class="role">— entry point, subcommand, penggerak REPL, controller layar</span> <span class="cnt">8 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Entry utama (bin package.json): parsing argv, HELP/versi, rute subcommand vs REPL; wiring DI factory sub-agen (setSubAgentSessionFactory) sebelum dispatch.</div><div class="exports">titik masuk — dieksekusi, tidak diimpor</div></div>
       <div class="mod"><div class="fname">args.ts</div><div class="fdesc">Parsing argumen murni: whitelist flag, bentuk <code>--f v</code> &amp; <code>--f=v</code>, baca stdin.</div><div class="exports">getArg · promptFromArgs · readPrompt</div></div>
@@ -446,12 +656,12 @@
       <div class="mod"><div class="fname">commands.ts</div><div class="fdesc">Registry slash builtin + eksekusinya. DRIVER_HELP_COMMANDS = perintah driver yang tampil di /help tapi TIDAK di dropdown (undo/redo/clear/copy/history). /thinking dihapus — effort via picker Enter di /model.</div><div class="exports">handleBuiltinCommand · BUILTIN_COMMANDS · DRIVER_HELP_COMMANDS · /help /provider /model /sync /status /sessions /init /exit /compact</div></div>
       <div class="mod"><div class="fname">repl.ts</div><div class="fdesc">Driver REPL linier: loop askLine + dispatch slash/skill/prompt langsung ke scrollback; interupsi Ctrl+C saat busy (SIGINT + byte \x03), budget di driver; Tab kosong toggle plan/build; did-you-mean untuk typo slash.</div><div class="exports">runRepl · suggestSimilar</div></div>
       <div class="mod"><div class="fname">commands/ — 11 berkas, satu per subcommand</div><div class="fdesc">auth.ts · config.ts · exec.ts · mcp.ts · pricing.ts · providers.ts · sessions.ts · skills.ts · stats.ts · memory.ts (status RAG: rows/size/hit-rate) · doctor.ts (diagnosis lokal)</div><div class="exports">handleAuth · handleConfig · handleExec · handleMcp · handlePricing · handleProviders · handleSessions · handleSkills · handleStats · handleMemory · handleDoctor</div></div>
-      <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/. /model Enter = pilih + picker thinking effort (default/low/medium/high, Esc = batal total) via onSelect + onSetEffort; mutasi ditulis ke file scope asal provider (anti-shadowing); badge effort non-default di baris.</div></div>
+      <div class="mod"><div class="fname">wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">Controller tipis: pegang CRUD config, panggil view murni di src/ui/screens/. /model Enter = pilih + picker thinking effort (Esc = batal total) via onSelect + onSetEffort; mutasi ditulis ke file scope asal provider; badge effort non-default di baris.</div></div>
     </div>
   </details>
 
   <details class="group" id="g-app" open>
-    <summary><span class="chip c2">L2</span> src/app/ <span class="role">— perakitan agen (termasuk session.ts)</span></summary>
+    <summary><span class="chip c2">L2</span> src/app/ <span class="role">— perakitan agen (termasuk session.ts)</span> <span class="cnt">5 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">app/session.ts</div><div class="fdesc">Sambungkan kernel session dengan permission handler, recovery, event.</div><div class="exports">createMinicodeSession · PermissionControl</div></div>
       <div class="mod"><div class="fname">app/provider-layer.ts</div><div class="fdesc">Rakit provider dari config ke bentuk kernel; first-run via callback setupWhenEmpty; simpan currentRouter + reloadProviders agar /provider dan /model langsung routing tanpa restart.</div><div class="exports">createProviderLayer · reloadProviders · getCurrentRouter</div></div>
@@ -462,27 +672,28 @@
   </details>
 
   <details class="group" id="g-policy" open>
-    <summary><span class="chip c2">L2</span> src/policy/ <span class="role">— semua kebijakan izin &amp; keamanan agen</span></summary>
+    <summary><span class="chip c2">L2</span> src/policy/ <span class="role">— semua kebijakan izin &amp; keamanan agen</span> <span class="cnt">10 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">permission.ts</div><div class="fdesc">Handler 6 mode: auto/ask/readonly/plan/allowlist/allow-all; kunci per tool.</div><div class="exports">createPermissionHandler · PermissionMode · PermissionAsk</div></div>
-      <div class="mod"><div class="fname">allowlist.ts</div><div class="fdesc">Allowlist tool (global + proyek, merge dedup); pola wildcard <code>tool:args</code> — dipakai mode allowlist &amp; jawaban "always" di mode ask.</div><div class="exports">loadAllowlist · saveAllowlist · matchAllowlist · Allowlist</div></div>
-      <div class="mod"><div class="fname">jail.ts</div><div class="fdesc">Kebijakan path MURNI (tanpa IO async): predikat logis + SENSITIVE_RE. Pemilik definisi "sensitif/luar"; resolusi async milik lib/safe-open.ts.</div><div class="exports">isRealPathOutsideRoot · isPathOutsideRoot · isCwdOutsideRoot · isSensitive · SENSITIVE_RE</div></div>
+      <div class="mod"><div class="fname">allowlist.ts</div><div class="fdesc">Allowlist tool (global + proyek, merge dedup); pola wildcard <code>tool:args</code> — dipakai mode allowlist &amp; jawaban “always” di mode ask.</div><div class="exports">loadAllowlist · saveAllowlist · matchAllowlist · Allowlist</div></div>
+      <div class="mod"><div class="fname">jail.ts</div><div class="fdesc">Kebijakan path MURNI (tanpa IO async): predikat logis + SENSITIVE_RE. Pemilik definisi “sensitif/luar”; resolusi async milik lib/safe-open.ts.</div><div class="exports">isRealPathOutsideRoot · isPathOutsideRoot · isCwdOutsideRoot · isSensitive · SENSITIVE_RE</div></div>
       <div class="mod"><div class="fname">bash-guard.ts</div><div class="fdesc">Normalisasi perintah dulu, periksa statik kemudian (lihat urutan di §5).</div><div class="exports">inspectBashCommand · normalizeCommand · stripQuotes · inlineSimpleVars · stripCommandWrappers · BashVerdict</div></div>
       <div class="mod"><div class="fname">executor.ts</div><div class="fdesc">runCall: permission → validateArgs → execute → truncation hasil.</div><div class="exports">parallelExecutor</div></div>
-      <div class="mod"><div class="fname">compaction.ts · context.ts</div><div class="fdesc">Kebijakan pemadatan konteks; manajemen jendela konteks.</div></div>
+      <div class="mod"><div class="fname">compaction.ts · context.ts</div><div class="fdesc">Kebijakan pemadatan konteks; manajemen jendela konteks. Ringkasan LLM di-pin verbatim (anti-drift), mendarat di DB cwd, prompt dipagar anti-injeksi; system prompt menandai data tak-terpercaya.</div></div>
       <div class="mod"><div class="fname">pricing.ts · usage.ts</div><div class="fdesc">Tabel harga model; kolektor token &amp; biaya.</div></div>
       <div class="mod"><div class="fname">ratelimit.ts · sandbox-policy.ts</div><div class="fdesc">Batas laju permintaan; kebijakan fallback sandbox.</div></div>
       <div class="mod"><div class="fname">scrub.ts · verifier.ts</div><div class="fdesc">Pembersihan data sensitif; verifikasi hasil (mode --verify).</div></div>
+      <div class="mod"><div class="fname">executor.ts — urutan gerbang</div><div class="fdesc">Urutan tetap: jail → permission → bash-guard → validateArgs → execute → truncation. Jangan sisipkan gerbang baru tanpa test di test/.</div></div>
     </div>
   </details>
 
   <details class="group" id="g-tools">
-    <summary><span class="chip c2">L2</span> src/tools/ <span class="role">— 37 tool bawaan agen (registry: allTools)</span></summary>
+    <summary><span class="chip c2">L2</span> src/tools/ <span class="role">— 37 tool bawaan agen (registry: allTools)</span> <span class="cnt">13 kelompok</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">index.ts</div><div class="fdesc">Registry tool bawaan; tool MCP di-append runtime dengan dedup nama.</div><div class="exports">allTools: Tool[] (37) · withMcpTools</div></div>
       <div class="mod"><div class="fname">bash.ts — 3 tool</div><div class="fdesc">bash (eksekusi, integrasi bash-guard), bashOutput, bashKill.</div><div class="exports">bashTool · bashOutputTool · bashKillTool</div></div>
       <div class="mod"><div class="fname">read_file.ts · write_file.ts · edit.ts · patch.ts — 4 tool</div><div class="fdesc">Baca/tulis/edit/patch; edit pakai flexibleMatch bertingkat.</div><div class="exports">readFileTool · writeFileTool · editTool · applyPatchTool</div></div>
-      <div class="mod"><div class="fname">move_file.ts · delete_file.ts · read_image.ts · code_run.ts — 4 tool</div><div class="fdesc">Pindah/rename atomik + hapus soft ke .trash/ (jail simetris di permission); baca gambar ke konteks; snippet python/node tanpa shell (wajib sandbox).</div><div class="exports">moveFileTool · deleteFileTool · readImageTool · codeRunTool</div></div>
+      <div class="mod"><div class="fname">move_file.ts · delete_file.ts · read_image.ts · code_run.ts — 4 tool</div><div class="fdesc">Pindah/rename atomik + hapus soft ke .trash/ (jail simetris di permission); baca gambar ke konteks; snippet python/node via sandbox runner (docker/OS, network-isolated, fail-closed tanpa backend).</div><div class="exports">moveFileTool · deleteFileTool · readImageTool · codeRunTool · shSingleQuote</div></div>
       <div class="mod"><div class="fname">glob.ts · grep.ts — 2 tool</div><div class="fdesc">Pencarian berkas &amp; isi (grep: ripgrep bila ada, engine js via env).</div><div class="exports">globTool · grepTool</div></div>
       <div class="mod"><div class="fname">git.ts — 4 tool</div><div class="fdesc">Read-only status/diff/log + commit eksplisit.</div><div class="exports">gitStatusTool · gitDiffTool · gitLogTool · gitCommitTool</div></div>
       <div class="mod"><div class="fname">hashline.ts — helper, BUKAN tool</div><div class="fdesc">Pemetaan baris-hash untuk edit/patch; tidak terdaftar di allTools.</div></div>
@@ -491,35 +702,37 @@
       <div class="mod"><div class="fname">memory.ts — 3 tool</div><div class="fdesc">Memori lintas sesi (RAG).</div><div class="exports">readMemoryTool · writeMemoryTool · forgetMemoryTool</div></div>
       <div class="mod"><div class="fname">task.ts · todo.ts · submit_result.ts · ask_user.ts — 5 tool</div><div class="fdesc">delegateTask (sub-agen via agents/pool; session factory di-inject dari cli/index.ts — tool tidak mengimpor lapisan app); todo state per sesi + plan artifact .minicode/plans/&lt;id&gt;.md; submit_result (output terstruktur); ask_user (gated, view di-inject dari cli/setup.ts).</div><div class="exports">delegateTaskTool · setSubAgentSessionFactory · SubAgentSessionFactory · todoWriteTool · todoReadTool · todoSession · renderPlan · savePlanSnapshot · loadPlan · submitResultTool · askUserTool · setAskTextFn</div></div>
       <div class="mod"><div class="fname">mcp_call.ts — 4 tool</div><div class="fdesc">Klien tool MCP eksternal dari dalam loop agen.</div><div class="exports">mcpListTool · mcpCallTool · mcpReadTool · mcpPromptTool</div></div>
+      <div class="mod"><div class="fname">web_search.ts — catatan provider</div><div class="fdesc">Search web agregat; hasilnya tetap lewat sanitizeAnsi sebelum render.</div><div class="exports">webSearchTool</div></div>
     </div>
   </details>
 
   <details class="group" id="g-providers">
-    <summary><span class="chip c2">L2</span> src/providers/ <span class="role">— koneksi model</span></summary>
+    <summary><span class="chip c2">L2</span> src/providers/ <span class="role">— koneksi model</span> <span class="cnt">6 modul</span></summary>
     <div class="mods">
-      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (byId per-stream + updateProviders agar provider baru langsung dikenali; fallback berantai; 429 + retry-after ditunggu — cap 30 dtk — lalu fallback, atau coba-ulang-di-tempat bila provider tunggal).</div><div class="exports">createRouterProvider · updateProviders</div></div>
+      <div class="mod"><div class="fname">router.ts</div><div class="fdesc">Pilih provider untuk satu request (byId per-stream + updateProviders agar provider baru langsung dikenali; fallback berantai; 429 + retry-after ditunggu — cap 30 dtk — lalu fallback, atau coba-ulang-di-tempat bila provider tunggal). Menyelipkan system prompt sebagai pesan user pertama untuk adapter tanpa dukungan system native (openai-compat; Anthropic/Responses diurus di adapter).</div><div class="exports">createRouterProvider · updateProviders</div></div>
       <div class="mod"><div class="fname">anthropic.ts</div><div class="fdesc">Adapter Anthropic native (stream SSE).</div></div>
-      <div class="mod"><div class="fname">responses.ts</div><div class="fdesc">Adapter Responses API (/v1/responses, store:false, chaining previous_response_id per model).</div><div class="exports">createResponsesProvider · clearResponsesChain</div></div>
+      <div class="mod"><div class="fname">responses.ts</div><div class="fdesc">Adapter Responses API (/v1/responses, store:false, chaining previous_response_id per model). System via <code>instructions</code>, riwayat tool via function_call/output items (linkage utuh), 400-konteks → compact-and-retry.</div><div class="exports">createResponsesProvider · clearResponsesChain · toResponsesInput</div></div>
       <div class="mod"><div class="fname">build.ts · detect.ts · presets.ts</div><div class="fdesc">Bangun adapter (termasuk Responses API + peta reasoningEffort); deteksi tipe dari probe (path /responses → responses), bukan substring URL; preset provider populer.</div></div>
-      <div class="mod"><div class="fname">provision.ts</div><div class="fdesc">Provisioning provider: deteksi model + simpan/hapus/sinkron entri config. Dipisah dari config.ts (B3) agar config murni IO.</div><div class="exports">saveProvider · detectAndSave · deriveProviderId · removeProvider · refreshProviderModels</div></div>
+      <div class="mod"><div class="fname">provision.ts</div><div class="fdesc">Provisioning provider: deteksi model + simpan/hapus/sinkron entri config. Dipisah dari config.ts agar config murni IO — arah satu arah: providers → config.</div><div class="exports">saveProvider · detectAndSave · deriveProviderId · removeProvider · refreshProviderModels</div></div>
       <div class="mod"><div class="fname">oauth.ts · auth-store.ts</div><div class="fdesc">Alur OAuth dan penyimpanan kredensial.</div></div>
     </div>
   </details>
 
   <details class="group" id="g-session">
-    <summary><span class="chip c2">L2</span> src/session/ <span class="role">— persistensi &amp; checkpoint</span></summary>
+    <summary><span class="chip c2">L2</span> src/session/ <span class="role">— persistensi, checkpoint &amp; jurnal recovery</span> <span class="cnt">4 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">persistence.ts</div><div class="fdesc">sqlite WAL: simpan pesan inkremental, daftar sesi, purge TTL, fork sesi (branch).</div><div class="exports">saveSession · loadSession · listSessions · deleteSession · branchSession · purgeExpired · getSessionTtlDays</div></div>
       <div class="mod"><div class="fname">shadow-git.ts</div><div class="fdesc">SHA tree git per turn di refs/minicode/* — tanpa menyentuh HEAD/index user.</div><div class="exports">ShadowSnapshot · ShadowChange · RestoreResult</div></div>
-      <div class="mod"><div class="fname">checkpoint.ts</div><div class="fdesc">Manifes checkpoint di .minicode/checkpoints/ (maks 20) + undo per turn + validasi resume (divergensi workspace vs checkpoint terakhir, .minicode/ dikecualikan).</div><div class="exports">Checkpoint · CheckpointManifest · FileSnapshot · validateResumeWorkspace</div></div>
+      <div class="mod"><div class="fname">checkpoint.ts</div><div class="fdesc">Manifes checkpoint di .minicode/checkpoints/ (maks 20) + undo per turn + validasi resume (divergensi workspace vs checkpoint terakhir, .minicode/ dikecualikan). Protokol undo/redo uniform: apply → marker jurnal (newIndex) → save pointer; crash di antaranya dipulihkan <code>reconcileUndoRedoPointer</code> dari marker (metadata-only, tanpa re-eksekusi).</div><div class="exports">Checkpoint · CheckpointManifest · FileSnapshot · validateResumeWorkspace · reconcileUndoRedoPointer</div></div>
+      <div class="mod"><div class="fname">journal.ts</div><div class="fdesc">Mutation intent journal: status komitmen per mutasi (pending/committed/failed/finalized) via event execution:started/completed — menjawab "sudah/belum/ambigu" saat resume. File dibuat eager saat attach (empty ≠ absent); turn namespace per-sesi (anak tak cross-match parent); delegasi ter-cover transitif. BUKAN transaksi: pending = ambigu (verify dulu), committed ≠ turn durable, MCP = external-acknowledged.</div><div class="exports">appendMutationIntent · appendMutationTerminal · decideRecovery · attachMutationJournal · planRecoveryForSession · classifyTool · findOrphanJournals</div></div>
     </div>
   </details>
 
   <details class="group" id="g-ui">
-    <summary><span class="chip c1">L1</span> src/ui/ <span class="role">— presentation mandiri · DILARANG impor cli/ · src/ non-ui · #minicore</span></summary>
+    <summary><span class="chip c1">L1</span> src/ui/ <span class="role">— presentation mandiri · DILARANG impor cli/ · src/ non-ui · #minicore</span> <span class="cnt">18 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">contract.ts</div><div class="fdesc">Satu-satunya bentuk data yang mengalir ke UI; EventBus kernel kompatibel struktural.</div><div class="exports">UiBus · UiEvent · UiEventType · UiStep · UiExecution · UiToolCallRef</div></div>
-      <div class="mod"><div class="fname">render/theme.ts</div><div class="fdesc">Warna &amp; glyph sebagai GETTER runtime (UTF-8, NO_COLOR) — jangan bekukan ke const. Palet tunggal; auto-detect: NO_COLOR &gt; stdout TTY &gt; truecolor &gt; 256 &gt; 16 &gt; mono. Warna MATI saat stdout bukan TTY (pipe/redirect = polos, apa pun TERM/COLORTERM). Fitur tema (--theme, /theme, preset) dihapus.</div></div>
+      <div class="mod"><div class="fname">render/theme.ts</div><div class="fdesc">Warna &amp; glyph sebagai GETTER runtime (UTF-8, NO_COLOR) — jangan bekukan ke const. Palet tunggal; auto-detect: NO_COLOR &gt; stdout TTY &gt; truecolor &gt; 256 &gt; 16 &gt; mono. Warna MATI saat stdout bukan TTY. Fitur tema (--theme, /theme, preset) dihapus.</div></div>
       <div class="mod"><div class="fname">render/sanitize.ts</div><div class="fdesc">sanitizeAnsi — hanya loloskan SGR; wajib untuk teks tak terpercaya.</div><div class="exports">sanitizeAnsi</div></div>
       <div class="mod"><div class="fname">render/width.ts · wrap.ts</div><div class="fdesc">Ukur teks dalam KOLOM (CJK/emoji = 2); pembungkus + justify.</div><div class="exports">displayWidth · truncateToWidth · padToWidth</div></div>
       <div class="mod"><div class="fname">render/markdown.ts · highlight.ts</div><div class="fdesc">Dekorasi markdown ke ANSI; syntax highlight kode.</div></div>
@@ -528,37 +741,37 @@
       <div class="mod"><div class="fname">render/wrap.ts</div><div class="fdesc">Word-wrap pecah di batas run whitespace (ASCII art/tabel utuh), tanpa justify pada baris ber-spasi-ganda.</div></div>
       <div class="mod"><div class="fname">render/table.ts</div><div class="fdesc">Tabel; terminal sempit (&lt;40 kolom) + banyak kolom render vertikal key: value.</div></div>
       <div class="mod"><div class="fname">render/diff.ts</div><div class="fdesc">Diff dua sisi (indexOf tanpa slice, reorder ambigu dahulukan add) + sorot kata berubah via LCS kecil.</div></div>
-      <div class="mod"><div class="fname">runtime/statusline.ts</div><div class="fdesc">ARBITRASE SATU-SATUNYA untuk semua transient stderr: <code>acquireTransientPaint(kind)</code> (turn-painter vs wizard-spinner, overlap = signal <code>[transient-paint]</code>) + <code>paintWrite</code>; tulis asing non-UI saat painter aktif dikomit sebagai baris permanen (tidak hilang); koordinasi suspend/resume baris status vs printer linier.</div><div class="exports">acquireTransientPaint · paintWrite · isTransientPainting · registerStatusLine · runWithoutStatus</div></div>
+      <div class="mod"><div class="fname">runtime/statusline.ts</div><div class="fdesc">ARBITRASE SATU-SATUNYA untuk semua transient stderr: <code>acquireTransientPaint(kind)</code> (turn-painter vs wizard-spinner, overlap = signal <code>[transient-paint]</code>) + <code>paintWrite</code>; tulis asing non-UI saat painter aktif dikomit sebagai baris permanen; koordinasi suspend/resume baris status vs printer linier.</div><div class="exports">acquireTransientPaint · paintWrite · isTransientPainting · registerStatusLine · runWithoutStatus</div></div>
       <div class="mod"><div class="fname">runtime/spinner.ts</div><div class="fdesc">Spinner wizard (glyphs.spinnerFrames); TTY-only — tanpa byte kontrol pada non-TTY; ikut arbitrase transient statusline.</div><div class="exports">createSpinner</div></div>
       <div class="mod"><div class="fname">input/prompt-engine.ts · input.ts</div><div class="fdesc">Engine input murni &amp; teruji: grapheme (Intl.Segmenter), state, dekode CSI/UTF-8 streaming, render spec; history (JSON per baris), askLine (+ onKey, multiline Ctrl+J, reverse-i-search Ctrl+R), askSecret; deletePrevUnit Thai/Lao-aware.</div><div class="exports">createState · applyKey · buildRenderSpec · decodeKeys · decodeKeysStream · toGraphemes · deletePrevUnit · MAX_VISIBLE · loadHistory · appendHistory · detectAnsi · askLine · askSecret</div></div>
-      <div class="mod"><div class="fname">assistant/simple.ts · turn-status.ts</div><div class="fdesc">Printer linier (satu-satunya renderer, one-shot &amp; REPL): output append-only di scrollback; stdout = teks model/receipt, stderr = ledger tool &amp; diagnostik. Tool compact = satu baris <code>✓ nama target</code> tanpa bocor isi (REPL default; env eksplisit menang; /compact / Ctrl+O membalik). Ledger SELALU ber-newline. Garis status turn lifecycle deterministik (<code>endTurn</code> di driver menutup gagal/abort; lukisan mulai pada event kerja pertama).</div><div class="exports">attachSimpleLogger · formatError · getLastTurnText · writeClipboardOsc52 · attachTurnStatus</div></div>
+      <div class="mod"><div class="fname">assistant/simple.ts · turn-status.ts</div><div class="fdesc">Printer linier (satu-satunya renderer, one-shot &amp; REPL): output append-only di scrollback; stdout = teks model/receipt, stderr = ledger tool &amp; diagnostik. Tool compact = satu baris <code>✓ nama target</code> (REPL default; env eksplisit menang; /compact / Ctrl+O membalik). Ledger SELALU ber-newline. Garis status turn lifecycle deterministik.</div><div class="exports">attachSimpleLogger · formatError · getLastTurnText · writeClipboardOsc52 · attachTurnStatus</div></div>
       <div class="mod"><div class="fname">approval/prompt.ts</div><div class="fdesc">View persetujuan tool call [y/a/n]; di-inject ke permission handler oleh cli/setup.ts; live-region screen reader saat MINICODE_A11Y=1.</div><div class="exports">promptAsk · ApprovalRequest</div></div>
       <div class="mod"><div class="fname">screens/overlay.ts</div><div class="fdesc">Primitive overlay transient bersama: redraw + clear delete-line yang konsisten untuk semua layar interaktif (tetap shell-like, tanpa panel permanen).</div><div class="exports">renderTransientOverlay · clearTransientOverlay</div></div>
       <div class="mod"><div class="fname">screens/picker.ts</div><div class="fdesc">Picker generik — dipakai manager &amp; wizard; transient, membersihkan diri sendiri; highlight substring query dengan bold.</div><div class="exports">runPicker</div></div>
-      <div class="mod"><div class="fname">screens/wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">View murni layar interaktif: hanya props data + callback async; tanpa akses config/disk. Model manager kini mengikuti pola overlay transient yang sama dengan picker/provider-manager.</div><div class="exports">runSetupWizardView · runModelManagerView · runProviderManagerView</div></div>
+      <div class="mod"><div class="fname">screens/wizard.ts · model-manager.ts · provider-manager.ts</div><div class="fdesc">View murni layar interaktif: hanya props data + callback async; tanpa akses config/disk. Model manager mengikuti pola overlay transient yang sama.</div><div class="exports">runSetupWizardView · runModelManagerView · runProviderManagerView</div></div>
     </div>
   </details>
 
   <details class="group" id="g-lain">
-    <summary><span class="chip c2">L2</span> src/ lainnya <span class="role">— MCP, LSP, hooks, memory, skills, sandbox</span></summary>
+    <summary><span class="chip c2">L2</span> src/ lainnya <span class="role">— MCP, LSP, hooks, memory, skills, sandbox</span> <span class="cnt">12 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">mcp/ (client · server · transport · http-transport)</div><div class="fdesc">Klien &amp; server MCP; transport stdio/HTTP (SSRF-protected). server.ts = minicode jadi MCP server.</div><div class="exports">mcpInventory · listMcpResources · listMcpPrompts · extractMcpText · getMcpServerIds · McpServerConfig</div></div>
       <div class="mod"><div class="fname">lsp/client.ts</div><div class="fdesc">Klien LSP: diagnostics, posisi symbol, server per ekstensi.</div><div class="exports">LspConnection · configureServers · lspDiagnostics · languageIdFor</div></div>
-      <div class="mod"><div class="fname">hooks/run.ts</div><div class="fdesc">Eksekusi hook eksternal opt-in (MINICODE_HOOKS=1). Allowlist pindah ke policy/allowlist.ts.</div><div class="exports">findRunHooks · runRunHooks</div></div>
-      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor (embedding): FTS5 + idx lower(text), ranking MMR λ=0.7 + dedup cosine 0.92, chunk 2000/overlap 200 (kolom parent), TTL hierarkis fact/decision 180 + summary 90 + snippet 14 hari + cap 5000 baris, kolom model/dim/category/tags/access_count, SSRF strict.</div><div class="exports">addMemory · searchHybrid · deleteMemoryByQuery · clearAllMemory · getMemoryStats · splitMemoryChunks · MemoryHit · MemoryStats</div></div>
+      <div class="mod"><div class="fname">hooks/run.ts</div><div class="fdesc">Eksekusi hook eksternal opt-in (MINICODE_HOOKS=1). Env tersanitasi tanpa secret; dilewati bila sesi aborted. Allowlist pindah ke policy/allowlist.ts.</div><div class="exports">findRunHooks · runRunHooks</div></div>
+      <div class="mod"><div class="fname">memory/files.ts · memory/vector.ts</div><div class="fdesc">Memori berbasis file &amp; pencarian vektor: FTS5 + idx lower(text), ranking MMR λ=0.7 + dedup cosine 0.92, chunk 2000/overlap 200 (kolom parent), TTL hierarkis fact/decision 180 + summary 90 + snippet 14 hari + cap 5000 baris, kolom model/dim/category/tags/access_count, SSRF strict.</div><div class="exports">addMemory · searchHybrid · deleteMemoryByQuery · clearAllMemory · getMemoryStats · splitMemoryChunks · MemoryHit · MemoryStats</div></div>
       <div class="mod"><div class="fname">skills/loader.ts</div><div class="fdesc">Muat &amp; render skill — slash /nama-skill.</div></div>
       <div class="mod"><div class="fname">repo/repomap.ts</div><div class="fdesc">Peta ringkas struktur repo untuk konteks (LSP atau regex).</div></div>
       <div class="mod"><div class="fname">sandbox/docker.ts · sandbox/os.ts</div><div class="fdesc">Eksekusi terisolasi Docker/OS di bawah kebijakan sandbox-policy.</div></div>
       <div class="mod"><div class="fname">agents/pool.ts</div><div class="fdesc">Pool sub-agen untuk tool task.</div></div>
-      <div class="mod"><div class="fname">telemetry/trace.ts</div><div class="fdesc">Trace jsonl per request provider — bahan /stats &amp; gate telemetry; step-traces.jsonl per tool/step + klasifikasi deny + mode sandbox (Harness-P1); catat memoryHits untuk hit-rate RAG (`memory status`).</div><div class="exports">RunTrace · StepTrace</div></div>
-      <div class="mod"><div class="fname">config.ts · constants.ts</div><div class="fdesc">IO config murni: muat/simpan (global + proyek, merge per-key) + CRUD MCP/LSP; LIMITS konstan pemotongan. Provisioning provider dipisah ke providers/provision.ts — arah dependensi satu arah: providers → config.</div><div class="exports">loadConfig · normalizeConfig · writeConfigAtomic · GLOBAL · LOCAL · saveMcpServer · removeMcpServer · saveLspServer · removeLspServer · MinicodeConfig · ProviderEntry · McpServerEntry · LspServerEntry · LIMITS</div></div>
-      <div class="mod"><div class="fname">lib/atomic-write.ts · lib/db-path.ts · lib/net.ts · lib/trash.ts</div><div class="fdesc">Tulis atomik (tmp+rename); resolusi path database; penjaga SSRF bersama (host privat + DNS pinning) — dipakai web_fetch, web_search, dan transport MCP HTTP; soft-delete bersama ke .minicode/.trash (cap 100) untuk delete_file &amp; backup move_file.</div><div class="exports">atomicWriteText · isPrivateHost · isPrivateHostWithDns · trashFile · trashDir</div></div>
-      <div class="mod"><div class="fname">lib/safe-open.ts</div><div class="fdesc">Pemilik verifikasi path async, terbagi per kebutuhan: <code>resolveSafePath(p, root)</code> untuk tool PENULIS (write/edit/patch/delete/move — butuh path real sebagai target tulis, toleran ENOENT untuk file baru); <code>safeOpenRead</code> (O_NOFOLLOW + cek jail &amp; sensitif pada titik open) untuk pembaca (read_file/read_image/stat). Alur satu arah: tools → safe-open → jail; tanpa state global (realpath segar tiap panggil).</div><div class="exports">resolveSafePath · safeOpenRead · safeReadFile · safeStat · assertSafeWriteTarget</div></div>
+      <div class="mod"><div class="fname">telemetry/trace.ts</div><div class="fdesc">Trace jsonl per request provider — bahan /stats &amp; gate telemetry; step-traces.jsonl per tool/step + klasifikasi deny + mode sandbox; catat memoryHits untuk hit-rate RAG (<code>memory status</code>).</div><div class="exports">RunTrace · StepTrace</div></div>
+      <div class="mod"><div class="fname">config.ts · constants.ts</div><div class="fdesc">IO config murni: muat/simpan (global + proyek, merge per-key) + CRUD MCP/LSP; LIMITS konstan pemotongan. Provisioning dipisah ke providers/provision.ts — arah satu arah: providers → config.</div><div class="exports">loadConfig · normalizeConfig · writeConfigAtomic · GLOBAL · LOCAL · saveMcpServer · removeMcpServer · saveLspServer · removeLspServer · MinicodeConfig · ProviderEntry · McpServerEntry · LspServerEntry · LIMITS</div></div>
+      <div class="mod"><div class="fname">lib/atomic-write.ts · lib/db-path.ts · lib/net.ts · lib/trash.ts</div><div class="fdesc">Tulis atomik (tmp+rename); resolusi path database; penjaga SSRF bersama (host privat + DNS pinning) — dipakai web_fetch, web_search, dan transport MCP HTTP; soft-delete bersama ke .minicode/.trash (cap 100).</div><div class="exports">atomicWriteText · isPrivateHost · isPrivateHostWithDns · trashFile · trashDir</div></div>
+      <div class="mod"><div class="fname">lib/safe-open.ts</div><div class="fdesc">Pemilik verifikasi path async, terbagi per kebutuhan: <code>resolveSafePath(p, root)</code> untuk tool PENULIS (butuh path real sebagai target tulis, toleran ENOENT untuk file baru); <code>safeOpenRead</code> (O_NOFOLLOW + cek jail &amp; sensitif pada titik open) untuk pembaca. Alur satu arah: tools → safe-open → jail; tanpa state global.</div><div class="exports">resolveSafePath · safeOpenRead · safeReadFile · safeStat · assertSafeWriteTarget</div></div>
     </div>
   </details>
 
   <details class="group" id="g-kernel">
-    <summary><span class="chip c3">L3</span> vendor/minicore/ <span class="role">— kernel beku (jangan dimodifikasi, hanya seam aditif)</span></summary>
+    <summary><span class="chip c3">L3</span> vendor/minicore/ <span class="role">— kernel beku (jangan dimodifikasi, hanya seam aditif)</span> <span class="cnt">7 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">src/core/session.ts · loop.ts</div><div class="fdesc">Sesi &amp; loop executeTurn (while, maxSteps).</div></div>
       <div class="mod"><div class="fname">src/core/executor.ts · tool.ts · permission.ts</div><div class="fdesc">Eksekutor tool kernel: permission → validate → execute → truncate.</div></div>
@@ -571,18 +784,18 @@
   </details>
 
   <details class="group" id="g-quality">
-    <summary><span class="chip cx">QA</span> test/ · scripts/ · bench/ · experiments/ <span class="role">— kualitas &amp; verifikasi</span></summary>
+    <summary><span class="chip cx">QA</span> test/ · scripts/ · bench/ · experiments/ <span class="role">— kualitas &amp; verifikasi</span> <span class="cnt">3 modul</span></summary>
     <div class="mods">
       <div class="mod"><div class="fname">test/</div><div class="fdesc">Suite bun:test — termasuk penjaga invarian: ui-boundary, no-frozen-runtime-value, import-convention.</div></div>
       <div class="mod"><div class="fname">scripts/</div><div class="fdesc">coverage-gate (min lines 84 · funcs 80), pack-check, vendor-minicore, telemetry-gate, test-live.</div></div>
-      <div class="mod"><div class="fname">bench/ · experiments/</div><div class="fdesc">Runner benchmark; probe adversarial bash-bypass, shadow-git, MCP. <code>bench/harness-audit.ts</code> (`bun run audit:harness`): 52 cek harness deterministik tanpa API key — safety 6-mode, guard bypass-rate, budget, fake-detector.</div></div>
+      <div class="mod"><div class="fname">bench/ · experiments/</div><div class="fdesc">Runner benchmark; probe adversarial bash-bypass, shadow-git, MCP. <code>bench/harness-audit.ts</code> (<code>bun run audit:harness</code>): 60 cek harness deterministik tanpa API key — safety 6-mode, guard bypass-rate, budget, fake-detector.</div></div>
     </div>
   </details>
 </section>
 
-<!-- ── 4 · RECEP EKSTENSI ── -->
+<!-- ── 4 · RESEP EKSTENSI ── -->
 <section id="resep">
-  <h2><span class="hn">04</span> <span class="ht">Resep Ekstensi</span></h2>
+  <h2 class="sec"><span class="hn">04</span> Resep ekstensi <a class="anchor" href="#resep">#</a></h2>
   <p class="lede">Enam perubahan paling umum, tiap resep dengan titik sentuh file dan penjaga yang menjatuhkan CI bila dilewati.</p>
   <div class="recipes">
 
@@ -593,7 +806,8 @@
         <li><b>Daftarkan</b> di array <code>allTools</code> pada <code>src/tools/index.ts</code> (impor + entri).</li>
         <li><b>Tambah test</b> di <code>test/</code>; nama tool jadi kunci permission mode per-tool.</li>
       </ol>
-<pre class="kod"><span class="cm">// src/tools/kalkulator.ts</span>
+      <div class="codeblock"><div class="codehead"><span class="fname">src/tools/kalkulator.ts</span><button type="button" data-copy="kod-tool"><span class="mi">content_copy</span><span class="lbl">Salin</span></button></div>
+<pre class="kod" id="kod-tool"><span class="cm">// src/tools/kalkulator.ts</span>
 import type { Tool } from "#minicore"
 export const kalkulatorTool: Tool = {
   name: "kalkulator",
@@ -605,7 +819,7 @@ export const kalkulatorTool: Tool = {
     ctx.signal.throwIfAborted()
     return String(hitung(args.expr))
   },
-}</pre>
+}</pre></div>
       <div class="guard">guard: hasil execute otomatis dipotong sesuai LIMITS; jangan mengimpor src/ui; operasi file wajib lewat cek jail.</div>
     </div>
 
@@ -664,68 +878,57 @@ export const kalkulatorTool: Tool = {
 
 <!-- ── 5 · KEAMANAN ── -->
 <section id="keamanan">
-  <h2><span class="hn">05</span> <span class="ht">Rantai Pemeriksaan Tool Call</span></h2>
+  <h2 class="sec"><span class="hn">05</span> Rantai pemeriksaan tool call <a class="anchor" href="#keamanan">#</a></h2>
   <p class="lede">Setiap tool call melewati gerbang berurutan; gagal di satu gerbang = ditolak, tidak lanjut.</p>
   <div class="chain">
-    <div class="link"><b>1 · Jail universal</b>Realpath di luar root &amp; path sensitif ditolak sebelum dispatch mode. Selalu aktif di semua mode.<span class="mono">src/policy/jail.ts</span></div>
-    <div class="sep">→</div>
-    <div class="link"><b>2 · Mode izin</b>auto / ask / readonly / plan / allowlist / allow-all.<span class="mono">src/policy/permission.ts</span></div>
-    <div class="sep">→</div>
-    <div class="link"><b>3 · Bash-guard</b>Normalisasi &amp; pemeriksaan statik perintah bash.<span class="mono">src/policy/bash-guard.ts</span></div>
-    <div class="sep">→</div>
-    <div class="link"><b>4 · validateArgs</b>Validasi argumen per skema tool.<span class="mono">vendor core/executor.ts</span></div>
-    <div class="sep">→</div>
-    <div class="link"><b>5 · Execute &amp; truncate</b>Hasil dipotong sesuai LIMITS sebelum kembali ke konteks.<span class="mono">src/policy/executor.ts</span></div>
+    <div class="link"><span class="gnum">1</span><b>Jail universal</b>Realpath di luar root &amp; path sensitif ditolak sebelum dispatch mode. Selalu aktif di semua mode.<span class="mono">src/policy/jail.ts</span></div>
+    <div class="link"><span class="gnum">2</span><b>Mode izin</b>auto / ask / readonly / plan / allowlist / allow-all.<span class="mono">src/policy/permission.ts</span></div>
+    <div class="link"><span class="gnum">3</span><b>Bash-guard</b>Normalisasi &amp; pemeriksaan statik perintah bash.<span class="mono">src/policy/bash-guard.ts</span></div>
+    <div class="link"><span class="gnum">4</span><b>validateArgs</b>Validasi argumen per skema tool.<span class="mono">vendor core/executor.ts</span></div>
+    <div class="link"><span class="gnum">5</span><b>Execute &amp; truncate</b>Hasil dipotong sesuai LIMITS sebelum kembali ke konteks.<span class="mono">src/policy/executor.ts</span></div>
   </div>
-  <div class="dirnote" style="margin-top:14px">
-    <b>Urutan normalisasi bash-guard:</b> <code>stripQuotes</code> → <code>inlineSimpleVars</code> →
-    <code>stripCommandWrappers</code> → <code>inspectBashCommand</code>. Perintah dinormalisasi
-    <b>terlebih dahulu</b> supaya bypass lewat quoting/variabel/wrapper ketahuan; jangan memanggil
-    <code>inspectBashCommand</code> pada string mentah.
-  </div>
-  <div class="dirnote">
-    <b>Pengecualian by-design:</b> mode <code>allow-all</code> sengaja melewati gerbang 3
-    (bash-guard) — kepercayaan penuh pada user. Gerbang 1 (jail universal) tetap berlaku
-    untuk semua mode, termasuk allow-all. Regresinya dijaga <code>bun run gate:bash</code>.
-  </div>
+  <div class="hint hint-info"><span class="ico"><span class="mi">format_list_numbered</span></span><div class="body"><span class="title">Urutan normalisasi bash-guard</span><code>stripQuotes</code> → <code>inlineSimpleVars</code> → <code>stripCommandWrappers</code> → <code>inspectBashCommand</code>. Perintah dinormalisasi <b>terlebih dahulu</b> supaya bypass lewat quoting/variabel/wrapper ketahuan; jangan memanggil <code>inspectBashCommand</code> pada string mentah.</div></div>
+  <div class="hint hint-warn"><span class="ico"><span class="mi">shield</span></span><div class="body"><span class="title">allow-all tidak melewati guard bash</span>Mode <code>allow-all</code> menonaktifkan prompt dan sandbox, tetapi <b>gerbang 3 (bash-guard) tetap enforced penuh</b> (<code>permission.ts:check</code> menolak bash berbahaya di semua mode) dan gerbang 1 (jail universal) berlaku untuk semua tool filesystem. Regresinya dijaga <code>bun run gate:bash</code>.</div></div>
 </section>
 
 <!-- ── 6 · ENV & PERINTAH ── -->
 <section id="env">
-  <h2><span class="hn">06</span> <span class="ht">Referensi Env Var &amp; Perintah</span></h2>
-  <p class="lede">22 variabel <code>MINICODE_*</code> + <code>NO_COLOR</code> yang benar-benar dibaca kode, dengan titik bacanya. Nilai contoh bersifat ilustratif; sumber kebenaran tetap file yang tercantum.</p>  <div class="tscroll">
+  <h2 class="sec"><span class="hn">06</span> Referensi env var &amp; perintah <a class="anchor" href="#env">#</a></h2>
+  <p class="lede">24 variabel <code>MINICODE_*</code> + <code>NO_COLOR</code> yang benar-benar dibaca kode, dengan titik bacanya. Nilai contoh bersifat ilustratif; sumber kebenaran tetap file yang tercantum.</p>
+  <div class="tscroll">
   <table>
     <tr><th>Variabel</th><th>Fungsi</th><th>Dibaca di</th></tr>
-    <tr><td>MINICODE_TIMEOUT_MS</td><td>timeout turn: <small>--timeout &gt; env &gt; 15 menit; 0 = tanpa batas</small></td><td>cli/setup.ts</td></tr>
-    <tr><td>MINICODE_VERIFY_CMD</td><td>perintah verifikasi <code>--verify</code>: <small>env &gt; config &gt; deteksi otomatis</small></td><td>cli/setup.ts</td></tr>
-    <tr><td>MINICODE_PLAN</td><td><code>1</code> ≡ flag <code>--plan</code></td><td>cli/index.ts</td></tr>
-    <tr><td>MINICODE_PERMISSION</td><td><code>allowlist</code> → mode izin allowlist</td><td>cli/index.ts</td></tr>
-    <tr><td>MINICODE_BASH_ALLOWLIST</td><td>daftar allow bash dari env (git/bun/npm aman)</td><td>src/policy/permission.ts</td></tr>
-    <tr><td>MINICODE_SANDBOX</td><td>mode sandbox: <code>docker</code> / <code>os</code> / <code>none</code></td><td>cli/index.ts · cli/commands/exec.ts</td></tr>
-    <tr><td>MINICODE_SANDBOX_IMAGE</td><td>image docker (default <code>node:22-alpine</code>)</td><td>src/sandbox/docker.ts</td></tr>
-    <tr><td>MINICODE_SANDBOX_MEMORY</td><td>batas memori container (default <code>512m</code>)</td><td>src/sandbox/docker.ts</td></tr>
-    <tr><td>MINICODE_SANDBOX_STRICT</td><td><code>1</code> → fail-closed: tolak bash bila isolasi yang diminta tak tersedia</td><td>src/tools/bash.ts</td></tr>
-    <tr><td>MINICODE_BUDGET_STRICT</td><td><code>1</code> → cost tak dikenal dianggap over budget (sama dengan <code>--budget-strict</code>)</td><td>cli/index.ts · cli/repl.ts · cli/commands/exec.ts</td></tr>
-    <tr><td>MINICODE_PROVIDER_ORDER</td><td>reorder provider, mis. <code>openai,anthropic,deepseek</code>, tanpa edit config</td><td>src/app/provider-layer.ts</td></tr>
-    <tr><td>MINICODE_EMBED_MODEL</td><td>model embedding (default <code>text-embedding-3-small</code>)</td><td>src/memory/vector.ts</td></tr>
-    <tr><td>MINICODE_GREP_ENGINE</td><td><code>js</code> → paksa engine JS, lewati ripgrep</td><td>src/tools/grep.ts</td></tr>
-    <tr><td>MINICODE_REPOMAP</td><td><code>regex</code> → skip LSP, repo-map pakai regex (lebih cepat)</td><td>src/repo/repomap.ts</td></tr>
-    <tr><td>MINICODE_SESSION_TTL_DAYS</td><td>retensi sesi (default 30; <code>0</code> = simpan selamanya)</td><td>src/session/persistence.ts</td></tr>
-    <tr><td>MINICODE_TELEMETRY</td><td><code>0</code>/<code>false</code>/<code>off</code> → tidak menulis trace sama sekali</td><td>src/telemetry/trace.ts</td></tr>
-    <tr><td>MINICODE_ASCII</td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td>src/ui/render/theme.ts</td></tr>
-    <tr><td>NO_COLOR</td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td>src/ui/render/theme.ts</td></tr>
-    <tr><td>MINICODE_COMPACT</td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td>src/ui/render/detail.ts</td></tr>
-    <tr><td>MINICODE_JUSTIFY</td><td><code>0</code> → matikan perataan dua sisi teks</td><td>src/ui/render/wrap.ts</td></tr>
-    <tr><td>MINICODE_SHOW_THINKING</td><td><code>1</code> → tampilkan reasoning (via --verbose atau env; /thinking dihapus)</td><td>src/ui/render/reasoning.ts</td></tr>
-    <tr><td>MINICODE_THINKING</td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td>vendor/minicore/src/providers/openai-compat.ts</td></tr>
-    <tr><td>MINICODE_HOOKS</td><td><code>1</code> → opt-in jalankan hook eksternal</td><td>src/hooks/run.ts</td></tr>
-    <tr><td>MINICODE_LIVE</td><td><code>1</code> → izinkan test live ber-secrets (di-set oleh <code>bun run test:live</code>)</td><td>test/extreme-live.test.ts</td></tr>
+    <tr><td><code>MINICODE_TIMEOUT_MS</code></td><td>timeout turn: <small>--timeout &gt; env &gt; 15 menit; 0 = tanpa batas</small></td><td><code>cli/setup.ts</code></td></tr>
+    <tr><td><code>MINICODE_VERIFY_CMD</code></td><td>perintah verifikasi <code>--verify</code>: <small>env &gt; config &gt; deteksi otomatis</small></td><td><code>cli/setup.ts</code></td></tr>
+    <tr><td><code>MINICODE_PLAN</code></td><td><code>1</code> ≡ flag <code>--plan</code></td><td><code>cli/index.ts</code></td></tr>
+    <tr><td><code>MINICODE_PERMISSION</code></td><td><code>allowlist</code> → mode izin allowlist</td><td><code>cli/index.ts</code></td></tr>
+    <tr><td><code>MINICODE_BASH_ALLOWLIST</code></td><td>daftar allow bash dari env (git/bun/npm aman)</td><td><code>src/policy/permission.ts</code></td></tr>
+    <tr><td><code>MINICODE_SANDBOX</code></td><td>mode sandbox: <code>docker</code> / <code>os</code> / <code>none</code></td><td><code>cli/index.ts · cli/commands/exec.ts</code></td></tr>
+    <tr><td><code>MINICODE_SANDBOX_IMAGE</code></td><td>image docker (default <code>node:22-alpine</code>)</td><td><code>src/sandbox/docker.ts</code></td></tr>
+    <tr><td><code>MINICODE_SANDBOX_MEMORY</code></td><td>batas memori container (default <code>512m</code>)</td><td><code>src/sandbox/docker.ts</code></td></tr>
+    <tr><td><code>MINICODE_SANDBOX_STRICT</code></td><td><code>1</code> → fail-closed: tolak bash bila isolasi yang diminta tak tersedia</td><td><code>src/tools/bash.ts</code></td></tr>
+    <tr><td><code>MINICODE_BUDGET_STRICT</code></td><td><code>1</code> → cost tak dikenal dianggap over budget (sama dengan <code>--budget-strict</code>)</td><td><code>cli/index.ts · cli/repl.ts · cli/commands/exec.ts</code></td></tr>
+    <tr><td><code>MINICODE_PROVIDER_ORDER</code></td><td>reorder provider, mis. <code>openai,anthropic,deepseek</code>, tanpa edit config</td><td><code>src/app/provider-layer.ts</code></td></tr>
+    <tr><td><code>MINICODE_EMBED_MODEL</code></td><td>model embedding (default <code>text-embedding-3-small</code>)</td><td><code>src/memory/vector.ts</code></td></tr>
+    <tr><td><code>MINICODE_GREP_ENGINE</code></td><td><code>js</code> → paksa engine JS, lewati ripgrep</td><td><code>src/tools/grep.ts</code></td></tr>
+    <tr><td><code>MINICODE_REPOMAP</code></td><td><code>regex</code> → skip LSP, repo-map pakai regex (lebih cepat)</td><td><code>src/repo/repomap.ts</code></td></tr>
+    <tr><td><code>MINICODE_SESSION_TTL_DAYS</code></td><td>retensi sesi (default 30; <code>0</code> = simpan selamanya)</td><td><code>src/session/persistence.ts</code></td></tr>
+    <tr><td><code>MINICODE_TELEMETRY</code></td><td><code>0</code>/<code>false</code>/<code>off</code> → tidak menulis trace sama sekali</td><td><code>src/telemetry/trace.ts</code></td></tr>
+    <tr><td><code>MINICODE_ASCII</code></td><td><code>1</code> → glyph ASCII, paksa tanpa UTF-8</td><td><code>src/ui/render/theme.ts</code></td></tr>
+    <tr><td><code>NO_COLOR</code></td><td>ada &amp; ≠ <code>0</code> → tanpa warna (dihormati lazy)</td><td><code>src/ui/render/theme.ts</code></td></tr>
+    <tr><td><code>MINICODE_COMPACT</code></td><td><code>1</code> → tool call satu baris ringkas (default: expanded; juga ditulis ulang oleh /compact &amp; Ctrl+O)</td><td><code>src/ui/render/detail.ts</code></td></tr>
+    <tr><td><code>MINICODE_JUSTIFY</code></td><td><code>0</code> → matikan perataan dua sisi teks</td><td><code>src/ui/render/wrap.ts</code></td></tr>
+    <tr><td><code>MINICODE_SHOW_THINKING</code></td><td><code>1</code> → tampilkan reasoning (via --verbose atau env; /thinking dihapus)</td><td><code>src/ui/render/reasoning.ts</code></td></tr>
+    <tr><td><code>MINICODE_THINKING</code></td><td><code>off</code> → kirim <code>enable_thinking:false</code> ke model OpenAI-compat</td><td><code>vendor/minicore/src/providers/openai-compat.ts</code></td></tr>
+    <tr><td><code>MINICODE_HOOKS</code></td><td><code>1</code> → opt-in jalankan hook eksternal</td><td><code>src/hooks/run.ts</code></td></tr>
+    <tr><td><code>MINICODE_LIVE</code></td><td><code>1</code> → izinkan test live ber-secrets (di-set oleh <code>bun run test:live</code>)</td><td><code>test/extreme-live.test.ts</code></td></tr>
   </table>
   </div>
-  <p class="lede" style="margin-top:8px">Variabel internal (di-set aplikasi, bukan untuk dikonfigurasikan): <code>MINICODE_HOOK_CTX</code> — payload JSON ke skrip hook (src/hooks/run.ts); <code>MINICODE_RESUME_NEW</code> — tanda sesi resume hasil spawn (cli/commands.ts).</p>
+  <div class="hint hint-info"><span class="ico"><span class="mi">info</span></span><div class="body">Variabel internal (di-set aplikasi, bukan untuk dikonfigurasikan): <code>MINICODE_HOOK_CTX</code> — payload JSON ke skrip hook (src/hooks/run.ts); <code>MINICODE_RESUME_NEW</code> — tanda sesi resume hasil spawn (cli/commands.ts).</div></div>
 
-  <h3 class="hsub">Perintah developer</h3>
-<pre class="kod">bun run dev              # jalankan dari sumber (bun cli/index.ts) — tanpa build step
+  <h3 class="hsub" id="perintah">Perintah developer</h3>
+  <div class="codeblock"><div class="codehead"><span class="fname">terminal — gate &amp; perintah</span><button type="button" data-copy="kod-gate"><span class="mi">content_copy</span><span class="lbl">Salin</span></button></div>
+<pre class="kod" id="kod-gate">bun run dev              # jalankan dari sumber (bun cli/index.ts) — tanpa build step
 bun x tsc --noEmit       # typecheck
 bun run lint             # biome check src cli test bench scripts
 bun test                 # seluruh suite (termasuk penjaga batas lapisan)
@@ -734,16 +937,13 @@ bun run gate:pack        # verifikasi isi paket npm
 bun run gate:bash        # probe bypass bash-guard (mode normal + allowlist)
 bun run vendor:check     # vendor/minicore masih sesuai pin?
 bun run test:live        # test live (butuh secrets, set MINICODE_LIVE=1)
-bun run bench            # benchmark loop agen</pre>
-  <div class="dirnote">
-    <b>Gate sebelum menyatakan selesai</b> (satu baris, dari AGENTS.md):
-    <code>bun x tsc --noEmit &amp;&amp; bun run lint &amp;&amp; bun test &amp;&amp; bun run gate:coverage &amp;&amp; bun run gate:pack</code>
-  </div>
+bun run bench            # benchmark loop agen</pre></div>
+  <div class="hint hint-ok"><span class="ico"><span class="mi">check_circle</span></span><div class="body"><span class="title">Gate sebelum menyatakan selesai</span>(satu baris, dari AGENTS.md): <code>bun x tsc --noEmit &amp;&amp; bun run lint &amp;&amp; bun test &amp;&amp; bun run gate:coverage &amp;&amp; bun run gate:pack</code></div></div>
 </section>
 
 <!-- ── 7 · PERSISTENSI ── -->
 <section id="persistensi">
-  <h2><span class="hn">07</span> <span class="ht">Lokasi Data Persisten</span></h2>
+  <h2 class="sec"><span class="hn">07</span> Lokasi data persisten <a class="anchor" href="#persistensi">#</a></h2>
   <p class="lede">Semua state di luar repo user; path proyek selalu relatif terhadap cwd.</p>
   <div class="tscroll">
   <table>
@@ -762,7 +962,7 @@ bun run bench            # benchmark loop agen</pre>
 
 <!-- ── 8 · INVARIAN ── -->
 <section id="invarian">
-  <h2><span class="hn">08</span> <span class="ht">Invarian Struktural</span></h2>
+  <h2 class="sec"><span class="hn">08</span> Invarian struktural <a class="anchor" href="#invarian">#</a></h2>
   <p class="lede">Aturan tak tertulis yang kalau dilanggar menghasilkan bug yang sudah pernah terjadi di repo ini.</p>
   <ul class="plain">
     <li><b>Bun-only, zero runtime deps.</b> <code>bin</code> menunjuk langsung <code>cli/index.ts</code>; tidak ada build step. <code>dependencies</code> package.json kosong dan harus tetap kosong.</li>
@@ -780,20 +980,17 @@ bun run bench            # benchmark loop agen</pre>
     <li><b>Non-TTY = polos.</b> Pipe/redirect/CI tidak boleh mengandung cursor control, animasi, atau warna (warna digate <code>stdout.isTTY</code>; NO_COLOR menang).</li>
     <li><b>Peta ini harus hidup.</b> Setiap perubahan struktur (tambah/hapus/pindah modul atau lapisan) WAJIB memperbarui <code>docs/ARCHITECTURE.html</code> dalam perubahan yang sama — lihat AGENTS.md.</li>
   </ul>
-  <footer>
-    Minicode · Peta struktur hidup — terminal contract FROZEN (docs/TERMINAL_CONTRACT.md) · peta ini menyertakan panduan UI/UX untuk developer (§9).
-  </footer>
 </section>
 
 <!-- ── 9 · UI/UX UNTUK DEVELOPER ── -->
 <section id="ux">
-  <h2><span class="hn">09</span> <span class="ht">UI/UX untuk Developer — Rendering Terminal</span></h2>
+  <h2 class="sec"><span class="hn">09</span> UI/UX untuk developer — rendering terminal <a class="anchor" href="#ux">#</a></h2>
   <p class="lede">Ringkasan kontrak output yang menjaga MiniCode tetap shell-native: lima primitif tampilan, dua stream dengan peran tetap, satu arbitrase transient. Versi lengkap + residual risk yang disengaja ada di <code>docs/TERMINAL_CONTRACT.md</code> (FROZEN); panduan pengguna di <code>docs/USAGE.md</code>.</p>
 
   <div class="uxgrid">
-    <div class="uxcard"><h4>1 · Prompt</h4><p><code>minicode &lt;mode&gt; ›</code> — baris input interaktif + dropdown slash; satu-satunya elemen "hidup" saat idle.</p></div>
+    <div class="uxcard"><h4>1 · Prompt</h4><p><code>minicode &lt;mode&gt; ›</code> — baris input interaktif + dropdown slash; satu-satunya elemen “hidup” saat idle.</p></div>
     <div class="uxcard"><h4>2 · Pesan model</h4><p>Streaming ke <b>stdout</b>, di-sanitasi, dibungkus per baris mengikuti kolom terminal; fence markdown indent 2 spasi.</p></div>
-    <div class="uxcard"><h4>3 · Aktivitas</h4><p>Garis transient di <b>stderr</b> (TTY saja): "Thinking" atau <code>· nama-tool target</code> selama tool berjalan. Hilang saat teks mengalir.</p></div>
+    <div class="uxcard"><h4>3 · Aktivitas</h4><p>Garis transient di <b>stderr</b> (TTY saja): “Thinking” atau <code>· nama-tool target</code> selama tool berjalan. Hilang saat teks mengalir.</p></div>
     <div class="uxcard"><h4>4 · Hasil tool</h4><p>Ledger stderr, compact: <code>✓ nama target</code> satu baris (tanpa bocor isi file); error <code>✗ nama: pesan</code>. Expanded/verbose menampilkan isi.</p></div>
     <div class="uxcard"><h4>5 · Error</h4><p><code>✗ pesan actionable</code> — sekali per kegagalan via <code>takePendingError()</code>; tidak pernah dump JSON/stack ke user.</p></div>
     <div class="uxcard"><h4>Stream contract</h4><p>stdout = output program (teks model, receipt). stderr = progress/diagnostik. Non-TTY: 0 ANSI, 0 spinner, 0 cursor control.</p></div>
@@ -807,8 +1004,8 @@ bun run bench            # benchmark loop agen</pre>
     <div class="uxcard"><h4>Mutual exclusion</h4><p>Painter vs spinner secara desain disjoint; overlap memicu signal <code>[transient-paint] …</code> sekali per pasangan (bukan crash).</p></div>
   </div>
 
-  <div class="tscroll" style="margin-top:22px">
-  <table class="invtable">
+  <div class="tscroll" style="margin-top:16px">
+  <table>
     <tr><th>#</th><th>Invariant (ringkas)</th><th>Dijaga oleh test</th></tr>
     <tr><td>1</td><td>Shell-native CLI — bukan TUI (tanpa alternate screen/panel)</td><td><code>ui-boundary</code></td></tr>
     <tr><td>2</td><td>Contract stdout/stderr jelas (TTY &amp; non-TTY deterministic)</td><td><code>tui-format</code>, <code>terminal-contract</code></td></tr>
@@ -825,64 +1022,196 @@ bun run bench            # benchmark loop agen</pre>
   </table>
   </div>
 
-  <div class="dirnote" style="margin-top:18px">
-    <b>Residual risk yang disengaja</b> (jangan "perbaiki" tanpa keputusan — detail di
-    TERMINAL_CONTRACT.md): foreign partial write tanpa newline tidak dipaksa
-    line-oriented; overlap painter/spinner adalah signal yang harus tetap
-    observable; flake TTY-harness lama dicatat terpisah dari regresi.
-  </div>
+  <div class="hint hint-warn"><span class="ico"><span class="mi">warning</span></span><div class="body"><span class="title">Residual risk yang disengaja</span>Jangan “perbaiki” tanpa keputusan — detail di TERMINAL_CONTRACT.md: foreign partial write tanpa newline tidak dipaksa line-oriented; overlap painter/spinner adalah signal yang harus tetap observable; flake TTY-harness lama dicatat terpisah dari regresi.</div></div>
 </section>
 
+<!-- ── Navigasi bawah ── -->
+<nav class="pagenav" aria-label="Navigasi halaman">
+  <a href="#sekilas"><span>← Sebelumnya</span><b>Sekilas — satu diagram</b></a>
+  <a class="next" href="TERMINAL_CONTRACT.md"><span>Berikutnya →</span><b>TERMINAL_CONTRACT (frozen)</b></a>
+</nav>
+
+<footer class="site">
+  <span>Minicode · Peta struktur hidup — terminal contract FROZEN (<a href="TERMINAL_CONTRACT.md">docs/TERMINAL_CONTRACT.md</a>)</span>
+  <span class="spacer"></span>
+  <span>v0.9.6 · diperbarui 2026-09-09</span>
+</footer>
+
+</div>
 </main>
 
-<script>
-// Scrollspy: sorot item sidebar sesuai section yang sedang terlihat.
-const links = [...document.querySelectorAll("aside nav a.nav")];
-const sections = links.map((a) => document.querySelector(a.hash)).filter(Boolean);
-const spy = new IntersectionObserver((entries) => {
-  for (const e of entries) {
-    if (!e.isIntersecting) continue;
-    links.forEach((a) => a.classList.toggle("active", a.hash === "#" + e.target.id));
-  }
-}, { rootMargin: "-20% 0px -60% 0px" });
-sections.forEach((s) => spy.observe(s));
+<!-- ══════════ TOC KANAN ══════════ -->
+<aside class="toc" aria-label="Pada halaman ini">
+  <div class="tlabel">Pada halaman ini</div>
+  <a href="#sekilas">Sekilas</a>
+  <a href="#batas">01 · Lapisan &amp; batas</a>
+  <a href="#alur">02 · Alur prompt</a>
+  <a href="#pohon">03 · Modul &amp; ekspor</a>
+  <a class="sub" href="#g-cli">cli/</a>
+  <a class="sub" href="#g-app">src/app/</a>
+  <a class="sub" href="#g-policy">src/policy/</a>
+  <a class="sub" href="#g-tools">src/tools/</a>
+  <a class="sub" href="#g-providers">src/providers/</a>
+  <a class="sub" href="#g-session">src/session/</a>
+  <a class="sub" href="#g-ui">src/ui/</a>
+  <a class="sub" href="#g-lain">src/ lainnya</a>
+  <a class="sub" href="#g-kernel">vendor/minicore/</a>
+  <a class="sub" href="#g-quality">test · scripts · bench</a>
+  <a href="#resep">04 · Resep ekstensi</a>
+  <a href="#keamanan">05 · Rantai keamanan</a>
+  <a href="#env">06 · Env &amp; perintah</a>
+  <a href="#persistensi">07 · Data persisten</a>
+  <a href="#invarian">08 · Invarian</a>
+  <a href="#ux">09 · UI/UX terminal</a>
+</aside>
+</div>
 
-// Link pohon di sidebar: buka kelompok target, scroll, kedipkan.
-document.querySelectorAll("aside .tree a").forEach((a) => {
-  a.addEventListener("click", () => {
-    const t = document.querySelector(a.hash);
+<script>
+// Tema: hormati pilihan tersimpan, fallback ke preferensi OS.
+(function initTheme() {
+  try {
+    var saved = localStorage.getItem("minicode-theme");
+    if (saved === "light" || saved === "dark") {
+      document.documentElement.dataset.theme = saved;
+    } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.dataset.theme = "dark";
+    }
+  } catch (e) { /* storage tak tersedia — pakai default terang */ }
+})();
+var themeBtn = document.getElementById("themeBtn");
+function paintThemeIcon() {
+  var ico = themeBtn.querySelector(".mi");
+  if (ico) ico.textContent = document.documentElement.dataset.theme === "dark" ? "light_mode" : "dark_mode";
+}
+paintThemeIcon();
+themeBtn.addEventListener("click", function () {
+  var root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("minicode-theme", root.dataset.theme); } catch (e) {}
+  paintThemeIcon();
+});
+
+// Bila font ikon gagal dimuat (offline/CDN diblokir), sembunyikan ikon — semuanya dekoratif.
+(function guardIcons() {
+  function noMi() { document.body.classList.add("no-mi"); }
+  try {
+    if (!document.fonts || !document.fonts.load) return;
+    var timer = setTimeout(noMi, 3000);
+    document.fonts.load('16px "Material Symbols Outlined"', "search").then(function () {
+      clearTimeout(timer);
+      if (!document.fonts.check('16px "Material Symbols Outlined"', "search")) noMi();
+    }, function () { clearTimeout(timer); noMi(); });
+  } catch (e) {}
+})();
+
+// Drawer mobile.
+var burger = document.getElementById("burger");
+burger.addEventListener("click", function () { document.body.classList.toggle("nav-open"); });
+document.getElementById("backdrop").addEventListener("click", function () { document.body.classList.remove("nav-open"); });
+document.querySelectorAll(".sidebar .snav").forEach(function (a) {
+  a.addEventListener("click", function () { document.body.classList.remove("nav-open"); });
+});
+
+// Pencarian: satu input menyaring nav + kartu modul (sampai nama simbol).
+var filter = document.getElementById("filter");
+var groups = Array.prototype.slice.call(document.querySelectorAll("details.group"));
+var emptyNote = document.getElementById("emptyNote");
+function focusSearch() { filter.focus(); filter.select(); }
+document.getElementById("searchPill").addEventListener("click", focusSearch);
+document.getElementById("searchPill").addEventListener("keydown", function (e) {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusSearch(); }
+});
+document.addEventListener("keydown", function (e) {
+  var mod = e.ctrlKey || e.metaKey;
+  if ((mod && e.key.toLowerCase() === "k") || (e.key === "/" && document.activeElement !== filter && !/INPUT|TEXTAREA/.test(document.activeElement.tagName))) {
+    e.preventDefault(); focusSearch();
+  }
+  if (e.key === "Escape" && document.activeElement === filter) { filter.value = ""; applyFilter(""); filter.blur(); }
+});
+function applyFilter(raw) {
+  var q = raw.trim().toLowerCase();
+  var anyGroup = false;
+  groups.forEach(function (g) {
+    var any = false;
+    g.querySelectorAll(".mod").forEach(function (m) {
+      var hit = !q || m.textContent.toLowerCase().indexOf(q) !== -1;
+      m.hidden = !hit;
+      if (hit) any = true;
+    });
+    var selfHit = !q || (g.querySelector("summary") && g.querySelector("summary").textContent.toLowerCase().indexOf(q) !== -1);
+    var show = !q || any || selfHit;
+    g.hidden = !show;
+    if (show) anyGroup = true;
+    if (q && any) g.open = true;
+  });
+  // Saring juga link sidebar agar tetap relevan.
+  document.querySelectorAll(".sidebar .snav, .toc a").forEach(function (a) {
+    if (!q) { a.hidden = false; return; }
+    var target = a.hash ? document.querySelector(a.hash) : null;
+    var hay = (a.textContent + " " + (target ? target.textContent : "")).toLowerCase();
+    a.hidden = hay.indexOf(q) === -1;
+  });
+  emptyNote.classList.toggle("show", q !== "" && !anyGroup);
+}
+filter.addEventListener("input", function () { applyFilter(filter.value); });
+
+// Buka/tutup semua kelompok modul.
+document.getElementById("openAll").addEventListener("click", function () { groups.forEach(function (g) { g.hidden = false; g.open = true; }); });
+document.getElementById("closeAll").addEventListener("click", function () { groups.forEach(function (g) { g.open = false; }); });
+
+// Scrollspy: sorot nav kiri + TOC kanan mengikuti section terlihat.
+var navLinks = Array.prototype.slice.call(document.querySelectorAll(".sidebar .snav[href^='#'], .toc a[href^='#']"));
+var spyTargets = ["sekilas", "batas", "alur", "pohon", "resep", "keamanan", "env", "persistensi", "invarian", "ux"]
+  .map(function (id) { return document.getElementById(id); })
+  .filter(Boolean);
+var spy = new IntersectionObserver(function (entries) {
+  entries.forEach(function (e) {
+    if (!e.isIntersecting) return;
+    navLinks.forEach(function (a) { a.classList.toggle("active", a.hash === "#" + e.target.id); });
+  });
+}, { rootMargin: "-15% 0px -65% 0px" });
+spyTargets.forEach(function (s) { spy.observe(s); });
+
+// Link pohon di sidebar: buka kelompok target lalu kedipkan.
+document.querySelectorAll(".sidebar .snav.sub").forEach(function (a) {
+  a.addEventListener("click", function () {
+    var t = document.querySelector(a.hash);
     if (!t) return;
-    t.open = true;
-    t.hidden = false;
-    t.scrollIntoView({ behavior: "smooth", block: "start" });
+    t.open = true; t.hidden = false;
     t.classList.add("flash");
-    setTimeout(() => t.classList.remove("flash"), 900);
+    setTimeout(function () { t.classList.remove("flash"); }, 900);
   });
 });
 
-// Buka/tutup semua kelompok.
-const groups = [...document.querySelectorAll("details.group")];
-document.getElementById("openAll").addEventListener("click", () => groups.forEach((g) => (g.open = true)));
-document.getElementById("closeAll").addEventListener("click", () => groups.forEach((g) => (g.open = false)));
-
-// Filter modul: cari di teks kartu termasuk nama simbol ekspor.
-const filter = document.getElementById("filter");
-filter.addEventListener("input", () => {
-  const q = filter.value.trim().toLowerCase();
-  for (const g of groups) {
-    let any = false;
-    for (const m of g.querySelectorAll(".mod")) {
-      const hit = !q || m.textContent.toLowerCase().includes(q);
-      m.hidden = !hit;
-      if (hit) any = true;
+// Tombol salin pada blok kode (pakai execCommand fallback agar file:// tetap jalan).
+document.querySelectorAll("[data-copy]").forEach(function (btn) {
+  btn.addEventListener("click", function () {
+    var pre = document.getElementById(btn.getAttribute("data-copy"));
+    if (!pre) return;
+    var lbl = btn.querySelector(".lbl");
+    var ico = btn.querySelector(".mi");
+    var done = function () {
+      if (lbl) lbl.textContent = "Disalin";
+      if (ico) ico.textContent = "check";
+      setTimeout(function () {
+        if (lbl) lbl.textContent = "Salin";
+        if (ico) ico.textContent = "content_copy";
+      }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(pre.innerText).then(done, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var r = document.createRange(); r.selectNodeContents(pre);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      s.removeAllRanges();
     }
-    g.hidden = q && !any;
-    if (q && any) g.open = true;
-  }
+  });
 });
 
 // Cetak: buka semua kelompok agar isi lengkap ikut tercetak.
-window.addEventListener("beforeprint", () => groups.forEach((g) => (g.open = true)));
+window.addEventListener("beforeprint", function () { groups.forEach(function (g) { g.hidden = false; g.open = true; }); });
 </script>
 </body>
 </html>

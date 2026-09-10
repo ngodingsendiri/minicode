@@ -40,13 +40,15 @@ test("submit_result: object diterima, array/string ditolak", async () => {
   clearSubmittedResult()
 })
 
-test("submit_result: tanpa prompt di ask, ditolak di readonly/plan", async () => {
+test("submit_result: tanpa prompt di ask/plan, ditolak di readonly", async () => {
   const ask = createPermissionHandler({ mode: "ask", root: process.cwd() })
   expect(await check(ask, "submit_result")).toBe("allow")
   const ro = createPermissionHandler({ mode: "readonly", root: process.cwd() })
   expect(await check(ro, "submit_result")).toBe("deny")
+  // Plan mengizinkan: singleton memori-proses tanpa tulis file/state sesi,
+  // konsisten dengan visibilitas PLAN_EXTRA di tool-layer.
   const plan = createPermissionHandler({ mode: "plan", root: process.cwd() })
-  expect(await check(plan, "submit_result")).toBe("deny")
+  expect(await check(plan, "submit_result")).toBe("allow")
 })
 
 test("ask_user: tanpa injeksi atau non-TTY → tolak (fail-closed)", async () => {

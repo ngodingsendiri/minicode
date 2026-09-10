@@ -275,6 +275,12 @@ export function configureServers(entries: LspServerEntry[]): void {
   }
 }
 
+// Seam uji: kosongkan registry (isolasi antar test file — repomap mengambil
+// jalur LSP begitu ADA server terdaftar, jadi stub uji tak boleh bocor).
+export function clearLspServers(): void {
+  activeServers.clear()
+}
+
 export function getConfiguredExts(): string[] {
   return [...activeServers.keys()]
 }

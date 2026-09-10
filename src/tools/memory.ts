@@ -17,6 +17,10 @@ export const readMemoryTool: Tool = {
   async execute({ query, topK }, ctx) {
     ctx.signal.throwIfAborted()
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
+    // Mode readonly/plan: retrieval tidak boleh menulis access_count/WAL —
+    // permissionMode diteruskan kernel per turn (lihat task.ts).
+    const pm = (ctx as unknown as { permissionMode?: string }).permissionMode
+    const trackAccess = pm !== "readonly" && pm !== "plan"
     if (!query || !(query as string).trim()) {
       const txt = await readMemoryFile(cwd)
       return txt || "(no MEMORY.md)"
@@ -34,17 +38,19 @@ export const readMemoryTool: Tool = {
       hits = await searchHybrid(q, {
         topK: (topK as number) ?? 5,
         cwd,
+        trackAccess,
         ...(apiKey ? { baseUrl, apiKey } : {}),
       })
     } catch (e) {
       process.stderr.write(`[warn] memory vector fallback keyword-only: ${(e as Error).message}\n`)
-      hits = await searchHybrid(q, { topK: (topK as number) ?? 5, cwd })
+      hits = await searchHybrid(q, { topK: (topK as number) ?? 5, cwd, trackAccess })
     }
     const file = await readMemoryFile(cwd)
     const kw = file
       .split("\n")
       .filter((l) => l.toLowerCase().includes(q.toLowerCase()))
       .slice(0, 5)
+      .map((l) => (l.length > 300 ? `${l.slice(0, 300)}…` : l))
       .join("\n")
     const fmtDate = (ts: number): string => {
       try {
@@ -55,7 +61,7 @@ export const readMemoryTool: Tool = {
     }
     let out = ""
     if (hits.length)
-      out += `vector hits:\n${hits.map((h) => `- ${h.text.slice(0, 300)} (${h.score.toFixed(2)}, ${fmtDate(h.createdAt)})`).join("\n")}\n`
+      out += `vector hits:\n${hits.map((h) => `- ${h.text.slice(0, 300)}${h.text.length > 300 ? "…" : ""} (${h.score.toFixed(2)}, ${fmtDate(h.createdAt)})`).join("\n")}\n`
     if (kw) out += `\nfile hits:\n${kw}`
     return out.trim() || "(no memory)"
   },

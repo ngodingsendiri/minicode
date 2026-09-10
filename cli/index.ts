@@ -6,6 +6,7 @@ import { createMinicodeSession } from "../src/app/session.ts"
 import { createRateLimiter } from "../src/policy/ratelimit.ts"
 import { resolveSandbox } from "../src/policy/sandbox-policy.ts"
 import { budgetStatus } from "../src/policy/usage.ts"
+import { attachMutationJournal } from "../src/session/journal.ts"
 import { findSkill, renderSkill } from "../src/skills/loader.ts"
 import { writeTrace } from "../src/telemetry/trace.ts"
 import { setSubAgentSessionFactory } from "../src/tools/task.ts"
@@ -68,7 +69,21 @@ function getArg(name: string): string | undefined {
 
 // DI factory sesi sub-agen untuk delegate_task — dipasang di composition root
 // sebelum dispatch agar semua jalur (REPL, one-shot, mcp serve) tercakup.
-setSubAgentSessionFactory(createMinicodeSession)
+// Sesi anak mendapat wiring jurnal sendiri (childOf = parent) agar efek anak
+// tercatat di jurnal anak, bukan disimpulkan dari finalText parent.
+setSubAgentSessionFactory(async (spec) => {
+  // `journal` hanya untuk wiring app-layer — jangan bocor ke config kernel.
+  const { journal, ...coreSpec } = spec
+  const session = await createMinicodeSession(coreSpec)
+  if (journal) {
+    attachMutationJournal(session, {
+      sessionId: journal.sessionId,
+      cwd: spec.cwd,
+      childOf: journal.parentSessionId,
+    })
+  }
+  return session
+})
 
 // dispatch subcommands via registry (handlers call process.exit internally)
 await dispatch(args, getArg, HELP)

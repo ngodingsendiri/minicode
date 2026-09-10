@@ -5,9 +5,10 @@ import { join, relative, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
+import { appendUndoMarker, loadJournal } from "./journal.ts"
 import { diffTrees, ephemeralTree, restoreTree, snapshotTree } from "./shadow-git.ts"
 
-function sanitizeSessionId(id: string): string {
+export function sanitizeSessionId(id: string): string {
   return (
     id
       .replace(/[^A-Za-z0-9._-]/g, "-")
@@ -389,7 +390,17 @@ export async function undoLastCheckpoint(
     const targetCp = manifest.checkpoints[manifest.currentIndex]!
     const restoredFiles = await applyCheckpoint(targetCp, "undo", cwd)
 
-    manifest.currentIndex -= 1
+    // Urutan: marker DULU (bukti durable niat+hasil apply), pointer-disk
+    // TERAKHIR. Crash apply→save: marker + pointer basi → rekonsiliasi
+    // mengadopsi pointer (P0-3). Marker gagal ≠ save batal (lanjut save).
+    const newIndex = manifest.currentIndex - 1
+    await appendUndoMarker(sessionId, cwd, "undo", targetCp.turn, {
+      newIndex,
+      files: restoredFiles.length,
+    }).catch((e) => {
+      process.stderr.write(`[warn] journal: undo marker failed: ${(e as Error).message}\n`)
+    })
+    manifest.currentIndex = newIndex
     await saveCheckpointManifest(manifest, cwd)
 
     return {
@@ -411,16 +422,110 @@ export async function redoLastCheckpoint(
       return { success: false, reappliedFiles: [], message: "no undone checkpoints to redo" }
     }
 
-    manifest.currentIndex += 1
-    const targetCp = manifest.checkpoints[manifest.currentIndex]!
+    // Protokol UNIFORM dengan undo (P0-3): hitung target DULU tanpa mutasi
+    // pointer, apply files, tulis marker, BARU persist pointer. Versi lama
+    // increment pointer di memori sebelum apply — hilang saat crash dan
+    // mengaburkan jendela crash (pointer-memory vs pointer-disk berbeda).
+    const targetIndex = manifest.currentIndex + 1
+    const targetCp = manifest.checkpoints[targetIndex]!
     const reappliedFiles = await applyCheckpoint(targetCp, "redo", cwd)
 
+    await appendUndoMarker(sessionId, cwd, "redo", targetCp.turn, {
+      newIndex: targetIndex,
+      files: reappliedFiles.length,
+    }).catch((e) => {
+      process.stderr.write(`[warn] journal: redo marker failed: ${(e as Error).message}\n`)
+    })
+    manifest.currentIndex = targetIndex
     await saveCheckpointManifest(manifest, cwd)
 
     return {
       success: true,
       reappliedFiles,
       message: `redid checkpoint ${targetCp.id} (turn ${targetCp.turn})`,
+    }
+  })
+}
+
+/**
+ * Rekonsiliasi pointer undo/redo pasca-crash (P0-3).
+ *
+ * Protokol apply → marker → save menyisakan satu jendela: marker durable,
+ * pointer-disk basi. Crash di sana membuat resume melihat pointer yang
+ * menunjuk TERLALU TUA sementara file sudah di-apply. Fungsi ini menutupnya
+ * secara deterministik: marker undo/redo TERBARU yang valid (indeks dalam
+ * batas + turn cocok dengan checkpoint pada indeks itu) diadopsi sebagai
+ * pointer — metadata-only, tanpa menyentuh file (file sudah benar).
+ *
+ * Tanpa marker / marker cocok pointer / marker invalid → null (no-op).
+ * Idempoten: pemanggilan ulang menghasilkan null setelah adopsi pertama.
+ */
+export async function reconcileUndoRedoPointer(
+  sessionId: string,
+  cwd: string = process.cwd(),
+): Promise<{
+  repaired: boolean
+  from: number
+  to: number
+  kind: "undo" | "redo"
+  files: number
+} | null> {
+  const manifestPath = getManifestPath(sessionId, cwd)
+  return withCheckpointLock(manifestPath, async () => {
+    const manifest = await loadCheckpointManifest(sessionId, cwd)
+    if (manifest.checkpoints.length === 0) return null
+    let markers: {
+      kind: "undo" | "redo"
+      targetTurn?: number
+      newIndex?: number
+      files?: number
+      seq: number
+    }[]
+    try {
+      const loaded = await loadJournal(sessionId, cwd)
+      markers = loaded.records
+        .filter((r) => (r.kind === "undo" || r.kind === "redo") && typeof r.seq === "number")
+        .map((r) => ({
+          kind: r.kind as "undo" | "redo",
+          targetTurn: r.targetTurn,
+          newIndex: r.newIndex,
+          files: r.files,
+          seq: r.seq as number,
+        }))
+    } catch {
+      return null
+    }
+    if (markers.length === 0) return null
+    const latest = markers.sort((a, b) => a.seq - b.seq)[markers.length - 1]!
+    if (latest.newIndex === undefined) return null // marker lama tanpa pointer
+    if (latest.newIndex === manifest.currentIndex) return null // konvergen
+    if (latest.newIndex < -1 || latest.newIndex > manifest.checkpoints.length - 1) {
+      process.stderr.write(
+        `[warn] checkpoint: undo/redo marker menunjuk indeks invalid (${latest.newIndex}) — diabaikan, pointer dipertahankan\n`,
+      )
+      return null
+    }
+    // Turn harus cocok: marker untuk susunan checkpoints yang berbeda
+    // (eviksi/cabang lain) tak boleh diadopsi buta.
+    const pointed = manifest.checkpoints[latest.newIndex]
+    if (latest.targetTurn !== undefined && pointed && pointed.turn !== latest.targetTurn) {
+      process.stderr.write(
+        `[warn] checkpoint: undo/redo marker turn ${latest.targetTurn} tak cocok checkpoint idx ${latest.newIndex} (turn ${pointed.turn}) — diabaikan\n`,
+      )
+      return null
+    }
+    const from = manifest.currentIndex
+    manifest.currentIndex = latest.newIndex
+    await saveCheckpointManifest(manifest, cwd)
+    process.stderr.write(
+      `[recovery] checkpoint pointer dipulihkan ${from} → ${latest.newIndex} (${latest.kind} turn ${latest.targetTurn ?? "?"}, ${latest.files ?? 0} file)\n`,
+    )
+    return {
+      repaired: true,
+      from,
+      to: latest.newIndex,
+      kind: latest.kind,
+      files: latest.files ?? 0,
     }
   })
 }

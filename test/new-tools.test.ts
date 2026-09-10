@@ -106,12 +106,18 @@ test("code_run: menolak tanpa sandbox", async () => {
 })
 
 test("code_run: node echo via sandbox", async () => {
+  // Eksekusi nyata butuh backend sandbox (bwrap/seatbelt/docker) — tanpa itu
+  // code_run fail-closed (lihat test fail-closed di bawah + hardening-boundary).
+  const { osSandboxAvailable } = await import("../src/sandbox/os.ts")
+  if (!osSandboxAvailable()) return
   process.env.MINICODE_SANDBOX = "os"
   const r = (await codeRunTool.execute({ lang: "node", code: "console.log(2+3)" }, ctx())) as string
   expect(r).toContain("5")
 })
 
 test("code_run: timeout membunuh loop tak berujung (tanpa hang)", async () => {
+  const { osSandboxAvailable } = await import("../src/sandbox/os.ts")
+  if (!osSandboxAvailable()) return
   process.env.MINICODE_SANDBOX = "os"
   const t0 = Date.now()
   const r = (await codeRunTool.execute(
@@ -126,6 +132,9 @@ test("code_run: timeout membunuh loop tak berujung (tanpa hang)", async () => {
 test("code_run: substitusi shell $(...) tidak dieksekusi (tanpa shell)", async () => {
   // Regresi S2: versi lama merangkai `node -e "<code>"` lewat shell:true,
   // sehingga $(...)/backtick di kode dieksekusi shell SEBELUM node.
+  // Kini kode jadi satu argumen single-quoted untuk `sh -c` runner.
+  const { osSandboxAvailable } = await import("../src/sandbox/os.ts")
+  if (!osSandboxAvailable()) return
   process.env.MINICODE_SANDBOX = "os"
   const r = (await codeRunTool.execute(
     { lang: "node", code: 'console.log("$(echo PWNED)")' },

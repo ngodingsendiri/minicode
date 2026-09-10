@@ -472,6 +472,9 @@ export async function searchHybrid(
     topK?: number
     embeddingModel?: string
     scope?: "cwd" | "global" | "all"
+    // false = jangan sentuh DB (readonly/plan: retrieval tak boleh menulis
+    // access_count/WAL). Default true agar perilaku lama tidak berubah.
+    trackAccess?: boolean
   } = {},
 ): Promise<MemoryHit[]> {
   const scope = opts.scope ?? (process.env.MINICODE_MEMORY_SCOPE as string) ?? "cwd"
@@ -596,7 +599,8 @@ export async function searchHybrid(
   // P13 P1 — bukti manfaat per row: hit yang dikembalikan menaikkan
   // access_count (best-effort; gagal diam — jangan rusak retrieval).
   // Hanya DB lokal yang disentuh; row global (scope all) tidak dihitung.
-  if (hits.length > 0) {
+  // Dilewati bila trackAccess === false (mode readonly/plan).
+  if (hits.length > 0 && opts.trackAccess !== false) {
     try {
       const db2 = open(opts.cwd)
       try {

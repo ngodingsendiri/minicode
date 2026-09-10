@@ -27,7 +27,12 @@ import { isPrivateHostWithDns } from "../lib/net.ts"
  * (stdio butuh command/args, HTTP tidak) — pemilihannya ditangani connection.
  */
 export interface McpTransportLike {
-  request(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>
+  request(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<unknown>
   notify(method: string, params?: Record<string, unknown>): void
   close(): Promise<void>
 }
@@ -96,13 +101,19 @@ export class McpHttpTransport implements McpTransportLike {
     method: string,
     params: Record<string, unknown> = {},
     timeoutMs: number = LIMITS.MCP_REQUEST_TIMEOUT_MS,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (this.closed) throw new Error("MCP http: transport already closed")
+    signal?.throwIfAborted()
     const id = ++this.seq
     const body = JSON.stringify({ jsonrpc: "2.0", id, method, params })
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs)
+    // Pembatalan parent BENAR-BENAR membatalkan fetch HTTP (beda dengan stdio).
+    const onAbort = () => controller.abort(signal?.reason ?? new Error("aborted"))
+    if (signal?.aborted) controller.abort(signal.reason)
+    else signal?.addEventListener("abort", onAbort, { once: true })
     let res: Response
     try {
       res = await fetch(this.url.toString(), {
@@ -114,6 +125,7 @@ export class McpHttpTransport implements McpTransportLike {
       })
     } catch (e) {
       clearTimeout(timer)
+      signal?.removeEventListener("abort", onAbort)
       const msg = (e as Error).message
       throw new Error(
         `MCP http: ${method} failed: ${msg === "timeout" ? `timeout ${timeoutMs}ms` : msg}`,
@@ -152,6 +164,7 @@ export class McpHttpTransport implements McpTransportLike {
       return payload.result
     } finally {
       clearTimeout(timer)
+      signal?.removeEventListener("abort", onAbort)
     }
   }
 

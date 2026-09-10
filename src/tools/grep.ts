@@ -43,8 +43,11 @@ async function walkGrep(
       for (let i = 0; i < lines.length; i++) {
         re.lastIndex = 0
         if (re.test(lines[i]!)) {
+          const body = lines[i]!
+          // Baris terpotong ditandai "…" agar tak tampak utuh (audit #02).
+          const cut = body.length > LIMITS.GREP_MATCH_MAX_CHARS
           out.push(
-            `${rel}:${i + 1}: ${scrubSecrets(lines[i]!.slice(0, LIMITS.GREP_MATCH_MAX_CHARS))}`,
+            `${rel}:${i + 1}: ${scrubSecrets(cut ? `${body.slice(0, LIMITS.GREP_MATCH_MAX_CHARS)}…` : body)}`,
           )
           if (out.length >= limit) break
         }
@@ -103,7 +106,9 @@ export function normalizeRgLine(line: string, root: string): string | null {
   // Defense-in-depth: rg sudah dibatasi ke cwd, tapi jail tetap diterapkan
   // supaya hasil identik dengan fallback (symlink/sensitive tetap dibuang).
   if (isPathOutsideRoot(rel, resolve(root)) || isSensitive(rel)) return null
-  return `${rel}:${lineNo}: ${scrubSecrets((text ?? "").slice(0, LIMITS.GREP_MATCH_MAX_CHARS))}`
+  const body = text ?? ""
+  const cut = body.length > LIMITS.GREP_MATCH_MAX_CHARS
+  return `${rel}:${lineNo}: ${scrubSecrets(cut ? `${body.slice(0, LIMITS.GREP_MATCH_MAX_CHARS)}…` : body)}`
 }
 
 function runRipgrep(
@@ -236,12 +241,15 @@ export const grepTool: Tool = {
     const noMatch = () =>
       `no matches for /${pat}/ in ${rawRoot}${include ? ` (include ${include})` : ""}`
 
+    // Minta satu lebih agar tahu pasti apakah hasil terpotong (temuan #02:
+    // limit-hit diam-diam tampak lengkap). Tampilkan tetap `lim`.
+    const want = lim + 1
     if (process.env.MINICODE_GREP_ENGINE !== "js" && ripgrepAvailable()) {
       try {
-        const hits = await runRipgrep(pat, root, lim, ctx.signal, include as string | undefined)
+        const hits = await runRipgrep(pat, root, want, ctx.signal, include as string | undefined)
         if (hits.length === 0) return noMatch()
         // runRipgrep tandai timeout via suffix khusus di elemen terakhir (bila timedOut)
-        return hits.join("\n")
+        return withCapMark(hits, lim)
       } catch (e) {
         if ((e as Error).message === "aborted") throw e
         // rg gagal (regex flavour berbeda, binary rusak, permission) → fallback
@@ -254,7 +262,21 @@ export const grepTool: Tool = {
     const incRe = include ? includeToRegExp(include as string) : null
     const ignoreMatchers = await loadIgnoreMatchers(root)
     const out: string[] = []
-    await walkGrep(root, re, out, root, lim, ctx.signal, incRe, ignoreMatchers)
-    return out.length === 0 ? noMatch() : out.join("\n")
+    await walkGrep(root, re, out, root, want, ctx.signal, incRe, ignoreMatchers)
+    return out.length === 0 ? noMatch() : withCapMark(out, lim)
   },
+}
+
+// Tandai bila hasil mencapai cap (suffix timeout rg dipertahankan duluan).
+export function withCapMark(hits: string[], lim: number): string {
+  const body = [...hits]
+  let suffix = ""
+  const last = body[body.length - 1]
+  if (typeof last === "string" && last.startsWith("… [truncated: ripgrep timeout")) {
+    suffix = `\n${body.pop()}`
+  }
+  if (body.length > lim) {
+    return `${body.slice(0, lim).join("\n")}${suffix}\n… [truncated: showing first ${lim} matches — refine pattern/include]`
+  }
+  return body.join("\n") + suffix
 }

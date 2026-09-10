@@ -64,7 +64,10 @@ export class McpTransport {
     method: string,
     params: Record<string, unknown> = {},
     timeoutMs: number = LIMITS.MCP_REQUEST_TIMEOUT_MS,
+    signal?: AbortSignal,
   ): Promise<unknown> {
+    // Batal sebelum tulis: jangan kirim request ke server yang sudah tak ditunggu.
+    signal?.throwIfAborted()
     const id = ++this.seq
     this.write({ jsonrpc: "2.0", id, method, params })
     return new Promise((resolve, reject) => {
@@ -72,7 +75,25 @@ export class McpTransport {
         this.pending.delete(id)
         reject(new Error(`MCP request ${method} timed out after ${timeoutMs}ms`))
       }, timeoutMs)
-      this.pending.set(id, { resolve, reject, timer })
+      const entry = { resolve, reject, timer }
+      this.pending.set(id, entry)
+      // stdio JSON-RPC tak punya pembatalan di-kabel: abort hanya menghentikan
+      // PENUNGGUAN di sisi kita (server child tetap hidup sampai close/timeout
+      // dan efek yang sudah terjadi di server TIDAK dibatalkan).
+      signal?.addEventListener(
+        "abort",
+        () => {
+          if (!this.pending.has(id)) return
+          this.pending.delete(id)
+          clearTimeout(timer)
+          reject(
+            signal.reason instanceof Error
+              ? signal.reason
+              : new Error(`MCP request ${method} aborted`),
+          )
+        },
+        { once: true },
+      )
     })
   }
 

@@ -6,6 +6,8 @@ export async function createRagLayer(opts: {
   cfg: MinicodeConfig
   prompt: string
   cwd?: string
+  // false = retrieval RAG jangan menulis access_count (mode readonly/plan).
+  trackAccess?: boolean
 }): Promise<{ systemExtra?: string; skills: Skill[]; memoryHits: number }> {
   let systemExtra: string | undefined
   let memoryHits = 0
@@ -42,6 +44,7 @@ export async function createRagLayer(opts: {
           apiKey: c.apiKey,
           cwd: opts.cwd,
           topK: 5,
+          trackAccess: opts.trackAccess,
         })
         if (hits.length) break
       } catch {}
@@ -52,7 +55,11 @@ export async function createRagLayer(opts: {
     }
     if (!hits.length && candidates.length === 0) {
       try {
-        hits = await searchHybrid(opts.prompt, { cwd: opts.cwd, topK: 5 })
+        hits = await searchHybrid(opts.prompt, {
+          cwd: opts.cwd,
+          topK: 5,
+          trackAccess: opts.trackAccess,
+        })
         if (hits.length) {
           memoryHits = hits.length
           systemExtra = `\n# Relevant memory (keyword)\n${hits.map((h) => `- ${h.text.slice(0, 300)} (score ${h.score.toFixed(2)}, ${fmtDate(h.createdAt)})`).join("\n")}`

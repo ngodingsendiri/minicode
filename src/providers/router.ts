@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer"
 import { ProviderError } from "#minicore/core/errors.ts"
 import type { ModelProvider, ProviderEvent, StreamRequest } from "#minicore/core/provider.ts"
+import type { Message } from "#minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
 import type { RateLimiter } from "../policy/ratelimit.ts"
 
@@ -30,6 +31,31 @@ function fixRequest(req: StreamRequest): StreamRequest {
 
 function needsBinaryFix(p: ModelProvider): boolean {
   return (p as unknown as { kind?: string }).kind !== "anthropic"
+}
+
+// P0 konteks: adapter openai-compat (vendor, frozen) TIDAK mengirim
+// request.system ke wire (buildBody-nya tak membaca field itu), dan bertipe
+// kernel tanpa role "system" (toMessages me-null-kan role tak dikenal).
+// Akibatnya seluruh system prompt (MEMORY, repomap, AGENTS.md, recovery)
+// hilang diam-diam pada semua provider non-Anthropic/non-Responses.
+// Perbaikan di router (satu-satunya seam app-layer sebelum wire): selipkan
+// system sebagai pesan user PERTAMA. Bukan developer/system role (vendor
+// me-null-kan), bukan merge ke user pertama (provenance lebih buruk).
+// Anthropic mengirim system native; Responses diurus via `instructions`
+// di adapter-nya sendiri — keduanya dilewati di sini.
+function needsSystemMessage(p: ModelProvider): boolean {
+  const kind = (p as unknown as { kind?: string }).kind
+  return kind !== "anthropic" && kind !== "responses"
+}
+
+function withSystemMessage(req: StreamRequest): StreamRequest {
+  if (!req.system?.trim()) return req
+  if (req.messages.length > 0 && (req.messages[0] as { role?: string }).role === "system")
+    return req
+  return {
+    ...req,
+    messages: [{ role: "user", content: req.system } as Message, ...req.messages],
+  }
 }
 
 // Fallback provider mungkin tidak mendukung nama model request asli (mis. gpt-4o
@@ -97,7 +123,8 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
           // rate limit: tunggu token bucket sebelum tiap request
           if (config.limiter) await config.limiter.acquire()
           const fixed = needsBinaryFix(current) ? fixRequest(request) : request
-          const { req, effectiveModel, substituted } = requestFor(current, { ...fixed, model })
+          const withSys = needsSystemMessage(current) ? withSystemMessage(fixed) : fixed
+          const { req, effectiveModel, substituted } = requestFor(current, { ...withSys, model })
           if (substituted && effectiveModel) {
             process.stderr.write(
               `[router] model "${request.model}" not on ${current.id} → substituting "${effectiveModel}"\n`,

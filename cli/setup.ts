@@ -27,12 +27,18 @@ import {
 } from "../src/policy/verifier.ts"
 import {
   beginTurnSnapshot,
+  reconcileUndoRedoPointer,
   recordCheckpointFromSnapshots,
   recordCheckpointFromTrees,
   snapshotWorkspace,
   validateResumeWorkspace,
 } from "../src/session/checkpoint.ts"
-import { loadSession, saveSession } from "../src/session/persistence.ts"
+import {
+  attachMutationJournal,
+  finalizeJournal,
+  planRecoveryForSession,
+} from "../src/session/journal.ts"
+import { listPersistedTurns, loadSession, saveSession } from "../src/session/persistence.ts"
 import { snapshotTree } from "../src/session/shadow-git.ts"
 import type { Skill } from "../src/skills/loader.ts"
 import {
@@ -187,11 +193,19 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     systemExtra,
     skills: allLoadedSkills,
     memoryHits,
-  } = await createRagLayer({ cfg, prompt, cwd })
+  } = await createRagLayer({
+    cfg,
+    prompt,
+    cwd,
+    // RAG retrieval tak boleh menulis access_count di mode tanpa-mutasi.
+    // "readonly" hanya ada via runtime __setMode (union startup tak memuatnya).
+    trackAccess: (permissionMode as string) !== "readonly" && permissionMode !== "plan",
+  })
 
   // resume: load full history from DB -> seed into kernel ContextStore
   let initialMessages: readonly Message[] | undefined
   let resumeTurnCount: number | undefined
+  let recoveryAppendix = ""
   if (resumeId) {
     try {
       const prev = loadSession(resumeId, cwd)
@@ -220,11 +234,40 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
   }
 
+  // P0-2/P0-1 — recovery journal dibaca SEBELUM seed kernel: putuskan status
+  // mutasi yang belum finalized (pending/failed/committed-tanpa-DB), lalu
+  // teruskan sebagai SYSTEM appendix (bukan pesan user/assistant palsu).
+  // Tanpa jurnal (sesi baru/bersih) = no-op. Tak pernah memblokir resume.
+  try {
+    const persistedTurns = listPersistedTurns(resumeId ?? sessionId, cwd)
+    const rec = await planRecoveryForSession(resumeId ?? sessionId, cwd, { persistedTurns })
+    for (const w of rec.warnings) process.stderr.write(c.yellow(`[recovery] ${w}\n`))
+    if (rec.directive) {
+      process.stderr.write(
+        c.yellow(`[recovery] unfinished mutations need verification — see system note\n`),
+      )
+      recoveryAppendix = `\n\n# Recovery note (interrupted session — verify before re-executing)\n${rec.directive}`
+    }
+  } catch (e) {
+    process.stderr.write(`[warn] recovery plan failed: ${(e as Error).message}\n`)
+  }
+
+  // P0-3 — pointer undo/redo basi (crash apply→save): adopsi dari marker
+  // jurnal bila valid. Berjalan untuk SEMUA sesi (bukan hanya --resume),
+  // karena --session <id> yang dipakai ulang tanpa --resume pun bisa basi.
+  // No-op bila tak ada marker / sudah konvergen. Tak pernah blokir start.
+  try {
+    await reconcileUndoRedoPointer(sessionId, cwd)
+  } catch (e) {
+    process.stderr.write(`[warn] checkpoint reconcile failed: ${(e as Error).message}\n`)
+  }
+
   const compaction = process.env.DEEPSEEK_API_KEY
     ? createLlmCompaction({
         apiKey: process.env.DEEPSEEK_API_KEY,
         baseUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com/v1",
         model: "deepseek-chat",
+        cwd: cwd ?? process.cwd(),
       })
     : undefined
 
@@ -252,7 +295,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     tools: sessionTools,
     cwd,
     permissionMode,
-    systemExtra,
+    systemExtra: (systemExtra ?? "") + recoveryAppendix,
     model: modelRef.current,
     ask: promptAsk,
     onPermissions: (ctl) => {
@@ -269,6 +312,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
   })
 
   const effectiveInitialModel = modelRef.current ?? cfg.providers[0]?.models[0] ?? "default"
+
+  // ── Mutation journal wiring (AUDIT #01C): intent di execution:started,
+  // terminal di execution:completed — keduanya post-gate kernel. Total:
+  // kegagalan tulis jurnal tak pernah menggagalkan turn (degraded-loud).
+  attachMutationJournal(session, { sessionId, cwd })
 
   // ── Shadow checkpoint ──
   // Repo git: simpan SHA tree pre/post turn (O(delta), tanpa cap file, tidak
@@ -377,7 +425,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     // Bersihkan state garis status turn SEBELUMNYA bila kernel tidak sempat
     // emit turn:completed (gagal/abort) — lihat lifecycle turn-status.ts.
     turnStatus.endTurn()
-    await runRunHooks("pre", { phase: "pre", prompt: p, cwd })
+    await runRunHooks("pre", { phase: "pre", prompt: p, cwd }, signal)
     // Semua session.run settle lewat sini: finally memastikan garis status
     // berhenti pada sukses MAUPUN gagal/abort (kernel hanya emit
     // turn:completed di jalur sukses — tanpa ini painter basi menimpa prompt).
@@ -390,7 +438,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
     if (!verifyActive) {
       await runOnce(p, signal)
-      await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
+      await runRunHooks(
+        "post",
+        { phase: "post", prompt: p, cwd, result: session.state.turnCount },
+        signal,
+      )
       return
     }
     // P2.1 — baseline-first: bila baseline sudah merah sebelum agen menyentuh
@@ -434,7 +486,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
         }
       },
     })
-    await runRunHooks("post", { phase: "post", prompt: p, cwd, result: session.state.turnCount })
+    await runRunHooks(
+      "post",
+      { phase: "post", prompt: p, cwd, result: session.state.turnCount },
+      signal,
+    )
   }
 
   // Printer linier + status turn: dipakai one-shot DAN REPL linier.
@@ -465,6 +521,11 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     try {
       await saveSession(sessionId, cwd, undefined, session.state.history, usageData)
       if (resumeId) await saveSession(resumeId, cwd, undefined, session.state.history, usageData)
+      // Riwayat durable → mutasi turn ini boleh di-finalize (sweep record).
+      // Gagal finalize tak menggagalkan persist (warn di dalam).
+      await finalizeJournal(sessionId, cwd).catch((e) => {
+        process.stderr.write(`[warn] journal finalize failed: ${(e as Error).message}\n`)
+      })
     } catch {}
   }
 

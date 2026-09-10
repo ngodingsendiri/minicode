@@ -3,12 +3,17 @@ import { resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
-import { scrubSecrets } from "../policy/scrub.ts"
+import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     const p = spawn("git", args, {
       cwd,
+      // Repo hooks (pre-commit/commit-msg/...) berjalan sebagai child dengan
+      // env ini — kredensial (API_KEY/TOKEN/...) di-strip agar hook nakal tak
+      // bisa memanen secret dari env. Auth tetap via credential helper / agen
+      // SSH (SSH_AUTH_SOCK bukan pola secret) — lihat policy/scrub.ts.
+      env: sanitizeSpawnEnv(process.env),
       // Timeout dari LIMITS, bukan hardcode: `git_commit` menjalankan beberapa
       // operasi berurutan (rev-parse → add → commit → log), dan di mesin yang
       // sibuk (mis. CI menjalankan test dengan coverage) spawn git bisa jauh

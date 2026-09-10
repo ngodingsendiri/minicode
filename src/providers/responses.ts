@@ -23,24 +23,71 @@ export function clearResponsesChain(): void {
   for (const m of allChains) m.clear()
 }
 
+/**
+ * Petakan riwayat kernel ke Responses input items TANPA menghancurkan linkage.
+ * Versi lama me-JSON-kan seluruh pesan (tool_calls, tool_call_id, reasoning,
+ * multimodal hilang) sehingga turn lanjutan buta terhadap tool-nya sendiri.
+ * Multimodal non-teks tetap di-stringify (keterbatasan jujur: Responses
+ * input teks; image akan ditangani bila adapter mendukung part image).
+ */
+export function toResponsesInput(
+  messages: readonly {
+    role: string
+    content?: unknown
+    toolCalls?: unknown
+    toolCallId?: string
+    isError?: boolean
+  }[],
+): unknown[] {
+  const out: unknown[] = []
+  for (const m of messages) {
+    const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? null)
+    if (m.role === "assistant" && Array.isArray((m as { toolCalls?: unknown }).toolCalls)) {
+      if (text) out.push({ role: "assistant", content: text })
+      for (const c of (m as unknown as { toolCalls: { id: string; name: string; args: unknown }[] })
+        .toolCalls) {
+        out.push({
+          type: "function_call",
+          call_id: c.id,
+          name: c.name,
+          arguments: typeof c.args === "string" ? c.args : JSON.stringify(c.args ?? {}),
+        })
+      }
+      continue
+    }
+    if (m.role === "tool") {
+      const t = m as unknown as { toolCallId?: string; content?: unknown; isError?: boolean }
+      const content = typeof t.content === "string" ? t.content : JSON.stringify(t.content ?? null)
+      out.push({
+        type: "function_call_output",
+        call_id: t.toolCallId ?? "",
+        output: t.isError ? `ERROR: ${content}` : content,
+      })
+      continue
+    }
+    out.push({ role: m.role, content: text })
+  }
+  return out
+}
+
 export function createResponsesProvider(config: ResponsesConfig): ModelProvider {
   const baseUrl = config.baseUrl.replace(/\/+$/, "")
   const endpoint = `${baseUrl}/responses`
   const lastResponseByModel = new Map<string, string>()
   allChains.add(lastResponseByModel)
-  const provider: ModelProvider & { clearResponsesChain?: () => void } = {
+  const provider: ModelProvider & { kind: "responses"; clearResponsesChain?: () => void } = {
     id: config.id ?? "responses",
     models: config.models,
+    // brand kind: router memakai ini untuk (a) skip binary-fix gaya Anthropic,
+    // (b) skip penyelipan system-message (diurus via `instructions` di bawah).
+    kind: "responses",
     clearResponsesChain: () => lastResponseByModel.clear(),
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const modelKey = request.model ?? config.defaultModel ?? config.models[0] ?? "default"
       const prev = lastResponseByModel.get(modelKey)
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
-        input: request.messages.map((m) => ({
-          role: m.role,
-          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-        })),
+        input: toResponsesInput(request.messages),
         tools: request.tools?.length
           ? request.tools.map((t) => ({
               type: "function",
@@ -49,6 +96,10 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
               parameters: t.parameters,
             }))
           : undefined,
+        // System prompt KERNEL (MEMORY, repomap, instruksi) — versi lama
+        // membuangnya total (body tanpa field ini). Responses API punya
+        // field khusus; jangan selipkan sebagai user message.
+        ...(request.system?.trim() ? { instructions: request.system } : {}),
         stream: true,
         store: false,
         ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
@@ -77,6 +128,18 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
             "rate_limit",
             `rate limited (${res.status}): ${txt.slice(0, 500)}`,
             Number.isFinite(ms) ? ms : undefined,
+          )
+        }
+        // Samakan dengan adapter lain: konteks kepanjangan = compact-and-retry
+        // di loop, bukan retry-buta 3x lalu throw. Frasa pencocokan sama
+        // dengan openai-compat/anthropic agar perilaku konsisten antar provider.
+        if (
+          (res.status === 400 || res.status === 422) &&
+          /context|maximum context|too long|token/i.test(txt)
+        ) {
+          throw new ProviderError(
+            "context_length_exceeded",
+            `context too long (${res.status}): ${txt.slice(0, 500)}`,
           )
         }
         throw new ProviderError(

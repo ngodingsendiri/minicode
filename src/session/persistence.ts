@@ -255,6 +255,19 @@ export function loadSession(
   }
 }
 
+export function listPersistedTurns(id: string, cwd?: string): number[] {
+  // Turn durable untuk keputusan recovery journal (baca-saja, tanpa schema).
+  const db = open(cwd)
+  try {
+    const rows = db
+      .prepare("SELECT turn_idx as t FROM turns WHERE session_id = ? ORDER BY turn_idx")
+      .all(id) as { t: number }[]
+    return rows.map((r) => r.t)
+  } finally {
+    db.close()
+  }
+}
+
 export function listSessions(
   cwd?: string,
 ): { id: string; created_at: number; updated_at?: number; cwd: string }[] {
@@ -283,6 +296,30 @@ export async function deleteSession(id: string, cwd?: string) {
   } finally {
     db.close()
   }
+  // Lifecycle: jurnal ikut hapus sesi (best-effort; tak boleh gagalkan hapus).
+  try {
+    const { deleteJournalFile } = await import("./journal.ts")
+    deleteJournalFile(id, cwd)
+  } catch {}
+  // P0-3 #10: manifes checkpoint ikut hapus sesi — sesi yang dihapus lalu
+  // dibuat ulang dengan id sama tak boleh mewarisi pointer basi. Best-effort.
+  try {
+    const { sanitizeSessionId } = await import("./checkpoint.ts")
+    const { rm } = await import("node:fs/promises")
+    const { resolve: resolvePath, join: joinPath } = await import("node:path")
+    await rm(
+      joinPath(
+        resolvePath(cwd ?? process.cwd()),
+        ".minicode",
+        "checkpoints",
+        sanitizeSessionId(id),
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    ).catch(() => {})
+  } catch {}
 }
 
 // P13 P1 — branch: fork sesi (history + turns) ke id baru tanpa menyentuh

@@ -84,7 +84,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_HOME` | Override home untuk DB lokal/global (sessions + vector); default `~`. Berguna agar test hermetic di POSIX (di sana `homedir()` mengabaikan `$HOME`) |
 | `MINICODE_TELEMETRY` | `0`/`false`/`off` → matikan penulisan traces.jsonl |
 | `MINICODE_PROVIDER_ORDER` | Urutkan provider agnostik tanpa edit config: `openai,anthropic,deepseek` |
-| `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`) |
+| `MINICODE_HOOKS` | `1` → jalankan hook global `pre/post-run` dari `~/.minicode/hooks/*.js` & `.minicode/hooks/*.js` (konteks di env `MINICODE_HOOK_CTX`; env hook disanitasi tanpa secret; hook dilewati bila sesi dibatalkan) |
 | `NO_COLOR` | Set apa pun selain `0` → matikan seluruh warna |
 | `MINICODE_ASCII` | `1` → paksa glyph ASCII (`[OK]`, `>`, `.`) untuk konsol tanpa UTF-8 |
 | `MINICODE_COMPACT` | `1` → tool call ringkas, `0` → expanded. Default: compact di REPL, expanded di one-shot/exec (juga `/compact`, Ctrl+O) |
@@ -200,6 +200,8 @@ File di atas `READ_FILE_MAX_BYTES` (2 MB) **hanya** bisa dibaca dengan `offset`/
 `rg` dipakai bila ada di PATH (`--vimgrep --no-follow`, exclude `.git`/`node_modules`/dotdir), jika tidak walker internal. Keduanya menerapkan jail path dan secret-scrub yang sama, dan diuji memberi hasil identik. Paksa fallback dengan `MINICODE_GREP_ENGINE=js` (dipakai CI untuk menguji jalur itu).
 
 Bila `rg` gagal (regex flavour beda, binary rusak), tool otomatis jatuh ke walker dan mencetak peringatan — bukan gagal total.
+
+Hasil yang mencapai batas **selalu ditandai** (`… [truncated: …]`) — berlaku untuk `grep`, `bash`, `code_run`, LSP, MCP, `web_search`, dan memori. Tanpa penanda, output dianggap utuh. Bila melihat penanda, persempit pola/path sebelum menyimpulkan.
 
 ### `todo_write` / `todo_read` — rencana per sesi
 
@@ -320,6 +322,8 @@ Tool dinamis `serverId.toolName` juga otomatis muncul.
 
 `mcp_read` dan `mcp_prompt` di-gate **meski read-only**: keduanya menarik konten dari server pihak ketiga langsung ke konteks model, yang merupakan jalur prompt-injection. "Read-only" tidak berarti "aman". `mcp_list` tidak di-gate karena hanya melaporkan metadata server yang Anda daftarkan sendiri.
 
+**Model kepercayaan:** permission hanya mengontrol *pemanggilan* — satu approval berlaku untuk satu pasangan server+tool+args, tidak melebar ke tool/server lain. Capability di balik server (filesystem, network, proses, API eksternal) tidak dapat diketahui secara statis: anggap setiap `mcp_call` sebagai external capability tak-terklasifikasi dengan efek arbitrer di sisi server. Pembatalan menghentikan penungguan (dan membatalkan request HTTP), tetapi tidak membunuh proses server stdio maupun membatalkan efek yang sudah terjadi.
+
 **LSP:** `minicode config lsp add` untuk daftarkan language server. Setelah terdaftar: `lsp_diagnostics`, `lsp_definition`, `lsp_references`, `lsp_hover`, `lsp_symbols`, `lsp_workspace_symbols`. LSP diagnostics juga otomatis di tool `edit`/`write_file` bila server terkonfigurasi.
 
 ## Verify & Self-Healing
@@ -340,6 +344,8 @@ Tool dinamis `serverId.toolName` juga otomatis muncul.
 | `--sandbox docker` tapi daemon mati | tidak berpura-pura terisolasi: turun ke `allowlist` + peringatan |
 
 Docker **tidak** dipakai otomatis meski tersedia — menarik image dan menjalankan container tanpa diminta terlalu invasif untuk sebuah default.
+
+**`code_run`** selalu lewat sandbox runner (docker bila `--sandbox docker`, OS sandbox bila `os`): network-isolated, cwd = session root, env tersanitasi. Bila backend yang diminta tidak tersedia, tool **menolak** (fail-closed) — tidak ada fallback diam-diam ke eksekusi host. Image docker default (`node:22-alpine`) membawa node, bukan python3: python butuh `MINICODE_SANDBOX_IMAGE` yang menyediakannya.
 
 ### Lapisan perlindungan bash
 
@@ -412,6 +418,20 @@ Jaminannya:
 **Non-repo (fallback).** Snapshot isi file seperti sebelumnya, dengan cap `WORKSPACE_SNAPSHOT_LIMIT`.
 
 `/undo` kembali ke kondisi sebelum turn, `/redo` ke kondisi sesudahnya. Manifest di `.minicode/checkpoints/` dengan cap **20** terbaru (`LIMITS.CHECKPOINT_MAX_COUNT`). Turn yang tidak mengubah apa pun tidak membuat checkpoint.
+
+Pointer undo/redo adalah metadata turunan, bukan kebenaran: setiap operasi menulis marker jurnal (`newIndex`) *setelah* apply files dan *sebelum* save pointer. Crash di antara keduanya membuat pointer basi — saat start berikutnya MiniCode mengadopsi pointer dari marker terbaru yang valid (indeks dalam batas + turn cocok), tanpa mengeksekusi ulang, tanpa menyentuh file. Marker basi/foreign (indeks di luar batas, turn tak cocok) diabaikan dengan peringatan. Menghapus sesi ikut menghapus manifest-nya agar id yang dipakai ulang tak mewarisi pointer basi.
+
+## Recovery Journal
+
+Setiap mutasi tool (tulis/edit/hapus file, `bash`, `git_commit`, `mcp_call`, `code_run`, `delegate_task`, memori tulis/hapus) dicatat di `.minicode/journal-<sesi>.jsonl` — satu baris per status: `pending` saat eksekusi dimulai, `committed`/`failed` saat selesai, `finalized` setelah riwayat turn durable di SQLite. Saat resume (atau sesi baru dengan jurnal tertinggal), MiniCode membaca jurnal **sebelum** seed kernel:
+
+- `committed` yang turn-nya hilang dari DB → **tidak diulang**; model diberi catatan narasi sistem.
+- `pending`/`failed` → model diberi direktif verifikasi (satu blok sistem, bukan pesan palsu); **dilarang redo buta**, ulangi hanya lewat gate normal setelah verifikasi.
+- `committed` dari MCP = *external-acknowledged* (klaim server), bukan komit lokal → wajib baca-balik.
+
+Kejujuran yang disengaja: jurnal **bukan transaksi** (tak ada atomic lintas FS+DB), `pending` **bukan** gagal (melainkan ambigu — efek mungkin sudah terjadi), dan `committed` **bukan** berarti seluruh turn durable. Jurnal tak menyimpan isi argumen/file/kredensial — hanya hash + path relatif. `sessions purge` ikut menghapus jurnal sesi basi.
+
+File jurnal dibuat **eager** saat sesi terpasang (kosong = sesi ada, belum bermutasi — berbeda dari file yang hilang = bukti hilang). Jurnal anak (`delegate_task`) terpisah per sesi anak: anak yang selesai normal tanpa mutasi = sunyi; anak hilang padahal delegasi committed = warning degraded; turn anak tak pernah dicocokkan dengan turn parent (namespace terpisah — anak ter-cover bila delegasinya committed + finalized). Jurnal yatim (sesi tak dikenal, tak dirujuk, lebih tua dari TTL) ikut ter-purge; yang tak terbaca tak pernah dihapus.
 
 ## Sessions
 

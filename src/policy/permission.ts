@@ -187,19 +187,30 @@ export function createPermissionHandler(
     return saveAllowlist(key, root).catch(() => {})
   }
 
-  // data-driven: tiap mode = satu fungsi keputusan (tanpa cabang saling tumpang tindih)
+  // data-driven: tiap mode = satu fungsi keputusan (tanpa cabang saling tumpang tindih).
+  // Param ketiga = signal turn (opsional): prompt yang belum terjawab saat
+  // sesi dibatalkan harus kalah oleh abort (deny), bukan menunggu jawaban.
   const handlers: Record<
     PermissionMode,
-    (call: ToolCall, args: Record<string, unknown> | null) => Promise<"allow" | "deny">
+    (
+      call: ToolCall,
+      args: Record<string, unknown> | null,
+      signal?: AbortSignal,
+    ) => Promise<"allow" | "deny">
   > = {
     "allow-all": async () => "allow",
     readonly: async (call) => (READONLY_TOOLS.has(call.name) ? "allow" : "deny"),
-    // Plan = readonly + dua perkecualian aman: todo_write (artefak rencana
-    // .minicode/plans, bukan file workspace) dan delegate_task (penelahan
-    // rencana, bukan eksekusi). Delegate dipaksa read-only di task.ts bila
-    // parent plan/readonly — permission hanya membuka gerbangnya.
+    // Plan = readonly + tiga perkecualian aman: todo_write (artefak rencana
+    // .minicode/plans, bukan file workspace), delegate_task (penelahan
+    // rencana, bukan eksekusi — dipaksa explore/read-only di task.ts bila
+    // parent plan/readonly, permission hanya membuka gerbangnya), dan
+    // submit_result (singleton memori-proses untuk exec --json, tanpa tulis
+    // file/state sesi; terlihat di PLAN_EXTRA tool-layer jadi harus boleh).
     plan: async (call) =>
-      READONLY_TOOLS.has(call.name) || call.name === "todo_write" || call.name === "delegate_task"
+      READONLY_TOOLS.has(call.name) ||
+      call.name === "todo_write" ||
+      call.name === "delegate_task" ||
+      call.name === "submit_result"
         ? "allow"
         : "deny",
     allowlist: async (call, args) => {
@@ -217,7 +228,7 @@ export function createPermissionHandler(
       if (INTERNAL_WRITE_TOOLS.has(call.name)) return "allow"
       return READONLY_TOOLS.has(call.name) ? "allow" : "deny"
     },
-    ask: async (call, args) => {
+    ask: async (call, args, signal) => {
       if (READONLY_TOOLS.has(call.name)) return "allow"
       // Bookkeeping internal tidak menyentuh workspace: todo list dan kontrol
       // job yang izinnya sudah diberikan saat `bash` dijalankan. Meminta
@@ -229,18 +240,18 @@ export function createPermissionHandler(
         const cmd = (args?.cmd as string) ?? ""
         if (!cmd.trim() || bashDenied(cmd)) return "deny"
       } else if (isGated(call.name)) {
-        return await promptAskOr(call, () => "deny")
+        return await promptAskOr(call, () => "deny", signal)
       }
-      const ans = askUser ? await askUser(call) : "deny"
+      const ans = askUser ? await raceAbort(askUser(call), signal) : "deny"
       if (ans === "always") {
         await saveAlways(call)
         return "allow"
       }
       return ans === "allow" ? "allow" : "deny"
     },
-    auto: async (call, args) => {
+    auto: async (call, args, signal) => {
       if (READONLY_TOOLS.has(call.name)) return "allow"
-      if (isGated(call.name)) return await promptAskOr(call, () => "deny")
+      if (isGated(call.name)) return await promptAskOr(call, () => "deny", signal)
       if (FILE_WRITE_TOOLS.has(call.name)) return "allow"
       if (INTERNAL_WRITE_TOOLS.has(call.name)) return "allow"
       if (call.name === "code_run") {
@@ -260,6 +271,11 @@ export function createPermissionHandler(
   const returned = {
     async check(call: ToolCall, _deps?: unknown): Promise<"allow" | "deny"> {
       const earlyArgs = call.args as Record<string, unknown> | null
+      // Cancellation sebelum eksekusi mengalahkan segalanya: approval yang
+      // datang terlambat (atau sesi yang sudah detach) tidak boleh membuka
+      // gerbang. Kernel meneruskan signal turn di deps (executor kernel).
+      const signal = (_deps as { signal?: AbortSignal } | null | undefined)?.signal
+      if (signal?.aborted) return "deny"
 
       // universal file-path jail — harus sebelum allow-all (defense-in-depth)
       // realpath-based: symlink keluar workspace tetap tertangkap walau --allow-all
@@ -312,8 +328,9 @@ export function createPermissionHandler(
 
       const mode = state.mode
       if (mode === "allow-all") {
-        // allow-all tetap menolak bash berbahaya (STATIC_DENY / RM_DANGEROUS)
-        // — izin penuh bukan berarti mengizinkan `rm -rf /` atau fork bomb.
+        // allow-all tetap menolak bash berbahaya — izin penuh bukan berarti
+        // mengizinkan `rm -rf /` atau fork bomb. Yang dicek di sini FULL
+        // inspectBashCommand (bukan sebagian), sama seperti mode lain.
         if (call.name === "bash") {
           const cmd = (earlyArgs?.cmd as string) ?? ""
           if (cmd.trim() && bashDenied(cmd)) return "deny"
@@ -321,7 +338,7 @@ export function createPermissionHandler(
         return "allow"
       }
 
-      return handlers[state.mode](call, earlyArgs)
+      return handlers[state.mode](call, earlyArgs, signal)
     },
     // Kontrol mode saat runtime (Shift+Tab di TUI). Sebelumnya kedua method ini
     // hanya ada di type-cast tanpa implementasi, sehingga pemanggilnya no-op /
@@ -339,12 +356,32 @@ export function createPermissionHandler(
     __getMode(): PermissionMode
   }
 
-  async function promptAskOr(call: ToolCall, noTty: () => "deny"): Promise<"allow" | "deny"> {
+  // Balapan prompt melawan abort: jawaban yang tiba SETELAH sesi dibatalkan
+  // tidak boleh membuka gerbang (late approval = deny). Tanpa ini, user yang
+  // menekan [y] sepersekian detik setelah Ctrl+C tetap mengeksekusi tool.
+  function raceAbort<T>(p: Promise<T>, signal?: AbortSignal): Promise<T | "aborted"> {
+    if (!signal) return p
+    if (signal.aborted) return Promise.resolve("aborted")
+    return Promise.race([
+      p,
+      new Promise<"aborted">((res) =>
+        signal.addEventListener("abort", () => res("aborted"), { once: true }),
+      ),
+    ])
+  }
+
+  async function promptAskOr(
+    call: ToolCall,
+    noTty: () => "deny",
+    signal?: AbortSignal,
+  ): Promise<"allow" | "deny"> {
+    if (signal?.aborted) return noTty()
     if (!askUser) return noTty()
     if (!process.stdin.isTTY) return noTty()
     const list = await getAllowlist()
     if (matchAllowlist(call, list)) return "allow"
-    const ans = await askUser(call)
+    const ans = await raceAbort(askUser(call), signal)
+    if (ans === "aborted") return "deny"
     if (ans === "always") {
       await saveAlways(call)
       return "allow"

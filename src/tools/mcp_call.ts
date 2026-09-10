@@ -1,7 +1,7 @@
 import type { Tool } from "#minicore"
-import { LIMITS } from "../constants.ts"
 import {
   callMcpTool,
+  capMcpText,
   extractMcpText,
   getMcpPrompt,
   getMcpServerIds,
@@ -48,7 +48,9 @@ export const mcpListTool: Tool = {
 export const mcpCallTool: Tool = {
   name: "mcp_call",
   description:
-    "Call a tool on a connected MCP server. Parameters: server id, tool name, and arguments.",
+    "Call a tool on a connected MCP server. Parameters: server id, tool name, and arguments. " +
+    "The server runs OUTSIDE minicode policy: a call may read/write files, network, or processes " +
+    "on the server side — one approval covers one server+tool+args call only.",
   parameters: {
     type: "object",
     properties: {
@@ -82,9 +84,9 @@ export const mcpCallTool: Tool = {
     }
 
     try {
-      const result = await callMcpTool(sid, tn, a)
+      const result = await callMcpTool(sid, tn, a, ctx.signal)
       const content = extractMcpText(result)
-      return scrubSecrets(content.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
+      return capMcpText(content)
     } catch (e) {
       return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }
@@ -117,9 +119,9 @@ export const mcpReadTool: Tool = {
     if (!u) throw new Error("uri is required")
     if (!getMcpServerIds().includes(sid)) return notConnected(sid)
     try {
-      const text = await readMcpResource(sid, u)
+      const text = await readMcpResource(sid, u, ctx.signal)
       if (!text) return `[mcp] resource '${u}' is empty or returned no text`
-      return scrubSecrets(text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
+      return capMcpText(text)
     } catch (e) {
       return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }
@@ -151,9 +153,9 @@ export const mcpPromptTool: Tool = {
     if (!pn) throw new Error("name is required")
     if (!getMcpServerIds().includes(sid)) return notConnected(sid)
     try {
-      const text = await getMcpPrompt(sid, pn, (args as Record<string, unknown>) ?? {})
+      const text = await getMcpPrompt(sid, pn, (args as Record<string, unknown>) ?? {}, ctx.signal)
       if (!text) return `[mcp] prompt '${pn}' returned no message`
-      return scrubSecrets(text.slice(0, LIMITS.MCP_OUTPUT_MAX_CHARS))
+      return capMcpText(text)
     } catch (e) {
       return `[mcp] error: ${scrubSecrets((e as Error).message)}`
     }

@@ -1,7 +1,9 @@
 import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync } from "node:fs"
 import { homedir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
+import { homeDir } from "../../src/lib/db-path.ts"
+import { deleteJournalFile, findOrphanJournals } from "../../src/session/journal.ts"
 import {
   getSessionTtlDays,
   listSessions,
@@ -75,9 +77,44 @@ export async function handleSessions(
         })()
     const db = new Database(dbPath)
     try {
+      // Jurnal mengikuti lifecycle sesi: hapus file jurnal milik sesi yang
+      // akan di-purge (best-effort) sebelum baris DB-nya hilang.
+      try {
+        const days = getSessionTtlDays()
+        if (days > 0) {
+          const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+          const stale = db
+            .prepare("SELECT id FROM sessions WHERE COALESCE(updated_at, created_at) < ?")
+            .all(cutoff) as { id: string }[]
+          const journalCwd = existsSync(localPath) ? (cwdArg ?? process.cwd()) : homeDir()
+          for (const s of stale) deleteJournalFile(s.id, journalCwd)
+        }
+      } catch {}
       const removed = purgeExpired(db)
+      // Yatim: jurnal milik sesi yang sudah tak ada di tabel (termasuk anak
+      // yang tak pernah persist) + tak dirujuk parent hidup + lebih tua dari
+      // TTL. Unreadable tak pernah dihapus (tak terbukti yatim).
+      let orphans = 0
+      try {
+        const journalDir = join(dirname(dbPath), "")
+        const alive = new Set(
+          (
+            db.prepare("SELECT id FROM sessions").all() as {
+              id: string
+            }[]
+          ).map((r) => r.id),
+        )
+        const { unlinkSync } = await import("node:fs")
+        for (const f of await findOrphanJournals(journalDir, alive, getSessionTtlDays())) {
+          try {
+            unlinkSync(f)
+            orphans += 1
+          } catch {}
+        }
+      } catch {}
       const ttl = getSessionTtlDays()
       console.log(`[purge] removed ${removed} sessions (older than ${ttl} days)`)
+      if (orphans > 0) console.log(`[purge] removed ${orphans} orphan journals`)
     } finally {
       db.close()
     }
