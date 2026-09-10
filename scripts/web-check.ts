@@ -1,0 +1,111 @@
+// Checker web: link internal + kelengkapan sidebar + anti-bocor rahasia.
+// Dijalankan setelah `bun run web:build` — baca hasil di site/, bukan sumber.
+import { readdirSync, readFileSync, statSync } from "node:fs"
+import { join } from "node:path"
+
+const repoRoot = join(import.meta.dir, "..")
+const siteDir = join(repoRoot, "site")
+
+let fail = 0
+function check(name: string, ok: boolean, detail = ""): void {
+  if (ok) console.log(`  ok    ${name}`)
+  else {
+    fail++
+    console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ""}`)
+  }
+}
+
+function allHtml(dir: string, out: string[] = []): string[] {
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f)
+    if (statSync(p).isDirectory()) allHtml(p, out)
+    else if (f.endsWith(".html")) out.push(p)
+  }
+  return out
+}
+
+if (!statSync(siteDir, { throwIfNoEntry: false })) {
+  console.error("[web-check] site/ belum ada — jalankan `bun run web:build` dulu")
+  process.exit(1)
+}
+const files = allHtml(siteDir)
+check("ada halaman HTML", files.length >= 18, `${files.length} file`)
+const rel = new Set(files.map((f) => f.slice(siteDir.length).replaceAll("\\", "/")))
+// Aset statis yang juga di-copy ke site/ (bukan HTML) — link ke sini valid.
+for (const a of ["favicon.svg", "styles.css", "app.js", "rss.xml", "assets/logo.svg"]) {
+  rel.add(`/${a}`)
+}
+const need = [
+  "/index.html",
+  "/docs/index.html",
+  "/docs/tools.html",
+  "/blog/index.html",
+  "/admin.html",
+  "/404.html",
+]
+for (const n of need) check(`rute ${n} ada`, rel.has(n))
+
+// Link internal harus resolve ke file site/.
+const missing: string[] = []
+for (const f of files) {
+  const src = readFileSync(f, "utf8")
+  for (const m of src.matchAll(/href="(\/[^"#?"]+)"/g)) {
+    let target = m[1]!
+    if (/^\/$/.test(target)) target = "/index.html"
+    else if (target.endsWith("/")) target = `${target}index.html`
+    if (!rel.has(target) && !rel.has(`${target}.html`))
+      missing.push(`${f.slice(siteDir.length)} -> ${m[1]}`)
+  }
+}
+check(
+  `link internal utuh (${files.length} halaman)`,
+  missing.length === 0,
+  missing.slice(0, 5).join("; "),
+)
+
+// Anti-bocor: pola kredensial tidak boleh masuk site/.
+const SECRET = [
+  /sk-[A-Za-z0-9]{8,}/,
+  /ghp_[A-Za-z0-9]+/,
+  /BEGIN [A-Z ]*PRIVATE KEY/,
+  /xox[bpas]-/,
+  /AKIA[0-9A-Z]{16}/,
+]
+const leaks: string[] = []
+for (const f of files) {
+  const src = readFileSync(f, "utf8")
+  for (const re of SECRET) if (re.test(src)) leaks.push(`${f.slice(siteDir.length)}: ${re}`)
+}
+check("tanpa pola rahasia di site/", leaks.length === 0, leaks.slice(0, 3).join("; "))
+
+// SEO: tiap halaman konten punya title + description + canonical.
+const noSeo: string[] = []
+for (const f of files) {
+  if (f.endsWith("admin.html") || f.endsWith("404.html")) continue
+  const src = readFileSync(f, "utf8")
+  if (
+    !/<title>[^<]{8,}<\/title>/.test(src) ||
+    !/name="description" content="[^"]{20,}"/.test(src) ||
+    !/rel="canonical"/.test(src)
+  ) {
+    noSeo.push(f.slice(siteDir.length))
+  }
+}
+check("SEO tags lengkap", noSeo.length === 0, noSeo.slice(0, 5).join(", "))
+
+// Sitemap mencakup semua halaman konten (kecuali admin/404).
+const sm = readFileSync(join(siteDir, "sitemap.xml"), "utf8")
+const smMiss = files
+  .filter((f) => !/admin\.html|404\.html/.test(f))
+  .map((f) =>
+    f
+      .slice(siteDir.length)
+      .replaceAll("\\", "/")
+      .replace(/\/index\.html$/, "/")
+      .replace(/^\//, ""),
+  )
+  .filter((p) => !sm.includes(p))
+check("sitemap lengkap", smMiss.length === 0, smMiss.slice(0, 5).join(", "))
+
+console.log(fail === 0 ? "[web-check] lolos" : `[web-check] ${fail} gagal`)
+process.exit(fail === 0 ? 0 : 1)
