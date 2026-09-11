@@ -1,5 +1,15 @@
 # Minicode User Guide
 
+> **Status: arsip legacy.** Dokumen ini monolit panduan lama yang isinya kini terpelihara di halaman docs terpisah (lihat tabel di bawah). Jangan tambah konten baru di sini; perbaiki di halaman tujuannya. Beberapa angka di bawah bisa basi — sumber kebenaran adalah halaman docs + `bun test`.
+>
+> | Butuh… | Baca… |
+> |---|---|
+> | Mulai cepat | [Quickstart](quickstart.md), [Instalasi](getting-started.md) |
+> | Flag & env | [CLI](cli.md), [Environment Variables](environment.md) |
+> | Tool & MCP/LSP | [Tools](tools.md), [MCP & LSP](mcp-lsp.md) |
+> | Memory, sesi, recovery | [Memory & Sessions](memory-sessions.md) |
+> | Keamanan & policy | [Security Model](security-model.md), [Policy & Sandbox](policy-sandbox.md) |
+
 ## Instalasi
 
 ```bash
@@ -273,7 +283,7 @@ Refresh otomatis dengan margin 60 detik sebelum kedaluwarsa, jadi login sekali c
 
 ## Biaya & harga model
 
-17 harga bawaan selalu tersedia offline. Untuk cakupan lebih luas:
+25 harga bawaan selalu tersedia offline. Untuk cakupan lebih luas:
 
 ```bash
 minicode pricing sync                       # tarik models.dev (3.162 model, ~213 KB)
@@ -441,7 +451,7 @@ Sesi disimpan di `.minicode/sessions.db` (WAL). `minicode sessions list` untuk d
 
 ## Memory
 
-Memori lintas sesi dua lapis: `MEMORY.md` (hierarki global → lokal → root → `CLAUDE.md` → `.minicode/rules/*.md`) selalu dimuat ke system prompt, plus index vektor hybrid (`vector.db`, cosine 0.7 + keyword 0.3) yang di-inject sebagai `# Relevant memory` bila skor ≥ ambang (0.20 hybrid / 0.25 keyword-only). Ranking memakai MMR (λ 0.7) agar prompt tidak dipenuhi parafrase yang sama; entri >2000 char dipecah jadi chunk overlap 200. Retensi **90 hari** / maks **5000 baris**, prune otomatis tiap tulis. `minicode memory status [--json]` untuk rows, ukuran DB/WAL, sebaran model/dim, dan hit-rate RAG dari traces.
+Memori lintas sesi dua lapis: `MEMORY.md` (hierarki global → lokal → root → `CLAUDE.md` → `.minicode/rules/*.md`) selalu dimuat ke system prompt, plus index vektor hybrid (`vector.db`, cosine 0.7 + keyword 0.3) yang di-inject sebagai `# Relevant memory` bila skor ≥ ambang (0.20 hybrid / 0.25 keyword-only). Ranking memakai MMR (λ 0.7) agar prompt tidak dipenuhi parafrase yang sama; entri >2000 char dipecah jadi chunk overlap 200. Retensi hierarkis: `fact`/`decision`/`preference` 180 hari, `summary` 90 hari, `snippet` 14 hari; maks 5000 baris, prune otomatis tiap tulis. `minicode memory status [--json]` untuk rows, ukuran DB/WAL, sebaran model/dim, dan hit-rate RAG dari traces.
 
 ## Repo Intelligence
 

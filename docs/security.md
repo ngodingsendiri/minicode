@@ -53,6 +53,7 @@ Setiap turn checkpoint shadow-git + recovery journal `.minicode/journal-<sesi>.j
 
 ## Lanjut
 
+- [Security Model](security-model.md) — rantai eksekusi, trust boundary, dan limitasi dalam satu halaman.
 - [Policy & Sandbox](policy-sandbox.md) — 6 mode + detail guard.
 - [Kontrak Terminal](terminal.md) — kenapa warna di-gate TTY.
 - [Otomasi & CI](exec.md) — batasan agent di CI (fail-closed non-TTY).

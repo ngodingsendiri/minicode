@@ -53,12 +53,24 @@ Selanjutnya, coba perintah-perintah ini untuk melihat bagaimana Minicode bekerja
 ```bash
 minicode                # Mulai Minicode — akan muncul panduan jika ini pertama kalinya
 minicode "buat http server" --verbose
-minicode auth login     # Login tanpa API key (melalui perantara aman di browser)
+minicode auth login     # OAuth device-code bila provider mendukung; lainnya via API key
 minicode providers      # Lihat daftar penyedia yang tersedia
 minicode doctor         # Cek kondisi jika ada yang tidak beres
 ```
 
 Untuk langkah selanjutnya — mulai dari awal sampai membuat prompt pertama yang terverifikasi — baca [Quickstart](quickstart.md). Jika Anda ingin tahu tentang instalasi di sistem operasi berbeda, atau cara memperbarui dan menghapus Minicode, baca [Instalasi](getting-started.md).
+
+## Mulai di sini
+
+Anda baru dan tak mau menebak urutan baca? Ikuti jalur ini (total ±15 menit):
+
+0. **Apa MiniCode?** — [Konsep & Desain](concepts.md) (3 menit): apa, kenapa, dan apa yang sengaja tidak ada.
+1. **Install** — [Instalasi](getting-started.md) (5 menit): Bun, clone, `doctor`.
+2. **Prompt pertama** — [Quickstart](quickstart.md) (5 menit): wizard/API key atau OAuth, prompt ter-verify pertama.
+3. **Pilih mode** — [Memilih Mode](choosing-mode.md) (2 menit): baca, ubah, approve, atau plan.
+4. **Workflow pertama** — [CLI](cli.md) + [REPL](repl.md): flag harian dan slash command sesuai kebutuhan.
+
+Habis itu, baca sesuai kebutuhan lewat tabel Navigasi di bawah — tak perlu berurutan.
 
 ## Navigasi
 
@@ -87,7 +99,7 @@ Untuk langkah selanjutnya — mulai dari awal sampai membuat prompt pertama yang
 | Kontrak stdout/stderr FROZEN, 12 invariant | [Kontrak Terminal](terminal.md) |
 | Ikut kontribusi, gate, batas lapisan | [Contributing](contributing.md) |
 | Perubahan per versi | [Changelog](changelog.md) |
-| Referensi tunggal (monolit) | `USAGE.md` (file pendamping) |
+| Arsip panduan monolit lama (baca hanya bila perlu) | `USAGE.md` (file pendamping, status legacy) |
 
 ## Konvensi dokumen ini
 

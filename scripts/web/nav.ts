@@ -52,6 +52,10 @@ const DOC_META: Record<string, { desc: string; src: string }> = {
     desc: "Threat model: bash-guard, path jail, prompt injection, supply chain.",
     src: "src/policy/bash-guard.ts",
   },
+  "security-model": {
+    desc: "Model keamanan MiniCode: rantai eksekusi, 6 mode izin, trust boundary, limitasi.",
+    src: "src/policy/permission.ts",
+  },
   terminal: {
     desc: "Kontrak terminal FROZEN: stdout/stderr, 12 invariant, scrollback.",
     src: "docs/TERMINAL_CONTRACT.md",
@@ -61,6 +65,10 @@ const DOC_META: Record<string, { desc: string; src: string }> = {
     src: "cli/router.ts",
   },
   cli: { desc: "Mode CLI, flags, dan environment variables Minicode.", src: "cli/router.ts" },
+  "choosing-mode": {
+    desc: "Pilih permission mode dari tujuan: baca, ubah, approve, plan, CI, otonom.",
+    src: "src/policy/permission.ts",
+  },
   repl: { desc: "Slash command dan pintasan keyboard REPL Minicode.", src: "cli/repl.ts" },
   "config-providers": {
     desc: "14 preset gateway, OAuth device-code, model dan effort.",

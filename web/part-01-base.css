@@ -21,8 +21,21 @@
   /* Font dokumentasi: satu tingkat di bawah body (15px - 2 = 13.5px asal,
      naikkan reduksi jadi 12.5px) agar halaman referensi padat. */
   --fs-doc: 12.5px;
-  --r: 12px;
+  --r: 8px;
 }
+/* Transisi hanya untuk ganti tema (150ms); selain itu tanpa motion. */
+body { transition: background-color 0.15s ease, color 0.15s ease; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  body { transition: none; }
+}
+/* Scrollbar minimal: tipis, tanpa trek, thumb samar. Native tetap fallback.
+   Tanpa border shorthand (aturan flat repo) — thumb solid ramping. */
+* { scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: var(--mut); }
 html[data-theme="dark"] {
   --bg: #121316;
   --soft: #1a1c20;

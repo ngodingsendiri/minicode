@@ -2,6 +2,8 @@
 
 Referensi lengkap tool Minicode: filesystem, search, exec, git, web, memory, plan, agents, MCP, LSP.
 
+Pilih tool ini ketika: **file** untuk baca/tulis presisi (bukan `cat` via bash); **search** untuk menemukan kode (bukan `grep` via bash); **bash** untuk perintah yang memang butuh shell; **git tool** untuk status/diff/log/commit (bukan `git` mentah — tool dinetralkan dari hook/filter repo); **web** untuk sumber publik; **memory** untuk fakta lintas sesi (bukan tempelan prompt); **delegate** untuk penelahan paralel yang hasilnya diverifikasi parent.
+
 Daftar pasti kapan pun:
 
 ```bash

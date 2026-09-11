@@ -238,6 +238,38 @@ describe("web ssg", () => {
     expect(index).toContain("write_file server.ts")
   })
 
+  test("landing narrative: H1 proposisi + cara-kerja + cocok + tanpa jargon", () => {
+    const site = join(repoRoot, "site")
+    if (!existsSync(site)) return
+    const index = readFileSync(join(site, "index.html"), "utf8")
+    expect(index).toContain("menunjukkan semua kerjanya")
+    expect(index).toContain('id="cara-kerja"')
+    expect(index).toContain("Kapan MiniCode cocok?")
+    expect(index).toContain("Bukan pilihan tepat")
+    expect(index).toContain("/docs/security-model.html")
+    expect(index).toContain("/docs/quickstart.html")
+    // Tanpa jargon implementasi di narasi landing (footer boleh menyebut lineage).
+    const main = index.slice(index.indexOf("<main"), index.indexOf("</main>"))
+    for (const jargon of ["statusline.ts", "invariant", "MiniCore", "shadow-git", "O(delta)"]) {
+      expect(main).not.toContain(jargon)
+    }
+  })
+
+  test("halaman P1 konten terbit + tertaut (security-model, choosing-mode)", () => {
+    const site = join(repoRoot, "site")
+    if (!existsSync(site)) return
+    for (const p of ["docs/security-model.html", "docs/choosing-mode.html"]) {
+      expect(statSync(join(site, p), { throwIfNoEntry: false })).toBeTruthy()
+    }
+    const index = readFileSync(join(site, "index.html"), "utf8")
+    expect(index).toContain("/docs/security-model.html")
+    const sm = readFileSync(join(site, "sitemap.xml"), "utf8")
+    expect(sm).toContain("security-model.html")
+    expect(sm).toContain("choosing-mode.html")
+    const sec = readFileSync(join(site, "docs", "security-model.html"), "utf8")
+    expect(sec).toContain('aria-label="Daftar isi"')
+  })
+
   test("site/ hasil build lengkap (bila sudah di-build)", () => {
     const site = join(repoRoot, "site")
     if (!existsSync(site)) return // build belum jalan — checker CI yang jaga
@@ -281,5 +313,31 @@ describe("web ssg", () => {
     expect(docTools).toContain(">‹ Prev<")
     expect(docTools).toContain("Next ›<")
     expect(docTools).not.toContain("Sebelumnya</span>")
+  })
+
+  test("design language flat: tanpa shadow/gradient, radius kecil, kartu flat", () => {
+    // Audit desain: bahasa visual = flat. Guard level-source agar dekorasi
+    // tak merayap kembali (bukan per halaman).
+    const css = readFileSync(join(repoRoot, "web", "part-01-base.css"), "utf8") +
+      readFileSync(join(repoRoot, "web", "part-02-header.css"), "utf8") +
+      readFileSync(join(repoRoot, "web", "part-03-hero.css"), "utf8") +
+      readFileSync(join(repoRoot, "web", "part-04-sections.css"), "utf8") +
+      readFileSync(join(repoRoot, "web", "part-05-docs-blog.css"), "utf8")
+    const code = css.replace(/\/\*[\s\S]*?\*\//g, "")
+    expect(code).not.toMatch(/box-shadow\s*:/)
+    expect(code).not.toMatch(/linear-gradient|radial-gradient/)
+    // Radius terbesar yang diizinkan: 8px (structural), kecuali brand-logo.
+    const radii = [...code.matchAll(/border-radius:\s*([^;]+);/g)].map((m) => m[1]!.trim())
+    for (const r of radii) {
+      for (const n of r.match(/\d+/g) ?? []) {
+        expect(Number(n)).toBeLessThanOrEqual(8)
+      }
+    }
+    // Kartu .feat = flat content group (tanpa background).
+    expect(code).not.toMatch(/\.feat\s*\{[^}]*background/)
+    // Scrollbar minimal ada; dead selector .tbl/.prov-line tidak kembali.
+    expect(code).toContain("scrollbar-width: thin")
+    expect(code).not.toContain(".tbl")
+    expect(code).not.toContain(".prov-line")
   })
 })

@@ -1,7 +1,15 @@
 # Environment Variables
 
+Variabel yang paling menentukan perilaku (sisanya referensi di bawah):
+
+- **Batas otonomi di mesin sendiri:** `MINICODE_SANDBOX` + `MINICODE_SANDBOX_STRICT=1` (tolak bash bila isolasi tak ada) + `MINICODE_BUDGET_STRICT=1` (cost tak dikenal = over budget).
+- **Privasi/minim jejak:** `MINICODE_TELEMETRY=0` (tanpa traces), `MINICODE_AUTO_MEMORY=0` (tanpa auto-simpan memori).
+- **Repo asing:** JANGAN set `MINICODE_ALLOW_LOCAL_CONFIG=1` kecuali workspace milik Anda.
+- **Konsol lawas/aksesibilitas:** `MINICODE_ASCII=1`, `MINICODE_A11Y=1`, `MINICODE_BELL=0`, `NO_COLOR`.
 
 ## Runtime & limits
+
+
 
 | Variabel | Fungsi |
 |---|---|

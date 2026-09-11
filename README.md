@@ -6,7 +6,7 @@ MiniCore = kernel runtime `STATE/MODEL/ACTION/LOOP` (inti di-freeze; satu-satuny
 
 > Angka yang bisa dihitung mesin (jumlah test, tool, coverage) **tidak ditulis di sini** — jalankan `bun test`, `bun run gate:coverage`, atau lihat CI. Riwayat perubahan per versi ada di [CHANGELOG.md](CHANGELOG.md).
 
-📖 **Lihat [docs/USAGE.md](docs/USAGE.md)** untuk panduan lengkap (config, flags, MCP/LSP, benchmark) · [docs/ARCHITECTURE.html](docs/ARCHITECTURE.html) untuk peta struktur repo.
+📖 **Mulai dari [docs/](docs/)** — [Instalasi](docs/getting-started.md), [Quickstart](docs/quickstart.md), [Memilih Mode](docs/choosing-mode.md) · [docs/ARCHITECTURE.html](docs/ARCHITECTURE.html) untuk peta struktur repo.
 
 ## Hubungan
 ```
@@ -34,9 +34,14 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 
 ## Quickstart
 ```bash
-# sekali saja — install & setup (butuh bun >= 1.0, TANPA clone tambahan)
-git clone https://github.com/startupmini/minicode && cd minicode
-bun install && bun link
+# Prasyarat dulu: Bun >= 1.0 (https://bun.sh) — runtime MiniCode, bukan Node.
+# Tanpa Bun, perintah minicode gagal dengan "'bun' is not recognized".
+# 1. install global dari npm:
+npm install -g minicode
+
+# alternatif untuk kontributor: clone + link lokal
+# git clone https://github.com/startupmini/minicode && cd minicode
+# bun install && bun link
 
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali

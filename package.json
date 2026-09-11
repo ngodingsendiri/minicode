@@ -39,8 +39,9 @@
     "vendor/minicore/src",
     "vendor/minicore/package.json",
     "vendor/minicore/VENDOR.md",
-    "docs/USAGE.md",
-    "docs/ARCHITECTURE.md",
+    "docs/README.md",
+    "docs/architecture.md",
+    "docs/ARCHITECTURE.html",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

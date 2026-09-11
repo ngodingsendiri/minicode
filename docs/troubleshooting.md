@@ -8,7 +8,7 @@ minicode doctor [--json]   # runtime, provider, pricing, memory, sandbox, config
 
 `doctor` memberi warn (bukan ok palsu) untuk provider 0 models + saran `sync`.
 
-## FAQ (dari `docs/USAGE.md`)
+## FAQ
 
 - **LSP tidak jalan:** `minicode config lsp add .ts --command typescript-language-server --args --stdio`. Pastikan server terinstall.
 - **Docker sandbox:** `docker pull node:22-alpine`. Daemon mati → turun ke `allowlist`, bukan tanpa isolasi.

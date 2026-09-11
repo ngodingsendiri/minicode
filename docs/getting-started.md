@@ -7,6 +7,12 @@ Prasyarat tunggal: **`bun >= 1.0`**. Minicode memakai `bun:sqlite` langsung — 
 ## Install
 
 ```bash
+npm install -g minicode
+```
+
+Untuk kontributor (kerja dari source):
+
+```bash
 git clone https://github.com/startupmini/minicode && cd minicode
 bun install && bun link
 ```
@@ -35,12 +41,14 @@ Docker **tidak** dipakai otomatis meski tersedia — menarik image tanpa diminta
 ## Update & uninstall
 
 ```bash
-cd minicode && git pull && bun install
+npm update -g minicode   # instalasi npm: timpa paket, state user tidak tersentuh
 minicode sync          # refresh model baru dari semua provider
 minicode pricing sync  # refresh cache harga (3.162 model, ~213 KB)
 ```
 
-Uninstall = hapus clone + `bun unlink` (bila memakai link). Config global tetap di `~/.minicode/` sampai kamu hapus manual; config lokal di `.minicode/` per repo.
+Clone contributor: `cd minicode && git pull && bun install`.
+
+Uninstall = `npm uninstall -g minicode` (atau hapus clone + `bun unlink` bila memakai link). Config global tetap di `~/.minicode/` sampai kamu hapus manual; config lokal di `.minicode/` per repo. Uninstall tidak pernah menghapus state, sesi, memori, atau file proyekmu.
 
 ## Lokasi data
 

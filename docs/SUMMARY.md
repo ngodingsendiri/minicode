@@ -12,6 +12,7 @@
 ## Menggunakan
 
 * [CLI — Mode & Flags](cli.md)
+* [Memilih Mode](choosing-mode.md)
 * [REPL — Slash & Keyboard](repl.md)
 * [Otomasi & CI](exec.md)
 * [Config — File & Lokasi Data](config.md)
@@ -30,6 +31,7 @@
 
 ## Keamanan
 
+* [Security Model](security-model.md)
 * [Policy & Sandbox](policy-sandbox.md)
 * [Keamanan](security.md)
 * [Troubleshooting](troubleshooting.md)

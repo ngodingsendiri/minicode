@@ -10,7 +10,7 @@ Kategori: `fact|decision|preference|snippet|summary` + `tags`. Default `fact`; b
 
 Scope baca: `cwd` (default) | `global` | `all` (gabung, tanpa silent shadowing). Atur via `MINICODE_MEMORY_SCOPE`.
 
-Retensi 90 hari / maks 5000 baris, prune + `VACUUM` periodik tiap tulis. TTL hierarkis: `fact/decision/preference` 180 hari, `summary` 90, `snippet` 14 + `access_count` per row.
+Retensi hierarkis per kategori: `fact`/`decision`/`preference` 180 hari, `summary` 90 hari, `snippet` 14 hari; maks 5000 baris, prune + `VACUUM` periodik tiap tulis. `access_count` per row.
 
 ```bash
 minicode memory status [--json]   # rows, bytes DB/WAL/SHM, sebaran model/dim, hit-rate RAG
@@ -38,13 +38,24 @@ Batas: snapshot memakai `git add -A`, jadi file ber-`.gitignore` tidak ikut (dis
 
 ## Recovery journal
 
-Setiap mutasi (tulis/edit/hapus, `bash`, `git_commit`, `mcp_call`, `code_run`, `delegate_task`, memory tulis/hapus) dicatat di `.minicode/journal-<sesi>.jsonl`: `pending` → `committed`/`failed` → `finalized` (setelah turn durable di SQLite). Saat resume, dibaca **sebelum** seed kernel:
+Setiap mutasi (tulis/edit/hapus, `bash`, `git_commit`, `mcp_call`, `code_run`, `delegate_task`, memory tulis/hapus) dicatat di `.minicode/journal-<sesi>.jsonl` — di kode disebut *mutation journal*: `pending` → `committed`/`failed` → `finalized` (setelah turn durable di SQLite). Saat resume, dibaca **sebelum** seed kernel:
 
 - `committed` yang turn-nya hilang → tidak diulang; model diberi catatan narasi.
 - `pending`/`failed` → direktif verifikasi; dilarang redo buta.
 - `committed` MCP = *external-acknowledged*, wajib baca-balik.
 
 Jurnal bukan transaksi atomik; `pending` = ambigu (efek mungkin sudah terjadi). Hanya hash + path relatif (tanpa isi/kredensial). File dibuat eager saat sesi terpasang. Jurnal anak terpisah per sesi anak. `sessions purge` ikut hapus jurnal basi.
+
+## Konteks & compaction
+
+Model hanya melihat jendela riwayat terbatas (**konteks**). Saat percakapan menekan jendela itu, MiniCode **memadatkan** (compaction): turn lama diganti satu ringkasan, turn terbaru dipertahankan utuh. Anda melihatnya sebagai baris `── compacted: …` di output.
+
+- **Kapan terjadi:** otomatis saat tekanan konteks, sebelum batas jendela tercapai. Bila sesudah padat masih kurang, run gagal eksplisit (`context window exceeded`) — bukan sunyi.
+- **Yang dipertahankan:** ringkasan fakta — path file, signature, snippet penting, hasil tool, error, next steps. Ringkasan sebelumnya dibawa verbatim (tidak diringkas ulang) agar makna tak melenceng tiap siklus.
+- **Yang mungkin hilang:** teks lengkap turn lama (dipotong ~250 char/baris saat diringkas), detail output tool, urutan persis percakapan.
+- **Riwayat asli tidak disimpan ganda:** sesi berjalan dan sesi tersimpan mengikuti state terbaru (ringkasan + turn baru). Yang perlu durable lintas sesi, tulis eksplisit via `write_memory`.
+- **Ringkasan lebih cerdas bila ada kunci DeepSeek** (`DEEPSEEK_API_KEY`): ringkasan dibuat LLM (timeout 10 dtk); tanpanya dipakai ringkasan mekanikal. Keduanya memagar konten tak-terpercaya sebagai data + secret-scrub sebelum diringkas.
+- **Beda dengan memory:** ringkasan konteks hidup di sesi berjalan; `write_memory`/vector hidup lintas sesi dan bisa di-retrieval. Ringkasan juga disimpan sebagai memori kategori `summary` — matikan via `MINICODE_AUTO_MEMORY=0` bila tak diinginkan.
 
 ## Repo intelligence & telemetry
 

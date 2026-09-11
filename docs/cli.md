@@ -56,9 +56,22 @@ Subcommand di-route di `cli/router.ts:68-122` (13 nama / 11 handler: `stats sess
 
 Di TUI, **Shift+Tab** memutar permission (`auto` → `ask` → `plan` → `allowlist`) dan benar-benar mengubah keputusan, bukan label. Di baris kosong, **Tab** juga memutar mode (`auto` → `ask` → `plan` → `allowlist`).
 
+## Kapan memakai apa
+
+| Tujuan | Pakai |
+|---|---|
+| Kerja harian biasa | Default (`auto`) — tulis aman langsung jalan, yang berisiko minta izin |
+| Repo asing / perintah belum dipahami | `--ask`, jawab `always` hanya untuk pasangan tool+args yang sudah dinilai |
+| Review tanpa eksekusi | `--plan` (+ `--tool-scope explore` bila ingin subset baca 12 tool) |
+| CI tanpa manusia | `exec --json` + `--budget`/`--max-steps`; hindari prompt yang butuh klarifikasi |
+| Otonom penuh di mesin sendiri | `--allow-all` + `--sandbox docker` (atau OS) + `--budget` |
+| Model mahal tak terkendali | `--budget 0.50` + `--budget-strict` + `pricing sync` |
+
+Detail alasan tiap mode di [Memilih Mode](choosing-mode.md).
+
 ## Environment variables (ringkas)
 
-Kepala tabel penuh ada di `docs/USAGE.md`; yang paling sering dipakai:
+Kepala tabel penuh ada di [Environment Variables](environment.md); yang paling sering dipakai:
 
 | Variabel | Fungsi |
 |---|---|

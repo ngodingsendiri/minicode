@@ -5,8 +5,8 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildBlog } from "./web/blog.ts"
 import { buildDocs } from "./web/docs.ts"
-import { landingHero, landingWhy } from "./web/landing1.ts"
-import { landingFaq, landingFeatures, landingFlags, landingProviders } from "./web/landing2.ts"
+import { landingHero, landingHow, landingWhy } from "./web/landing1.ts"
+import { landingFaq, landingFeatures, landingFit, landingSafety } from "./web/landing2.ts"
 import { renderPage, softwareJsonld } from "./web/page.ts"
 
 const repoRoot = join(import.meta.dir, "..")
@@ -32,16 +32,17 @@ function write(rel: string, content: string): void {
 
 const landing =
   landingHero(version) +
+  landingHow() +
   landingWhy() +
   landingFeatures() +
-  landingProviders() +
-  landingFlags() +
+  landingFit() +
+  landingSafety() +
   landingFaq()
 write(
   "index.html",
   renderPage(webDir, {
-    title: "Coding agent CLI shell-native",
-    desc: "Minicode: coding agent CLI shell-native di atas MiniCore — 37 tool, sandbox, MCP, memory RAG, checkpoint shadow-git. MIT, zero-dep, Bun.",
+    title: "Coding agent CLI yang menunjukkan semua kerjanya",
+    desc: "MiniCode untuk developer terminal: tiap langkah terlihat di scrollback, tiap aksi sensitif lewat izin Anda. MIT, zero-dep, Bun.",
     canon: `${base}/`,
     body: landing,
     version,
