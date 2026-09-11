@@ -1,15 +1,36 @@
 # Instalasi
 
-Prasyarat tunggal: **`bun >= 1.0`**. Minicode memakai `bun:sqlite` langsung — tidak jalan di Node.js.
+Prasyarat tunggal: **`bun >= 1.0`** — runtime MiniCode, bukan Node.js. `npm` hanya dipakai untuk distribusi, bukan untuk menjalankan.
 
 > Kernel MiniCore ikut repo di `vendor/minicore`, jadi **tanpa clone tambahan**. Klaim lama di `CONTRIBUTING.md` yang menyuruh clone `../minicore` sudah usang untuk pemakaian normal; clone sibling hanya dibutuhkan bila kamu mau sync ulang kernel via `bun run vendor:minicore`.
 
-## Install
+## Install (untuk awam — tanpa Node/Bun sekalipun)
+
+**Langkah 1 — Pasang Bun** (sekali saja, tutup-buka terminal lagi setelahnya):
+
+```powershell
+# Windows PowerShell
+powershell -c "irm bun.sh/install.ps1 | iex"
+# kalau gagal karena ExecutionPolicy, coba:
+npm install -g bun
+```
+
+```bash
+# macOS / Linux
+curl -fsSL https://bun.sh/install | bash
+```
+
+Cek: `bun --version` harus keluar `1.4.x`. Kalau masih `command not found`, tutup-buka terminal dulu (PATH baru ke-load setelah restart).
+
+**Langkah 2 — Pasang MiniCode:**
 
 ```bash
 npm install -g @miniroom/minicode
 # bin: minicode
+minicode --version  # harus 0.9.x
 ```
+
+Kenapa butuh keduanya? `npm` = toko distribusi, `Bun` = mesin yang menjalankan. Tanpa Bun, `minicode` gagal dengan `'bun' is not recognized`.
 
 Untuk kontributor (kerja dari source):
 

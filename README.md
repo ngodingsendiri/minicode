@@ -34,7 +34,12 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 
 ## Quickstart
 ```bash
-# sekali saja — install & setup (butuh bun >= 1.0, TANPA clone tambahan)
+# 0. Bun dulu (sekali, tutup-buka terminal lagi):
+# Windows: powershell -c "irm bun.sh/install.ps1 | iex"  (atau npm i -g bun)
+# macOS/Linux: curl -fsSL https://bun.sh/install | bash
+# cek: bun --version  -> 1.4.x
+
+# 1. MiniCode:
 npm install -g @miniroom/minicode
 # bin: minicode
 
