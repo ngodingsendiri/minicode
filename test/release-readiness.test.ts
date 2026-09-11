@@ -83,15 +83,14 @@ describe("release: metadata paket", () => {
 })
 
 describe("release: satu kontrak instalasi di semua permukaan", () => {
-  // Nama `minicode` diblokir registry (mirip `mini-code`) — publish npm
-  // BATAL. Kontrak instalasi = clone + bun link; perintah
-  // `npm install -g minicode` TAK BOLEH dianjurkan di mana pun (akan gagal
-  // atau lebih buruk). Test ini mengunci keputusan tersebut.
-  test("instalasi = clone + Bun-first; tanpa anjuran npm install", () => {
+  // Nama tak-scoped diblokir registry (mirip `mini-code`) — kontrak instalasi
+  // = `npm install -g @miniroom/minicode` (bin tetap `minicode`). Bentuk
+  // bare `npm install -g minicode` TAK BOLEH dianjurkan (gagal/takut salah paket).
+  test("instalasi = scoped npm + Bun-first; tanpa anjuran bare", () => {
     for (const f of ["README.md", "docs/getting-started.md", "scripts/web/landing1.ts"]) {
       const src = read(f)
+      expect(src).toContain("npm install -g @miniroom/minicode")
       expect(src).not.toContain("npm install -g minicode")
-      expect(src).toContain("git clone https://github.com/startupmini/minicode")
     }
     const firstIdx = (src: string, needles: string[]): number => {
       const hits = needles.map((n) => src.indexOf(n)).filter((i) => i >= 0)
@@ -100,16 +99,14 @@ describe("release: satu kontrak instalasi di semua permukaan", () => {
     for (const f of ["README.md", "docs/getting-started.md"]) {
       const src = read(f)
       const bunIdx = firstIdx(src, ["Bun >=", "bun >= 1.0", "Bun ≥"])
-      const cloneIdx = src.indexOf("git clone https://github.com/startupmini/minicode")
       expect(bunIdx).toBeGreaterThanOrEqual(0)
-      expect(bunIdx).toBeLessThan(cloneIdx)
+      expect(bunIdx).toBeLessThan(src.indexOf("npm install -g @miniroom/minicode"))
     }
   })
 
   test("uninstall/update mendokumentasikan state preservation", () => {
     const src = read("docs/getting-started.md")
-    expect(src).toContain("bun unlink")
-    expect(src).not.toContain("npm uninstall -g minicode")
+    expect(src).toContain("npm uninstall -g @miniroom/minicode")
     expect(src).toMatch(/tidak pernah menghapus state/i)
   })
 })

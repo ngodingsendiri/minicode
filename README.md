@@ -35,8 +35,8 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 ## Quickstart
 ```bash
 # sekali saja — install & setup (butuh bun >= 1.0, TANPA clone tambahan)
-git clone https://github.com/startupmini/minicode && cd minicode
-bun install && bun link
+npm install -g @miniroom/minicode
+# bin: minicode
 
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali

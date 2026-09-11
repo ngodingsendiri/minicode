@@ -1,9 +1,9 @@
 // Potongan konten landing (bagian 1): hero + install + proof + cara kerja.
 export function landingHero(version: string): string {
   const install =
-    "git clone https://github.com/startupmini/minicode &&amp; cd minicode\nbun install &amp;&amp; bun link"
+    "npm install -g @miniroom/minicode"
   const installRaw =
-    "git clone https://github.com/startupmini/minicode && cd minicode\nbun install && bun link"
+    "npm install -g @miniroom/minicode"
   return `<section class="hero">
 <div class="kicker">v${version} · MIT · zero-dep</div>
 <h1>Coding agent CLI yang menunjukkan semua kerjanya.</h1>

@@ -1,9 +1,12 @@
 {
-  "name": "minicode",
+  "name": "@miniroom/minicode",
   "version": "0.9.6",
   "description": "Coding agent CLI built on the frozen MiniCore runtime — tools, MCP, LSP, sandbox, shadow-git checkpoints",
   "type": "module",
   "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "keywords": [
     "ai",
