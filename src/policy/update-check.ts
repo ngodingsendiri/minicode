@@ -2,7 +2,6 @@
 // Tanpa dependensi, tanpa blocking startup (fire-and-forget, timeout 2 dtk).
 // Hormat offline: gagal fetch = diam. Hormat NO_UPDATE_CHECK=1 / CI=1.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -36,6 +35,9 @@ function semverLt(a: string, b: string): boolean {
 
 async function readCache(): Promise<Cache | null> {
   try {
+    // Lazy import — hindari top-level `node:fs/promises` bareng `bun:sqlite`
+    // yang di Bun Windows nge-trigger `kWriteMonkeyPatchDefense` (lihat 0.9.7).
+    const { readFile } = await import("node:fs/promises")
     const raw = await readFile(CACHE_FILE, "utf8")
     const j = JSON.parse(raw) as Cache
     if (typeof j.checkedAt === "number" && typeof j.latest === "string") return j
@@ -45,6 +47,7 @@ async function readCache(): Promise<Cache | null> {
 
 async function writeCache(latest: string): Promise<void> {
   try {
+    const { mkdir, writeFile } = await import("node:fs/promises")
     await mkdir(join(homedir(), ".minicode"), { recursive: true })
     await writeFile(CACHE_FILE, JSON.stringify({ checkedAt: Date.now(), latest }), "utf8")
   } catch {}

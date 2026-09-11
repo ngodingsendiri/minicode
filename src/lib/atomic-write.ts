@@ -23,7 +23,40 @@ export async function atomicWriteText(path: string, data: string): Promise<void>
       throw e
     }
     try {
-      await fh.writeFile(data, "utf8")
+      // Bun Windows: `FileHandle.writeFile` kadang nge-hit kWriteMonkeyPatchDefense
+      // bila `node:fs/promises` ke-import bareng `bun:sqlite` di top-level.
+      // Fallback ke `Bun.write` (tidak pakai FileHandle) bila kena itu.
+      try {
+        await fh.writeFile(data, "utf8")
+      } catch (e) {
+        const msg = String((e as Error)?.message ?? "")
+        if (msg.includes("kWriteMonkeyPatchDefense") || msg.includes("kWrite")) {
+          await fh.close().catch(() => {})
+          fh = undefined as unknown as FileHandle
+          await Bun.write(tmp, data)
+          // re-open untuk sync/chmod path yang sama — atau skip bila Bun.write sudah flush
+          try {
+            await chmod(tmp, 0o600).catch(() => {})
+          } catch {}
+          let lastErr2: unknown
+          for (let r = 0; r < 8; r++) {
+            try {
+              await rename(tmp, path)
+              lastErr2 = undefined
+              break
+            } catch (ee) {
+              const code = (ee as NodeJS.ErrnoException).code
+              if (code === "EPERM" || code === "EBUSY" || code === "EACCES") {
+                lastErr2 = ee
+                await new Promise((res) => setTimeout(res, Math.min(10 * 2 ** r, 100)))
+              } else throw ee
+            }
+          }
+          if (lastErr2) throw lastErr2
+          return
+        }
+        throw e
+      }
       await fh.sync().catch(() => {})
       await chmod(tmp, 0o600).catch(() => {})
       // Windows: rename menimpa target yang baru saja ditulis penulis lain
