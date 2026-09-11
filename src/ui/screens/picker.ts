@@ -145,10 +145,30 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
     let done = false
     let onData!: (chunk: Buffer) => void
     let onResize!: () => void
+    // Bun 1.4.0 Windows: raw-mode yang ditahan >60 dtk rawan segfault
+    // (lihat laporan `panic: Segmentation fault at address 0xA0D` setelah
+    // 133 dtk idle di picker). Timer idle 90 dtk auto-batal agar raw-mode
+    // tidak digenggam selamanya — tanpa ini picker bisa crash Bun sebelum
+    // user menekan apa pun. Bukan perubahan perilaku: idle sepanjang itu
+    // memang harusnya batal.
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const resetIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        cleanup()
+        opts.onCancel()
+        resolve()
+      }, 90_000)
+      // jangan tahan process tetap hidup hanya karena timer ini
+      if (idleTimer && typeof (idleTimer as unknown as { unref?: () => void }).unref === "function") {
+        ;(idleTimer as unknown as { unref: () => void }).unref!()
+      }
+    }
     const decoder: DecoderState = createDecoderState()
     const cleanup = () => {
       if (done) return
       done = true
+      if (idleTimer) clearTimeout(idleTimer)
       prevRows = clearTransientOverlay(prevRows)
       process.stdout.write("\x1b[0m\x1b[?25h")
       // TIDAK menulis \r\n di sini: clearTransientOverlay sudah menaruh kursor
@@ -166,6 +186,7 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
     }
 
     onData = (chunk: Buffer) => {
+      resetIdle()
       try {
         for (const d of decodeKeysStream(chunk, decoder)) {
           const items = filteredItems()
@@ -251,6 +272,7 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
       process.stdin.setMaxListeners(0)
       process.stdin.on("data", onData)
       process.stdout.on("resize", onResize)
+      resetIdle()
       render()
     } catch {
       cleanup()
