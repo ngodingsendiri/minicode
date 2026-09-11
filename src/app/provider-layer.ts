@@ -9,9 +9,12 @@ let currentRouter: ReturnType<typeof createRouterProvider> | null = null
 export function getCurrentRouter(): ReturnType<typeof createRouterProvider> | null {
   return currentRouter
 }
-export async function reloadProviders(cwd?: string): Promise<void> {
+export async function reloadProviders(
+  cwd?: string,
+  opts: { allowLocal?: boolean } = {},
+): Promise<void> {
   if (!currentRouter) return
-  const cfg = await loadConfig(cwd)
+  const cfg = await loadConfig(cwd, { allowLocal: opts.allowLocal })
   const providers = await buildProviderListAsync(cfg)
   const r = currentRouter as unknown as { updateProviders: (list: unknown[]) => void }
   if (typeof r.updateProviders === "function") r.updateProviders(providers)
@@ -23,11 +26,14 @@ export async function createProviderLayer(opts: {
   enterRepl: boolean
   rateLimiter?: RateLimiter
   providerOverride?: string
+  /** Teruskan flag --allow-local-config (default deny — repo tak bisa
+   * menyuntik endpoint provider). */
+  allowLocalConfig?: boolean
   /** Setup first-run (wizard) — di-inject dari cli/. Tanpa injeksi, kosong
    * berarti langsung error "no provider configured". */
   setupWhenEmpty?: () => Promise<boolean>
 }): Promise<{ cfg: MinicodeConfig; router: ReturnType<typeof createRouterProvider> }> {
-  const cfg = await loadConfig(opts.cwd)
+  const cfg = await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })
   type Provider = ReturnType<typeof createOpenAICompatProvider>
   let providers = await buildProviderListAsync(cfg)
 
@@ -86,7 +92,7 @@ export async function createProviderLayer(opts: {
   if (providers.length === 0 && (opts.enterRepl || opts.prompt)) {
     const ok = opts.setupWhenEmpty ? await opts.setupWhenEmpty() : false
     if (ok) {
-      const cfg2 = await loadConfig(opts.cwd)
+      const cfg2 = await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })
       cfg.providers = cfg2.providers
       providers = await buildProviderListAsync(cfg2)
     }

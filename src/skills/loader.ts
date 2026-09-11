@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { isRealPathOutsideRoot } from "../policy/jail.ts"
 
 export interface Skill {
   name: string
@@ -44,13 +45,17 @@ function parseFrontmatter(txt: string): { meta: Record<string, string>; body: st
   return { meta, body }
 }
 
-async function loadDir(dir: string, out: Skill[]) {
+async function loadDir(dir: string, out: Skill[], root: string = dir) {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
   for (const e of entries) {
     const full = join(dir, e.name)
+    // Symlink escape (temuan audit #06): readdir+readFile mengikuti symlink,
+    // sehingga skill/dir link keluar workspace ikut dimuat. Tolak yang
+    // realpath-nya di luar root kepercayaannya (global vs proyek).
+    if (isRealPathOutsideRoot(full, root)) continue
     if (e.isDirectory()) {
       // recursive 1-level deep for nested skills
-      await loadDir(full, out)
+      await loadDir(full, out, root)
       continue
     }
     if (!e.isFile() || !e.name.endsWith(".md")) continue

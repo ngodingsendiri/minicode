@@ -20,6 +20,42 @@ const DOC_META: Record<string, { desc: string; src: string }> = {
     desc: "Instalasi Minicode: Bun, matriks OS, update, lokasi data.",
     src: "src/config.ts",
   },
+  concepts: {
+    desc: "Konsep Minicode: kernel MiniCore, loop ReAct, shell-native, kejujuran.",
+    src: "docs/ARCHITECTURE.html",
+  },
+  glossary: {
+    desc: "Glosarium istilah Minicode: kernel, jail, checkpoint, ledger, RAG.",
+    src: "docs/USAGE.md",
+  },
+  exec: {
+    desc: "Otomasi & CI: one-shot, pipe, exec --json, submit_result, budget.",
+    src: "cli/commands/exec.ts",
+  },
+  config: {
+    desc: "Skema config.json, merge global/lokal, dan lokasi data Minicode.",
+    src: "src/config.ts",
+  },
+  environment: {
+    desc: "Referensi penuh MINICODE_*: sandbox, memory, terminal, aksesibilitas.",
+    src: "docs/USAGE.md",
+  },
+  skills: {
+    desc: "Skills markdown, hooks pre/post-run, dan AGENTS.md proyek.",
+    src: "src/skills/",
+  },
+  agents: {
+    desc: "Sub-agent delegate_task: pool 3, mode explore/plan, recovery.",
+    src: "src/agents/",
+  },
+  security: {
+    desc: "Threat model: bash-guard, path jail, prompt injection, supply chain.",
+    src: "src/policy/bash-guard.ts",
+  },
+  terminal: {
+    desc: "Kontrak terminal FROZEN: stdout/stderr, 12 invariant, scrollback.",
+    src: "docs/TERMINAL_CONTRACT.md",
+  },
   quickstart: {
     desc: "Dari nol ke prompt pertama yang ter-verify dalam 5 menit.",
     src: "cli/router.ts",
@@ -85,20 +121,4 @@ export function readDocNav(repoRoot: string): DocEntry[] {
 
 export function docMeta(slug: string): { desc: string; src: string } {
   return DOC_META[slug] ?? { desc: `Dokumentasi Minicode: ${slug}.`, src: `docs/${slug}.md` }
-}
-
-/** Sidebar HTML: grup + link, tanpa garis — pill aktif via background. */
-export function sidebarHtml(entries: DocEntry[], active: string): string {
-  let html = `<input class="side-search" id="sidesearch" type="search" placeholder="Cari halaman…" aria-label="Cari halaman docs">`
-  let lastGroup = ""
-  for (const e of entries) {
-    if (e.group !== lastGroup) {
-      lastGroup = e.group
-      html += `<div class="side-group">${e.group}</div>`
-    }
-    const cls = e.slug === active ? "side-link active" : "side-link"
-    const href = e.slug === "readme" ? "/docs/" : `/docs/${e.slug}.html`
-    html += `<a class="${cls}" href="${href}">${e.title}</a>`
-  }
-  return html
 }

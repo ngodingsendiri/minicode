@@ -13,7 +13,13 @@ import { setSubAgentSessionFactory } from "../src/tools/task.ts"
 import { formatError, takePendingError } from "../src/ui/assistant/simple.ts"
 import { formatUsd } from "../src/ui/render/money.ts"
 import { c, glyphs } from "../src/ui/render/theme.ts"
-import { hasFlag, promptFromArgs, getArg as rawGetArg, readPrompt } from "./args.ts"
+import {
+  allowLocalConfig,
+  hasFlag,
+  promptFromArgs,
+  getArg as rawGetArg,
+  readPrompt,
+} from "./args.ts"
 import { dispatch } from "./router.ts"
 import { createCliSession } from "./setup.ts"
 
@@ -39,6 +45,7 @@ Options:
   -v, --version       show version
   --verbose           show reasoning & usage
   --cwd <dir>         workspace root (default .)
+  --allow-local-config trust .minicode/config.json in workspace (default: ignore)
   --resume <id>       resume session id
   --model <name>      override model (provider::model)
   --provider <id>     force provider id
@@ -110,6 +117,10 @@ if (args.includes("-h") || args.includes("--help")) {
           { flag: "--version", desc: "show version" },
           { flag: "--verbose", desc: "show reasoning & usage" },
           { flag: "--cwd <dir>", desc: "workspace root" },
+          {
+            flag: "--allow-local-config",
+            desc: "trust .minicode/config.json in workspace (default: ignore)",
+          },
           { flag: "--resume <id>", desc: "resume session id" },
           { flag: "--model <name>", desc: "override model (provider::model)" },
           { flag: "--provider <id>", desc: "force provider id" },
@@ -151,6 +162,10 @@ const allowlist = hasFlag(args, "--allowlist") || process.env.MINICODE_PERMISSIO
 const verify = hasFlag(args, "--verify")
 const cwdRaw = getArg("--cwd")
 const cwd = cwdRaw ? resolvePath(cwdRaw) : undefined
+// Audit #07 P0: local config repo tak dipercaya kecuali operator opt-in
+// eksplisit per-invokasi (flag atau env). Tanpa ini repo clone-an bisa
+// men-spawn MCP server dan menyedot prompt ke endpoint penyerang.
+const allowLocal = allowLocalConfig(args)
 const resumeId = getArg("--resume")
   ?.replace(/[^A-Za-z0-9._-]/g, "-")
   .slice(0, 64)
@@ -259,6 +274,7 @@ const ctx = await createCliSession({
   plan,
   allowlist: effectiveAllowlist,
   verify,
+  allowLocalConfig: allowLocal,
   budget,
   budgetStrict,
   toolScope,
@@ -350,6 +366,20 @@ if (enterRepl) {
     // (takePendingError) — cetak sekali saja, jangan dua blok ✗.
     const shown = takePendingError()
     process.stderr.write(`\n${c.red(glyphs.cross)} ${shown ?? formatError(e)}\n`)
+    // Audit #04 P1: sama seperti REPL — turn gagal setelah delegasi
+    // committed = efek anak tetap ada. One-shot tak punya retry loop, tapi
+    // user yang menjalankan ulang manual butuh peringatan yang sama.
+    try {
+      const { committedDelegatesSince } = await import("../src/session/journal.ts")
+      const done = await committedDelegatesSince(sid, wcwd, t0)
+      for (const d of done) {
+        process.stderr.write(
+          c.yellow(
+            `[recovery] turn failed after sub-agent ${d.childSessionId} completed — its effects stand; verify before re-delegating\n`,
+          ),
+        )
+      }
+    } catch {}
     const uErr = usage.getSession(modelRef.current)
     await writeTrace(wcwd, {
       sessionId: sid,

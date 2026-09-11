@@ -190,7 +190,9 @@ async function runWithProvider(
     writeProviderConfig(ws, provider.baseUrl, opts.configExtra)
     const result = await run(
       ws,
-      [...args, "--cwd", ws.dir, "--model", "gpt-4o-mini"],
+      // Flag opt-in: provider lokal repo hanya aktif bila operator meminta
+      // (aturan audit #07 — tanpa ini CLI memakai config global saja).
+      [...args, "--cwd", ws.dir, "--model", "gpt-4o-mini", "--allow-local-config"],
       opts.env,
       opts.timeoutMs,
     )
@@ -358,7 +360,15 @@ describe("cli: --plan", () => {
     ])
     try {
       writeProviderConfig(ws, provider.baseUrl)
-      const r = await run(ws, ["baca berkas", "--plan", "--cwd", ws.dir, "--model", "gpt-4o-mini"])
+      const r = await run(ws, [
+        "baca berkas",
+        "--plan",
+        "--cwd",
+        ws.dir,
+        "--model",
+        "gpt-4o-mini",
+        "--allow-local-config",
+      ])
       expect(r.code).toBe(0)
       const second = provider.requests()[1]
       const msgs = second?.messages as { role: string; content: unknown }[]
@@ -401,7 +411,7 @@ describe("cli: --resume", () => {
     const provider = startFakeProvider([{ kind: "text", text: "balasan" }])
     try {
       writeProviderConfig(ws, provider.baseUrl)
-      const base = ["--cwd", ws.dir, "--model", "gpt-4o-mini"]
+      const base = ["--cwd", ws.dir, "--model", "gpt-4o-mini", "--allow-local-config"]
       const first = await run(ws, ["pertanyaan pertama", "--session", "sesi-uji", ...base])
       expect(first.code).toBe(0)
 
@@ -501,7 +511,15 @@ describe("cli: --verify (self-heal)", () => {
       writeProviderConfig(ws, provider.baseUrl)
       const r = await run(
         ws,
-        ["perbaiki sesuatu", "--verify", "--cwd", ws.dir, "--model", "gpt-4o-mini"],
+        [
+          "perbaiki sesuatu",
+          "--verify",
+          "--cwd",
+          ws.dir,
+          "--model",
+          "gpt-4o-mini",
+          "--allow-local-config",
+        ],
         { MINICODE_VERIFY_CMD: `${process.execPath} verify-sekali-gagal.ts` },
       )
       expect(r.code).toBe(0)
@@ -527,9 +545,13 @@ describe("cli: --verify (self-heal)", () => {
     const provider = startFakeProvider([{ kind: "text", text: "coba lagi" }])
     try {
       writeProviderConfig(ws, provider.baseUrl)
-      const r = await run(ws, ["perbaiki", "--verify", "--cwd", ws.dir, "--model", "gpt-4o-mini"], {
-        MINICODE_VERIFY_CMD: `${process.execPath} selalu-gagal.ts`,
-      })
+      const r = await run(
+        ws,
+        ["perbaiki", "--verify", "--cwd", ws.dir, "--model", "gpt-4o-mini", "--allow-local-config"],
+        {
+          MINICODE_VERIFY_CMD: `${process.execPath} selalu-gagal.ts`,
+        },
+      )
       expect(r.code).toBe(0)
       expect(r.stderr).toContain("still failing after 3 attempts")
     } finally {
@@ -545,7 +567,15 @@ describe("cli: --verify (self-heal)", () => {
       writeProviderConfig(ws, provider.baseUrl, {
         verifyCommand: `${process.execPath} selalu-gagal.ts`,
       })
-      const r = await run(ws, ["perbaiki", "--verify", "--cwd", ws.dir, "--model", "gpt-4o-mini"])
+      const r = await run(ws, [
+        "perbaiki",
+        "--verify",
+        "--cwd",
+        ws.dir,
+        "--model",
+        "gpt-4o-mini",
+        "--allow-local-config",
+      ])
       expect(r.code).toBe(0)
       expect(r.stderr).toContain("[verify]")
     } finally {
@@ -561,7 +591,14 @@ describe("cli: --verify (self-heal)", () => {
       writeProviderConfig(ws, provider.baseUrl, {
         verifyCommand: `${process.execPath} selalu-gagal.ts`,
       })
-      const r = await run(ws, ["kerjakan", "--cwd", ws.dir, "--model", "gpt-4o-mini"])
+      const r = await run(ws, [
+        "kerjakan",
+        "--cwd",
+        ws.dir,
+        "--model",
+        "gpt-4o-mini",
+        "--allow-local-config",
+      ])
       expect(r.code).toBe(0)
       expect(r.stderr).not.toContain("[verify]")
       expect(provider.requestCount()).toBe(1)

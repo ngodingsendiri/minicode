@@ -97,6 +97,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     permissions,
     sessionTools,
     allLoadedSkills,
+    allowLocalConfig,
     usage,
     budget,
     budgetStrict,
@@ -121,6 +122,7 @@ export async function runRepl(ctx: CliSession): Promise<void> {
   const commandCtx: CommandContext = {
     cwd,
     sessionId,
+    allowLocalConfig,
     get currentModel() {
       return modelRef.current ?? cfg.providers[0]?.models[0]
     },
@@ -270,12 +272,30 @@ export async function runRepl(ctx: CliSession): Promise<void> {
     }
     process.stdin.resume()
     process.stdin.on("data", onRawCtrlC)
+    const turnStart = Date.now()
     try {
       await runPromptWithVerify(prompt, ctrl.signal)
       if (ctrl.signal.aborted) console.log(c.yellow("\n(stopped)"))
     } catch (e) {
       if (ctrl.signal.aborted) console.log(c.yellow("\n(stopped)"))
-      else throw e
+      else {
+        // Audit #04 P1: turn gagal SETELAH delegasi committed = efek anak
+        // tetap ada sementara riwayat bersih. Model (dan retry berikut)
+        // buta terhadapnya tanpa peringatan ini — blind re-delegation =
+        // duplikat side effect. Best-effort, tak pernah blokir throw.
+        try {
+          const { committedDelegatesSince } = await import("../src/session/journal.ts")
+          const done = await committedDelegatesSince(sessionId, cwd, turnStart)
+          for (const d of done) {
+            console.log(
+              c.yellow(
+                `[recovery] turn failed after sub-agent ${d.childSessionId} completed — its effects stand; verify before re-delegating\n`,
+              ),
+            )
+          }
+        } catch {}
+        throw e
+      }
     } finally {
       process.stdin.removeListener("data", onRawCtrlC)
       process.stdin.pause()

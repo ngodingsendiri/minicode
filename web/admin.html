@@ -5,31 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin — Minicode</title>
 <meta name="robots" content="noindex">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316161a'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-weight='700' font-size='16' fill='white'%3Em%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="doc">
 <a class="skip" href="#main">Lewati ke konten</a>
 <header class="topbar"><div class="topbar-in">
-<a class="brand" href="/"><span class="brand-mark">m&gt;</span>minicode</a>
+<a class="brand" href="/"><img class="brand-logo" src="/assets/logo-user.svg" alt="Minicode" width="30" height="30"><span>minicode</span></a>
 <nav class="nav"><a class="nl" href="/docs/">Docs</a><a class="nl" href="/blog/">Blog</a>
 <button class="iconbtn" id="themebtn" aria-label="Ganti tema"><span class="material-symbols-outlined">dark_mode</span></button></nav>
 </div></header>
 <main id="main"><div class="admin">
-<div class="sec-kick">Admin · tidak diindeks</div>
-<h1 style="letter-spacing:-0.03em">Tulis artikel.</h1>
-<p class="sec-sub">Login GitHub → tulis markdown → Publish. Admin membuat commit ke <code>content/blog/</code> via GitHub API, lalu Pages auto-deploy ±1–2 menit.</p>
-<div class="field"><label for="token">Token GitHub (scope contents:write, repo ini saja)</label>
-<input id="token" type="password" placeholder="ghp_…" autocomplete="off">
-<p class="hint">Token hanya di sessionStorage browser ini — tidak pernah dikirim ke mana pun kecuali api.github.com.</p></div>
+<h1>Tulis artikel.</h1>
+<div class="field"><label for="token">Token GitHub</label>
+<input id="token" type="password" placeholder="ghp_…" autocomplete="off"></div>
 <div class="field"><label for="title">Judul</label><input id="title" type="text" placeholder="Judul artikel"></div>
-<div class="field"><label for="tags">Tags (koma)</label><input id="tags" type="text" placeholder="ai, llm"></div>
-<div class="field"><label for="desc">Deskripsi singkat</label><input id="desc" type="text" placeholder="Satu kalimat untuk kartu + SEO"></div>
-<div class="field"><label for="body">Isi (markdown)</label><textarea id="body" placeholder="# Heading&#10;&#10;Isi artikel…"></textarea></div>
-<div class="cta"><button class="btn btn-p" id="publish"><span class="material-symbols-outlined">publish</span>Publish</button>
-<button class="btn btn-s" id="draft"><span class="material-symbols-outlined">save</span>Simpan draf lokal</button></div>
+<div class="field"><label for="tags">Tags</label><input id="tags" type="text" placeholder="ai, llm"></div>
+<div class="field"><label for="desc">Deskripsi</label><input id="desc" type="text" placeholder="Satu kalimat"></div>
+<div class="field"><label for="body">Isi</label><textarea id="body" placeholder="# Heading&#10;&#10;Isi artikel…"></textarea></div>
+<div class="cta"><button class="btn btn-p" id="publish">Publish</button>
+<button class="btn btn-s" id="draft">Simpan draf</button></div>
 <div class="status" id="status" role="status"></div>
 </div></main>
 <script src="/app.js" defer></script>
@@ -75,7 +72,7 @@
       });
       if (!res.ok) { var t = await res.text(); say("Gagal: " + res.status + " " + t.slice(0, 200)); return; }
       try { localStorage.removeItem("mc-draft"); } catch (_) {}
-      say("Terbit. Tunggu ±1–2 menit, artikel muncul di /blog/. File: " + path, true);
+      say("Terbit. Tunggu 1–2 menit, artikel muncul di /blog/. File: " + path, true);
     } catch (e) { say("Jaringan gagal: " + e); }
   });
 })();

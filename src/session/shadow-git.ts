@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto"
 import { rm } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
+import { GIT_NO_DIFF_DRIVERS, GIT_SAFE_BASE, gitFilterNeutralizers } from "../lib/git-hardening.ts"
+import { resolveTrustedExecutable } from "../lib/trusted-exec.ts"
+import { sanitizeSpawnEnv } from "../policy/scrub.ts"
 
 // Checkpoint berbasis objek git ("shadow git").
 //
@@ -56,13 +59,28 @@ function git(
     // `a\nb\n` menjadi `a\r\nb\r\n`. Dengan flag ini LF tetap LF, CRLF tetap
     // CRLF, dan file biner utuh.
     // `core.safecrlf=false` mematikan peringatan yang menyertainya.
-    const hardened = ["-c", "core.autocrlf=false", "-c", "core.safecrlf=false", ...args]
-    const p = spawn("git", hardened, {
+    // Audit #10 P0: GIT_SAFE_BASE mematikan hooks/fsmonitor/pager repo di
+    // semua pemanggilan (bahkan read-only seperti status/diff menjalankan
+    // fsmonitor repo tanpa ini).
+    const hardened = [
+      ...GIT_SAFE_BASE,
+      "-c",
+      "core.autocrlf=false",
+      "-c",
+      "core.safecrlf=false",
+      ...args,
+    ]
+    const p = spawn(resolveTrustedExecutable("git"), hardened, {
       cwd,
       // Env git dikendalikan penuh: GIT_INDEX_FILE mengarahkan operasi index ke
       // berkas sementara kita, dan GIT_OPTIONAL_LOCKS=0 mencegah git menulis
-      // lock pada repo user hanya untuk membaca.
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", ...(opts.env ?? {}) },
+      // lock pada repo user hanya untuk membaca. Kredensial di-strip (audit
+      // #10): filter/hook yang lolos hardening tak boleh memanen secret env.
+      env: {
+        ...sanitizeSpawnEnv(process.env),
+        GIT_OPTIONAL_LOCKS: "0",
+        ...(opts.env ?? {}),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     })
     let stdout = ""
@@ -121,10 +139,20 @@ export async function snapshotTree(
   const idx = join(dir, `minicode-idx-${safeId}-${Date.now()}-${randomUUID().slice(0, 6)}`)
   const env = { GIT_INDEX_FILE: idx }
   try {
+    // Audit #10 P0: `git add` menjalankan clean filter repo (RCE tiap turn
+    // di repo jahat!). Netralkan driver terkonfigurasi → cat (identitas
+    // byte): snapshot butuh byte worktree apa adanya, bukan hasil konversi.
+    // Index user tak tersentuh (temp), jadi semantik clean milik user aman.
+    const neutral = await gitFilterNeutralizers(cwd)
     // `-- .` membatasi ke cwd; tanpa ini `add -A` memakai toplevel repo.
-    const add = await git(["add", "-A", "--", "."], cwd, { env })
+    // Flag -c harus sebelum subcommand: helper git() menaruh hardened base
+    // di depan, neutral di sini tepat setelahnya, sebelum "add".
+    const add = await git([...neutral, "add", "-A", "--", "."], cwd, { env })
     if (add.code !== 0) return null
-    const write = await git(["write-tree"], cwd, { env })
+    // Audit #10 P0: `git write-tree` MENERAPKAN ULANG clean filter pada
+    // entri index (trace: run_command node setelah write-tree). Override
+    // `-c filter.*.clean=cat` WAJIB ikut ke write-tree juga — bukan hanya add.
+    const write = await git([...neutral, "write-tree"], cwd, { env })
     if (write.code !== 0) return null
     const tree = write.stdout.trim()
     if (!/^[0-9a-f]{40,64}$/.test(tree)) return null
@@ -157,7 +185,12 @@ function sanitizeRefPart(s: string): string {
 
 /** Perubahan antara dua tree, dibatasi ke path di dalam workspace. */
 export async function diffTrees(cwd: string, from: string, to: string): Promise<ShadowChange[]> {
-  const r = await git(["diff", "--name-status", "-z", "--find-renames", from, to], cwd)
+  // --no-ext-diff/--no-textconv: diff tak menjalankan driver konten repo.
+  // (Flag diff harus sebelum revisi `from`/`to`, bukan di ekor.)
+  const r = await git(
+    ["diff", ...GIT_NO_DIFF_DRIVERS, "--name-status", "-z", "--find-renames", from, to],
+    cwd,
+  )
   if (r.code !== 0) return []
   const parts = r.stdout.split("\0").filter((s) => s.length > 0)
   const out: ShadowChange[] = []
@@ -187,8 +220,11 @@ export async function ephemeralTree(cwd: string): Promise<string | null> {
   const idx = join(dir, `minicode-cmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
   const env = { GIT_INDEX_FILE: idx }
   try {
-    if ((await git(["add", "-A", "--", "."], cwd, { env })).code !== 0) return null
-    const w = await git(["write-tree"], cwd, { env })
+    // Netralisasi sama seperti snapshotTree (lihat di atas): write-tree juga
+    // menerapkan ulang clean filter — override wajib ikut ke kedua subcommand.
+    const neutral = await gitFilterNeutralizers(cwd)
+    if ((await git([...neutral, "add", "-A", "--", "."], cwd, { env })).code !== 0) return null
+    const w = await git([...neutral, "write-tree"], cwd, { env })
     if (w.code !== 0) return null
     const tree = w.stdout.trim()
     return /^[0-9a-f]{40,64}$/.test(tree) ? tree : null
@@ -259,10 +295,13 @@ export async function restoreTree(cwd: string, tree: string): Promise<RestoreRes
         skipped.push(`(read-tree failed: ${rt.stderr.trim().slice(0, 120)})`)
       } else {
         // checkout-index per batch: daftar path bisa panjang, dan Windows
-        // punya batas panjang command line.
+        // punya batas panjang command line. Netralisasi smudge (audit #10):
+        // restore wajib byte-exact + tanpa eksekusi filter repo. Pasangan -c
+        // WAJIB sebelum subcommand (git berhenti parsing global di sana).
+        const neutral = await gitFilterNeutralizers(cwd)
         for (let i = 0; i < toCheckout.length; i += LIMITS.SHADOW_GIT_PATH_BATCH) {
           const batch = toCheckout.slice(i, i + LIMITS.SHADOW_GIT_PATH_BATCH)
-          const co = await git(["checkout-index", "-f", "--", ...batch], cwd, { env })
+          const co = await git([...neutral, "checkout-index", "-f", "--", ...batch], cwd, { env })
           if (co.code === 0) applied.push(...batch.map((p) => `${p} (restored)`))
           else skipped.push(...batch.map((p) => `${p} (checkout failed)`))
         }

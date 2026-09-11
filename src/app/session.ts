@@ -40,6 +40,9 @@ export async function createMinicodeSession(
     systemExtra?: string
     cwd?: string
     permissionMode?: "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
+    /** Teruskan flag --allow-local-config ke permission handler (allowlist
+     * lokal). Default deny — lihat loadAllowlist. */
+    allowLocalConfig?: boolean
     concurrency?: number
     writeConcurrency?: number
     turnCount?: number
@@ -67,6 +70,7 @@ export async function createMinicodeSession(
     writeConcurrency,
     cwd,
     permissionMode,
+    allowLocalConfig,
     systemExtra: _extra,
     provider,
     onPermissions,
@@ -76,7 +80,12 @@ export async function createMinicodeSession(
     ...rest
   } = opts
   if (!provider) throw new Error("createMinicodeSession: provider is required")
-  const permissions = createPermissionHandler({ mode: permissionMode ?? "auto", root: cwd, ask })
+  const permissions = createPermissionHandler({
+    mode: permissionMode ?? "auto",
+    root: cwd,
+    ask,
+    allowLocalConfig,
+  })
   const withMode = permissions as typeof permissions & {
     __setMode(m: PermissionMode): void
     __getMode(): PermissionMode

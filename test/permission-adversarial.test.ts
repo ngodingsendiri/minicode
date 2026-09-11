@@ -29,8 +29,14 @@ function check(
   name: string,
   args: Record<string, unknown> = {},
   ask?: (call: { name: string; args?: unknown }) => Promise<"allow" | "deny" | "always">,
+  allowLocal = false,
 ): Promise<string> {
-  const h = createPermissionHandler({ mode, root, ...(ask ? { ask } : {}) })
+  const h = createPermissionHandler({
+    mode,
+    root,
+    ...(ask ? { ask } : {}),
+    allowLocalConfig: allowLocal,
+  })
   return h.check({ name, args } as never, {} as never) as Promise<string>
 }
 
@@ -197,6 +203,9 @@ test("allowlist bash DOKUMENTASI: npx/bun-run lolos pola = eksekusi arbitrer", a
 // ── ask [a] scope: per tool + prefix arg, tersimpan per-proyek ──
 
 test("ask always: scope per tool+args, persist per-proyek, tanpa leakage", async () => {
+  // Persist per-proyek = allowlist LOKAL → butuh opt-in (aturan audit #07);
+  // tanpa flag, repo tak bisa memberi dirinya always (lihat
+  // test/local-config-optin.test.ts).
   const root = tmpRoot()
   try {
     let calls = 0
@@ -204,7 +213,7 @@ test("ask always: scope per tool+args, persist per-proyek, tanpa leakage", async
       calls++
       return "always" as const
     }
-    expect(await check("ask", root, "bash", { cmd: "echo hi" }, ask)).toBe("allow")
+    expect(await check("ask", root, "bash", { cmd: "echo hi" }, ask, true)).toBe("allow")
     expect(calls).toBe(1)
     // Panggilan kedua sama persis: cocok allowlist tersimpan, tanpa tanya lagi.
     let asked2 = false
@@ -212,18 +221,20 @@ test("ask always: scope per tool+args, persist per-proyek, tanpa leakage", async
       asked2 = true
       return "deny" as const
     }
-    expect(await check("ask", root, "bash", { cmd: "echo hi" }, ask2)).toBe("allow")
+    expect(await check("ask", root, "bash", { cmd: "echo hi" }, ask2, true)).toBe("allow")
     expect(asked2).toBe(false)
-    // Arg BERBEDA tidak ikut lolos (scope = name + 200 char arg, bukan "*").
+    // Arg BERBEDA tidak ikut lolos (scope = name + full arg, bukan "*").
     let asked3 = false
     const ask3 = async () => {
       asked3 = true
       return "deny" as const
     }
-    expect(await check("ask", root, "bash", { cmd: "echo lain" }, ask3)).toBe("deny")
+    expect(await check("ask", root, "bash", { cmd: "echo lain" }, ask3, true)).toBe("deny")
     expect(asked3).toBe(true)
     // Tool BERBEDA tidak ikut lolos.
-    expect(await check("ask", root, "write_file", { path: "a", content: "x" }, ask2)).toBe("deny")
+    expect(await check("ask", root, "write_file", { path: "a", content: "x" }, ask2, true)).toBe(
+      "deny",
+    )
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
+import { GIT_SAFE_BASE } from "../lib/git-hardening.ts"
 import { isPathOutsideRoot } from "../policy/jail.ts"
 import { appendUndoMarker, loadJournal } from "./journal.ts"
 import { diffTrees, ephemeralTree, restoreTree, snapshotTree } from "./shadow-git.ts"
@@ -200,10 +201,21 @@ export async function snapshotWorkspace(
   cwd: string = process.cwd(),
   limit = 200,
 ): Promise<FileSnapshot[]> {
-  // Try git dirty files first for efficiency on large workspaces
+  // Try git dirty files first for efficiency on large workspaces.
+  // Audit #10: status menjalankan fsmonitor repo tanpa netralisasi; git
+  // di-resolve absolut agar `git.bat` repo tak dieksekusi dari cwd (Windows).
   try {
     const { spawnSync } = await import("node:child_process")
-    const r = spawnSync("git", ["status", "--porcelain"], { cwd, timeout: 2000, encoding: "utf8" })
+    const { resolveTrustedExecutable } = await import("../lib/trusted-exec.ts")
+    const r = spawnSync(
+      resolveTrustedExecutable("git"),
+      [...GIT_SAFE_BASE, "status", "--porcelain"],
+      {
+        cwd,
+        timeout: 2000,
+        encoding: "utf8",
+      },
+    )
     if (r.status === 0 && r.stdout) {
       const dirty = r.stdout
         .split("\n")
@@ -506,8 +518,11 @@ export async function reconcileUndoRedoPointer(
       return null
     }
     // Turn harus cocok: marker untuk susunan checkpoints yang berbeda
-    // (eviksi/cabang lain) tak boleh diadopsi buta.
-    const pointed = manifest.checkpoints[latest.newIndex]
+    // (eviksi/cabang lain) tak boleh diadopsi buta. newIndex -1 = "mundur
+    // sebelum checkpoint pertama": cocokkan dengan checkpoint pertama
+    // (tanpa ini marker basi turn-asing selalu diadopsi — audit #08 §15).
+    const pointed =
+      latest.newIndex === -1 ? manifest.checkpoints[0] : manifest.checkpoints[latest.newIndex]
     if (latest.targetTurn !== undefined && pointed && pointed.turn !== latest.targetTurn) {
       process.stderr.write(
         `[warn] checkpoint: undo/redo marker turn ${latest.targetTurn} tak cocok checkpoint idx ${latest.newIndex} (turn ${pointed.turn}) — diabaikan\n`,

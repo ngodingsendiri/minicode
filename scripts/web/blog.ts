@@ -33,16 +33,16 @@ export function buildBlog(
         `<a class="post-row" href="/blog/${p.slug}.html">` +
         `<div class="post-date">${p.fm.date || ""}</div><h3>${p.fm.title}</h3><p>${p.desc}</p>` +
         (p.fm.tags.length
-          ? `<div class="tags">${p.fm.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</div>`
+          ? `<div class="tags">${p.fm.tags.map((t) => `<span>${t}</span>`).join("")}</div>`
           : "") +
         `</a>`,
     )
     .join("")
   const list =
-    `<div class="wrap" style="padding-top:56px;padding-bottom:96px;max-width:800px">` +
-    `<div class="sec-kick">Blog</div>` +
-    `<h1 style="font-size:clamp(30px,4.5vw,44px);letter-spacing:-0.03em">Catatan dunia AI.</h1>` +
-    `<p class="sec-sub">Ditulis Indonesia. Update via <code>content/blog/*.md</code> atau ` +
+    `<div class="blog">` +
+    `<div class="kicker">Blog</div>` +
+    `<h1>Catatan dunia AI.</h1>` +
+    `<p class="sub">Ditulis Indonesia. Update via <code>content/blog/*.md</code> atau ` +
     `<a href="/admin.html">admin</a>. Ikuti via <a href="/rss.xml">RSS</a>.</p>` +
     `<div class="post-list">${rows || "<p>Belum ada artikel.</p>"}</div></div>`
   write(
@@ -63,7 +63,7 @@ export function buildBlog(
       `<article class="article"><div class="post-date">${p.fm.date || ""}</div><h1>${p.fm.title}</h1>` +
       `<p class="lede">${p.desc}</p>` +
       (p.fm.tags.length
-        ? `<div class="tags">${p.fm.tags.map((t) => `<span class="tag">${t}</span>`).join("")}</div>`
+        ? `<div class="tags">${p.fm.tags.map((t) => `<span>${t}</span>`).join("")}</div>`
         : "") +
       `${html}<p style="margin-top:40px"><a href="/blog/">← Semua artikel</a></p></article>`
     write(

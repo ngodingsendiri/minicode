@@ -86,11 +86,12 @@ export async function detectModels(
       // P11 P1.4 — wire dari probe, bukan substring URL semata: path
       // /responses berarti endpoint Responses API (previous_response_id).
       // Substring host (anthropic) tetap dipakai hanya sebagai fallback
-      // terakhir, bukan penentu utama.
+      // terakhir, bukan penentu utama. Bandingkan pada bentuk lowercase
+      // (temuan audit #03: baseUrl mentah membuat host kapital lolos).
       const path = baseUrl.toLowerCase()
       const hint = path.includes("/responses")
         ? "responses"
-        : baseUrl.includes("anthropic")
+        : path.includes("anthropic")
           ? "anthropic"
           : "openai"
       const result = { models, providerHint: hint as DetectResult["providerHint"] }

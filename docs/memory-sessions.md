@@ -1,6 +1,5 @@
 # Memory & Sessions
 
-Sumber: `src/memory/vector.ts`, `src/session/persistence.ts`, `src/policy/compaction.ts`, `src/repo/repomap.ts`, `docs/USAGE.md`.
 
 ## Memory dua lapis
 

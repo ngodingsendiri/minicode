@@ -9,6 +9,7 @@ const BOOLEAN_FLAGS = new Set([
   "--allowlist",
   "--json", // dipakai `exec --json` dan `--help --json`
   "--budget-strict", // fail-closed: cost tak dikenal dianggap over budget
+  "--allow-local-config", // opt-in: baca .minicode/config.json + allowlist lokal (default mati)
 ])
 const VALUE_FLAGS = new Set([
   "--cwd",
@@ -77,6 +78,15 @@ export function hasFlag(argv: string[], name: string): boolean {
     return false
   }
   return false
+}
+
+/** Opt-in config lokal untuk alur sesi utama (index/exec): flag eksplisit
+ * operator ATAU env (keduanya default mati). Memakai hasFlag yang
+ * boundary-aware: flag di DALAM teks prompt tidak dihitung (anti-injeksi).
+ * Handler subcommand (config/providers/…) memakai args.includes langsung
+ * karena argv-nya selalu diawali positional subcommand. */
+export function allowLocalConfig(argv: string[]): boolean {
+  return hasFlag(argv, "--allow-local-config") || process.env.MINICODE_ALLOW_LOCAL_CONFIG === "1"
 }
 
 export function getArg(argv: string[], name: string): string | undefined {

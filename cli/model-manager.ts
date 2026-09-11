@@ -18,8 +18,11 @@ export async function runModelManager(opts: {
   cwd?: string
   currentModel?: string
   setModelOverride?: (model: string) => void
+  /** Flag --allow-local-config sesi (default deny — daftar model tak memuat
+   * endpoint repo tanpa opt-in). */
+  allowLocalConfig?: boolean
 }): Promise<void> {
-  const cfg = await loadConfig(opts.cwd)
+  const cfg = await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })
   if (!process.stdin.isTTY) {
     for (const p of cfg.providers) for (const model of p.models) console.log(`${p.id}::${model}`)
     return
@@ -67,24 +70,25 @@ export async function runModelManager(opts: {
     onSelect: async (id) => {
       // Reload providers agar router langsung kenal provider baru tanpa restart
       const { reloadProviders } = await import("../src/app/provider-layer.ts")
-      await reloadProviders(opts.cwd).catch(() =>
+      await reloadProviders(opts.cwd, { allowLocal: opts.allowLocalConfig }).catch(() =>
         process.stderr.write("[warn] provider reload failed — restart to apply changes\n"),
       )
       opts.setModelOverride?.(id)
     },
-    loadRows: async () => rowsOf((await loadConfig(opts.cwd)).providers),
+    loadRows: async () =>
+      rowsOf((await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })).providers),
     onAdd: async (providerId, model) => {
       await updateProviderInScopes(providerId, (p) => {
         if (!p.models.includes(model)) p.models = [...p.models, model]
       })
-      return rowsOf((await loadConfig(opts.cwd)).providers)
+      return rowsOf((await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })).providers)
     },
     onDelete: async (id) => {
       const sep = id.indexOf("::")
       await updateProviderInScopes(id.slice(0, sep), (p) => {
         p.models = p.models.filter((m) => m !== id.slice(sep + 2))
       })
-      return rowsOf((await loadConfig(opts.cwd)).providers)
+      return rowsOf((await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })).providers)
     },
     onSetEffort: async (id, effort) => {
       const sep = id.indexOf("::")
@@ -92,7 +96,7 @@ export async function runModelManager(opts: {
         if (effort === "default") delete (p as { reasoningEffort?: string }).reasoningEffort
         else (p as ProviderEntry).reasoningEffort = effort
       })
-      return rowsOf((await loadConfig(opts.cwd)).providers)
+      return rowsOf((await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })).providers)
     },
   })
 }

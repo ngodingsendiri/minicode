@@ -67,6 +67,14 @@ export interface JournalRecord {
   /** Hanya untuk kind mutation. Terminal immutable (lihat consolidate). */
   state?: JournalState
   outcome?: { code?: number | null; note?: string }
+  /**
+   * Bukti dedup idempotency (audit #08 P0): terminal yang ditandai ini
+   * dipertahankan sweep (lihat sweepInner) agar retry id-sama pasca-restart
+   * tetap terdeteksi. Dipakai server MCP: note = `req:<id>:<argsHash>`.
+   * Tanpa ini finalize+sweep rutin menghapus bukti id dan retry berikutnya
+   * dieksekusi ulang buta — padahal client tak bisa tahu server restart.
+   */
+  dedup?: true
   ts: number
 }
 
@@ -376,6 +384,13 @@ export interface IntentInput {
   paths?: string[]
   argsHash?: string
   childSessionId?: string
+  /**
+   * Kunci idempotency (audit #08): ditulis ke outcome.note SEJAK intent agar
+   * crash di tengah eksekusi tetap meninggalkan bukti yang dapat dicocokkan
+   * (sebelumnya note hanya ada di terminal → bukti pending tak terlihat →
+   * retry id-sama pasca-crash dieksekusi ulang buta).
+   */
+  note?: string
 }
 
 /** Tulis intent pending. Tak pernah throw (degraded-loud, lihat header). */
@@ -402,6 +417,8 @@ export async function appendMutationIntent(input: IntentInput): Promise<JournalR
       ...(input.paths?.length ? { paths: input.paths } : {}),
       ...(input.argsHash ? { argsHash: input.argsHash } : {}),
       ...(input.childSessionId ? { childSessionId: input.childSessionId } : {}),
+      // Kunci idempotency sejak intent (lihat IntentInput.note).
+      ...(input.note ? { outcome: { note: input.note } } : {}),
       state: "pending",
       ts: Date.now(),
     }
@@ -426,6 +443,7 @@ export async function appendMutationTerminal(
   state: "committed" | "failed",
   outcome?: { code?: number | null; note?: string },
   childSessionId?: string,
+  opts: { dedup?: boolean } = {},
 ): Promise<void> {
   const root = resolve(cwd ?? process.cwd())
   const path = journalPath(session, root)
@@ -444,6 +462,8 @@ export async function appendMutationTerminal(
       // Tautan delegasi diwariskan ke terminal agar pembaca tak perlu
       // join intent-terminal untuk mengetahui anak mana yang dirujuk.
       ...(childSessionId ? { childSessionId } : {}),
+      // Bukti dedup idempotency (mis. MCP request id): dipertahankan sweep.
+      ...(opts.dedup ? { dedup: true as const } : {}),
       ts: Date.now(),
     }
     const st = writers.get(key)
@@ -565,6 +585,17 @@ async function sweepInner(sessionId: string, root: string): Promise<number> {
     if (r.kind === "undo" || r.kind === "redo") return r.seq > maxUpto
     if (r.state === "pending" && paired.has(r.id)) return false
     if (r.state === "pending") return !isSuperseded(r, committedKeys)
+    // Bukti dedup idempotency (dedup: true, mis. MCP request id) BUKAN sampah
+    // finalize: menghapusnya membuat retry id-sama pasca-restart dieksekusi
+    // ulang buta (audit #08 P0 — reproducer: note hilang setelah sweep).
+    // Intent pasangannya tetap dibuang (aturan paired di atas); terminal ini
+    // yang menjadi bukti. Batas pertumbuhan: file per sesi + purge yatim TTL.
+    if (
+      (!r.kind || r.kind === "mutation") &&
+      (r.state === "committed" || r.state === "failed") &&
+      r.dedup === true
+    )
+      return true
     return (r.seq ?? 0) > maxUpto // committed/failed muda bertahan
   })
   if (keep.length === loaded.records.length) return 0
@@ -1016,6 +1047,10 @@ interface ExecutionEvent {
     call?: { name?: unknown; args?: unknown; id?: unknown }
     result?: { isError?: unknown }
   }
+  /** Ditandai task.ts saat event child di-forward ke bus parent: catat di
+   * jurnal ANAK saja (bus asal), bukan ganda di parent. Checkpoint, trace,
+   * dan UI tetap mengonsumsi event forward seperti biasa. */
+  forwardedChild?: unknown
 }
 
 /**
@@ -1066,6 +1101,9 @@ export function attachMutationJournal(
   }
   session.events.on("execution:started", (e) => {
     const ev = e as unknown as ExecutionEvent
+    // Forward dari child: ground truth ada di jurnal anak (bus asal).
+    // Mencatatnya juga di sini = bukti ganda (satu efek, dua id/sesi).
+    if (ev.forwardedChild != null) return
     const name = typeof ev.execution?.call?.name === "string" ? ev.execution.call.name : ""
     if (!name || NO_AUTO_JOURNAL.has(name) || !isMutationTool(name)) return
     const callId =
@@ -1103,6 +1141,7 @@ export function attachMutationJournal(
     void (async () => {
       try {
         const ev = e as unknown as ExecutionEvent
+        if (ev.forwardedChild != null) return
         const name = typeof ev.execution?.call?.name === "string" ? ev.execution.call.name : ""
         if (!name || NO_AUTO_JOURNAL.has(name) || !isMutationTool(name)) return
         const callId =
@@ -1152,6 +1191,42 @@ export interface RecoveryInput {
   directive: string | null
   warnings: string[]
   clean: boolean
+}
+
+/**
+ * Delegasi committed sejak timestamp: dipakai peringatan turn-gagal ("efek
+ * anak tetap ada walau riwayat bersih"). Kembalikan childSessionId + seq + ts.
+ * Murni baca; tak pernah melempar (gagal baca = [] + warn stderr).
+ */
+export async function committedDelegatesSince(
+  sessionId: string,
+  cwd: string | undefined,
+  sinceTs: number,
+): Promise<{ childSessionId: string; seq: number; ts: number }[]> {
+  try {
+    const { records } = await loadJournal(sessionId, cwd)
+    // Tautan dari terminal, fallback ke intent se-id (jurnal lama).
+    const intentChild = new Map<string, string>()
+    for (const r of records) {
+      if (r.tool === "delegate_task" && r.childSessionId && r.state === "pending") {
+        intentChild.set(r.id, r.childSessionId)
+      }
+    }
+    const out: { childSessionId: string; seq: number; ts: number }[] = []
+    for (const r of records) {
+      if (r.tool !== "delegate_task" || r.state !== "committed") continue
+      const cid = r.childSessionId ?? intentChild.get(r.id)
+      if (!cid) continue
+      if (typeof r.ts !== "number" || r.ts < sinceTs) continue
+      out.push({ childSessionId: cid, seq: r.seq, ts: r.ts })
+    }
+    return out.sort((a, b) => a.seq - b.seq)
+  } catch (e) {
+    process.stderr.write(
+      `[warn] journal: committedDelegatesSince failed: ${(e as Error).message}\n`,
+    )
+    return []
+  }
 }
 
 /**

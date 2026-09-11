@@ -51,7 +51,7 @@ describe("cli config: list/remove/usage tanpa jaringan", () => {
           ],
         }),
       )
-      const r = run(["config", "list", "--cwd", dir], dir)
+      const r = run(["config", "list", "--allow-local-config", "--cwd", dir], dir)
       expect(r.code).toBe(0)
       expect(r.out).toContain("p1")
     } finally {
@@ -152,7 +152,7 @@ describe("cli config mcp/lsp: add/list/remove lokal", () => {
       )
       expect(r.code).toBe(0)
       expect(r.out).toContain("(http)")
-      r = run(["config", "mcp", "list", "--cwd", dir], dir)
+      r = run(["config", "mcp", "list", "--allow-local-config", "--cwd", dir], dir)
       expect(r.code).toBe(0)
       expect(r.out).toContain("(http)")
       r = run(["config", "mcp", "remove", "web", "--local", "--cwd", dir], dir)
@@ -198,7 +198,7 @@ describe("cli config mcp/lsp: add/list/remove lokal", () => {
       )
       expect(r.code).toBe(0)
       expect(r.out).toContain("Saved LSP server for")
-      r = run(["config", "lsp", "list", "--cwd", dir], dir)
+      r = run(["config", "lsp", "list", "--allow-local-config", "--cwd", dir], dir)
       expect(r.code).toBe(0)
       expect(r.out).toContain("Configured LSP Language Servers")
       expect(r.out).toContain(".ts")

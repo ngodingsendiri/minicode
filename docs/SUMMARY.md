@@ -1,29 +1,42 @@
 # Summary
 
-## Mulai
-
 * [Minicode — Dokumentasi](README.md)
+
+## Memulai
+
+* [Konsep & Desain](concepts.md)
 * [Instalasi](getting-started.md)
 * [Quickstart 5 menit](quickstart.md)
+* [Glosarium](glossary.md)
 
-## Pakai harian
+## Menggunakan
 
 * [CLI — Mode & Flags](cli.md)
 * [REPL — Slash & Keyboard](repl.md)
+* [Otomasi & CI](exec.md)
+* [Config — File & Lokasi Data](config.md)
 * [Config & Provider](config-providers.md)
 * [Pricing & Budget](pricing-budget.md)
+* [Environment Variables](environment.md)
+* [Skills & Hooks](skills.md)
 
 ## Referensi
 
 * [Tools (37)](tools.md)
-* [Policy & Sandbox](policy-sandbox.md)
-* [Memory & Sessions](memory-sessions.md)
+* [Sub-Agents & Tasks](agents.md)
 * [MCP & LSP](mcp-lsp.md)
-
-## Operasi & kontribusi
-
+* [Memory & Sessions](memory-sessions.md)
 * [Verify & Benchmark](verify-benchmark.md)
+
+## Keamanan
+
+* [Policy & Sandbox](policy-sandbox.md)
+* [Keamanan](security.md)
 * [Troubleshooting](troubleshooting.md)
-* [Contributing](contributing.md)
+
+## Kontribusi & Arsitektur
+
 * [Arsitektur](architecture.md)
+* [Kontrak Terminal](terminal.md)
+* [Contributing](contributing.md)
 * [Changelog](changelog.md)

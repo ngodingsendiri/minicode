@@ -7,7 +7,7 @@ import { budgetStatus } from "../../src/policy/usage.ts"
 import { getSubmittedResult } from "../../src/tools/submit_result.ts"
 import { formatError } from "../../src/ui/assistant/simple.ts"
 import { formatUsd } from "../../src/ui/render/money.ts"
-import { hasFlag, promptFromArgs, getArg as rawGetArg } from "../args.ts"
+import { allowLocalConfig, hasFlag, promptFromArgs, getArg as rawGetArg } from "../args.ts"
 import { createCliSession } from "../setup.ts"
 
 export async function handleExec(
@@ -44,6 +44,8 @@ export async function handleExec(
   if (sandbox.mode === "none") delete process.env.MINICODE_SANDBOX
   else process.env.MINICODE_SANDBOX = sandbox.mode
   const allowlist = allowlistFlag || sandbox.fallbackPermission === "allowlist"
+  // Audit #07 P0: local config repo tak dipercaya kecuali operator opt-in.
+  const allowLocal = allowLocalConfig(args)
   const budgetRaw = getArg("--budget")
   const parsedBudget = budgetRaw ? Number(budgetRaw) : undefined
   const budget =
@@ -84,6 +86,7 @@ export async function handleExec(
     plan,
     allowlist,
     verify: hasFlag(args, "--verify"),
+    allowLocalConfig: allowLocal,
     budget,
     budgetStrict,
     toolScope,

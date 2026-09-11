@@ -3,7 +3,7 @@ import { cwd } from "node:process"
 import type { PermissionHandler, ToolCall } from "#minicore"
 import { loadAllowlist, matchAllowlist, saveAllowlist } from "./allowlist.ts"
 import { inspectBashCommand } from "./bash-guard.ts"
-import { isCwdOutsideRoot, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
+import { isCwdOutsideRoot, isOwnedState, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
 
 export type PermissionMode = "auto" | "readonly" | "plan" | "allow-all" | "ask" | "allowlist"
 
@@ -145,12 +145,24 @@ function matchBashAllowlist(cmd: string, pattern: string): boolean {
 }
 
 export function createPermissionHandler(
-  opts: { mode?: PermissionMode; root?: string; ask?: PermissionAsk } = {},
+  opts: {
+    mode?: PermissionMode
+    root?: string
+    ask?: PermissionAsk
+    /** Teruskan flag --allow-local-config: allowlist lokal hanya dibaca bila
+     * operator opt-in (default deny — repo tak bisa memberi dirinya always). */
+    allowLocalConfig?: boolean
+  } = {},
 ): PermissionHandler {
   const state = { mode: (opts.mode ?? "auto") as PermissionMode }
   const root = resolve(opts.root ?? cwd())
   const askUser = opts.ask
+  const allowLocal = opts.allowLocalConfig === true
   let allowlistCache: string[] | null = null
+  // Persetujuan "always" sesi ini — in-memory, bukan dari disk. Tanpa ini,
+  // jawaban always yang baru disimpan ke berkas lokal tak terlihat saat local
+  // config nonaktif, dan user ditanya berulang untuk call yang sama.
+  const sessionGrants: string[] = []
   // bash allowlist di-cache sekali (bukan baca env tiap panggilan)
   const envRaw = process.env.MINICODE_BASH_ALLOWLIST
   const bashAllowlist = envRaw
@@ -163,11 +175,11 @@ export function createPermissionHandler(
   async function getAllowlist(): Promise<string[]> {
     if (allowlistCache) return allowlistCache
     try {
-      const l = await loadAllowlist(root)
-      allowlistCache = l.allowed
+      const l = await loadAllowlist(root, { allowLocal: allowLocal })
+      allowlistCache = [...l.allowed, ...sessionGrants]
       return allowlistCache
     } catch {
-      return []
+      return [...sessionGrants]
     }
   }
 
@@ -182,7 +194,14 @@ export function createPermissionHandler(
   }
 
   function saveAlways(call: ToolCall): Promise<void> {
-    const key = `${call.name}:${JSON.stringify(call.args).slice(0, 200)}`
+    // Simpan kunci PENUH (tanpa slice) agar simetris dengan matchAllowlist.
+    // Arg raksasa (>2KB JSON, mis. write_file 1MB) tidak disimpan sama sekali
+    // (fail-closed, minta persetujuan tiap kali) — kalau tidak allowlist.json
+    // membengkak dan "always" menjadi blanket-allow untuk konten apa pun.
+    const argsJson = JSON.stringify(call.args)
+    if (argsJson.length > 2000) return Promise.resolve()
+    const key = `${call.name}:${argsJson}`
+    if (!sessionGrants.includes(key)) sessionGrants.push(key)
     allowlistCache = null
     return saveAllowlist(key, root).catch(() => {})
   }
@@ -324,6 +343,28 @@ export function createPermissionHandler(
           if (typeof p !== "string") continue
           if (isRealPathOutsideRoot(p, root) || isSensitive(p)) return "deny"
         }
+      }
+      // State milik minicode (temuan audit #04): tool TULIS file dilarang
+      // menyentuh sessions/vector DB, todos, plans, checkpoints, jurnal,
+      // traces, repomap, allowlist, config di bawah .minicode/. Tanpa ini
+      // sub-agen (atau call ter-injeksi) bisa menimpa todos/rencana,
+      // menanam allowlist "always", mendaftarkan server MCP via config,
+      // atau membutakan recovery (jurnal/checkpoint) lewat jalur jinak.
+      // Berlaku di SEMUA mode termasuk allow-all (jail mendahului mode).
+      // BACA tetap boleh; tool khusus (todo/memory/config/undo) tak lewat
+      // gerbang ini sehingga alur legit tetap jalan.
+      if (
+        call.name === "write_file" ||
+        call.name === "edit" ||
+        call.name === "apply_patch" ||
+        call.name === "delete_file" ||
+        call.name === "move_file"
+      ) {
+        const ps =
+          call.name === "move_file"
+            ? [(earlyArgs?.from as string) ?? "", (earlyArgs?.to as string) ?? ""]
+            : [(earlyArgs?.path as string) ?? ""]
+        if (ps.some((p) => p !== "" && isOwnedState(p))) return "deny"
       }
 
       const mode = state.mode

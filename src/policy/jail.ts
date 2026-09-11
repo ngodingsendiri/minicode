@@ -14,6 +14,21 @@ export function isSensitive(p: string): boolean {
   return SENSITIVE_RE.test(p)
 }
 
+// State milik minicode sendiri (temuan audit #04): sesi/DB/jejak/checkpoint/
+// jurnal/todo/rencana/allowlist/config yang dikelola tool khusus (bukan file
+// tools). File tool (write/edit/patch/delete/move) DILARANG menulisnya —
+// kalau tidak, sub-agen (atau prompt-injected call) bisa menimpa todos,
+// memory plans, allowlist ("always" palsu!), config (server MCP jahat!),
+// atau bukti recovery (jurnal/checkpoint) lewat jalur yang tampak jinak.
+// BACA tetap boleh (observability/debug). Pola di-anchor ke segmen
+// `.minicode/` agar file user bernama mirip di tempat lain tak kena.
+const OWNED_STATE_RE =
+  /(?:^|[/\\])\.minicode[/\\](?:sessions\.db(?:-wal|-shm|-journal)?|vector\.db(?:-wal|-shm|-journal)?|todos(?:[/\\]|$)|plans(?:[/\\]|$)|checkpoints(?:[/\\]|$)|journal-[^/\\]*\.jsonl$|.*traces?\.jsonl$|repomap\.json$|allowlist\.json$|config\.json$)/i
+
+export function isOwnedState(p: string): boolean {
+  return OWNED_STATE_RE.test(p)
+}
+
 export function isPathOutsideRoot(p: string, root: string): boolean {
   if (!p) return false
   const abs = isAbsolute(p) ? resolve(p) : resolve(root, p)

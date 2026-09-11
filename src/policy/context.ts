@@ -1,13 +1,17 @@
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
 import { readFile } from "node:fs/promises"
+import { resolve } from "node:path"
 import { promisify } from "node:util"
 import type { TokenEstimator } from "#minicore"
 import { DEFAULT_CHARS_PER_TOKEN } from "#minicore/core/tokens.ts"
 import { LIMITS } from "../constants.ts"
+import { GIT_SAFE_BASE } from "../lib/git-hardening.ts"
+import { resolveTrustedExecutable } from "../lib/trusted-exec.ts"
 import { loadMemoryFiles } from "../memory/files.ts"
 import { loadRepoMap } from "../repo/repomap.ts"
+import { isRealPathOutsideRoot } from "./jail.ts"
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 export const minicodeEstimator: TokenEstimator = (text: string) =>
   Math.ceil(text.length / DEFAULT_CHARS_PER_TOKEN)
@@ -81,7 +85,11 @@ export async function buildSystemPrompt(
   for (const p of agentFiles) {
     if (signal.aborted) throw new Error("aborted")
     try {
-      const txt = await readFile(`${cwd}/${p}`, "utf8")
+      // Symlink escape (temuan audit #06): AGENTS.md symlink keluar workspace
+      // ikut terbaca tanpa ini. Samakan dengan guard rules/ di bawah.
+      const full = resolve(cwd, p)
+      if (isRealPathOutsideRoot(full, cwd)) continue
+      const txt = await readFile(full, "utf8")
       if (signal.aborted) throw new Error("aborted")
       parts.push(`\n# ${p}\n${cutMarked(txt, 3000)}`)
       loadedAgent = true
@@ -104,18 +112,25 @@ export async function buildSystemPrompt(
       }
     } catch {}
   }
-  // Repo-map compact (simbol per file) — cache di .minicode/repomap.json.
+  // Repo-map compact (simbol per file) — cache di home operator (bukan repo,
+  // agar konten repo tak bisa meracuni cache; lihat repomap.ts cachePath).
   // Bila tidak ada source file, fallback ke daftar flat git ls-files.
   try {
     const repoMap = await loadRepoMap(cwd)
     if (repoMap) {
       parts.push(`\n# Repo map (symbols)\n${repoMap}`)
     } else {
-      const { stdout } = await execAsync("git ls-files", {
-        cwd,
-        timeout: 2000,
-        encoding: "utf8",
-      })
+      // Audit #10: ls-files memicu fsmonitor repo & bisa mengeksekusi
+      // `git.bat` repo (Windows cwd-first). Resolve absolut + netralisasi.
+      const { stdout } = await execFileAsync(
+        resolveTrustedExecutable("git"),
+        [...GIT_SAFE_BASE, "ls-files"],
+        {
+          cwd,
+          timeout: 2000,
+          encoding: "utf8",
+        },
+      )
       const files = stdout.trim().split("\n").slice(0, 60).join("\n")
       if (files) parts.push(`\n# Repo files (sample)\n${files}`)
     }

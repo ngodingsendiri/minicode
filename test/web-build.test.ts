@@ -27,6 +27,10 @@ describe("web ssg", () => {
     // Aturan flat: tidak ada `border:` di CSS gabungan.
     const css = readFileSync(join(repoRoot, "web", "styles.css"), "utf8")
     expect(/border\s*:/.test(css)).toBe(false)
+    // Logo: pakai logo milik pengguna, tanpa sisa mark/aneka logo lama.
+    expect(layout).toContain("logo-user.svg")
+    expect(layout).not.toContain("brand-mark")
+    expect(layout).not.toContain("favicon.svg")
   })
 
   test("blog frontmatter valid", () => {
@@ -82,5 +86,21 @@ describe("web ssg", () => {
     expect(index).toContain("https://minicode.fun/")
     expect(index).not.toContain("startupmini.github.io")
     expect(readFileSync(join(site, "CNAME"), "utf8").trim()).toBe("minicode.fun")
+    // Logo user ikut di-copy.
+    expect(has("assets/logo-user.svg")).toBe(true)
+    // Judul docs tidak ganda (satu <h1> per halaman).
+    const docIndex = readFileSync(join(site, "docs", "index.html"), "utf8")
+    expect(docIndex.includes("<h1>Minicode — Dokumentasi</h1>")).toBe(true)
+    expect(docIndex.split("<h1>").length).toBe(2)
+    // Tidak ada sisa badge/sidebar/pill / lalu lintas lama.
+    expect(docIndex).not.toContain("src-badge")
+    expect(docIndex).not.toContain("doc-meta")
+    expect(docIndex).not.toContain("doc-rail")
+    expect(docIndex).not.toContain("side-link")
+    // Prev/Next di bawah, teks polos, tanpa judul halaman di box.
+    const docTools = readFileSync(join(site, "docs", "tools.html"), "utf8")
+    expect(docTools).toContain(">‹ Prev<")
+    expect(docTools).toContain("Next ›<")
+    expect(docTools).not.toContain("Sebelumnya</span>")
   })
 })

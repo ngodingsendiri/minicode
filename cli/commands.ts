@@ -14,6 +14,9 @@ import { padToWidth } from "../src/ui/render/width.ts"
 export interface CommandContext {
   cwd?: string
   sessionId: string
+  /** Flag --allow-local-config sesi ini — diteruskan ke manager/refresh agar
+   * konsisten dengan provider/tool yang aktif (default deny). */
+  allowLocalConfig?: boolean
   currentModel?: string
   usage: {
     /** Pemakaian turn terakhir. */
@@ -183,6 +186,7 @@ export async function handleBuiltinCommand(
         cwd: ctx.cwd,
         currentModel: ctx.currentModel,
         setModelOverride: ctx.setModelOverride,
+        allowLocalConfig: ctx.allowLocalConfig,
       })
       return { handled: true }
     }
@@ -193,6 +197,7 @@ export async function handleBuiltinCommand(
         cwd: ctx.cwd,
         currentModel: ctx.currentModel,
         setModelOverride: ctx.setModelOverride,
+        allowLocalConfig: ctx.allowLocalConfig,
       })
       return { handled: true }
     }
@@ -212,13 +217,18 @@ export async function handleBuiltinCommand(
     }
 
     case "sync": {
-      // Re-detect model dari semua provider -> config diperbarui otomatis
+      // Re-detect model dari semua provider -> config diperbarui otomatis.
+      // Meneruskan flag local sesi: tanpa opt-in /sync tak boleh menghubungi
+      // endpoint dari repo tak dikenal (audit #07 P0).
       console.log("\nSyncing models…")
-      const { updated, failed } = await refreshProviderModels({ cwd: ctx.cwd })
+      const { updated, failed } = await refreshProviderModels({
+        cwd: ctx.cwd,
+        allowLocal: ctx.allowLocalConfig,
+      })
       if (!updated.length && !failed.length) {
         // Bedakan "belum ada provider" dari "ada tapi deteksi kosong" —
         // yang kedua jangan diklaim sebagai yang pertama.
-        const cfg = await loadConfig(ctx.cwd)
+        const cfg = await loadConfig(ctx.cwd, { allowLocal: ctx.allowLocalConfig })
         if (cfg.providers.length === 0) console.log("  No providers configured.")
         else console.log("  No changes — check API key and network, then retry.")
       } else {

@@ -1,89 +1,57 @@
-/* Minicode web — tema "Flat Paper" (bagian 1: token + base).
-   Mengapa flat tanpa border/shadow: permintaan pemilik — hierarki hanya dari
-   tipografi + spasi + blok background selang-seling. */
+/* Minicode web — konsep "Soft & Flat".
+   Hierarki dari tipografi + whitespace + blok lembut (soft).
+   Tanpa border, tanpa shadow, tanpa dimensi kaca. Tanpa turunan
+   ARCHITECTURE.html: token, lebar kolom, struktur beda total.
+   Font: satu tingkat di bawah landing (15px) untuk merasa ringan. */
 :root {
   --bg: #ffffff;
-  --bg-soft: #f6f6f4;
-  --bg-ink: #16161a;
-  --bg-ink-soft: #202025;
-  --ink: #16161a;
-  --mut: #5f6368;
-  --faint: #8a8f98;
-  --acc: #2f6df6;
-  --acc-ink: #1d4fc4;
-  --ok: #1a7f4b;
-  --code-bg: #16161a;
-  --code-fg: #e8eaf0;
-  --pill: #eef2fe;
-  --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --soft: #f3f4f6;
+  --ink: #191b1f;
+  --mut: #5f6672;
+  --faint: #98a0ab;
+  --acc: #3b63d1;
+  --acc-text: #2e4fb0;
+  --code-bg: #161618;
+  --code-fg: #e6e8ee;
+  --ok: #e7f3ec;
+  --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-  --w: 1120px;
-  --w-doc: 760px;
-  /* Font dokumentasi satu tingkat lebih kecil dari landing (13.5px vs 16px)
-     agar halaman referensi padat seperti kertas manual. */
-  --fs-body: 16px;
-  --fs-doc: 13.5px;
+  --w: 1080px;
+  --w-doc: 720px;
+  /* Font dokumentasi: satu tingkat di bawah body (15px - 2 = 13.5px asal,
+     naikkan reduksi jadi 12.5px) agar halaman referensi padat. */
+  --fs-doc: 12.5px;
+  --r: 12px;
 }
 html[data-theme="dark"] {
-  --bg: #141416;
-  --bg-soft: #1d1d20;
-  --bg-ink: #0e0e10;
-  --bg-ink-soft: #17171a;
-  --ink: #ececee;
-  --mut: #a7abb3;
-  --faint: #7c818a;
-  --acc: #7aa5ff;
-  --acc-ink: #a9c4ff;
-  --pill: #22304f;
-  --code-bg: #0e0e10;
-  --code-fg: #e8eaf0;
+  --bg: #121316;
+  --soft: #1a1c20;
+  --ink: #e8eaef;
+  --mut: #a5abb6;
+  --faint: #7b828e;
+  --acc: #6e92f7;
+  --acc-text: #8fb0ff;
+  --code-bg: #0d0e10;
+  --code-fg: #e6e8ee;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
-body { background: var(--bg); color: var(--ink); font: var(--fs-body)/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
-body.doc { font-size: var(--fs-doc); line-height: 1.75; }
-::selection { background: rgba(47, 109, 246, 0.22); }
+body { background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
+body.doc { font-size: var(--fs-doc); line-height: 1.8; }
+::selection { background: rgba(59, 99, 209, 0.16); }
 a { color: var(--acc); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Reset tombol native: tanpa chrome UA (border outset, gradient push-button,
+   font sistem) supaya SEMUA tombol flat konsisten lintas browser — class
+   spesifik (.btn/.iconbtn/.copybtn) menimpa background & padding sendiri.
+   Pakai longhand, bukan shorthand, karena test web-build melarang shorthand
+   border di CSS gabungan (aturan desain flat: tanpa garis). */
+button { font: inherit; color: inherit; background: none; border-style: none; border-width: 0; padding: 0; appearance: none; -webkit-appearance: none; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; border-radius: 4px; }
 .skip { position: absolute; left: -9999px; top: 0; z-index: 200; background: var(--acc); color: #fff; padding: 8px 14px; border-radius: 0 0 8px 0; }
-.skip:focus { left: 0; color: #fff; }
-code { font-family: var(--mono); font-size: 0.85em; background: var(--bg-soft); padding: 0.1em 0.4em; border-radius: 6px; overflow-wrap: anywhere; }
-pre { background: var(--code-bg); color: var(--code-fg); padding: 18px 20px; border-radius: 12px; overflow-x: auto; font: 13px/1.65 var(--mono); }
+.skip:focus { left: 0; }
+code { font-family: var(--mono); font-size: 0.85em; background: var(--soft); color: var(--ink); padding: 0.06em 0.3em; border-radius: 6px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); color: var(--code-fg); padding: 14px 16px; border-radius: var(--r); overflow-x: auto; font: 12px/1.7 var(--mono); }
 pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
-.material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; font-size: 20px; vertical-align: -4px; user-select: none; }
+.material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; font-size: 17px; vertical-align: -3px; user-select: none; }
 body.no-mi .material-symbols-outlined { display: none; }
-/* Bagian 2: topbar flat + hero + tombol + blok terminal. */
-.topbar { position: sticky; top: 0; z-index: 50; background: var(--bg); }
-.topbar-in { max-width: var(--w); margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 28px; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; color: var(--ink); letter-spacing: -0.02em; }
-.brand:hover { text-decoration: none; }
-.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--bg-ink); color: #fff; display: inline-flex; align-items: center; justify-content: center; font: 700 15px var(--mono); }
-html[data-theme="dark"] .brand-mark { background: var(--acc); color: #0e0e10; }
-.nav { display: flex; gap: 4px; margin-left: auto; align-items: center; }
-.nav a { color: var(--mut); font-size: 14.5px; font-weight: 500; padding: 8px 12px; border-radius: 8px; }
-.nav a:hover { color: var(--ink); background: var(--bg-soft); text-decoration: none; }
-.nav a.active { color: var(--ink); background: var(--bg-soft); }
-.iconbtn { background: none; color: var(--mut); padding: 8px; border-radius: 8px; cursor: pointer; display: inline-flex; }
-.iconbtn:hover { background: var(--bg-soft); color: var(--ink); }
-.menubtn { display: none; }
-.wrap { max-width: var(--w); margin: 0 auto; padding: 0 24px; }
-.hero { padding: 88px 0 64px; }
-.eyebrow { display: inline-flex; align-items: center; gap: 8px; background: var(--pill); color: var(--acc-ink); font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
-html[data-theme="dark"] .eyebrow { color: var(--acc); }
-.hero h1 { font-size: clamp(38px, 6vw, 64px); line-height: 1.05; letter-spacing: -0.035em; margin: 24px 0 20px; max-width: 16ch; }
-.hero p.lead { font-size: 19px; color: var(--mut); max-width: 56ch; }
-.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-.btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; padding: 12px 22px; border-radius: 10px; }
-.btn-p { background: var(--acc); color: #fff; }
-.btn-p:hover { text-decoration: none; filter: brightness(1.06); }
-html[data-theme="dark"] .btn-p { color: #0e0e10; }
-.btn-s { background: var(--bg-soft); color: var(--ink); }
-.btn-s:hover { text-decoration: none; filter: brightness(0.97); }
-.term { background: var(--code-bg); color: var(--code-fg); border-radius: 14px; margin-top: 36px; overflow: hidden; }
-.term-cap { display: flex; align-items: center; gap: 10px; padding: 12px 18px; font: 12.5px var(--mono); color: #9aa0aa; background: var(--bg-ink-soft); }
-.term-cap .sp { margin-left: auto; display: inline-flex; gap: 4px; }
-.term pre { border-radius: 0; background: none; padding: 20px 22px; font-size: 13.5px; }
-.copybtn { background: none; color: inherit; cursor: pointer; display: inline-flex; align-items: center; padding: 4px; border-radius: 6px; opacity: 0.7; }
-.copybtn:hover { opacity: 1; }
-

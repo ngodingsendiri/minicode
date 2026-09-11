@@ -285,6 +285,8 @@ describe("last-model: default = terakhir dipakai", () => {
         plan: false,
         allowlist: false,
         verify: false,
+        // Provider fake tinggal di config workspace → opt-in (aturan audit #07).
+        allowLocalConfig: true,
       } as const
       // tanpa simpanan -> model pertama config (global+lokal merge, apa pun isinya)
       const cwd = makeWorkspace()

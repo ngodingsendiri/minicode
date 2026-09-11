@@ -56,6 +56,7 @@ Opsional: `rg` (ripgrep) di PATH mempercepat tool `grep`. Tanpa `rg`, walker int
 | `--resume <id>` | Lanjutkan sesi sebelumnya (full history, bukan teks dump) |
 | `--timeout <ms>` | Hard deadline per run (default 900000 = 15 min; 0 = Infinity) |
 | `--cwd <path>` | Workspace root untuk tool file & jail (diperbaiki 0.8.0 via ToolContext.cwd) |
+| `--allow-local-config` | Percayai `.minicode/config.json` + allowlist lokal (default: diabaikan — repo clone-an tak bisa men-spawn MCP / menyedot prompt) |
 | `--interactive` | Paksa mode REPL |
 | `--max-steps <n>` | Batas langkah tool (default 50) |
 | `--context-window <n>` | Ukuran jendela konteks (token) |
@@ -72,6 +73,7 @@ Di TUI, **Shift+Tab** memutar mode permission (`auto` → `ask` → `plan` → `
 | `MINICODE_SANDBOX` | Sandbox mode: `docker` \| `os` (alias `bwrap`/`seatbelt`) \| `none` |
 | `MINICODE_SANDBOX_STRICT` | `1` → fail-closed: tolak bash bila isolasi yang diminta tak tersedia (default: warn + eksekusi langsung) |
 | `MINICODE_BUDGET_STRICT` | `1` → sama dengan `--budget-strict`: cost tak dikenal dianggap over budget |
+| `MINICODE_ALLOW_LOCAL_CONFIG` | `1` → sama dengan `--allow-local-config`: percayai config lokal workspace |
 | `MINICODE_TOOL_SCOPE` | `explore` → sesi hanya dapat subset read-only (sama dengan `--tool-scope explore`) |
 | `MINICODE_SANDBOX_IMAGE` | Image Docker (default `node:22-alpine`) |
 | `MINICODE_SANDBOX_MEMORY` | Memory cap (default `512m`) |
@@ -394,7 +396,7 @@ Semuanya kini tertutup (`stripCommandWrappers` membuang 14 wrapper hingga 4 lapi
 
 ## Plan Mode
 
-`--plan` → read-only. Agen bisa membaca, mencari, merencanakan (`todo_read` tetap boleh), tapi tidak bisa menulis file, menjalankan bash, `todo_write`, atau memanggil sub-agent. Berguna untuk review dan planning sebelum eksekusi. Di TUI, Shift+Tab bisa memutar ke mode ini saat sesi berjalan.
+`--plan` → read-only. Agen bisa membaca, mencari, merencanakan (`todo_read` tetap boleh), tetapi tidak bisa menulis file, menjalankan bash, atau `todo_write`. Sub-agent boleh dipanggil tetapi dipaksa mode explore/read-only (tak bisa menulis). Berguna untuk review dan planning sebelum eksekusi. Di TUI, Shift+Tab bisa memutar ke mode ini saat sesi berjalan.
 
 ## Budget
 

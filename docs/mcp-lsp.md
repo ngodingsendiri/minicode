@@ -30,11 +30,16 @@ Izin: semua MCP bertitik selalu di-gate — `auto` minta konfirmasi sekali per t
 
 Model kepercayaan: permission hanya kontrol *pemanggilan*. Capability di balik server (filesystem, network, proses, API) tak bisa diketahui statis — anggap setiap `mcp_call` external capability arbitrer. Pembatalan hentikan penungguan, tapi tidak bunuh proses stdio maupun batalkan efek yang sudah terjadi.
 
-Ekspos balik:
+Ekspos balik (stdio saja — tanpa mode HTTP, jadi tak ada permukaan jaringan):
 
 ```bash
-minicode mcp serve   # minicode sebagai MCP server (curated tools + permission aktif)
+minicode mcp serve                            # curated tools + permission aktif
+minicode mcp serve --cwd <dir>                # workspace root (jail + eksekusi + jurnal memakai root yang sama)
+minicode mcp serve --allow-all                # tanpa prompt, tetapi jail + bash-guard tetap enforced
+minicode mcp serve --all-tools                # termasuk delegate/memory/MCP internal (opt-in operator)
 ```
+
+Semantik server mode: tiap `tools/call` lewat validateArgs kernel → permission (mode `auto`, atau `allow-all` bila flag) → eksekusi → jurnal mutasi (`mcp-server`) → respons. Argumen invalid ditolak sebelum eksekusi; error di-scrub; output di-cap + ditandai bila dipotong. ID request JSON-RPC dipakai untuk idempotency: duplikat konkuren dieksekusi sekali, retry id sama me-replay hasil (proses hidup) atau error eksplisit `already executed`/`failed`/`unknown` (lintas restart, dari bukti jurnal) — tak pernah eksekusi ulang buta. `notifications/cancelled` membatalkan request individual; maksimal 32 in-flight. Tanpa turn/session kernel: tak ada persistensi percakapan, checkpoint, atau undo untuk operasi server.
 
 ## LSP
 

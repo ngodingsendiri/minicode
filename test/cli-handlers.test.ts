@@ -440,7 +440,7 @@ describe("providers & models", () => {
         providerHint: "openai",
       },
     ])
-    const r = await runDispatch(["providers", "--cwd", tmp])
+    const r = await runDispatch(["providers", "--allow-local-config", "--cwd", tmp])
     // loadConfig menggabung global + lokal, jadi saring hanya baris milik test.
     const rows = r.out.split("\n").filter((l) => l.includes("uji-"))
     expect(rows.length).toBe(2)
@@ -456,7 +456,7 @@ describe("providers & models", () => {
       `${JSON.stringify({ model: "p::m", ok: false, timestamp: new Date().toISOString() })}\n`,
       "utf8",
     )
-    const r = await runDispatch(["providers", "--cwd", tmp])
+    const r = await runDispatch(["providers", "--allow-local-config", "--cwd", tmp])
     expect(r.out).toContain("ERR")
   })
 
@@ -470,7 +470,7 @@ describe("providers & models", () => {
         providerHint: "openai",
       },
     ])
-    const r = await runDispatch(["models", "--cwd", tmp])
+    const r = await runDispatch(["models", "--allow-local-config", "--cwd", tmp])
     expect(r.code).toBe(0)
     expect(r.out).toContain("alpha")
     expect(r.out).toContain("beta")
@@ -493,7 +493,15 @@ describe("providers & models", () => {
         providerHint: "openai",
       },
     ])
-    const r = await runDispatch(["models", "p", "--match", "alp", "--cwd", tmp])
+    const r = await runDispatch([
+      "models",
+      "p",
+      "--match",
+      "alp",
+      "--allow-local-config",
+      "--cwd",
+      tmp,
+    ])
     expect(r.out).toContain("alpha")
     expect(r.out).not.toContain("beta")
   })
@@ -502,7 +510,15 @@ describe("providers & models", () => {
     writeConfig([
       { id: "p", baseUrl: "https://a/v1", apiKey: "k", models: ["alpha"], providerHint: "openai" },
     ])
-    const r = await runDispatch(["models", "p", "--match", "zzz", "--cwd", tmp])
+    const r = await runDispatch([
+      "models",
+      "p",
+      "--match",
+      "zzz",
+      "--allow-local-config",
+      "--cwd",
+      tmp,
+    ])
     expect(r.out).toContain("no matches")
   })
 })

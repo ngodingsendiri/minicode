@@ -1,6 +1,5 @@
 # Config & Provider
 
-Sumber: `src/providers/presets.ts:14-104`, `src/providers/build.ts`, `cli/commands/providers.ts`, `cli/commands/auth.ts`, `cli/provider-manager.ts`, `cli/model-manager.ts`.
 
 ## 14 preset gateway
 

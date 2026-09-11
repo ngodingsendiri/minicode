@@ -54,7 +54,7 @@ test("sync: refreshProviderModels updates config models (local)", async () => {
       ],
     }),
   )
-  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd, allowLocal: true })
   expect(failed).toEqual([])
   expect(updated.length).toBe(1)
   expect(updated[0]).toEqual({ id: "gw", from: 1, to: 2 })
@@ -79,7 +79,7 @@ test("sync: provider DI LOCAL tetap terupdate tanpa flag global eksplisit", asyn
     }
     return new Response("nf", { status: 404 })
   }) as typeof fetch
-  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd, allowLocal: true })
   expect(failed).toEqual([])
   expect(updated.length).toBe(1)
   expect(updated[0]).toEqual({ id: "gw", from: 2, to: 3 })
@@ -92,7 +92,7 @@ test("sync: tanpa provider di merge → hasil kosong tanpa throw", async () => {
   clearDetectCache()
   globalThis.fetch = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch
   const empty = resolve(mkdtempSync(join(tmpdir(), "minicode-sync-empty-")), "nope")
-  const res = await refreshProviderModels({ cwd: empty })
+  const res = await refreshProviderModels({ cwd: empty, allowLocal: true })
   expect(res).toEqual({ updated: [], failed: [] })
 })
 
@@ -109,7 +109,7 @@ test("sync: provider unreachable tercatat di failed, bukan hasil kosong", async 
       providers: [{ id: "down", baseUrl: "https://down.example/v1", apiKey: "k", models: ["m"] }],
     }),
   )
-  const { updated, failed } = await refreshProviderModels({ cwd: localCwd })
+  const { updated, failed } = await refreshProviderModels({ cwd: localCwd, allowLocal: true })
   expect(updated).toEqual([])
   expect(failed.length).toBe(1)
   expect(failed[0]?.id).toBe("down")

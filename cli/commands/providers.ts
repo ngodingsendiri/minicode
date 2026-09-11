@@ -64,7 +64,12 @@ export async function handleProviders(
     process.exit(0)
   }
   const cwdArg = getArg("--cwd")
-  const cfg = await loadConfig(cwdArg)
+  // Audit #07: local hanya bila operator opt-in (aturan universal — sync
+  // tanpa flag tak boleh menghubungi endpoint repo tak dikenal). argv
+  // subcommand diawali positional sehingga pakai includes + env (gaya --local).
+  const allowLocal =
+    args.includes("--allow-local-config") || process.env.MINICODE_ALLOW_LOCAL_CONFIG === "1"
+  const cfg = await loadConfig(cwdArg, { allowLocal })
   if (firstArg === "providers") {
     if (cfg.providers.length === 0) {
       console.log(
@@ -141,12 +146,12 @@ export async function handleProviders(
   }
   if (firstArg === "sync") {
     console.log("Syncing model list from providers…")
-    const { updated, failed } = await refreshProviderModels({ cwd: cwdArg })
+    const { updated, failed } = await refreshProviderModels({ cwd: cwdArg, allowLocal })
     for (const r of updated)
       console.log(`  ${c.green(glyphs.check)} ${r.id}: ${r.from} -> ${r.to} model`)
     for (const f of failed) console.log(`  ${c.red(glyphs.cross)} ${f.id}: ${f.reason}`)
     if (!updated.length && !failed.length) {
-      const cfgHere = await loadConfig(cwdArg)
+      const cfgHere = await loadConfig(cwdArg, { allowLocal })
       if (cfgHere.providers.length === 0)
         console.log("  (no providers yet - run `minicode config add` first)")
       else console.log("  (no changes — check API key and network, then retry)")

@@ -2,7 +2,6 @@
 
 Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`↓` navigasi, `Tab` lengkapi, `Enter` lengkapi + submit, `Esc` tutup. Terminal tanpa ANSI: fallback hint inline.
 
-Sumber: `cli/commands.ts`, `cli/repl.ts`, `cli/index.ts:61`.
 
 ## Slash commands
 

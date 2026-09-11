@@ -1,24 +1,29 @@
 ---
-title: "Kenapa Minicode memilih shell-native, bukan TUI"
+title: "Kenapa Minicode bekerja di terminal biasa, bukan layar khusus"
 date: 2026-09-10
 tags: [minicode, cli, desain]
-desc: "Output append-only ke scrollback, pipe-safe, dan satu arbitrator transient — alasan Minicode tidak memakai alternate screen."
+desc: "Minicode memilih tampil di terminal biasa, bukan layar khusus. Hasil kerja Anda muncul secara berurutan, mudah dibaca kembali, dan tidak ada tampilan yang bersembunyi di balik layar."
 ---
 
-Minicode adalah shell-native CLI, bukan TUI. Tanpa alternate screen, tanpa panel permanen. Output bersifat append-only ke scrollback terminal.
+Minicode bekerja di terminal biasa. Ia tidak membuka layar khusus yang menutupi tampilan Anda, dan tidak menyembunyikan apa yang sedang terjadi di balik panel tersembunyi. Semua hasil kerja muncul di layar seperti biasa, urut dari yang pertama sampai yang terakhir.
 
-## Kontrak stdout dan stderr
+## Cara Minicode menangani tampilan
 
-Aturan mainnya sederhana:
+Ada dua jenis keluaran yang Minicode pegang secara terpisah:
 
-- `stdout` untuk output program yang bermakna: teks model, receipt perubahan, artefak perintah.
-- `stderr` untuk progres dan diagnostik: ledger tool, reasoning verbose, warning, error.
-- Warna hanya bila stream TTY. `NO_COLOR` selalu menang.
+- **Hasil kerja** — teks yang Anda minta, perubahan yang dilakukan, atau informasi yang Anda perlukan. Inilah yang paling penting, dan ia muncul di layar dengan jelas.
+- **Informasi proses** — pesan singkat tentang apa yang sedang berjalan, seperti "sedang menyelesaikan langkah ini" atau "perhatian, ada hal yang perlu diperhatikan". Pesan ini muncul di tempat yang tidak mengganggu hasil kerja Anda.
 
-Di pipe atau redirect, output deterministik: nol cursor-control, nol animasi spinner.
+Warna hanya digunakan jika layar Anda mendukungnya. Jika Anda mengirim hasil ke tempat lain (misalnya disimpan ke file atau diproses oleh program lain), output tetap bersih dan rapi — tidak ada karakter tambahan yang bisa mengganggu.
 
-## Satu arbitrator transient
+## Satu aturan untuk tampilan yang tidak mengganggu
 
-Satu-satunya rendering transient (garis status turn, spinner wizard) lewat `src/ui/runtime/statusline.ts`. Painter aktif saling eksklusif. Writer non-UI boleh menulis mentah ke stderr — arbitrator mengkomitnya sebagai baris permanen yang bersih.
+Terkadang Minicode perlu menampilkan informasi sementara, misalnya garis kecil yang menunjukkan progres atau pertanyaan singkat yang harus Anda jawab. Informasi ini muncul hanya saat dibutuhkan, lalu hilang setelah selesai.
 
-Detail lengkap ada di halaman [Arsitektur](/docs/architecture.html) dan kontrak terminal di repo.
+Untuk memastikan hal ini berjalan lancar, Minicode memiliki satu aturan saja: hanya satu proses yang boleh menampilkan informasi sementara pada saat yang sama. Jika ada program lain yang juga ingin menampilkan sesuatu, Minicode akan memastikan pesannya tetap muncul dengan rapi, tanpa mengganggu tampilan utama Anda.
+
+## Kenapa begitu
+
+Pendekatan ini membuat hasil kerja Anda tetap terlihat jelas, tidak ada yang bersembunyi, dan Anda selalu tahu apa yang sedang terjadi. Tidak ada tampilan khusus yang harus dibuka atau ditutup, tidak ada panel yang mengubah tampilan Anda secara tiba-tiba.
+
+Jika Anda ingin memahami lebih detail tentang bagaimana Minicode menangani tampilan ini, Anda bisa membacanya di halaman Arsitektur atau dokumen kontrak terminal di repositori.

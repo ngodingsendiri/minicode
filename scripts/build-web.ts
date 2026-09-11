@@ -1,7 +1,7 @@
 // SSG web minicode (orkestrator tipis).
 // Alur: landing + docs + blog -> site/ + sitemap + robots + 404 + aset.
 // Tanpa dependensi: hanya node:fs/path. Output site/ di-gitignore.
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildBlog } from "./web/blog.ts"
 import { buildDocs } from "./web/docs.ts"
@@ -19,6 +19,10 @@ const customDomain = "minicode.fun"
 
 const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { version: string }
 const version = pkg.version
+
+// Bersihkan site/ dulu: aset lama (favorit lama, logo lama) tidak boleh
+// tertinggal dan membuat tautan mati di halaman baru.
+rmSync(siteDir, { recursive: true, force: true })
 
 function write(rel: string, content: string): void {
   const dest = join(siteDir, rel)
@@ -69,15 +73,17 @@ write(
     title: "Tidak ketemu",
     desc: "Halaman tidak ditemukan.",
     canon: `${base}/404.html`,
-    body: `<div class="wrap" style="padding:96px 24px;max-width:640px"><div class="sec-kick">404</div><h1>Halaman tidak ketemu.</h1><p class="sec-sub">Coba <a href="/docs/">dokumentasi</a> atau <a href="/blog/">blog</a>.</p></div>`,
+    body: `<div class="wrap" style="padding:90px 24px;max-width:600px"><div class="kicker">404</div><h1 style="font-size:clamp(24px,3.5vw,34px)">Halaman tidak ketemu.</h1><p class="sub" style="margin-top:14px">Coba <a href="/docs/">dokumentasi</a> atau <a href="/blog/">blog</a>.</p></div>`,
     version,
     jsonld: softwareJsonld(version),
   }),
 )
-for (const f of ["styles.css", "app.js", "favicon.svg"]) {
+for (const f of ["styles.css", "app.js"]) {
   write(f, readFileSync(join(webDir, f), "utf8"))
 }
-cpSync(join(webDir, "assets", "logo.svg"), join(siteDir, "assets", "logo.svg"))
+// Logo milik pengguna: satu sumber di content/logo-user.svg (mudah diganti),
+// di-copy saat build agar layout <img> selalu merujuk file yang ada.
+cpSync(join(repoRoot, "content", "logo-user.svg"), join(siteDir, "assets", "logo-user.svg"))
 write("admin.html", readFileSync(join(webDir, "admin.html"), "utf8"))
 // File CNAME membuat binding custom domain persisten — deploy artifact
 // tanpa file ini bisa melepas domain di Settings → Pages.

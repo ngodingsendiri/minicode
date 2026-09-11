@@ -130,6 +130,11 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
             Number.isFinite(ms) ? ms : undefined,
           )
         }
+        // Samakan dengan adapter lain: 401/403 = auth (fail-fast, tanpa
+        // retry buta). Sebelumnya jatuh ke "unknown" lalu di-retry 3x.
+        if (res.status === 401 || res.status === 403) {
+          throw new ProviderError("auth", `auth rejected (${res.status}): ${txt.slice(0, 500)}`)
+        }
         // Samakan dengan adapter lain: konteks kepanjangan = compact-and-retry
         // di loop, bukan retry-buta 3x lalu throw. Frasa pencocokan sama
         // dengan openai-compat/anthropic agar perilaku konsisten antar provider.
@@ -171,9 +176,32 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
                 // Format nyata: {type:"response.completed", response:{id:"resp_…"}}.
                 const dtype = data.type as string | undefined
                 if (dtype === "response.completed" || dtype === "completed") {
-                  const resp = data.response as { id?: unknown } | undefined
+                  const resp = data.response as { id?: unknown; usage?: unknown } | undefined
                   const rid = resp?.id ?? data.id
                   if (typeof rid === "string" && rid) lastResponseByModel.set(modelKey, rid)
+                  // Tanpa usage event, Responses tak pernah menyumbang token ke
+                  // budget/cost (buta spend). Bentuk shape sama dengan adapter
+                  // openai-compat agar kolektor tak perlu tahu provider.
+                  const u = resp?.usage as
+                    | { input_tokens?: unknown; output_tokens?: unknown; total_tokens?: unknown }
+                    | undefined
+                  if (
+                    u &&
+                    (u.input_tokens != null || u.output_tokens != null || u.total_tokens != null)
+                  ) {
+                    yield {
+                      type: "extension",
+                      kind: "usage",
+                      data: {
+                        inputTokens:
+                          typeof u.input_tokens === "number" ? u.input_tokens : undefined,
+                        outputTokens:
+                          typeof u.output_tokens === "number" ? u.output_tokens : undefined,
+                        totalTokens:
+                          typeof u.total_tokens === "number" ? u.total_tokens : undefined,
+                      },
+                    }
+                  }
                 }
                 const rawDelta: unknown = (data.delta as unknown) ?? data
                 const drec = (

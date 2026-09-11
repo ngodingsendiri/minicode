@@ -300,11 +300,27 @@ export async function refreshAccessToken(
  * Access token yang pasti valid: refresh otomatis bila hampir kedaluwarsa.
  * Return null bila belum login atau refresh gagal.
  */
+const refreshInflight = new Map<string, Promise<string | null>>()
+
 export async function getValidAccessToken(providerId: string): Promise<string | null> {
   const creds = await getAuth(providerId)
   if (!creds) return null
   const { isExpired } = await import("./auth-store.ts")
   if (!isExpired(creds)) return creds.accessToken
-  const refreshed = await refreshAccessToken(providerId, creds)
-  return refreshed?.accessToken ?? null
+  // Dedup refresh konkuren (temuan audit #03): dua pemanggil paralel
+  // (sesi utama + sub-agen) tanpa ini memicu dua token POST dan last-wins
+  // saveAuth — rotasi bisa menginvalidasi token pertama.
+  const ongoing = refreshInflight.get(providerId)
+  if (ongoing) return ongoing
+  let run!: Promise<string | null>
+  run = (async () => {
+    try {
+      const refreshed = await refreshAccessToken(providerId, creds)
+      return refreshed?.accessToken ?? null
+    } finally {
+      if (refreshInflight.get(providerId) === run) refreshInflight.delete(providerId)
+    }
+  })()
+  refreshInflight.set(providerId, run)
+  return run
 }

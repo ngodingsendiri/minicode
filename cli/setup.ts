@@ -8,8 +8,8 @@ import { createRagLayer } from "../src/app/rag-layer.ts"
 import { createMinicodeSession, type PermissionControl } from "../src/app/session.ts"
 import { setupToolLayer } from "../src/app/tool-layer.ts"
 import type { MinicodeConfig } from "../src/config.ts"
-import { loadLastModel } from "../src/config.ts"
-import { runRunHooks } from "../src/hooks/run.ts"
+import { loadLastModel, localConfigNotice } from "../src/config.ts"
+import { runRunHooks, shouldRunHooks } from "../src/hooks/run.ts"
 import { homeDir } from "../src/lib/db-path.ts"
 import { closeAllLsp as lspCloseAll } from "../src/lsp/client.ts"
 import { closeAll as mcpCloseAll } from "../src/mcp/client.ts"
@@ -22,6 +22,7 @@ import {
   buildVerifySnippet,
   checkBaseline,
   detectVerifyCommand,
+  formatVerifyNotice,
   runVerify,
   runWithSelfHeal,
 } from "../src/policy/verifier.ts"
@@ -69,6 +70,10 @@ export interface CliSessionOptions {
   plan: boolean
   allowlist: boolean
   verify: boolean
+  /** Audit #07 P0 opt-in: baca .minicode/config.json + allowlist lokal.
+   * Default mati (fail-closed); diteruskan ke provider-layer, permission
+   * handler, dan perintah REPL yang me-refresh provider. */
+  allowLocalConfig?: boolean
   budget?: number
   /** Harness-P1: fail-closed bila cost sesi tak dikenal (model tanpa harga). */
   budgetStrict?: boolean
@@ -102,6 +107,9 @@ export interface CliSession {
   usage: ReturnType<typeof createUsageCollector>
   budget?: number
   budgetStrict?: boolean
+  /** Flag opt-in local config sesi ini — dipakai perintah REPL (/sync,
+   * /provider, /model) agar konsisten dengan provider/tool yang aktif. */
+  allowLocalConfig: boolean
   /** P2.3: jumlah hit RAG memory yang di-inject ke system prompt sesi ini. */
   memoryHits: number
   detachSimple: () => void
@@ -130,6 +138,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     budget,
     budgetStrict,
     toolScope,
+    allowLocalConfig,
     maxSteps,
     contextWindowTokens,
     timeoutMs,
@@ -178,8 +187,16 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     enterRepl,
     rateLimiter,
     providerOverride,
+    allowLocalConfig,
     setupWhenEmpty: runSetupWizard,
   })
+  // Operator wajib tahu saat config repo dipercaya — cetak sekali di awal.
+  // localConfigNotice mengembalikan undefined bila flag mati atau berkas tak
+  // ada, jadi tak ada noise pada alur normal.
+  try {
+    const notice = localConfigNotice(cwd ?? process.cwd(), allowLocalConfig === true)
+    if (notice) process.stderr.write(`${c.dim(notice)}\n`)
+  } catch {}
   if (sandboxNotice && !plan) process.stderr.write(`${sandboxNotice}\n`)
   // Default model = terakhir dipakai (global), bila tanpa --model dan masih
   // ada di config. Flag selalu menang; tak ada simpanan = provider pertama.
@@ -295,6 +312,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     tools: sessionTools,
     cwd,
     permissionMode,
+    allowLocalConfig,
     systemExtra: (systemExtra ?? "") + recoveryAppendix,
     model: modelRef.current,
     ask: promptAsk,
@@ -414,18 +432,44 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
       }).catch(() => {})
     } catch {}
   })
-
   // ── Auto-verify & self-heal ──
   const verifyCommand = verify
     ? (process.env.MINICODE_VERIFY_CMD ?? cfg.verifyCommand ?? detectVerifyCommand(cwd) ?? "")
     : ""
   const verifyActive = verifyCommand.length > 0
+  // Audit #10 P2 observability: perintah verify (bisa dari config repo bila
+  // opt-in, atau package.json) dieksekusi via shell — tampilkan SEBELUM
+  // jalan pertama agar operator tahu persis apa yang dieksekusi.
+  if (verifyActive) {
+    process.stderr.write(c.dim(`${formatVerifyNotice(verifyCommand)}\n`))
+  }
+  // Audit #10 P1: hooks berjalan di luar permission system — di mode tanpa
+  // eksekusi (plan/readonly) hook TETAP mengeksekusi tanpa gate, melanggar
+  // kontrak read-only. Lewati + beri tahu sekali per sesi.
+  const hooksAllowed = shouldRunHooks(permissionMode)
+  let hooksSkippedNotice = false
+  const runHooksGated = async (
+    phase: "pre" | "post",
+    ctx: { phase: "pre" | "post"; prompt: string; cwd?: string; result?: unknown },
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    if (!hooksAllowed) {
+      if (!hooksSkippedNotice) {
+        hooksSkippedNotice = true
+        process.stderr.write(
+          c.dim(`[hooks] skipped in ${permissionMode} mode (read-only contract)\n`),
+        )
+      }
+      return
+    }
+    await runRunHooks(phase, ctx, signal)
+  }
 
   async function runPromptWithVerify(p: string, signal?: AbortSignal): Promise<void> {
     // Bersihkan state garis status turn SEBELUMNYA bila kernel tidak sempat
     // emit turn:completed (gagal/abort) — lihat lifecycle turn-status.ts.
     turnStatus.endTurn()
-    await runRunHooks("pre", { phase: "pre", prompt: p, cwd }, signal)
+    await runHooksGated("pre", { phase: "pre", prompt: p, cwd }, signal)
     // Semua session.run settle lewat sini: finally memastikan garis status
     // berhenti pada sukses MAUPUN gagal/abort (kernel hanya emit
     // turn:completed di jalur sukses — tanpa ini painter basi menimpa prompt).
@@ -438,7 +482,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
     if (!verifyActive) {
       await runOnce(p, signal)
-      await runRunHooks(
+      await runHooksGated(
         "post",
         { phase: "post", prompt: p, cwd, result: session.state.turnCount },
         signal,
@@ -486,7 +530,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
         }
       },
     })
-    await runRunHooks(
+    await runHooksGated(
       "post",
       { phase: "post", prompt: p, cwd, result: session.state.turnCount },
       signal,
@@ -547,6 +591,7 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     effectiveInitialModel,
     effectiveTimeoutMs,
     permissionMode,
+    allowLocalConfig: allowLocalConfig === true,
     sessionTools,
     allLoadedSkills,
     usage,

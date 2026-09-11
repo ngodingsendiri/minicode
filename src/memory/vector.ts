@@ -13,6 +13,12 @@ const initializedPaths = new Set<string>()
 function open(cwd?: string): Database {
   const p = dbPath(cwd)
   const db = new Database(p)
+  // busy_timeout DULU seperti sessions.db (audit #09 P1 §27): pola yang sama
+  // (journal_mode sebelum timeout aktif) gagal SQLITE_BUSY saat dua proses
+  // membuka bersamaan.
+  try {
+    db.exec(`PRAGMA busy_timeout=${LIMITS.SQLITE_BUSY_TIMEOUT_MS}`)
+  } catch {}
   if (!initializedPaths.has(p)) {
     // journal_size_limit + wal_autocheckpoint: WAL tidak tumbuh tak terbatas
     db.exec(
@@ -280,6 +286,17 @@ export async function addMemory(
 ) {
   const clean = scrubSecrets(text)
   const chunks = splitMemoryChunks(clean)
+  // Audit #10 P1 (§10/§39): tulis SELALU lokal ke proyek. Tanpa ini,
+  // addMemory dari cwd tanpa `.minicode/` jatuh ke DB GLOBAL bersama
+  // (resolveDbPath) — memori repo jahat A terbaca di proyek B yang tak
+  // terkait. Buat direktori lokal dulu agar resolusi mendarat lokal; baca
+  // tetap boleh fallback global (kompatibilitas data lama).
+  try {
+    const { mkdirSync } = require("node:fs") as typeof import("node:fs")
+    const { resolve: resolvePath, join: joinPath } =
+      require("node:path") as typeof import("node:path")
+    mkdirSync(joinPath(resolvePath(opts.cwd ?? process.cwd()), ".minicode"), { recursive: true })
+  } catch {}
   const embedModel =
     opts.embeddingModel ?? process.env.MINICODE_EMBED_MODEL ?? "text-embedding-3-small"
   // Satu panggilan batch untuk semua chunk — hemat round-trip embedding.

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { mkdir, readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
@@ -10,7 +11,11 @@ import { homeDir } from "./lib/db-path.ts"
 // kasus 99% (same-process) dengan biaya nol.
 const configLocks = new Map<string, Promise<void>>()
 
-async function withConfigLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+// Diekspor agar provisioning (saveProvider/remove/refresh) memakai kunci yang
+// SAMA dengan saveMcpServer/saveLspServer — tanpa ini dua penulis paralel
+// (sesi utama + sub-agen Pool) baca-modifikasi-tulis tanpa lock dan last-wins
+// menelan entri lain (reproducer audit #07: 8× saveProvider paralel → 1 selamat).
+export async function withConfigLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
   const prev = configLocks.get(path) ?? Promise.resolve()
   let release!: () => void
   const next = new Promise<void>((res) => (release = res))
@@ -77,6 +82,20 @@ export interface MinicodeConfig {
 export const GLOBAL = join(homedir(), ".minicode", "config.json")
 export const LOCAL = ".minicode/config.json"
 
+/** Path absolut config lokal untuk cwd — untuk status/doctor tanpa membacanya. */
+export function localConfigPath(cwd: string): string {
+  return resolve(cwd, LOCAL)
+}
+
+/** Status satu-baris saat operator mengaktifkan local config; undefined bila
+ * tak ada efek (flag mati atau berkas tak ada) agar CLI tidak berbohong. */
+export function localConfigNotice(cwd: string, allowLocal: boolean): string | undefined {
+  if (!allowLocal) return undefined
+  const p = localConfigPath(cwd)
+  if (!existsSync(p)) return undefined
+  return `[config] local config enabled: ${p}`
+}
+
 export function normalizeConfig(raw: unknown): MinicodeConfig {
   const cfg = raw as Record<string, unknown>
   const providers = Array.isArray(cfg?.providers)
@@ -118,7 +137,10 @@ export async function writeConfigAtomic(path: string, cfg: MinicodeConfig): Prom
   await atomicWriteText(path, JSON.stringify(cfg, null, 2))
 }
 
-export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
+export async function loadConfig(
+  cwd = process.cwd(),
+  opts: { allowLocal?: boolean } = {},
+): Promise<MinicodeConfig> {
   let globalCfg: MinicodeConfig = { providers: [] }
   let localCfg: MinicodeConfig = { providers: [] }
   try {
@@ -128,16 +150,23 @@ export async function loadConfig(cwd = process.cwd()): Promise<MinicodeConfig> {
     const msg = e instanceof SyntaxError ? `invalid JSON in ${GLOBAL}: ${e.message}` : null
     if (msg) process.stderr.write(`[config] ${msg}\n`)
   }
-  try {
-    const localPath = resolve(cwd, LOCAL)
-    const raw = await readFile(localPath, "utf8")
-    localCfg = normalizeConfig(JSON.parse(raw))
-  } catch (e) {
-    const isSyntax = e instanceof SyntaxError
-    if (isSyntax)
-      process.stderr.write(
-        `[config] invalid JSON in ${resolve(cwd, LOCAL)}: ${(e as Error).message}\n`,
-      )
+  // Local `.minicode/config.json` adalah input repo tak terpercaya (audit #07
+  // P0: mcpServers langsung di-spawn, baseUrl jahat menyedot prompt,
+  // verifyCommand dieksekusi). Ia HANYA dibaca bila operator opt-in eksplisit
+  // (--allow-local-config / MINICODE_ALLOW_LOCAL_CONFIG=1); default = global
+  // saja (fail-closed). Tulis eksplisit (--local) tak terpengaruh.
+  if (opts.allowLocal) {
+    try {
+      const localPath = resolve(cwd, LOCAL)
+      const raw = await readFile(localPath, "utf8")
+      localCfg = normalizeConfig(JSON.parse(raw))
+    } catch (e) {
+      const isSyntax = e instanceof SyntaxError
+      if (isSyntax)
+        process.stderr.write(
+          `[config] invalid JSON in ${resolve(cwd, LOCAL)}: ${(e as Error).message}\n`,
+        )
+    }
   }
   // generic merge helper — deduplicate DRY
   function mergeByKey<T>(global: T[], local: T[], keyFn: (v: T) => string): T[] {

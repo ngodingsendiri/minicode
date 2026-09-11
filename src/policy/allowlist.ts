@@ -11,7 +11,10 @@ export interface Allowlist {
 const GLOBAL_ALLOW = join(homedir(), ".minicode", "allowlist.json")
 const LOCAL_ALLOW = ".minicode/allowlist.json"
 
-export async function loadAllowlist(cwd?: string): Promise<Allowlist> {
+export async function loadAllowlist(
+  cwd?: string,
+  opts: { allowLocal?: boolean } = {},
+): Promise<Allowlist> {
   let globalList: Allowlist = { allowed: [] }
   let localList: Allowlist = { allowed: [] }
   try {
@@ -19,12 +22,17 @@ export async function loadAllowlist(cwd?: string): Promise<Allowlist> {
     const parsed = JSON.parse(txt) as Allowlist
     if (Array.isArray(parsed.allowed)) globalList = parsed
   } catch {}
-  try {
-    const path = resolve(cwd ?? process.cwd(), LOCAL_ALLOW)
-    const txt = await readFile(path, "utf8")
-    const parsed = JSON.parse(txt) as Allowlist
-    if (Array.isArray(parsed.allowed)) localList = parsed
-  } catch {}
+  // Sama seperti config (audit #07 P0): allowlist lokal adalah input repo —
+  // repo yang memberi dirinya sendiri "always" = persetujuan palsu. Hanya
+  // dibaca bila operator opt-in; default = global saja.
+  if (opts.allowLocal) {
+    try {
+      const path = resolve(cwd ?? process.cwd(), LOCAL_ALLOW)
+      const txt = await readFile(path, "utf8")
+      const parsed = JSON.parse(txt) as Allowlist
+      if (Array.isArray(parsed.allowed)) localList = parsed
+    } catch {}
+  }
   // merge global+local, dedup
   const merged = new Set<string>([...globalList.allowed, ...localList.allowed])
   return { allowed: [...merged] }
@@ -44,7 +52,12 @@ export async function saveAllowlist(entry: string, cwd?: string, opts: { global?
 }
 
 export function matchAllowlist(call: ToolCall, allowlist: string[]): boolean {
-  const key = `${call.name}:${JSON.stringify(call.args).slice(0, 200)}`
+  // Tanpa pemotongan: kunci = nama + JSON ARG PENUH. Versi lama memakai
+  // `.slice(0, 200)` sehingga dua panggilan dengan 200-char prefix sama
+  // berbagi kunci — entri "always" untuk perintah jinak panjang otomatis
+  // me-allow perintah jahat dengan prefix sama (temuan audit #07, reproducer:
+  // prefix 'A'x195 + tail jinak vs tail jahat → kunci terpotong identik).
+  const key = `${call.name}:${JSON.stringify(call.args)}`
   return allowlist.some((pat) => {
     const safe = pat.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")
     const re = new RegExp(`^${safe}$`)

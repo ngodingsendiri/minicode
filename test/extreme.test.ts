@@ -124,7 +124,7 @@ test("04 config normalize filters invalid providers", async () => {
       mcpServers: "bad",
     }),
   )
-  const local = await loadConfig(tmp)
+  const local = await loadConfig(tmp, { allowLocal: true })
   expect(local.providers.length).toBeGreaterThanOrEqual(1)
   expect(local.providers.some((p) => p.id === "ok")).toBe(true)
   await rm(tmp, { recursive: true, force: true }).catch(() => {})
@@ -505,7 +505,7 @@ test("18 allowlist merge global+local dedup + match colon", async () => {
   const { join } = await import("node:path")
   await saveAllowlist("bash", tmp, { global: true })
   await saveAllowlist("write_file:*.tmp/*", tmp, { global: false })
-  const list = await loadAllowlist(tmp)
+  const list = await loadAllowlist(tmp, { allowLocal: true })
   expect(list.allowed).toContain("bash")
   expect(list.allowed).toContain("write_file:*.tmp/*")
   // cleanup global

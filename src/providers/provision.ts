@@ -11,8 +11,10 @@ import {
   type MinicodeConfig,
   normalizeConfig,
   type ProviderEntry,
+  withConfigLock,
   writeConfigAtomic,
 } from "../config.ts"
+import { atomicWriteText } from "../lib/atomic-write.ts"
 import { clearDetectCache, detectModels } from "./detect.ts"
 import { GATEWAY_PRESETS } from "./presets.ts"
 
@@ -27,14 +29,30 @@ export async function saveProvider(
   // A provider may temporarily have no models: `/model` can remove the last
   // entry before `/sync` discovers a new one.
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  const idx = cfg.providers.findIndex((p) => p.id === entry.id)
-  if (idx >= 0) cfg.providers[idx] = entry
-  else cfg.providers.push(entry)
-  await writeConfigAtomic(path, cfg)
+  // Kunci per-path SAMA dengan saveMcpServer/saveLspServer (audit #07):
+  // tanpa ini baca-modifikasi-tulis paralel last-wins dan menelan entri.
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    try {
+      cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
+    } catch (e) {
+      // Audit #08 P1: reset diam-diam saat berkas korup MENGHAPUS semua
+      // provider + MCP/LSP/verify/allowlist lain saat tulis berikutnya.
+      // ENOENT (belum ada file) = mulai kosong; korup = backup + gagal keras
+      // seperti saveMcpServer; error lain (EACCES/…) = teruskan, jangan timpa.
+      if (e instanceof SyntaxError) {
+        const raw = await readFile(path, "utf8").catch(() => "")
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+    }
+    const idx = cfg.providers.findIndex((p) => p.id === entry.id)
+    if (idx >= 0) cfg.providers[idx] = entry
+    else cfg.providers.push(entry)
+    await writeConfigAtomic(path, cfg)
+  })
 }
 
 // 5.1 — id ramah: pakai id preset (openrouter/deepseek/generic/...) atau slug
@@ -72,7 +90,7 @@ export async function detectAndSave(
   baseUrl: string,
   apiKey: string,
   id?: string,
-  opts: { global?: boolean; cwd?: string; fallbackModels?: string[] } = {},
+  opts: { global?: boolean; cwd?: string; fallbackModels?: string[]; allowLocal?: boolean } = {},
 ): Promise<ProviderEntry> {
   // Fallback model dipakai bila provider tidak punya endpoint GET /models
   // (mis. Anthropic) atau deteksi gagal — agar wizard tetap berhasil.
@@ -95,7 +113,7 @@ export async function detectAndSave(
     }
   }
   // dedup id: id ramah via preset/slug, tanpa hash acak (lihat deriveProviderId)
-  const prevCfg = await loadConfig(opts.cwd)
+  const prevCfg = await loadConfig(opts.cwd, { allowLocal: opts.allowLocal })
   const existing = prevCfg.providers.map((p) => p.id)
   const uniqId = deriveProviderId(baseUrl, existing, id)
   // Pertahankan knob user (thinking effort) bila provider sudah ada — tanpa
@@ -115,12 +133,24 @@ export async function detectAndSave(
 
 export async function removeProvider(id: string, opts: { global?: boolean; cwd?: string } = {}) {
   const path = (opts.global ?? true) ? GLOBAL : resolve(opts.cwd ?? process.cwd(), LOCAL)
-  let cfg: MinicodeConfig = { providers: [] }
-  try {
-    cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-  } catch {}
-  cfg.providers = cfg.providers.filter((p) => p.id !== id)
-  await writeConfigAtomic(path, cfg)
+  return withConfigLock(path, async () => {
+    let cfg: MinicodeConfig = { providers: [] }
+    try {
+      cfg = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
+    } catch (e) {
+      // Sama seperti saveProvider (audit #08 P1): korup = backup + gagal
+      // keras, bukan reset diam-diam yang menghapus seluruh config.
+      if (e instanceof SyntaxError) {
+        const raw = await readFile(path, "utf8").catch(() => "")
+        const backup = `${path}.corrupt.${Date.now()}`
+        await atomicWriteText(backup, raw).catch(() => {})
+        throw new Error(`config corrupt: ${path} — backup to ${backup}: ${e.message}`)
+      }
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+    }
+    cfg.providers = cfg.providers.filter((p) => p.id !== id)
+    await writeConfigAtomic(path, cfg)
+  })
 }
 
 // Re-detect models untuk provider yang ada (model baru otomatis tersinkron).
@@ -138,13 +168,13 @@ export interface SyncResult {
 }
 
 export async function refreshProviderModels(
-  opts: { global?: boolean; cwd?: string } = {},
+  opts: { global?: boolean; cwd?: string; allowLocal?: boolean } = {},
 ): Promise<SyncResult> {
   // /sync harus benar-benar re-fetch — tanpa ini detectModels menyajikan cache
   // 30 menit dan /sync menjadi no-op ("from == to") padahal provider punya
   // model baru.
   clearDetectCache()
-  const merged = await loadConfig(opts.cwd)
+  const merged = await loadConfig(opts.cwd, { allowLocal: opts.allowLocal })
   const providers: ProviderEntry[] = merged.providers
   if (providers.length === 0 && (opts.global ?? true)) {
     // tidak ada provider di merge — coba file global secara eksplisit
@@ -174,9 +204,13 @@ export async function refreshProviderModels(
   // Tulis kembali ke setiap file yang memuat provider yang diupdate — dalam
   // format yang sudah ada di file tersebut (global dan/atau local).
   const results: { id: string; from: number; to: number }[] = []
-  // check existence via direct read attempt (no TOCTOU pre-check)
+  // check existence via direct read attempt (no TOCTOU pre-check).
+  // Berkas lokal hanya disentuh bila operator opt-in (default deny — /sync
+  // tanpa flag tak boleh menghubungi endpoint repo tak dikenal).
   const paths = new Set<string>()
-  const checkPaths = [GLOBAL, resolve(opts.cwd ?? process.cwd(), LOCAL)]
+  const checkPaths = opts.allowLocal
+    ? [GLOBAL, resolve(opts.cwd ?? process.cwd(), LOCAL)]
+    : [GLOBAL]
   for (const p of checkPaths) {
     try {
       await readFile(p, "utf8")
@@ -184,21 +218,25 @@ export async function refreshProviderModels(
     } catch {}
   }
   for (const path of paths) {
-    try {
-      const cfg: MinicodeConfig = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
-      let changed = false
-      for (const p of cfg.providers) {
-        const nu = updated.get(p.id)
-        if (nu) {
-          p.models = nu.models
-          p.providerHint = nu.providerHint
-          changed = true
+    // Kunci per-file (audit #07): /sync + saveProvider paralel tanpa ini
+    // last-wins dan menelan update satu sama lain.
+    await withConfigLock(path, async () => {
+      try {
+        const cfg: MinicodeConfig = normalizeConfig(JSON.parse(await readFile(path, "utf8")))
+        let changed = false
+        for (const p of cfg.providers) {
+          const nu = updated.get(p.id)
+          if (nu) {
+            p.models = nu.models
+            p.providerHint = nu.providerHint
+            changed = true
+          }
         }
+        if (changed) await writeConfigAtomic(path, cfg)
+      } catch {
+        // file corrupt/unreadable — lewati
       }
-      if (changed) await writeConfigAtomic(path, cfg)
-    } catch {
-      // file corrupt/unreadable — lewati
-    }
+    })
   }
   for (const [id, nu] of updated) {
     const orig = providers.find((p) => p.id === id)!

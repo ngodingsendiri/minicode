@@ -6,7 +6,6 @@ Daftar pasti kapan pun:
 bun -e "import {allTools} from './src/tools/index.ts'; console.log(allTools.map(t=>t.name))"
 ```
 
-Sumber: `src/tools/index.ts:59-97`. `web_search` hanya di `allTools`, tidak di re-ekspor atas. Tool MCP dinamis `serverId.toolName` di-append via `withMcpTools`.
 
 `cwd` tool file **wajib** dari `ToolContext.cwd`, bukan `process.cwd()` (seam `cwd?: string` di kernel + `resolve(sessionRoot, raw)` + file-lock per-cwd).
 
@@ -78,7 +77,7 @@ Batas `BASH_BACKGROUND_MAX_JOBS`; semua job mati saat CLI keluar.
 |---|---|---|
 | `read_memory` | Baca `MEMORY.md` + vector RAG hybrid | — |
 | `write_memory` | Tulis + vector store | `{category?, tags?}`, default `fact`. Kategori `fact|decision|preference|snippet|summary`, boost `decision` +0.1 |
-| `forget_memory` | Hapus cocok query | Hati-hati: `sqlite3_changes()` ikut hitung trigger FTS — kini hitung-dulu-sebelum-DELETE |
+| `forget_memory` | Hapus cocok query | Hati-hati: `sqlite3_changes()` ikut hitung trigger FTS — kini hitung-dulu-sebelum-DELETE. Menghapus baris vector DAN baris file `.minicode/MEMORY.md` (sebelumnya file tertinggal sehingga "lupa" tak terjadi di jalur file) |
 | `todo_write` / `todo_read` | Rencana per sesi (3+ langkah) | Kirim **seluruh daftar** tiap kali. Status `pending|in_progress|completed|cancelled`, satu `in_progress` dipertahankan. Disimpan `.minicode/todos/<session>.json` + artifact `.minicode/plans/<id>.md` |
 | `submit_result` | Hasil akhir JSON terstruktur 1× | NO_PROMPT, `exec --json` verbatim. Pengganti `response_format` |
 | `ask_user` | Tanya klarifikasi mid-run | Gated + render via injeksi `promptAskText` (fail-closed non-TTY) |
@@ -87,7 +86,7 @@ Batas `BASH_BACKGROUND_MAX_JOBS`; semua job mati saat CLI keluar.
 
 | Tool | Fungsi | Catatan |
 |---|---|---|
-| `delegate_task` | Sub-agen isolasi `explore`/`plan` | Pool 3, isolasi context/memory/signal/budget, abort-aware. Di-gate (TTY prompt, non-TTY tolak) |
+| `delegate_task` | Sub-agen isolasi `explore`/`plan` | Pool 3, isolasi context/memory/signal/budget, abort-aware. Di-gate (TTY prompt, non-TTY tolak). Anak SELALU mode `auto` tanpa ask: tanpa MCP/commit/memory-tulis/todo-tulis/job/nesting; plan-parent dipaksa explore. Satu approval = delegasi ini saja; turn gagal setelah anak committed → warning `[recovery]` anti re-delegasi buta |
 
 ## MCP
 

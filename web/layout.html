@@ -11,7 +11,7 @@
 <meta property="og:description" content="{{DESC}}">
 <meta property="og:url" content="{{CANON}}">
 <meta name="twitter:card" content="summary">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316161a'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='monospace' font-weight='700' font-size='16' fill='white'%3Em%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap">
@@ -22,20 +22,19 @@
 <body class="{{BODYCLASS}}">
 <a class="skip" href="#main">Lewati ke konten</a>
 <header class="topbar"><div class="topbar-in">
-<a class="brand" href="/"><span class="brand-mark">m&gt;</span>minicode</a>
-<button class="iconbtn menubtn" id="menubtn" aria-label="Buka navigasi"><span class="material-symbols-outlined">menu</span></button>
+<a class="brand" href="/"><img class="brand-logo" src="/assets/logo-user.svg" alt="Minicode" width="30" height="30"><span>minicode</span></a>
 <nav class="nav" aria-label="Utama">
 <a class="nl" href="/docs/">Docs</a>
 <a class="nl" href="/blog/">Blog</a>
 <a class="nl" href="/docs/changelog.html">Changelog</a>
 <a class="nl" href="https://github.com/startupmini/minicode">GitHub</a>
-<a class="keep btn-s" style="padding:8px 16px" href="/#install">Install</a>
+<a class="nl keep" href="/#install">Install</a>
 <button class="iconbtn" id="themebtn" aria-label="Ganti tema"><span class="material-symbols-outlined">dark_mode</span></button>
 </nav>
 </div></header>
 <main id="main">{{CONTENT}}</main>
 <footer class="footer"><div class="footer-in">
-<div><a class="brand" href="/"><span class="brand-mark">m&gt;</span>minicode</a>
+<div><a class="brand" href="/"><img class="brand-logo" src="/assets/logo-user.svg" alt="Minicode" width="30" height="30"><span>minicode</span></a>
 <p>Coding agent CLI shell-native di atas kernel MiniCore. MIT, zero-dep, tanpa TUI.</p></div>
 <div><h4>Produk</h4><a href="/#fitur">Fitur</a><a href="/#install">Install</a><a href="/docs/changelog.html">Changelog</a></div>
 <div><h4>Dokumentasi</h4><a href="/docs/">Semua docs</a><a href="/docs/cli.html">CLI &amp; flags</a><a href="/docs/tools.html">Tools</a><a href="/docs/troubleshooting.html">Troubleshooting</a></div>

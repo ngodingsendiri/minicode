@@ -13,6 +13,16 @@ export interface VerifyResult {
   command: string
 }
 
+/**
+ * Satu baris status perintah verify untuk stderr SEBELUM eksekusi pertama
+ * (audit #10 P2): perintah bisa berasal dari config repo (opt-in) atau
+ * package.json — operator berhak tahu persis apa yang akan dieksekusi via
+ * shell. Murni format (bisa diuji tanpa menjalankan apa pun).
+ */
+export function formatVerifyNotice(command: string): string {
+  return `[verify] command: ${command.slice(0, 120)}`
+}
+
 // Run perintah verifikasi (typecheck/test/lint) dengan timeout.
 export async function runVerify(
   command: string,
@@ -33,7 +43,6 @@ export async function runVerify(
     return { ok: false, output: output.slice(0, 8000), command }
   }
 }
-
 // Deteksi perintah verify yang masuk akal untuk proyek di `cwd`.
 export function detectVerifyCommand(cwd?: string): string | undefined {
   const pkg = resolve(cwd ?? ".", "package.json")

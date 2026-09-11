@@ -108,7 +108,7 @@ async function openManager(
 ): Promise<Manager> {
   const t = tty
   if (!t) throw new Error("installFakeTty must be called first")
-  const done = runProviderManager({ cwd: workspace, ...opts })
+  const done = runProviderManager({ cwd: workspace, allowLocalConfig: true, ...opts })
   await t.ready()
   return {
     done,
@@ -545,7 +545,7 @@ describe.serial("provider-manager: non-TTY", () => {
       { id: "gw", baseUrl: "https://gw.example/v1", apiKey: "k", models: ["m1", "m2"] },
     ])
     tty = installFakeTty({ isTTY: false })
-    await runProviderManager({ cwd: workspace })
+    await runProviderManager({ cwd: workspace, allowLocalConfig: true })
     const out = visible(tty)
     expect(out).toContain("gw")
     expect(out).toContain("2 models")

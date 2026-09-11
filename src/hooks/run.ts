@@ -11,6 +11,16 @@ export interface RunHookCtx {
   result?: unknown
 }
 
+/**
+ * Guard mode untuk hooks (audit #10 P1): hooks berjalan di luar permission
+ * system — di mode tanpa-eksekusi (plan/readonly) hook TETAP mengeksekusi
+ * tanpa gate bila tidak dijaga, melanggar kontrak read-only. Diekspor agar
+ * composition root + test memakai predikat yang sama.
+ */
+export function shouldRunHooks(permissionMode: string): boolean {
+  return permissionMode !== "plan" && permissionMode !== "readonly"
+}
+
 // 6.4 — hooks global opt-in: ~/.minicode/hooks/{pre,post}*.js dan
 // .minicode/hooks/{pre,post}*.js. Berjalan sebagai node script terpisah
 // dengan konteks di env MINICODE_HOOK_CTX (JSON). Opt-in via MINICODE_HOOKS=1
@@ -45,6 +55,12 @@ export async function runRunHooks(
   const hooks = findRunHooks(ctx.cwd)
   for (const file of hooks[phase]) {
     if (signal?.aborted) return
+    // Audit #10 P2 observability: hook adalah eksekusi di luar permission
+    // system — operator wajib bisa melihat APA yang jalan (nama berkas saja;
+    // output hook tetap dibuang, isi tak pernah di-log).
+    try {
+      process.stderr.write(`[hooks] ${phase}: ${file.split(/[\\/]/).pop()}\n`)
+    } catch {}
     await new Promise<void>((res) => {
       const p = spawn(process.execPath, [file], {
         env: sanitizeSpawnEnv(process.env, { MINICODE_HOOK_CTX: JSON.stringify(ctx) }),

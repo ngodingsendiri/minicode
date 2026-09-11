@@ -133,7 +133,7 @@ describe("config in-process: list dan roundtrip lokal", () => {
         providers: [{ id: "px", baseUrl: "https://x.test/v1", apiKey: "k", models: ["m1"] }],
       }),
     )
-    const r = await runDispatch(["config", "list", "--cwd", tmp])
+    const r = await runDispatch(["config", "list", "--allow-local-config", "--cwd", tmp])
     expect(r.code).toBe(0)
     expect(r.out).toContain("px")
   })
@@ -152,7 +152,7 @@ describe("config in-process: list dan roundtrip lokal", () => {
     ])
     expect(r.code).toBe(0)
     expect(r.out).toContain("(http)")
-    r = await runDispatch(["config", "mcp", "list", "--cwd", tmp])
+    r = await runDispatch(["config", "mcp", "list", "--allow-local-config", "--cwd", tmp])
     expect(r.code).toBe(0)
     expect(r.out).toContain("(http)")
     r = await runDispatch(["config", "mcp", "remove", "web", "--local", "--cwd", tmp])
@@ -198,7 +198,7 @@ describe("config in-process: list dan roundtrip lokal", () => {
     ])
     expect(r.code).toBe(0)
     expect(r.out).toContain("Saved LSP server for")
-    r = await runDispatch(["config", "lsp", "list", "--cwd", tmp])
+    r = await runDispatch(["config", "lsp", "list", "--allow-local-config", "--cwd", tmp])
     expect(r.code).toBe(0)
     expect(r.out).toContain("Configured LSP Language Servers")
     r = await runDispatch(["config", "lsp", "remove", "ts", "--local", "--cwd", tmp])

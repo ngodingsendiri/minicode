@@ -1,12 +1,17 @@
-import { exec } from "node:child_process"
+import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import { join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { LIMITS } from "../constants.ts"
+import { homeDir } from "../lib/db-path.ts"
+import { GIT_SAFE_BASE } from "../lib/git-hardening.ts"
+import { resolveTrustedExecutable } from "../lib/trusted-exec.ts"
+import { isRealPathOutsideRoot } from "../policy/jail.ts"
 
-const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 const SOURCE_EXTS = new Set([
   ".ts",
@@ -278,6 +283,10 @@ async function walkForFiles(
     if (out.length >= limit) break
     if (e.name.startsWith(".") || e.name === "node_modules") continue
     const r = rel ? `${rel}/${e.name}` : e.name
+    // Symlink escape (temuan audit #06): walk fallback mengikuti symlink;
+    // tolak yang realpath-nya keluar workspace (simbol saja yang bocor,
+    // tetapi tetap data asing tanpa provenance).
+    if (isRealPathOutsideRoot(join(root, r), root)) continue
     if (e.isDirectory()) await walkForFiles(root, r, out, limit)
     else if (isSourceFile(e.name)) out.push(r)
   }
@@ -286,11 +295,17 @@ async function walkForFiles(
 // Daftar file sumber (git ls-files dulu → fallback walk).
 async function listSourceFiles(cwd: string, limit: number): Promise<string[]> {
   try {
-    const { stdout } = await execAsync("git ls-files", {
-      cwd,
-      timeout: 3000,
-      encoding: "utf8",
-    })
+    // Audit #10: ls-files memicu fsmonitor repo & bisa menjalankan `git.bat`
+    // repo (Windows cwd-first). Resolve absolut + netralisasi.
+    const { stdout } = await execFileAsync(
+      resolveTrustedExecutable("git"),
+      [...GIT_SAFE_BASE, "ls-files"],
+      {
+        cwd,
+        timeout: 3000,
+        encoding: "utf8",
+      },
+    )
     const files = stdout
       .split("\n")
       .map((f) => f.replace(/\\/g, "/"))
@@ -303,7 +318,17 @@ async function listSourceFiles(cwd: string, limit: number): Promise<string[]> {
 }
 
 function cachePath(cwd: string): string {
-  return resolve(cwd, ".minicode", "repomap.json")
+  // Audit #10 P1: cache di repo (.minicode/repomap.json) dapat ditulis
+  // penyerang — validasi apa pun yang bisa dihitung pembaca (mtime, hash)
+  // bisa dipalsukan penulis, sehingga peta BOHONG tersaji. Simpan di home
+  // operator (di luar jangkauan konten repo), kunci = hash realpath cwd.
+  // Sig isi tetap dipakai untuk deteksi basi (staleness), bukan trust.
+  try {
+    const key = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 32)
+    return join(homeDir(), ".minicode", `repomap-${key}.json`)
+  } catch {
+    return resolve(cwd, ".minicode", "repomap.json")
+  }
 }
 
 // Bangun repo-map compact dari daftar file.
@@ -327,16 +352,24 @@ export async function buildRepoMap(
   return parts.join("\n").slice(0, MAX_REPOMAP_CHARS)
 }
 
-// Signature cepat: path+mtime+size dari file terpilih — buat deteksi perubahan.
+// Signature ISI (audit #10 P1): hash path+konten file terpilih — BUKAN
+// mtime+size. Cache repomap.json tinggal di repo (dapat ditulis penyerang);
+// sig mtime+size dapat dipalsukan via touch+padding sehingga peta BOHONG
+// disajikan tanpa baca ulang. Dengan sig isi, cache palsu hanya cocok bila
+// isinya benar-benar sama — dan bila sama, petanya pun benar. Cache lama
+// (format mtime) otomatis miss → dibangun ulang sekali, tanpa migrasi.
 function signature(files: string[], cwd: string): string {
-  let sig = ""
+  const h = createHash("sha256")
   for (const f of files.slice(0, 80)) {
     try {
-      const st = statSync(resolve(cwd, f))
-      sig += `${f}:${st.mtimeMs}:${st.size};`
+      const abs = resolve(cwd, f)
+      const st = statSync(abs)
+      if (!st.isFile() || st.size > MAX_FILE_BYTES) continue
+      h.update(f)
+      h.update(readFileSync(abs))
     } catch {}
   }
-  return sig
+  return `v2:${h.digest("hex")}`
 }
 
 // Coba bangun repo-map via LSP workspace/symbol (lebih akurat dari regex).
@@ -422,7 +455,7 @@ export async function loadRepoMap(cwd: string = process.cwd()): Promise<string> 
     const lspMap = await buildRepoMapLsp(cwd)
     if (lspMap) {
       try {
-        mkdirSync(resolve(cwd, ".minicode"), { recursive: true })
+        mkdirSync(join(homeDir(), ".minicode"), { recursive: true })
         writeFileSync(cp, JSON.stringify({ sig, map: lspMap, lsp: true }))
       } catch {}
       return lspMap
@@ -430,7 +463,7 @@ export async function loadRepoMap(cwd: string = process.cwd()): Promise<string> 
   }
   const map = await buildRepoMap(cwd, { limit: MAX_FILES })
   try {
-    mkdirSync(resolve(cwd, ".minicode"), { recursive: true })
+    mkdirSync(join(homeDir(), ".minicode"), { recursive: true })
     writeFileSync(cp, JSON.stringify({ sig, map, lsp: false }))
   } catch {}
   return map

@@ -1,12 +1,31 @@
-// Bangun halaman docs: 16 halaman dari docs/*.md via SUMMARY.md.
-// Tiap halaman: sidebar 1:1 SUMMARY, badge sumber file:line, prev/next,
-// link edit GitHub. Font kecil via body.doc (lihat styles.css).
+// Bangun halaman docs: konten + sidebar navigasi (dari SUMMARY.md, kelompok
+// + entri, halaman aktif di-highlight). Sidebar di kiri di desktop, jadi list
+// di atas di mobile via CSS. Prev/Next tetap di bawah sebagai alur linear.
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { firstPara } from "./fm.ts"
+import { escAttr, firstPara } from "./fm.ts"
 import { mdToHtml } from "./md.ts"
-import { docMeta, readDocNav, sidebarHtml } from "./nav.ts"
+import { docMeta, readDocNav, type DocEntry } from "./nav.ts"
 import { mdLinksToHtml, renderPage } from "./page.ts"
+
+/** Render sidebar docs: kelompok SUMMARY + entri, halaman aktif di-highlight. */
+export function renderDocSidebar(entries: DocEntry[], activeSlug: string): string {
+  const hrefOf = (e2: { slug: string }): string =>
+    e2.slug === "readme" ? "/docs/" : `/docs/${e2.slug}.html`
+  const out: string[] = []
+  let group = ""
+  for (const e of entries) {
+    if (e.group !== group) {
+      group = e.group
+      out.push(`<p class="ds-g">${escAttr(group)}</p>`)
+    }
+    const active = e.slug === activeSlug
+    out.push(
+      `<a class="ds-i${active ? " on" : ""}" href="${hrefOf(e)}"${active ? ' aria-current="page"' : ""}>${escAttr(e.title)}</a>`,
+    )
+  }
+  return `<aside class="doc-side" aria-label="Menu dokumentasi">${out.join("")}</aside>`
+}
 
 export function buildDocs(
   repoRoot: string,
@@ -22,27 +41,23 @@ export function buildDocs(
     const meta = docMeta(e.slug)
     const desc = (firstPara(raw).slice(0, 160) || meta.desc).trim()
     const safeDesc = desc.length >= 20 ? desc : meta.desc
-    const content = mdLinksToHtml(mdToHtml(raw))
-    const prev = entries[idx - 1]
-    const next = entries[idx + 1]
+    // Hapus H1 pertama dari markdown — judul halaman pakai SUMMARY (satu saja).
+    let content = mdLinksToHtml(mdToHtml(raw))
+    content = content.replace(/^<h1>[\s\S]*?<\/h1>\s*/, "")
     const hrefOf = (e2: { slug: string }): string =>
       e2.slug === "readme" ? "/docs/" : `/docs/${e2.slug}.html`
+    const prev = entries[idx - 1]
+    const next = entries[idx + 1]
     const nav =
-      `<nav class="doc-nav" aria-label="Navigasi docs">` +
-      (prev
-        ? `<a href="${hrefOf(prev)}"><span>Sebelumnya</span>${prev.title}</a>`
-        : `<span></span>`) +
-      (next
-        ? `<a href="${hrefOf(next)}"><span>Berikutnya</span>${next.title}</a>`
-        : `<span></span>`) +
+      `<nav class="doc-nav" aria-label="Navigasi dokumentasi">` +
+      (prev ? `<a class="prev" href="${hrefOf(prev)}">‹ Prev</a>` : `<span></span>`) +
+      (next ? `<a class="next" href="${hrefOf(next)}">Next ›</a>` : `<span></span>`) +
       `</nav>`
-    const edit = `https://github.com/startupmini/minicode/blob/main/docs/${e.file}`
     const body =
-      `<div class="doc-layout"><aside class="sidebar" aria-label="Navigasi dokumentasi">` +
-      `${sidebarHtml(entries, e.slug)}</aside>` +
-      `<div class="doc-body"><h1>${e.title}</h1>` +
-      `<div class="doc-meta"><span class="src-badge">sumber: ${meta.src}</span>` +
-      `<a href="${edit}">Edit di GitHub</a></div>${content}${nav}</div></div>`
+      `<div class="doc-layout">${renderDocSidebar(entries, e.slug)}` +
+      `<div class="doc-main">` +
+      `<article class="doc-body"><h1>${e.title}</h1>${content}</article>${nav}</div>` +
+      `</div>`
     const rel = e.slug === "readme" ? "docs/index.html" : `docs/${e.slug}.html`
     const canon = e.slug === "readme" ? `${base}/docs/` : `${base}/docs/${e.slug}.html`
     write(

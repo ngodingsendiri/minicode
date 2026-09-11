@@ -20,7 +20,9 @@ const CONFIG_HELP = `minicode config — provider, MCP, and LSP
   minicode config detect --baseUrl <url> --apiKey <key>
 
   minicode config mcp <add|list|remove>    MCP servers used by minicode
-  minicode config lsp <add|list|remove>    language servers per extension`
+  minicode config lsp <add|list|remove>    language servers per extension
+
+  [--allow-local-config] baca .minicode/config.json lokal (default: abaikan)`
 
 const MCP_HELP = `minicode config mcp — MCP servers used by minicode
 
@@ -48,6 +50,13 @@ function showHelp(text: string, asked: boolean, unknown?: string): never {
 
 const isHelpFlag = (s: string | undefined): boolean =>
   s === undefined || s === "--help" || s === "-h"
+
+// Subcommand argv selalu diawali positional ("config", …) sehingga hasFlag
+// yang boundary-aware tak cocok di sini; pakai includes + env operator
+// (gaya yang sama dengan --local/--global di berkas ini).
+function allowLocalHere(args: string[]): boolean {
+  return args.includes("--allow-local-config") || process.env.MINICODE_ALLOW_LOCAL_CONFIG === "1"
+}
 
 /** Positional yang diawali `-` hampir pasti flag yang salah tempat
  * (mis. `config lsp remove --cwd X` menghapus server bernama "--cwd").
@@ -82,7 +91,8 @@ export async function handleConfig(
   } else if (sub === "list") {
     // P10: list branch WAJIB menghormati --cwd seperti branch tulis —
     // sebelumnya membaca process.cwd() diam-diam (config yang salah).
-    const cfg = await loadConfig(getArg("--cwd"))
+    // Audit #07: local hanya bila operator opt-in (aturan universal).
+    const cfg = await loadConfig(getArg("--cwd"), { allowLocal: allowLocalHere(args) })
     if (cfg.providers.length === 0)
       console.log(c.dim("(no providers yet - add one via `minicode config add` or the wizard)"))
     else {
@@ -206,7 +216,7 @@ export async function handleConfig(
       )
       process.exit(0)
     } else if (mcpSub === "list") {
-      const cfg = await loadConfig(getArg("--cwd"))
+      const cfg = await loadConfig(getArg("--cwd"), { allowLocal: allowLocalHere(args) })
       if (!cfg.mcpServers?.length)
         console.log(c.dim("(no MCP servers configured - add via minicode config mcp add)"))
       else {
@@ -275,7 +285,7 @@ export async function handleConfig(
       )
       process.exit(0)
     } else if (lspSub === "list") {
-      const cfg = await loadConfig(getArg("--cwd"))
+      const cfg = await loadConfig(getArg("--cwd"), { allowLocal: allowLocalHere(args) })
       if (!cfg.lspServers?.length)
         console.log(c.dim("(no LSP servers configured - add via minicode config lsp add)"))
       else {

@@ -1,0 +1,23 @@
+/* Section landing: daftar teks bersih, bukan kartu-pill. */
+section { max-width: var(--w); margin: 0 auto; padding: 52px 24px; }
+section h2 { font-size: clamp(20px, 2.8vw, 28px); letter-spacing: -0.015em; margin-bottom: 8px; }
+section .sub { color: var(--mut); font-size: 15px; max-width: 60ch; margin-bottom: 26px; }
+.feat-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.feat { padding: 18px 20px; background: var(--soft); border-radius: var(--r); }
+.feat h3 { font-size: 14.5px; font-weight: 650; display: flex; align-items: center; gap: 9px; }
+.feat h3 .material-symbols-outlined { font-size: 16px; color: var(--acc); }
+.feat p { font-size: 13px; color: var(--mut); margin-top: 5px; }
+.feat a.more { display: inline-block; margin-top: 9px; font-size: 13px; font-weight: 600; }
+.prov-line { font: 500 12.5px var(--mono); color: var(--mut); line-height: 2; }
+.tbl { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 13.5px; }
+.tbl th { text-align: left; font-weight: 600; font-size: 11px; color: var(--faint); padding: 7px 11px; }
+.tbl td { padding: 9px 11px; vertical-align: top; }
+.tbl tbody tr:nth-child(odd) td { background: var(--soft); }
+.tbl tbody tr td:first-child { border-radius: 7px 0 0 7px; }
+.tbl tbody tr td:last-child { border-radius: 0 7px 7px 0; }
+.tbl code { background: none; padding: 0; }
+.faq { max-width: 680px; }
+.faq details { padding: 12px 0; }
+.faq summary { font-weight: 600; font-size: 14px; cursor: pointer; }
+.faq summary::marker { color: var(--acc); }
+.faq details p { color: var(--mut); font-size: 13px; margin-top: 6px; max-width: 620px; }

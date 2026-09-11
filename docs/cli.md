@@ -1,6 +1,5 @@
 # CLI — Mode & Flags
 
-Sumber: `docs/USAGE.md` bagian Mode CLI + Flags, `cli/router.ts`, `cli/index.ts`, `cli/commands/`.
 
 ## Mode
 
@@ -49,6 +48,7 @@ Subcommand di-route di `cli/router.ts:68-122` (13 nama / 11 handler: `stats sess
 | `--resume <id>` | Lanjutkan sesi (full history, bukan dump teks) |
 | `--timeout <ms>` | Hard deadline per run (default 900000; 0 = Infinity) |
 | `--cwd <path>` | Workspace root untuk tool file & jail |
+| `--allow-local-config` | Percayai `.minicode/config.json` + allowlist lokal (default: diabaikan) |
 | `--max-steps <n>` | Batas langkah tool (default 50) |
 | `--context-window <n>` | Ukuran jendela konteks (token) |
 | `--session <id>` | ID sesi (default random, disanitasi) |
@@ -65,6 +65,7 @@ Kepala tabel penuh ada di `docs/USAGE.md`; yang paling sering dipakai:
 | `MINICODE_SANDBOX` | `docker` \| `os` \| `none` |
 | `MINICODE_SANDBOX_STRICT=1` | Fail-closed bila isolasi tak tersedia |
 | `MINICODE_BUDGET_STRICT=1` | Sama dengan `--budget-strict` |
+| `MINICODE_ALLOW_LOCAL_CONFIG=1` | Sama dengan `--allow-local-config` |
 | `MINICODE_TOOL_SCOPE=explore` | Subset read-only |
 | `MINICODE_GREP_ENGINE=js` | Paksa walker internal |
 | `MINICODE_MEMORY_SCOPE` | `cwd` \| `global` \| `all` |
@@ -91,7 +92,12 @@ Kepala tabel penuh ada di `docs/USAGE.md`; yang paling sering dipakai:
 }
 ```
 
-Global (`~/.minicode/config.json`) + lokal (`.minicode/config.json`) di-merge, lokal menang.
+Global (`~/.minicode/config.json`) selalu dibaca. Lokal (`.minicode/config.json`)
+adalah input repo tak terpercaya dan DIABAIKAN kecuali operator opt-in per
+invokasi (`--allow-local-config` / `MINICODE_ALLOW_LOCAL_CONFIG=1`) — tanpa
+itu MCP server lokal tidak di-spawn, endpoint provider lokal tidak dipakai,
+`verifyCommand`/`bashAllowlist` lokal tidak berlaku. Tulis eksplisit
+(`config add --local`) tak terpengaruh.
 
 ## Anti-injeksi flag
 

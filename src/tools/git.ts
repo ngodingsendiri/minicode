@@ -2,12 +2,18 @@ import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 import type { Tool } from "#minicore"
 import { LIMITS } from "../constants.ts"
+import { GIT_NO_DIFF_DRIVERS, GIT_SAFE_BASE, gitFilterNeutralizers } from "../lib/git-hardening.ts"
+import { resolveTrustedExecutable } from "../lib/trusted-exec.ts"
 import { isCwdOutsideRoot, isPathOutsideRoot } from "../policy/jail.ts"
 import { sanitizeSpawnEnv, scrubSecrets } from "../policy/scrub.ts"
 
 function runGit(args: string[], cwd: string | undefined, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    const p = spawn("git", args, {
+    // Audit #10 P0: SEMUA pemanggilan git lewat sini membawa netralisasi
+    // repo-controlled execution (hooks/fsmonitor/pager via GIT_SAFE_BASE).
+    // Executable di-resolve absolut dari PATH terpercaya karena Windows
+    // mencari CWD lebih dulu: `git.bat` di repo akan dieksekusi tanpa ini.
+    const p = spawn(resolveTrustedExecutable("git"), [...GIT_SAFE_BASE, ...args], {
       cwd,
       // Repo hooks (pre-commit/commit-msg/...) berjalan sebagai child dengan
       // env ini — kredensial (API_KEY/TOKEN/...) di-strip agar hook nakal tak
@@ -68,9 +74,17 @@ export const gitStatusTool: Tool = {
     assertCwd(c, sessionRoot)
     const resolvedCwd = c ? resolve(sessionRoot, c) : sessionRoot
     if (!(await isGitRepo(resolvedCwd, ctx.signal))) return "not a git repository"
+    // Audit #10 P0: `git diff` menjalankan clean filter pada berkas dirty
+    // (banding konten worktree vs index) — netralkan seperti shadow ops.
+    // Efek samping: repo dengan filter konversi legitim (mis. LFS) bisa
+    // menampilkan phantom diff; itu display-only dan aman.
+    const neutral = await gitFilterNeutralizers(resolvedCwd)
     const [a, b, d] = await Promise.all([
       runGit(["status", "--porcelain"], resolvedCwd, ctx.signal),
-      runGit(["diff", "--stat"], resolvedCwd, ctx.signal),
+      // Pasangan -c WAJIB sebelum subcommand "diff" (runGit menaruh BASE di
+      // depan; neutral di sini tepat setelahnya). Tanpa ini driver konten
+      // repo ikut jalan saat diff membandingkan worktree.
+      runGit([...neutral, "diff", ...GIT_NO_DIFF_DRIVERS, "--stat"], resolvedCwd, ctx.signal),
       runGit(["log", "--oneline", "-10"], resolvedCwd, ctx.signal),
     ])
     return `status:\n${a || "(clean)"}\n\ndiff --stat:\n${b || "(no diff)"}\n\nlog -10:\n${d || "(no log)"}`
@@ -96,7 +110,12 @@ export const gitDiffTool: Tool = {
       ? resolve(sessionRoot, cwd as string)
       : sessionRoot
     if (!(await isGitRepo(resolvedCwd, ctx.signal))) return "not a git repository"
-    const args = staged ? ["diff", "--staged"] : ["diff"]
+    // Netralisasi clean seperti git_status (lihat di atas): diff full-content
+    // lebih-lebih memicu filter. -c sebelum subcommand.
+    const neutral = await gitFilterNeutralizers(resolvedCwd)
+    const args = staged
+      ? [...neutral, "diff", ...GIT_NO_DIFF_DRIVERS, "--staged"]
+      : [...neutral, "diff", ...GIT_NO_DIFF_DRIVERS]
     return await runGit(args, resolvedCwd, ctx.signal)
   },
 }
@@ -154,7 +173,7 @@ function assertPaths(paths: unknown, cwd: string | undefined, sessionRoot: strin
 export const gitCommitTool: Tool = {
   name: "git_commit",
   description:
-    "Create a git commit. Stage specific paths (paths) or all tracked changes (all:true). Does not support push/amend/reset — that is beyond the agent's authority.",
+    "Create a git commit. Stage specific paths (paths) or all tracked changes (all:true). Does not support push/amend/reset — that is beyond the agent's authority. Never runs repository hooks (--no-verify + isolated hooks path), unlike terminal git commit.",
   parameters: {
     type: "object",
     properties: {
@@ -205,13 +224,33 @@ export const gitCommitTool: Tool = {
 
     // `-m` dengan pesan sebagai satu argumen: tak ada shell yang menginterpretasi
     // isinya, jadi backtick/`$()` di pesan commit tidak dieksekusi.
-    const args = ["commit", "-m", msg]
+    // Audit #10 P0: `--no-verify` mematikan pre-commit/commit-msg repo;
+    // post-commit (+ override hooksPath repo) dimatikan GIT_SAFE_BASE di
+    // runGit. Commit agen tak pernah menjalankan kode repo — bedakan dari
+    // `git commit` terminal yang menjalankan hooks.
+    const args = ["commit", "--no-verify", "-m", msg]
     if (files.length === 0 && all === true) args.push("-a")
 
     const out = await runGit(args, resolvedCwd, ctx.signal)
     // `git commit` keluar non-zero saat tak ada perubahan; runGit sudah
     // meneruskan teksnya, jadi model membaca alasan sebenarnya.
     if (/nothing to commit|no changes added/i.test(out)) {
+      // Audit #08 P1 (retry setelah sukses-yang-responsnya-hilang): tree
+      // bersih + subjek HEAD sama dengan pesan yang diminta = commit pertama
+      // sudah durable. Kembalikan SHA-nya (tanpa commit baru) agar pemanggil
+      // tak mengira tak ada yang ter-commit. Beda subjek = kondisi orang
+      // lain yang commit duluan → perilaku lama (tanpa klaim palsu).
+      try {
+        const subject = (
+          await runGit(["log", "-1", "--format=%s"], resolvedCwd, ctx.signal).catch(() => "")
+        ).trim()
+        if (subject && subject === msg.split("\n")[0]?.trim()) {
+          const head = await runGit(["log", "--oneline", "-1"], resolvedCwd, ctx.signal).catch(
+            () => "",
+          )
+          return `already committed (retry aman — tanpa commit baru):\n${out}${head ? `\n\nHEAD: ${head}` : ""}`
+        }
+      } catch {}
       return `nothing to commit:\n${out}`
     }
     const head = await runGit(["log", "--oneline", "-1"], resolvedCwd, ctx.signal).catch(() => "")

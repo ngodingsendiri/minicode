@@ -1,6 +1,5 @@
 # Policy & Sandbox
 
-Sumber: `src/policy/permission.ts:8`, `src/policy/bash-guard.ts`, `src/policy/sandbox-policy.ts`, `src/sandbox/`, `docs/USAGE.md` bagian Sandbox.
 
 ## 6 permission mode
 
@@ -11,7 +10,7 @@ Sumber: `src/policy/permission.ts:8`, `src/policy/bash-guard.ts`, `src/policy/sa
 | `auto` | Readonly + gated-prompt + file/internal-write allow; `code_run`/`bash` dengan guard. `delegate_task`/`mcp_call`/semua MCP bertitik di-gate (prompt saat TTY, tolak tanpa TTY) |
 | `ask` | Readonly + `NO_PROMPT_TOOLS` auto-allow; sisanya prompt/TTY + allowlist persist |
 | `readonly` | Hanya 18 tool `READONLY_TOOLS` |
-| `plan` | `readonly` + tolak `todo_write`, `delegate_task`, `submit_result`. Tetap strict (usulan split `readonly` vs `plan` ditolak test `plan mode: read-only`) |
+| `plan` | `readonly` + `todo_write` + `delegate_task` (dipaksa explore/read-only) + `submit_result`. Tetap tanpa mutasi file/git/memory (audit #04: delegasi plan tak bisa menulis — child dipaksa explore) |
 | `allowlist` | Bash hanya pola `DEFAULT_BASH_ALLOWLIST`/env; file-write/internal-write sesuai set |
 | `allow-all` | Allow semua; **tetap** tolak bash berbahaya + path jail tetap aktif |
 

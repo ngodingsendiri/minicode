@@ -69,11 +69,27 @@ function firstSentence(s?: string, max = 150): string | undefined {
   return one.length > max ? `${one.slice(0, max - 1)}…` : one
 }
 
+/**
+ * Redaksi rahasia minimal untuk jalur tampil (temuan audit #03).
+ *
+ * src/ui DILARANG mengimpor policy/scrub.ts (ui-boundary), jadi pola penuh
+ * tinggal di sana sebagai kanonis. Yang di sini hanya jaring pengaman untuk
+ * kasus konkret: proxy/server menggemakan kredensial ke dalam body error
+ * (mis. `Authorization: Bearer …`), yang lalu dirender verbatim oleh
+ * formatError. Bukan pengganti scrubSecrets — hanya untuk pesan error.
+ */
+function redactSecrets(s: string): string {
+  return s.replace(
+    /((?:api[_-]?key|token|authorization|bearer|secret|password)\s*[:=]\s*["']?)([^"'\s,}]+)/gi,
+    "$1[redacted]",
+  )
+}
+
 // Mapping kategori formal -> pesan user-friendly. Detail provider disertakan
 // sebagai satu kalimat bila ada (itu yang memberi tahu model mana yang limit,
 // atau tool mana yang tidak didukung) — bukan seluruh body.
 export function friendlyFromCategory(category: string, detail: string): FriendlyError {
-  const truth = detail.trim()
+  const truth = redactSecrets(detail.trim())
   const { detail: providerDetail, hint } = extractProviderDetail(truth)
   const withDetail = (base: string) =>
     providerDetail && providerDetail.toLowerCase() !== base.toLowerCase()
@@ -159,9 +175,9 @@ export function friendlyError(raw: string): FriendlyError {
     return { message: "A run is still in progress", fix: "Wait for the current run to finish." }
   if (lower.includes("aborted")) return { message: "Run was aborted" }
   const { detail } = extractProviderDetail(raw)
-  if (detail) return { message: detail }
+  if (detail) return { message: redactSecrets(detail) }
   const cut = raw.length > 160 ? `${raw.slice(0, 157)}…` : raw
-  return { message: cut }
+  return { message: redactSecrets(cut) }
 }
 
 /** Satu baris siap tampil: pesan + saran. Dipakai renderer TUI & one-shot. */

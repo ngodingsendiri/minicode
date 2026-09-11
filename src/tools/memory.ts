@@ -1,5 +1,5 @@
 import type { Tool } from "#minicore"
-import { appendMemory, readMemoryFile } from "../memory/files.ts"
+import { appendMemory, deleteMemoryLines, readMemoryFile } from "../memory/files.ts"
 import { addMemory, deleteMemoryByQuery, searchHybrid } from "../memory/vector.ts"
 
 export const readMemoryTool: Tool = {
@@ -132,6 +132,9 @@ export const forgetMemoryTool: Tool = {
     if (!q.trim()) throw new Error("query empty")
     const cwd = (ctx as { cwd?: string }).cwd ?? process.cwd()
     const del = await deleteMemoryByQuery(q, cwd)
-    return `deleted ${del} memories matching "${query}"`
+    // Temuan audit #06: vector saja tak cukup — entri file (sumber file
+    // hits) harus ikut terhapus agar "lupa" benar-benar terjadi.
+    const fileDel = await deleteMemoryLines(q, cwd)
+    return `deleted ${del} memories + ${fileDel} file lines matching "${query}"`
   },
 }

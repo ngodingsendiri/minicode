@@ -1,6 +1,5 @@
 # Changelog
 
-Sumber kebenaran: `CHANGELOG.md` di root repo. Halaman ini hanya pintu masuk GitBook + highlight yang paling relevan untuk pemakai dokumentasi.
 
 ## Unreleased — Review P0 + Minimalis (0.9.9)
 

@@ -22,7 +22,12 @@ import {
   undoLastCheckpoint,
   validateResumeWorkspace,
 } from "../src/session/checkpoint.ts"
-import { branchSession, loadSession, saveSession } from "../src/session/persistence.ts"
+import {
+  branchSession,
+  listPersistedTurns,
+  loadSession,
+  saveSession,
+} from "../src/session/persistence.ts"
 
 function memCwd(): string {
   // resolveDbPath memakai <cwd>/.minicode bila dir-nya ada → DB hermetic.
@@ -170,16 +175,37 @@ test("audit: undo rollback file tanpa menyentuh riwayat DB", async () => {
   }
 })
 
-// ── 7. Baris turns tanpa pesan (skew akuntansi turnCount) ──
+// ── 7. Baris turns hanya untuk turn selesai (audit #08 P1 §16) ──
 
-test("audit: save usage tanpa pesan menambah turnCount hampa", async () => {
+test("audit: save usage tanpa pesan tak menambah turnCount hampa", async () => {
   const dir = memCwd()
   try {
     await saveSession("sk-1", dir, undefined, [], { turn: 0 })
     const loaded = loadSession("sk-1", dir)
     expect(loaded?.messages.length).toBe(0)
-    // turnCount dihitung dari MAX(turn_idx)+1 walau nol pesan tersimpan.
-    expect(loaded?.turnCount).toBe(1)
+    // Audit #08: re-save tanpa pesan baru BUKAN turn baru — turnCount 0.
+    // Perilaku lama (1) adalah skew akuntansi: baris turns hampa menekan
+    // stitch warning decideRecovery untuk turn yang tak pernah durable.
+    expect(loaded?.turnCount).toBe(0)
+    expect(listPersistedTurns("sk-1", dir)).toEqual([])
+  } finally {
+    await cleanup(dir)
+  }
+})
+
+test("audit: save ulang riwayat sama tak menambah turn hantu", async () => {
+  const dir = memCwd()
+  try {
+    await saveSession("sk-2", dir, undefined, MSGS, { turn: 0 })
+    // Retry/crash antara save dan finalize: persist yang sama sekali lagi.
+    await saveSession("sk-2", dir, undefined, MSGS, { turn: 0 })
+    expect(listPersistedTurns("sk-2", dir)).toEqual([0])
+    expect(loadSession("sk-2", dir)?.turnCount).toBe(1)
+    // Turn baru (pesan bertambah) tetap tercatat.
+    await saveSession("sk-2", dir, undefined, [...MSGS, { role: "user", content: "x" }], {
+      turn: 1,
+    })
+    expect(listPersistedTurns("sk-2", dir)).toEqual([0, 1])
   } finally {
     await cleanup(dir)
   }

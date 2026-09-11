@@ -1,6 +1,5 @@
 # Pricing & Budget
 
-Sumber: `src/policy/pricing.ts:30`, `cli/commands/pricing.ts`, `src/policy/usage.ts`, `src/ui/render/money.ts`.
 
 ## Harga offline + sync
 

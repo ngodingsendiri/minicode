@@ -4,7 +4,7 @@
 
 import { afterEach, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -352,9 +352,10 @@ test("hook dilewati bila sesi sudah aborted", async () => {
   }
 })
 
-// ── git_commit: hook repo berjalan dengan env tersanitasi ──
+// ── git_commit: hook repo TIDAK dijalankan (audit #10 P0, lebih kuat dari
+// versi lama yang hanya mensanitasi env hook) ──
 
-test("git hook berjalan tetapi tidak melihat secret env", async () => {
+test("git hook repo tidak dijalankan; commit tetap sukses", async () => {
   try {
     const r = spawnSync("git", ["--version"], { stdio: "ignore" })
     if (r.status !== 0) return // tanpa git: lewati
@@ -381,10 +382,14 @@ test("git hook berjalan tetapi tidak melihat secret env", async () => {
     chmodSync(join(root, ".git", "hooks", "pre-commit"), 0o755)
     writeFileSync(join(root, "f.txt"), "isi\n")
     const ctx = { signal: new AbortController().signal, cwd: root } as never
-    await gitCommitTool.execute({ message: "uji hook", paths: ["f.txt"] }, ctx)
-    // Hook terbukti jalan bila berkas env-nya ada; baca gagal = hook tak jalan.
-    const dumped = readFileSync(outFile, "utf8")
-    expect(dumped).not.toContain("shhh-topsecret") // hook jalan, secret tidak bocor
+    const out = (await gitCommitTool.execute(
+      { message: "uji hook", paths: ["f.txt"] },
+      ctx,
+    )) as string
+    expect(out).toContain("HEAD:") // commit tetap terjadi
+    // P0: hook TIDAK dijalankan sama sekali (--no-verify + hooksPath isolasi)
+    // — tak ada berkas env, jadi secret tidak pernah terpapar ke kode repo.
+    expect(existsSync(outFile)).toBe(false)
   } finally {
     if (savedSecret === undefined) delete process.env.HARDEN_PROBE_API_KEY
     else process.env.HARDEN_PROBE_API_KEY = savedSecret

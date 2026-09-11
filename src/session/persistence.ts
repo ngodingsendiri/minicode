@@ -9,6 +9,14 @@ const initializedSessionPaths = new Set<string>()
 function open(cwd?: string): Database {
   const p = dbPath(cwd)
   const db = new Database(p)
+  // busy_timeout DULU, sebelum statement apa pun yang butuh lock (audit #09
+  // P1 §27: dua proses membuka DB bersamaan → PRAGMA journal_mode balapan →
+  // SQLITE_BUSY padahal timeout 3000ms belum aktif — reproducer: 2×
+  // loadSession konkuren lintas proses, satu gagal). Set pragma tak butuh
+  // lock data sehingga aman duluan.
+  try {
+    db.exec(`PRAGMA busy_timeout=${LIMITS.SQLITE_BUSY_TIMEOUT_MS}`)
+  } catch {}
   if (!initializedSessionPaths.has(p)) {
     // journal_size_limit + wal_autocheckpoint: WAL tidak tumbuh tak terbatas
     db.exec(
@@ -164,16 +172,24 @@ export async function saveSession(
       }
     }
     if (usage) {
-      const maxRow = db
-        .prepare("SELECT MAX(turn_idx) as m FROM turns WHERE session_id = ?")
-        .get(id) as { m: number | null } | null
-      const nextIdx = (maxRow?.m ?? -1) + 1
-      db.prepare("INSERT INTO turns (session_id, turn_idx, usage, ts) VALUES (?, ?, ?, ?)").run(
-        id,
-        nextIdx,
-        JSON.stringify(usage),
-        now,
-      )
+      // Audit #08 P1 (§16): baris turns = turn SELESAI, bukan panggilan save.
+      // Menyimpan ulang riwayat yang sama (retry/crash antara save dan
+      // finalize) sebelumnya menambah turn_idx hantu — suppressor stitch
+      // palsu di decideRecovery (turn yang tak pernah durable dikira ada).
+      // Aturan: tumbuh (pesan baru) atau susut (rewrite pasca-kompaksi) =
+      // turn terjadi; sama persis = re-save, bukan turn baru.
+      if (messages.length !== known) {
+        const maxRow = db
+          .prepare("SELECT MAX(turn_idx) as m FROM turns WHERE session_id = ?")
+          .get(id) as { m: number | null } | null
+        const nextIdx = (maxRow?.m ?? -1) + 1
+        db.prepare("INSERT INTO turns (session_id, turn_idx, usage, ts) VALUES (?, ?, ?, ?)").run(
+          id,
+          nextIdx,
+          JSON.stringify(usage),
+          now,
+        )
+      }
     }
     // TTL: hapus sesi basi + orphan rows (best-effort; 0 = forever)
     try {

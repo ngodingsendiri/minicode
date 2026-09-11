@@ -38,6 +38,30 @@ export function authFilePath(): string {
   return AUTH_PATH
 }
 
+// Kunci in-process per berkas (audit #09 P1): saveAuth/removeAuth adalah
+// baca-modifikasi-tulis; dua refresh paralel (dua provider kedaluwarsa
+// bersamaan) tanpa ini last-wins dan menelan kredensial segar salah satu —
+// reproducer: 2× refresh konkuren → satu tetap OLD. Lintas proses tetap
+// last-wins (terdokumentasi, tanpa CAS) — pola sama dengan withConfigLock.
+const authLocks = new Map<string, Promise<void>>()
+
+async function withAuthLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = authLocks.get(path) ?? Promise.resolve()
+  let release!: () => void
+  const next = new Promise<void>((res) => (release = res))
+  authLocks.set(
+    path,
+    prev.then(() => next),
+  )
+  await prev
+  try {
+    return await fn()
+  } finally {
+    release()
+    if (authLocks.get(path) === next) authLocks.delete(path)
+  }
+}
+
 export async function loadAuthStore(): Promise<AuthStore> {
   try {
     const raw = await readFile(AUTH_PATH, "utf8")
@@ -68,18 +92,22 @@ export async function loadAuthStore(): Promise<AuthStore> {
 }
 
 export async function saveAuth(providerId: string, creds: AuthCredentials): Promise<void> {
-  const store = await loadAuthStore()
-  store[providerId] = creds
-  // atomicWriteText sudah chmod 600 + O_EXCL tmp; tak perlu perlakuan khusus.
-  await atomicWriteText(AUTH_PATH, JSON.stringify(store, null, 2))
+  return withAuthLock(AUTH_PATH, async () => {
+    const store = await loadAuthStore()
+    store[providerId] = creds
+    // atomicWriteText sudah chmod 600 + O_EXCL tmp; tak perlu perlakuan khusus.
+    await atomicWriteText(AUTH_PATH, JSON.stringify(store, null, 2))
+  })
 }
 
 export async function removeAuth(providerId: string): Promise<boolean> {
-  const store = await loadAuthStore()
-  if (!store[providerId]) return false
-  delete store[providerId]
-  await atomicWriteText(AUTH_PATH, JSON.stringify(store, null, 2))
-  return true
+  return withAuthLock(AUTH_PATH, async () => {
+    const store = await loadAuthStore()
+    if (!store[providerId]) return false
+    delete store[providerId]
+    await atomicWriteText(AUTH_PATH, JSON.stringify(store, null, 2))
+    return true
+  })
 }
 
 export async function getAuth(providerId: string): Promise<AuthCredentials | undefined> {
