@@ -7,7 +7,7 @@ Prasyarat tunggal: **`bun >= 1.0`**. Minicode memakai `bun:sqlite` langsung — 
 ## Install
 
 ```bash
-git clone https://github.com/ngodingsendiri/minicode && cd minicode
+git clone https://github.com/startupmini/minicode && cd minicode
 bun install && bun link
 ```
 

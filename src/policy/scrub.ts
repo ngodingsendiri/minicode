@@ -20,6 +20,38 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b(?:postgresql|postgres|mysql|mongodb|redis):\/\/[^:\s]+:[^@\s]+@[^\s]+/gi,
   // Bearer token header
   /\bbearer\s+[A-Za-z0-9._-]{20,}\b/gi,
+  // Bearer token header — BENTUK SPASI PENDEK (temuan audit #10 §11,
+  // reproducer: header Authorization Bearer yang pendek lolos karena pola
+  // di atas butuh 20+ char). Min 8 char agar prosa ("Bearer token") tak ikut.
+  /\bbearer\s+["']?[A-Za-z0-9._~+/-]{8,}["']?/gi,
+  // Cookie / session id — nilai sesi adalah bearer-equivalent (audit #10 §11).
+  // Hanya bila berbentuk `key=value`/`key: value` agar prosa aman. `cookie`
+  // case-insensitive; `sessionid` SENGAJA case-sensitive-lowercase (audit #11
+  // §18: bentuk insensitif ikut menyamarkan identifier `sessionId`/`session`
+  // di output tool — mis. `sessionId: string` — padahal itu bukan kredensial).
+  // Guard nilai quoted/berdigit/panjang (audit #11 §18: SQL `session_id = ?`
+  // ikut tersamarkan sebelumnya; placeholder 1-char kini lolos).
+  /\bcookie\s*[:=]\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/=-]*\d[A-Za-z0-9_~+/=-]*|[A-Za-z0-9_~+/=-]{4,})/gi,
+  /\bsession[-_]?id\s*[:=]\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/-]*\d[A-Za-z0-9_~+/-]*|[A-Za-z0-9_~+/-]{4,})/g,
+  // Header kredensial bernilai PENDEK (audit #10 §11, reproducer:
+  // header X-Api-Key bernilai pendek lolos karena pola generik butuh 16+ char).
+  // Nama header eksplisit ⇒ nilai pendek pun aman disamarkan — TETAPI nilai
+  // harus berbentuk kredensial (audit #11 §18: tanpa guard, anotasi TS
+  // `apiKey: string` dan `apiKey = getArg(...)` ikut tersamarkan sehingga
+  // model buta membaca kode sendiri). Guard nilai: quoted ATAU berdigit ATAU
+  // panjang (identifier/type-word lolos; kredensial realistis kena).
+  /\b(?:x-(?:api-?key|auth-?token)|api-?key)\s*[:=]\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/-]*\d[A-Za-z0-9_~+/-]*|[A-Za-z0-9_~+/-]{12,})/gi,
+  // password/secret bernilai pendek. Guard nilai yang sama (audit #11 §18:
+  // `secret = graphemes.join("")` di kode ikut tersamarkan sebelumnya).
+  /\b(?:password|passwd|secret)\s*[:=]\s*(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/-]*\d[A-Za-z0-9_~+/-]*|[A-Za-z0-9_~+/-]{12,})/gi,
+  // Baris env-dump yang NAMANYA mengandung penanda kredensial (audit #10 §12:
+  // bentuk NAME=VALUE semacam itu lolos sebelum pola ini ada).
+  // Case-sensitive + ALL-CAPS agar prosa tak ikut. Nilai wajib berhuruf
+  // (audit #11 §18: konstanta numerik `*_TOKENS = 128_000` ikut tersamarkan),
+  // tak diawali `/` (sumber regex `PATTERN = /.../` ikut tersamarkan),
+  // tanpa kurung (listing `TOKENS = {` selamat), dan total ≥4 char
+  // (`NAME = new RegExp(` di kode sendiri ikut tersamarkan sebelumnya).
+  /\b[A-Z0-9_]*(?:SECRET|TOKEN|PASSWD|PASSWORD|PRIVATE_KEY|API_KEY|CREDENTIALS|CLIENT_SECRET|REFRESH_TOKEN|ACCESS_KEY)[A-Z0-9_]*\s*=\s*(?!\/)["']?[A-Za-z0-9._~+/$-]*[A-Za-z][A-Za-z0-9._~+/$-]{3,}["']?/g,
   // Slack tokens
   /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g,
   // NPM tokens
@@ -28,12 +60,19 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g,
 ]
 
+// Query-param kredensial di URL (audit #10 §10, reproducer: query
+// api_key bernilai pendek lolos karena pola `api_key=` butuh 16+ char).
+// Nama param dipertahankan untuk diagnostik, nilainya yang disamarkan —
+// karena itu polanya diaplikasikan TERPISAH dengan replacement `$1[REDACTED]`.
+const QUERY_PARAM_RE =
+  /([?&](?:api[_-]?key|apikey|token|auth[_-]?token|access[_-]?token|secret|client[_-]?secret|password|sig(?:nature)?)=)[^&\s"'<>]*/gi
+
 // Redact secrets dalam teks. Ganti match dengan [REDACTED].
 // Tidak ada whitelist kata (test/example/mock) — secret sungguhan bisa saja
 // mengandung substring itu; false-positive redaction lebih aman daripada leak.
 export function scrubSecrets(text: string): string {
   if (!text) return text
-  let out = text
+  let out = text.replace(QUERY_PARAM_RE, "$1[REDACTED]")
   for (const re of SECRET_PATTERNS) out = out.replace(re, "[REDACTED]")
   return out
 }

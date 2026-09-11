@@ -336,6 +336,29 @@ export async function deleteSession(id: string, cwd?: string) {
       },
     ).catch(() => {})
   } catch {}
+  // Audit #10 §17: ref shadow-git (`refs/minicode/<sesi>/*`) menunjuk tree
+  // berisi ISI file saat snapshot — tanpa prune, konten sesi yang dihapus
+  // tetap reachable via `git cat-file`. pruneSessionRefs sudah ada & teruji,
+  // tetapi tak pernah dipanggil dari sini (jalur cleanup mati). Best-effort.
+  try {
+    const { pruneSessionRefs } = await import("./shadow-git.ts")
+    await pruneSessionRefs(cwd ?? process.cwd(), id).catch(() => {})
+  } catch {}
+  // Audit #10 §17: traces.jsonl/step-traces.jsonl adalah berkas bersama
+  // per-workspace — baris sesi yang dihapus bertahan sebagai residual
+  // (prompt/args/error mentah masih terbaca pasca-delete). Purge baris milik
+  // sesi ini saja; sesi lain tak tersentuh. Best-effort.
+  try {
+    const { purgeSessionTraces } = await import("../telemetry/trace.ts")
+    await purgeSessionTraces(id, cwd).catch(() => {})
+  } catch {}
+  // Audit #13 chain 28: daftar todo + snapshot rencana adalah state milik
+  // sesi — tanpa purge, isi rencana (bisa memuat secret/path kerja) bertahan
+  // sebagai residual reachable pasca-delete. Best-effort.
+  try {
+    const { deleteTodoFiles } = await import("../tools/todo.ts")
+    await deleteTodoFiles(id, cwd ?? process.cwd()).catch(() => {})
+  } catch {}
 }
 
 // P13 P1 — branch: fork sesi (history + turns) ke id baru tanpa menyentuh

@@ -38,6 +38,15 @@ function planPath(sessionId: string, cwd: string): string {
   return resolve(cwd, ".minicode", "plans", `${safe}.md`)
 }
 
+// Audit #13 chain 28: todo + plan snapshot adalah state milik sesi —
+// deleteSession wajib menghapusnya agar konten rencana tak bertahan sebagai
+// residual reachable pasca-hapus. Best-effort (kegagalan tak menggagalkan hapus).
+export async function deleteTodoFiles(sessionId: string, cwd: string): Promise<void> {
+  const { rm } = await import("node:fs/promises")
+  await rm(todoPath(sessionId, cwd), { force: true }).catch(() => {})
+  await rm(planPath(sessionId, cwd), { force: true }).catch(() => {})
+}
+
 /** Sanitasi + batasi daftar. Diekspor untuk test. */
 export function normalizeTodos(input: unknown): TodoItem[] {
   if (!Array.isArray(input)) throw new Error("todos must be an array")

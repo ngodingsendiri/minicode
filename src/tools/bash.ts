@@ -176,7 +176,7 @@ function startBackground(cmd: string, cwd: string | undefined): string {
 export const bashTool: Tool = {
   name: "bash",
   description:
-    "Run a shell command (timeout 30s). Set background:true for long-running processes (dev server, watcher), then collect output via bash_output.",
+    "Run a shell command (timeout 30s). Set background:true for long-running processes (dev server, watcher), then collect output via bash_output. Prefer git_status/git_diff/git_log tools over raw `git` commands: raw git executes repository-configured hooks, filters and diff drivers.",
   parameters: {
     type: "object",
     properties: {

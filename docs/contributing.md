@@ -7,7 +7,7 @@ Lisensi **MIT** (lihat `LICENSE`). Kontribusi publik diterima. Dokumen ini merek
 ## Setup dev
 
 ```bash
-git clone https://github.com/ngodingsendiri/minicode && cd minicode
+git clone https://github.com/startupmini/minicode && cd minicode
 bun install
 bun test              # offline/hermetic; live & docker di-skip otomatis
 bun x tsc --noEmit

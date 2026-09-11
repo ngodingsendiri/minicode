@@ -70,18 +70,46 @@ function firstSentence(s?: string, max = 150): string | undefined {
 }
 
 /**
- * Redaksi rahasia minimal untuk jalur tampil (temuan audit #03).
+ * Redaksi rahasia minimal untuk jalur tampil (temuan audit #03, diperketat
+ * audit #10 §8/§10/§11).
  *
  * src/ui DILARANG mengimpor policy/scrub.ts (ui-boundary), jadi pola penuh
  * tinggal di sana sebagai kanonis. Yang di sini hanya jaring pengaman untuk
  * kasus konkret: proxy/server menggemakan kredensial ke dalam body error
  * (mis. `Authorization: Bearer …`), yang lalu dirender verbatim oleh
  * formatError. Bukan pengganti scrubSecrets — hanya untuk pesan error.
+ *
+ * Dua bentuk ditangani BERURUTAN (temuan audit #10, reproducer: header
+ * Authorization Bearer — sebelumnya hanya `Authorization:` yang teredaksi
+ * sebagai key=value sehingga token aslinya tetap tampil):
+ *  1. `Bearer <token>` spasi (bentuk header HTTP yang sah — tanpa `:`/`=`).
+ *  2. `key=value`/`key: value` untuk kata-kunci kredensial + cookie/session.
+ * `sessionid` dibatasi lowercase eksplisit (audit #11 §18: pola insensitif
+ * ikut menyamarkan identifier `sessionId` di pesan error).
+ * Guard nilai quoted/berdigit/panjang dipakai di kedua pola kv (audit #11
+ * §18: tanpa guard, `token: string` dan SQL `session_id = ?` ikut tersamarkan
+ * sehingga diagnostik sah buta).
  */
 function redactSecrets(s: string): string {
-  return s.replace(
-    /((?:api[_-]?key|token|authorization|bearer|secret|password)\s*[:=]\s*["']?)([^"'\s,}]+)/gi,
-    "$1[redacted]",
+  // Nilai berbentuk kredensial: quoted, atau berdigit, atau panjang.
+  // Identifier/type-word (`string`, `graphemes`, `?`) lolos; token realistis kena.
+  // `=` termasuk agar nilai cookie berbentuk pasangan kunci-nilai utuh tersamarkan.
+  const V = `(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/=-]*\\d[A-Za-z0-9_~+/=-]*|[A-Za-z0-9_~+/=-]{12,})`
+  const V4 = `(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/=-]*\\d[A-Za-z0-9_~+/=-]*|[A-Za-z0-9_~+/=-]{4,})`
+  return (
+    s
+      .replace(/\bbearer\s+["']?[A-Za-z0-9._~+/-]{6,}["']?/gi, "Bearer [redacted]")
+      .replace(
+        new RegExp(
+          `((?:api[_-]?key|token|authorization|secret|password|client[_-]?secret|cookie)\\s*[:=]\\s*)(?!\\[redacted\\])(${V})`,
+          "gi",
+        ),
+        "$1[redacted]",
+      )
+      .replace(
+        new RegExp(`(\\bsession[-_]?id\\s*[:=]\\s*)(${V4})`, "g"),
+        "$1[redacted]",
+      )
   )
 }
 

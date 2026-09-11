@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { escAttr, firstPara } from "./fm.ts"
-import { mdToHtml } from "./md.ts"
+import { extractHeadings, mdToHtml } from "./md.ts"
 import { docMeta, readDocNav, type DocEntry } from "./nav.ts"
 import { mdLinksToHtml, renderPage } from "./page.ts"
 
@@ -42,8 +42,22 @@ export function buildDocs(
     const desc = (firstPara(raw).slice(0, 160) || meta.desc).trim()
     const safeDesc = desc.length >= 20 ? desc : meta.desc
     // Hapus H1 pertama dari markdown — judul halaman pakai SUMMARY (satu saja).
+    // Pola toleran atribut karena heading renderer kini membawa id+anchor.
     let content = mdLinksToHtml(mdToHtml(raw))
-    content = content.replace(/^<h1>[\s\S]*?<\/h1>\s*/, "")
+    content = content.replace(/^<h1\b[^>]*>[\s\S]*?<\/h1>\s*/, "")
+    // TOC hanya untuk halaman panjang (audit website: halaman kecil tak butuh).
+    // Ambang: ≥4 H2. ID dihitung dari sumber dengan algoritma yang sama
+    // seperti renderer sehingga href selalu resolve (dijaga web-check).
+    const h2s = extractHeadings(raw).filter((h) => h.level === 2)
+    const toc =
+      h2s.length >= 4
+        ? `<nav class="toc" aria-label="Daftar isi"><p>Daftar isi</p><ul>${h2s
+            .map(
+              (h) =>
+                `<li><a href="#${h.id}">${escAttr(h.text.replace(/[*_`[\]()#]/g, ""))}</a></li>`,
+            )
+            .join("")}</ul></nav>`
+        : ""
     const hrefOf = (e2: { slug: string }): string =>
       e2.slug === "readme" ? "/docs/" : `/docs/${e2.slug}.html`
     const prev = entries[idx - 1]
@@ -56,7 +70,7 @@ export function buildDocs(
     const body =
       `<div class="doc-layout">${renderDocSidebar(entries, e.slug)}` +
       `<div class="doc-main">` +
-      `<article class="doc-body"><h1>${e.title}</h1>${content}</article>${nav}</div>` +
+      `<article class="doc-body"><h1>${e.title}</h1>${toc}${content}</article>${nav}</div>` +
       `</div>`
     const rel = e.slug === "readme" ? "docs/index.html" : `docs/${e.slug}.html`
     const canon = e.slug === "readme" ? `${base}/docs/` : `${base}/docs/${e.slug}.html`

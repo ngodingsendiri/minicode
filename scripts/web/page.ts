@@ -41,16 +41,18 @@ export function mdLinksToHtml(html: string): string {
 }
 
 export function softwareJsonld(version: string): string {
-  return escAttr(
-    JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      name: "Minicode",
-      applicationCategory: "DeveloperApplication",
-      operatingSystem: "Windows, Linux, macOS",
-      softwareVersion: version,
-      license: "https://opensource.org/licenses/MIT",
-      offers: { "@type": "Offer", price: "0" },
-    }),
-  )
+  // Audit website: JANGAN escAttr() di sini — hasilnya masuk BODY <script>,
+  // bukan atribut; entity `&quot;` tidak di-decode di sana sehingga JSON-LD
+  // invalid (crawler gagal parse). `</` di-escape agar `</script>` di dalam
+  // string tak bisa menutup tag (JSON tetap valid).
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Minicode",
+    applicationCategory: "DeveloperApplication",
+    operatingSystem: "Windows, Linux, macOS",
+    softwareVersion: version,
+    license: "https://opensource.org/licenses/MIT",
+    offers: { "@type": "Offer", price: "0" },
+  }).replaceAll("</", "<\\/")
 }

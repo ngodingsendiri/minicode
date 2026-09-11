@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         continue-on-error: true
         with:
-          repository: ngodingsendiri/minicore
+          repository: startupmini/minicore
           path: minicore
 
       - uses: oven-sh/setup-bun@v2

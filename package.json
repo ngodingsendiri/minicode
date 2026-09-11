@@ -15,13 +15,13 @@
     "lsp",
     "bun"
   ],
-  "homepage": "https://github.com/ngodingsendiri/minicode#readme",
+  "homepage": "https://github.com/startupmini/minicode#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ngodingsendiri/minicode.git"
+    "url": "git+https://github.com/startupmini/minicode.git"
   },
   "bugs": {
-    "url": "https://github.com/ngodingsendiri/minicode/issues"
+    "url": "https://github.com/startupmini/minicode/issues"
   },
   "bin": {
     "minicode": "./cli/index.ts"

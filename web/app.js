@@ -14,7 +14,11 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(checkMi);
   else window.addEventListener("load", checkMi);
   var themeBtn = document.getElementById("themebtn");
+  if (themeBtn) themeBtn.setAttribute("aria-pressed", root.getAttribute("data-theme") === "dark" ? "true" : "false");
   if (themeBtn) themeBtn.addEventListener("click", function () {
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    themeBtn.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
     var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
     root.setAttribute("data-theme", next);
     try { localStorage.setItem("minicode-theme", next); } catch (_) {}

@@ -1,5 +1,7 @@
 # Tools (37)
 
+Referensi lengkap tool Minicode: filesystem, search, exec, git, web, memory, plan, agents, MCP, LSP.
+
 Daftar pasti kapan pun:
 
 ```bash

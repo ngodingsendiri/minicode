@@ -63,7 +63,44 @@ check(
   missing.slice(0, 5).join("; "),
 )
 
-// Anti-bocor: pola kredensial tidak boleh masuk site/.
+// Anchor #fragment harus resolve ke id di halaman yang sama atau target
+// (audit website FIX#7: heading tanpa id membuat deep-link mustahil).
+const idOf = (src: string): Set<string> =>
+  new Set([...src.matchAll(/id="([^"]+)"/g)].map((m) => m[1]!))
+const byRel = new Map<string, string>()
+for (const f of files) {
+  byRel.set(
+    f.slice(siteDir.length).replaceAll("\\", "/"),
+    readFileSync(f, "utf8"),
+  )
+}
+const badAnchor: string[] = []
+for (const [relPath, src] of byRel) {
+  for (const m of src.matchAll(/href="([^"]*)"/g)) {
+    const href = m[1]!
+    const hash = href.indexOf("#")
+    if (hash === -1) continue
+    const frag = href.slice(hash + 1)
+    if (!frag) continue // href="#" pelengkap, bukan tautan section
+    let target = href.slice(0, hash)
+    if (!target) target = relPath
+    else if (!target.startsWith("/")) continue // relatif/eksternal di luar kontrak
+    else if (target === "/") target = "/index.html"
+    else if (target.endsWith("/")) target = `${target}index.html`
+    // /docs/x -> /docs/x.html (pola sama seperti cek link).
+    const candidates = [target, `${target}.html`]
+    const found = candidates.find((c) => byRel.has(c))
+    if (!found) continue // berkas hilang sudah dilaporkan cek link
+    if (!idOf(byRel.get(found)!).has(decodeURIComponent(frag))) {
+      badAnchor.push(`${relPath} -> ${href}`)
+    }
+  }
+}
+check(
+  `anchor #fragment resolve (${files.length} halaman)`,
+  badAnchor.length === 0,
+  badAnchor.slice(0, 5).join("; "),
+)
 const SECRET = [
   /sk-[A-Za-z0-9]{8,}/,
   /ghp_[A-Za-z0-9]+/,

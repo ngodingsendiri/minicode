@@ -35,12 +35,32 @@ function isTableSep(line: string): boolean {
 }
 
 function renderTable(head: string, rows: string[]): string {
-  const cells = (l: string): string[] =>
-    l
-      .trim()
-      .replace(/^\||\|$/g, "")
-      .split("|")
-      .map((c) => c.trim())
+  // Pecah baris tabel TANPA memotong `|` di dalam code span atau `\|`
+  // (audit website: split buta menghasilkan sel ekstra + backtick rusak di
+  // separuh tabel referensi). `\|` menjadi `|` literal (escape dikonsumsi).
+  const cells = (l: string): string[] => {
+    const src = l.trim().replace(/^\||\|$/g, "")
+    const out: string[] = []
+    let cur = ""
+    let inCode = false
+    for (let i = 0; i < src.length; i++) {
+      const ch = src[i]!
+      if (ch === "`") {
+        inCode = !inCode
+        cur += ch
+      } else if (ch === "\\" && src[i + 1] === "|") {
+        cur += "|"
+        i++
+      } else if (ch === "|" && !inCode) {
+        out.push(cur.trim())
+        cur = ""
+      } else {
+        cur += ch
+      }
+    }
+    out.push(cur.trim())
+    return out
+  }
   const th = cells(head)
     .map((c) => `<th>${inlineMd(c)}</th>`)
     .join("")
@@ -56,8 +76,61 @@ function renderTable(head: string, rows: string[]): string {
   return `<table class="${cls}"><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`
 }
 
+/** Slug stabil untuk id heading: huruf-kecil, non-alnum jadi strip. */
+export function slugifyHeading(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\u00C0-\u024F\u1E00-\u1EFF]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "bagian"
+  )
+}
+
+export interface Heading {
+  level: number
+  text: string
+  id: string
+}
+
+/**
+ * Pindai heading H1–H3 sumber markdown dengan slug+dedup yang SAMA PERSIS
+ * seperti mdToHtml (satu algoritma, dipakai renderer + TOC agar id tak
+ * divergen). Dipakai docs.ts untuk TOC halaman panjang.
+ */
+export function extractHeadings(src: string): Heading[] {
+  const out: Heading[] = []
+  const seen = new Map<string, number>()
+  let inFence = false
+  for (const rawLine of src.replaceAll("\r\n", "\n").split("\n")) {
+    // Samakan dengan mdToHtml: baris `#` di dalam fence BUKAN heading.
+    if (/^```(\w*)\s*$/.exec(rawLine.trim())) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const h = /^(#{1,3})\s+(.*)$/.exec(rawLine)
+    if (!h) continue
+    const text = h[2]!.trim()
+    if (!text) continue
+    const base = slugifyHeading(text.replace(/[*_`[\]()]/g, ""))
+    const n = (seen.get(base) ?? 0) + 1
+    seen.set(base, n)
+    out.push({ level: h[1]!.length, text, id: n === 1 ? base : `${base}-${n}` })
+  }
+  return out
+}
+
 /** Ubah markdown subset menjadi HTML. Aman: fence di-escape penuh. */
 export function mdToHtml(src: string): string {
+  const headingIds = new Map<string, number>()
+  // ID heading deterministik — urutan + dedup SAMA dengan extractHeadings.
+  const nextId = (text: string): string => {
+    const base = slugifyHeading(text.replace(/[*_`[\]()]/g, ""))
+    const n = (headingIds.get(base) ?? 0) + 1
+    headingIds.set(base, n)
+    return n === 1 ? base : `${base}-${n}`
+  }
   const lines = src.replaceAll("\r\n", "\n").split("\n")
   const html: string[] = []
   let i = 0
@@ -107,7 +180,12 @@ export function mdToHtml(src: string): string {
     if (h) {
       closeList()
       const lvl = h[1]!.length
-      html.push(`<h${lvl}>${inlineMd(h[2]!.trim())}</h${lvl}>`)
+      const htext = h[2]!.trim()
+      const hid = nextId(htext)
+      // Taut anchor hover-reveal (CSS) agar setiap section bisa di-deep-link.
+      html.push(
+        `<h${lvl} id="${hid}"><a class="hl" href="#${hid}" aria-label="Tautan ke bagian ini">#</a>${inlineMd(htext)}</h${lvl}>`,
+      )
       i++
       continue
     }

@@ -8,7 +8,7 @@
   --soft: #f3f4f6;
   --ink: #191b1f;
   --mut: #5f6672;
-  --faint: #98a0ab;
+  --faint: #6b7280;
   --acc: #3b63d1;
   --acc-text: #2e4fb0;
   --code-bg: #161618;
@@ -28,7 +28,7 @@ html[data-theme="dark"] {
   --soft: #1a1c20;
   --ink: #e8eaef;
   --mut: #a5abb6;
-  --faint: #7b828e;
+  --faint: #868e99;
   --acc: #6e92f7;
   --acc-text: #8fb0ff;
   --code-bg: #0d0e10;
@@ -36,6 +36,9 @@ html[data-theme="dark"] {
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 body { background: var(--bg); color: var(--ink); font: 15px/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
 body.doc { font-size: var(--fs-doc); line-height: 1.8; }
 ::selection { background: rgba(59, 99, 209, 0.16); }

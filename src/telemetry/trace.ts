@@ -1,4 +1,4 @@
-import { appendFile, chmod, mkdir, readFile } from "node:fs/promises"
+import { appendFile, chmod, mkdir, readFile, unlink } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { LIMITS } from "../constants.ts"
 import { atomicWriteText } from "../lib/atomic-write.ts"
@@ -174,6 +174,53 @@ export async function writeStepTrace(cwd: string | undefined, step: StepTrace): 
   } catch {}
 }
 
+// Audit #10 §17: penghapusan sesi wajib mencakup jejak telemetry miliknya.
+// traces.jsonl/step-traces.jsonl adalah berkas bersama per-workspace (untuk
+// `minicode stats`), sehingga baris sesi yang dihapus bertahan sebagai
+// residual reachable — reproducer: writeTrace marker → deleteSession → marker
+// masih terbaca. Fungsi ini membuang HANYA baris dengan sessionId cocok via
+// rewrite atomik; baris korup (tak ter-parse) DIPERTAHANKAN (fail-closed:
+// jangan hapus yang tak bisa diatribusikan).
+//
+// Tradeoff jujur: rewrite read-filter-write balapan dengan append konkuren
+// (trace sesi lain yang ditulis tepat di jendela ini bisa hilang — kehilangan
+// observability, bukan kebocoran). Dipanggil best-effort dari deleteSession.
+export async function purgeSessionTraces(
+  sessionId: string,
+  cwd: string | undefined,
+): Promise<number> {
+  let removed = 0
+  for (const name of ["traces.jsonl", "step-traces.jsonl"]) {
+    try {
+      const file = join(resolve(cwd ?? ".", ".minicode"), name)
+      let txt: string
+      try {
+        txt = await readFile(file, "utf8")
+      } catch {
+        continue // tak ada berkas = tak ada residual
+      }
+      const lines = txt.split("\n").filter(Boolean)
+      if (lines.length === 0) continue
+      const keep: string[] = []
+      for (const line of lines) {
+        try {
+          const row = JSON.parse(line) as { sessionId?: unknown }
+          if (row.sessionId === sessionId) {
+            removed++
+            continue
+          }
+        } catch {
+          // baris korup: pertahankan (lihat kontrak di atas)
+        }
+        keep.push(line)
+      }
+      if (keep.length === lines.length) continue // tak ada milik sesi ini
+      if (keep.length === 0) await unlink(file).catch(() => {})
+      else await atomicWriteText(file, `${keep.join("\n")}\n`)
+    } catch {}
+  }
+  return removed
+}
 // Harness-P3: agregat step-trace untuk `minicode stats` — data observability
 // per-step (P1.2) kembali menjadi keputusan: deny-rate, tool paling sering
 // ditolak/gagal, mode sandbox yang terlihat. Pure agar bisa diuji.

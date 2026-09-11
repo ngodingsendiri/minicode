@@ -61,7 +61,8 @@ async function isGitRepo(cwd: string, signal: AbortSignal): Promise<boolean> {
 
 export const gitStatusTool: Tool = {
   name: "git_status",
-  description: "git status --porcelain + diff --stat + log --oneline -10",
+  description:
+    "git status --porcelain + diff --stat + log --oneline -10 (hardened: ignores repository hooks, filters and diff drivers — prefer over raw `git` in bash)",
   parameters: {
     type: "object",
     properties: { cwd: { type: "string" } },
@@ -79,8 +80,12 @@ export const gitStatusTool: Tool = {
     // Efek samping: repo dengan filter konversi legitim (mis. LFS) bisa
     // menampilkan phantom diff; itu display-only dan aman.
     const neutral = await gitFilterNeutralizers(resolvedCwd)
+    // Audit #13 chain 6: `git status --porcelain` pun menerapkan clean filter
+    // untuk entri racy (file baru diubah vs index) — tanpa neutral, review
+    // status di repo jahat mengeksekusi perintah repo (reproducer:
+    // PWNED-clean.txt muncul dari git_status). Neutral ikut ke status.
     const [a, b, d] = await Promise.all([
-      runGit(["status", "--porcelain"], resolvedCwd, ctx.signal),
+      runGit([...neutral, "status", "--porcelain"], resolvedCwd, ctx.signal),
       // Pasangan -c WAJIB sebelum subcommand "diff" (runGit menaruh BASE di
       // depan; neutral di sini tepat setelahnya). Tanpa ini driver konten
       // repo ikut jalan saat diff membandingkan worktree.
@@ -93,7 +98,8 @@ export const gitStatusTool: Tool = {
 
 export const gitDiffTool: Tool = {
   name: "git_diff",
-  description: "git diff (unstaged) or git diff --staged",
+  description:
+    "git diff (unstaged) or git diff --staged (hardened: ignores repository hooks, filters and diff drivers — prefer over raw `git diff` in bash)",
   parameters: {
     type: "object",
     properties: {
@@ -122,7 +128,7 @@ export const gitDiffTool: Tool = {
 
 export const gitLogTool: Tool = {
   name: "git_log",
-  description: "git log --oneline -n",
+  description: "git log --oneline -n (hardened: ignores repository hooks and pager)",
   parameters: {
     type: "object",
     properties: {

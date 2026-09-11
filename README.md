@@ -35,13 +35,13 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 ## Quickstart
 ```bash
 # sekali saja — install & setup (butuh bun >= 1.0, TANPA clone tambahan)
-git clone https://github.com/ngodingsendiri/minicode && cd minicode
+git clone https://github.com/startupmini/minicode && cd minicode
 bun install && bun link
 
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali
 minicode "buat http server" --verbose   # sekali jalan
-minicode auth login     # login OAuth device-code (tanpa API key)
+minicode auth login     # login OAuth device-code bila provider mendukung (tanpa API key); lainnya via API key
 minicode providers      # daftar gateway (tanpa LLM)
 minicode models --match gemini  # cari model lintas provider
 minicode sync           # refresh model baru dari semua provider
@@ -190,6 +190,6 @@ Catatan lingkungan:
 
 ## Lisensi
 
-**MIT License.** Bebas pakai, modifikasi, distribusi — lihat [LICENSE](LICENSE). Copyright (c) 2026 ngodingsendiri.
+**MIT License.** Bebas pakai, modifikasi, distribusi — lihat [LICENSE](LICENSE). Copyright (c) 2026 startupmini.
 
 Lihat `docs/ARCHITECTURE.html` + `docs/HARNESS.md` + `PLAN.md`.

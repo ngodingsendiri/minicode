@@ -44,15 +44,39 @@ export function slugify(s: string): string {
     .slice(0, 80)
 }
 
-/** Ambil paragraf pertama sebagai deskripsi fallback. */
+/**
+ * Ambil paragraf prose pertama sebagai deskripsi fallback (FIX#8 web).
+ * Aturan (audit website): lewati heading, fence, tabel, SEMUA list (`- `,
+ * `* `, `1. `), quote (`>`), dan baris kode; render `[teks](url)` jadi teks;
+ * potong di batas kata ~155 char. Tanpa ini description berisi sintaks mentah
+ * (`[Instalasi](getting-started.md)` → "Instalasigetting-star").
+ */
 export function firstPara(md: string): string {
   const norm = md.replaceAll("\r\n", "\n")
   const lines = norm.split("\n").map((l) => l.trim())
   for (const l of lines) {
-    if (!l || l.startsWith("#") || l.startsWith("```") || l.startsWith("|") || l.startsWith("*")) {
+    if (
+      !l ||
+      l.startsWith("#") ||
+      l.startsWith("```") ||
+      l.startsWith("|") ||
+      l.startsWith("*") ||
+      l.startsWith("- ") ||
+      l.startsWith(">") ||
+      /^\d+\.\s/.test(l)
+    ) {
       continue
     }
-    return l.replace(/[#*`[\]()]/g, "").slice(0, 160)
+    // [teks](url) → teks; sisa marker inline dibuang (bukan atribut: aman).
+    const text = l
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/[*_`#]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+    if (text.length < 20) continue
+    if (text.length <= 155) return text
+    const cut = text.slice(0, 154)
+    return `${cut.slice(0, cut.lastIndexOf(" ") || 154).trimEnd()}…`
   }
   return ""
 }

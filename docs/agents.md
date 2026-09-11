@@ -12,7 +12,7 @@ Approval: `delegate_task` di-gate — TTY meminta persetujuan sekali per delegas
 | Mode anak | Kemampuan |
 |---|---|
 | `explore` | Subset read-only (12 tool) — cari/pahami kode, kembalikan temuan |
-| `plan` | Read-only + todo (rencana tertulis), tetap tanpa mutasi |
+| `plan` | Read-only + `todo_read` (baca rencana parent), tetap tanpa mutasi dan tanpa `todo_write` |
 
 Restriksi anak (selalu, tanpa kecuali): **tanpa** MCP, `git_commit`, memory-tulis, todo-tulis, job background, nesting (anak tidak bisa mendelegasi lagi). Plan-parent dipaksa explore saat mendelegasi.
 

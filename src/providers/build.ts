@@ -71,7 +71,7 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
  * Dipisah dari `buildProviderList` agar jalur sinkron yang sudah ada tidak
  * berubah perilaku, dan agar pemanggil yang tak peduli OAuth tak jadi async.
  * Provider OAuth yang belum login dibuang dengan peringatan — lebih baik hilang
- * dari daftar daripada mengirim `Authorization: Bearer undefined`.
+ * dari daftar daripada mengirim header Authorization tanpa token.
  */
 export async function buildProviderListAsync(cfg: MinicodeConfig): Promise<ModelProvider[]> {
   const resolved: MinicodeConfig = { ...cfg, providers: [] }

@@ -7,8 +7,8 @@ berlaku sejak v0.7.0.
 ## Development Setup
 
 ```bash
-git clone https://github.com/ngodingsendiri/minicode && cd minicode
-git clone https://github.com/ngodingsendiri/minicore ../minicore   # dependensi sibling
+git clone https://github.com/startupmini/minicode && cd minicode
+git clone https://github.com/startupmini/minicore ../minicore   # dependensi sibling
 bun install
 bun test              # offline/hermetic (live & docker di-skip otomatis)
 bun x tsc --noEmit    # typecheck strict — mencakup src cli test bench scripts

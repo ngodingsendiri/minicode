@@ -42,7 +42,7 @@ Yang Anda butuhkan: Bun versi 1.0 ke atas. Tidak perlu instalasi lain.
 
 ```bash
 # Salin repo ke komputer Anda
-git clone https://github.com/ngodingsendiri/minicode && cd minicode
+git clone https://github.com/startupmini/minicode && cd minicode
 
 # Pasang ketergantungan
 bun install && bun link

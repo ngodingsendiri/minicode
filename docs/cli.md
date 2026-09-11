@@ -1,5 +1,6 @@
 # CLI — Mode & Flags
 
+Semua cara menjalankan Minicode: interaktif, sekali jalan, pipe, dan otomasi CI — plus flags dan environment.
 
 ## Mode
 

@@ -18,7 +18,7 @@ export function landingFeatures(): string {
     [
       "hub",
       "Provider (14)",
-      "OpenAI-compat, Anthropic, router fallback, OAuth device-code tanpa API key.",
+      "OpenAI-compat, Anthropic, router fallback, OAuth device-code untuk provider yang mendukung.",
       "/docs/config-providers.html",
       "Config & provider",
     ],
@@ -94,7 +94,7 @@ export function landingFaq(): string {
   const faqs = [
     [
       "Butuh API key?",
-      "Tidak. <code>minicode auth login</code> memakai OAuth device-code, tanpa API key.",
+      "Tergantung provider. Yang mendukung OAuth (mis. Qwen): <code>minicode auth login qwen</code> memakai device-code, tanpa API key. Provider lain tetap memakai API key — detail di Config &amp; Provider.",
     ],
     [
       "Jalan di Windows?",

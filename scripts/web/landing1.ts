@@ -19,6 +19,10 @@ export function landingHero(version: string): string {
   bash bun run server.ts
 Hello world di http://localhost:3000 — receipt permanen di scrollback,
 progres transient tidak bocor ke output.</code></pre></div>
+<figure class="shot" role="img" aria-label="Contoh sesi Minicode: tulis file, jalankan server, tampil ringkasan biaya">
+<svg viewBox="0 0 640 188" width="100%" role="presentation" aria-hidden="true"><rect width="640" height="188" rx="12" fill="#161618"/><text x="20" y="34" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#e6e8ee">$ minicode &#8220;buat http server di server.ts&#8221;</text><text x="20" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#7fd1a3">  ✓ write_file server.ts (214 chars)</text><text x="20" y="90" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#7fd1a3">  ✓ $ bun run server.ts</text><text x="36" y="114" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#8b8f98">Hello world di http://localhost:3000</text><text x="20" y="142" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#8b8f98">  128 token · $0.0004 · 2 langkah · 4s</text><text x="20" y="170" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#e6e8ee">Server jalan. Mau saya tambah route /health?</text></svg>
+<figcaption>Transkrip asli yang dirender: receipt tiap tool, biaya sesi, tanpa layar khusus.</figcaption>
+</figure>
 </section>`
 }
 

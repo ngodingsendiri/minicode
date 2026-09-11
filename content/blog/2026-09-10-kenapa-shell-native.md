@@ -26,4 +26,4 @@ Untuk memastikan hal ini berjalan lancar, Minicode memiliki satu aturan saja: ha
 
 Pendekatan ini membuat hasil kerja Anda tetap terlihat jelas, tidak ada yang bersembunyi, dan Anda selalu tahu apa yang sedang terjadi. Tidak ada tampilan khusus yang harus dibuka atau ditutup, tidak ada panel yang mengubah tampilan Anda secara tiba-tiba.
 
-Jika Anda ingin memahami lebih detail tentang bagaimana Minicode menangani tampilan ini, Anda bisa membacanya di halaman Arsitektur atau dokumen kontrak terminal di repositori.
+Jika Anda ingin memahami lebih detail tentang bagaimana Minicode menangani tampilan ini, baca [Arsitektur](/docs/architecture.html) atau [Kontrak Terminal](/docs/terminal.html).
