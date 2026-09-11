@@ -74,6 +74,19 @@ function getArg(name: string): string | undefined {
   return rawGetArg(args, name)
 }
 
+// Update-notifier: fire-and-forget, cache 24 jam, hormat NO_UPDATE_CHECK/CI/--json.
+// Jangan blokir startup (2 dtk timeout) dan jangan tulis ke stdout (ganggu --json).
+if (!hasFlag(args, "--version") && !args.includes("-v") && !args.includes("-h") && !args.includes("--help")) {
+  void (async () => {
+    try {
+      const ver = readVersion()
+      const { checkForUpdate, formatUpdateMessage } = await import("../src/policy/update-check.ts")
+      const latest = await checkForUpdate(ver)
+      if (latest) process.stderr.write(`\n${c.yellow(formatUpdateMessage(ver, latest))}\n`)
+    } catch {}
+  })()
+}
+
 // DI factory sesi sub-agen untuk delegate_task — dipasang di composition root
 // sebelum dispatch agar semua jalur (REPL, one-shot, mcp serve) tercakup.
 // Sesi anak mendapat wiring jurnal sendiri (childOf = parent) agar efek anak

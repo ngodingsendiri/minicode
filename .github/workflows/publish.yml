@@ -1,0 +1,48 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Vendor check
+        run: bun run vendor:check
+      - name: Typecheck
+        run: bun x tsc --noEmit
+      - name: Lint
+        run: bun run lint
+      - name: Test
+        run: bun test
+      - name: Pack check
+        run: bun run gate:pack
+      - name: Build web
+        run: bun run web:build && bun run web:check
+      - name: Publish to npm
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "${GITHUB_REF}" != "refs/tags/v${PKG_VERSION}" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "Tag $TAG_VERSION != package.json $PKG_VERSION — abort"
+            exit 1
+          fi
+          npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

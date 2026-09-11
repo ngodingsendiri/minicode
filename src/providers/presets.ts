@@ -44,7 +44,15 @@ export const GATEWAY_PRESETS: GatewayPreset[] = [
     id: "opencode-zen",
     label: "OpenCode Zen (opencode.ai gateway)",
     baseUrl: "https://opencode.ai/zen/v1",
-    fallbackModels: ["hy3-free", "claude-sonnet-4"],
+    fallbackModels: [
+      "muse-spark-1.2-contributor-free",
+      "muse-spark-1.3-contributor-free",
+      "nemotron-3.5-lightning:free",
+      "nemotron-3-nano-30b-a3b:free",
+      "gemini-2.0-flash:free",
+      "deepseek-v4-flash:free",
+      "claude-sonnet-4",
+    ],
   },
   {
     id: "google",
