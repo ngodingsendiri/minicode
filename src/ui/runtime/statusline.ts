@@ -20,7 +20,58 @@ let owner: PaintOwner | null = null
 let ownerWriting = false
 let bound: RawWrite | null = null
 let ourWrite: ((chunk: string | Uint8Array, ...rest: never[]) => boolean) | null = null
+/** Write asli sebelum wrapper dipasang — untuk restore saat self-disable. */
+let origWrite: typeof process.stderr.write | null = null
 const warnedOverlap = new Set<string>()
+
+// Bun Windows (1.4.x): `stderr.write` yang dilepas dari method (bound/detached)
+// melempar `TypeError: undefined is not an object (evaluating
+// 'kWriteMonkeyPatchDefense')` dari internal writeFast — reproduksi nyata:
+// setiap turn REPL di TTY Windows gagal di `paintWrite` padahal one-shot
+// non-TTY hijau. Transient adalah best-effort (kontrak I4: scrollback tak
+// bergantung painter), jadi begitu marker ini terlihat matikan painting
+// permanen untuk proses ini agar turn TETAP jalan tanpa spinner.
+let transientBroken = false
+
+function isBunWriteBug(e: unknown): boolean {
+  const msg = String((e as { message?: unknown })?.message ?? e ?? "")
+  return msg.includes("kWriteMonkeyPatchDefense") || msg.includes("kWrite")
+}
+
+/** Matikan transient permanen + kembalikan write asli. Tak pernah melempar. */
+function disableTransient(): void {
+  if (transientBroken) return
+  transientBroken = true
+  owner = null
+  try {
+    if (origWrite && (process.stderr.write as unknown) === ourWrite) {
+      process.stderr.write = origWrite
+    }
+  } catch {}
+  ourWrite = null
+  bound = null
+  origWrite = null
+}
+
+/** True bila painting sudah dimatikan paksa (runtime stderr rusak). */
+export function isTransientDisabled(): boolean {
+  return transientBroken
+}
+
+/** Reset state transient untuk test (pristine lagi). Jangan dipakai produksi. */
+export function __resetTransientForTest(): void {
+  try {
+    if (ourWrite && (process.stderr.write as unknown) === ourWrite && origWrite) {
+      process.stderr.write = origWrite
+    }
+  } catch {}
+  owner = null
+  ownerWriting = false
+  bound = null
+  ourWrite = null
+  origWrite = null
+  transientBroken = false
+}
 
 // Pasang wrapper stderr HANYA bila owner transient pertama muncul. Wrapper
 // inert (forward apa adanya) saat tidak ada owner — overhead nol untuk semua
@@ -28,11 +79,29 @@ const warnedOverlap = new Set<string>()
 // (re-wrap bila property sudah diganti di antara dua acquire).
 type RawWrite = (chunk: string | Uint8Array, ...rest: never[]) => boolean
 function ensureWrap(): void {
+  if (transientBroken) return
   const cur = process.stderr.write
   if (ourWrite && (cur as unknown) === ourWrite) return
+  origWrite = process.stderr.write
   bound = process.stderr.write.bind(process.stderr) as RawWrite
   ourWrite = ((chunk: string | Uint8Array, ...rest: never[]) => {
-    if (ownerWriting || !owner) return bound!(chunk, ...rest)
+    if (ownerWriting || !owner) {
+      try {
+        return bound!(chunk, ...rest)
+      } catch (e) {
+        // Runtime stderr rusak (bug Bun di atas): jangan gagalkan tulis
+        // diagnostik — matikan transient lalu coba sekali via method-call.
+        if (isBunWriteBug(e)) {
+          disableTransient()
+          try {
+            return process.stderr.write(chunk, ...rest)
+          } catch {
+            return false
+          }
+        }
+        throw e
+      }
+    }
     // Tulis ASING saat garis transient aktif: komit sebagai baris permanen.
     ownerWriting = true
     try {
@@ -40,9 +109,18 @@ function ensureWrap(): void {
     } finally {
       ownerWriting = false
     }
-    const r = bound!(chunk, ...rest)
+    let r: boolean
     try {
-      owner.paintNow()
+      r = bound!(chunk, ...rest)
+    } catch (e) {
+      if (isBunWriteBug(e)) {
+        disableTransient()
+        return false
+      }
+      throw e
+    }
+    try {
+      owner?.paintNow()
     } catch {
       // Painter yang error tidak boleh menggagalkan tulis asing.
     }
@@ -53,14 +131,24 @@ function ensureWrap(): void {
 
 /** Tulis internal milik painter aktif (tanpa aturan "asing" di atas). */
 export function paintWrite(s: string): void {
+  if (transientBroken) return
   ownerWriting = true
   try {
     // Pakai sink yang MASIH terpasang: bila wrapper sudah diganti/di-restore
     // (mis. antar test), painter zombie tidak boleh menulis ke buffer milik
     // sesi/harness lain.
     const cur = process.stderr.write
-    if (ourWrite && (cur as unknown) === ourWrite && bound) bound(s)
-    else cur(s)
+    try {
+      if (ourWrite && (cur as unknown) === ourWrite && bound) bound(s)
+      // JANGAN `cur(s)` detached: Bun Windows butuh `this` = stream
+      // (writeFast baca `this[kWriteMonkeyPatchDefense]` → TypeError bila
+      // detached). Selalu method-call.
+      else process.stderr.write(s)
+    } catch (e) {
+      // Transient tak boleh menggagalkan turn: matikan bila runtime rusak,
+      // telan bila error IO lain (spinner mati, agen tetap jalan).
+      if (isBunWriteBug(e)) disableTransient()
+    }
   } finally {
     ownerWriting = false
   }
@@ -83,7 +171,11 @@ type Claim = PaintOwner & { token: number }
  * wizard-spinner di-enforce sebagai signal, bukan crash produksi.
  */
 export function acquireTransientPaint(kind: string, paintNow: () => void): TransientPaint {
+  // Runtime stderr rusak (self-disable di atas): klaim jadi no-op agar
+  // painter (turn-status/spinner) tetap "jalan" tanpa byte apa pun.
+  if (transientBroken) return { kind, release() {} }
   ensureWrap()
+  if (transientBroken) return { kind, release() {} }
   if (owner && owner.kind !== kind) {
     const key = `${owner.kind}->${kind}`
     if (!warnedOverlap.has(key)) {

@@ -84,12 +84,20 @@ error: `✗ pesan actionable` sekali per kegagalan (`takePendingError`).
 3. **TTY-harness flake lama** (raw-mode resume antar-test di
    `model-manager-flows`) dicatat terpisah dari regresi — jangan dianggap
    kegagalan kontrak.
+4. **Runtime stderr rusak (bug Bun Windows `kWriteMonkeyPatchDefense`)**:
+   `stderr.write` detached melempar TypeError dari internal writeFast —
+   tiap turn TTY gagal total di 0.9.8. `statusline.ts` fail-closed:
+   selalu method-call (tak pernah detached), `paintWrite` tak pernah
+   melempar, dan transient self-disable permanen + restore write asli
+   begitu marker terlihat — agen tetap jalan tanpa spinner.
 
 ## Peta proteksi (test → invariant)
 
 - `test/terminal-contract.test.ts` — I2/I3/I5/I7/I8/I9/I10/I12 (konsolidasi).
 - `test/transient-arbitration.test.ts` — I3/I9 (foreign-write dikomit,
   repaint, overlap signal, non-TTY bebas kontrol).
+- `test/statusline-bun-guard.test.ts` — I4/I5 (method-call only,
+  self-disable + restore, transient tak pernah gagalkan turn).
 - `test/turn-status.test.ts` — I5/I10 (lifecycle, endTurn tanpa
   `turn:completed`, resize 40→120).
 - `test/tui-format.test.ts` (describe kontrak output) — I2/I7/I8 (ledger

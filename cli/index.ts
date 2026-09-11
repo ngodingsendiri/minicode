@@ -74,17 +74,30 @@ function getArg(name: string): string | undefined {
   return rawGetArg(args, name)
 }
 
-// Update-notifier: fire-and-forget, cache 24 jam, hormat NO_UPDATE_CHECK/CI/--json.
-// Jangan blokir startup (2 dtk timeout) dan jangan tulis ke stdout (ganggu --json).
-if (!hasFlag(args, "--version") && !args.includes("-v") && !args.includes("-h") && !args.includes("--help")) {
-  void (async () => {
-    try {
-      const ver = readVersion()
-      const { checkForUpdate, formatUpdateMessage } = await import("../src/policy/update-check.ts")
-      const latest = await checkForUpdate(ver)
-      if (latest) process.stderr.write(`\n${c.yellow(formatUpdateMessage(ver, latest))}\n`)
-    } catch {}
-  })()
+// Update-notifier untuk mode NON-interaktif (one-shot/pipe/subcommand):
+// fire-and-forget, cache 24 jam, hormat NO_UPDATE_CHECK/CI/--json.
+// REPL interaktif TIDAK lewat sini — ditangani maybeAutoUpdate (cek fresh +
+// install + restart) setelah enterRepl dihitung, agar tidak ada pesan ganda.
+if (
+  !hasFlag(args, "--version") &&
+  !args.includes("-v") &&
+  !args.includes("-h") &&
+  !args.includes("--help")
+) {
+  const likelyRepl =
+    hasFlag(args, "--interactive") || (promptFromArgs(args) === "" && process.stdin.isTTY === true)
+  if (!likelyRepl) {
+    void (async () => {
+      try {
+        const ver = readVersion()
+        const { checkForUpdate, formatUpdateMessage } = await import(
+          "../src/policy/update-check.ts"
+        )
+        const latest = await checkForUpdate(ver)
+        if (latest) process.stderr.write(`\n${c.yellow(formatUpdateMessage(ver, latest))}\n`)
+      } catch {}
+    })()
+  }
 }
 
 // DI factory sesi sub-agen untuk delegate_task — dipasang di composition root
@@ -252,6 +265,15 @@ if (ratelimitRaw) {
 
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
+// REPL interaktif: cek update FRESH tiap dibuka → install + restart bila ada
+// versi baru (tak pernah kembali bila restart). One-shot/pipe tetap notif
+// async di atas. Tak pernah memblokir pemakaian bila gagal/offline.
+if (enterRepl) {
+  try {
+    const { maybeAutoUpdate } = await import("./auto-update.ts")
+    await maybeAutoUpdate(readVersion())
+  } catch {}
+}
 if (!prompt && !enterRepl) {
   process.stderr.write('usage: minicode "prompt"  |  minicode (interactive mode)\n')
   process.exit(1)
