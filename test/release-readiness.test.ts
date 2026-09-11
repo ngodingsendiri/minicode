@@ -83,25 +83,33 @@ describe("release: metadata paket", () => {
 })
 
 describe("release: satu kontrak instalasi di semua permukaan", () => {
-  test("Bun prerequisite disebut SEBELUM perintah npm install", () => {
+  // Nama `minicode` diblokir registry (mirip `mini-code`) — publish npm
+  // BATAL. Kontrak instalasi = clone + bun link; perintah
+  // `npm install -g minicode` TAK BOLEH dianjurkan di mana pun (akan gagal
+  // atau lebih buruk). Test ini mengunci keputusan tersebut.
+  test("instalasi = clone + Bun-first; tanpa anjuran npm install", () => {
+    for (const f of ["README.md", "docs/getting-started.md", "scripts/web/landing1.ts"]) {
+      const src = read(f)
+      expect(src).not.toContain("npm install -g minicode")
+      expect(src).toContain("git clone https://github.com/startupmini/minicode")
+    }
     const firstIdx = (src: string, needles: string[]): number => {
       const hits = needles.map((n) => src.indexOf(n)).filter((i) => i >= 0)
       return hits.length ? Math.min(...hits) : -1
     }
     for (const f of ["README.md", "docs/getting-started.md"]) {
       const src = read(f)
-      expect(src).toContain("npm install -g minicode")
       const bunIdx = firstIdx(src, ["Bun >=", "bun >= 1.0", "Bun ≥"])
+      const cloneIdx = src.indexOf("git clone https://github.com/startupmini/minicode")
       expect(bunIdx).toBeGreaterThanOrEqual(0)
-      expect(bunIdx).toBeLessThan(src.indexOf("npm install -g minicode"))
+      expect(bunIdx).toBeLessThan(cloneIdx)
     }
-    const landing = read("scripts/web/landing1.ts")
-    expect(landing).toContain("npm install -g minicode")
   })
 
   test("uninstall/update mendokumentasikan state preservation", () => {
     const src = read("docs/getting-started.md")
-    expect(src).toContain("npm uninstall -g minicode")
+    expect(src).toContain("bun unlink")
+    expect(src).not.toContain("npm uninstall -g minicode")
     expect(src).toMatch(/tidak pernah menghapus state/i)
   })
 })

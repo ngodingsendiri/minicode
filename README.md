@@ -34,14 +34,9 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 
 ## Quickstart
 ```bash
-# Prasyarat dulu: Bun >= 1.0 (https://bun.sh) — runtime MiniCode, bukan Node.
-# Tanpa Bun, perintah minicode gagal dengan "'bun' is not recognized".
-# 1. install global dari npm:
-npm install -g minicode
-
-# alternatif untuk kontributor: clone + link lokal
-# git clone https://github.com/startupmini/minicode && cd minicode
-# bun install && bun link
+# sekali saja — install & setup (butuh bun >= 1.0, TANPA clone tambahan)
+git clone https://github.com/startupmini/minicode && cd minicode
+bun install && bun link
 
 # sekarang jalan di mana aja:
 minicode                # mode chat interaktif + wizard setup pertama kali

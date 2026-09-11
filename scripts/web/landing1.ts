@@ -1,9 +1,9 @@
 // Potongan konten landing (bagian 1): hero + install + proof + cara kerja.
 export function landingHero(version: string): string {
   const install =
-    "npm install -g minicode"
+    "git clone https://github.com/startupmini/minicode &&amp; cd minicode\nbun install &amp;&amp; bun link"
   const installRaw =
-    "npm install -g minicode"
+    "git clone https://github.com/startupmini/minicode && cd minicode\nbun install && bun link"
   return `<section class="hero">
 <div class="kicker">v${version} · MIT · zero-dep</div>
 <h1>Coding agent CLI yang menunjukkan semua kerjanya.</h1>
@@ -13,7 +13,7 @@ export function landingHero(version: string): string {
 <a class="btn btn-s" href="#cara-kerja">Lihat cara kerja</a>
 </div>
 <div class="term" id="install"><div class="term-cap"><span class="material-symbols-outlined" style="font-size:13px">terminal</span>instalasi<span class="sp"><button class="copybtn" data-copy="${installRaw}" aria-label="Salin perintah instalasi"><span class="material-symbols-outlined">content_copy</span></button></span></div><pre><code>${install}</code></pre></div>
-<p class="sub">Syarat: <code>Bun ≥ 1.0</code> terinstal (<a href="https://bun.sh">bun.sh</a>) — runtime MiniCode, bukan Node. Lalu: <code>minicode doctor</code> untuk cek kondisi, <code>minicode "tugas pertama"</code> untuk mulai. Kontributor: clone + <code>bun link</code>, lihat <a href="/docs/contributing.html">Contributing</a>.</p>
+<p class="sub">Syarat: <code>Bun ≥ 1.0</code> terinstal (<a href="https://bun.sh">bun.sh</a>) — runtime MiniCode, bukan Node. Lalu: <code>minicode doctor</code> untuk cek kondisi, <code>minicode "tugas pertama"</code> untuk mulai.</p>
 <figure class="shot" role="img" aria-label="Contoh sesi Minicode: tulis file, jalankan server, tampil ringkasan biaya">
 <svg viewBox="0 0 640 188" width="100%" role="presentation" aria-hidden="true"><rect width="640" height="188" rx="8" fill="#161618"/><text x="20" y="34" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#e6e8ee">$ minicode &#8220;buat http server di server.ts&#8221;</text><text x="20" y="62" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#7fd1a3">  ✓ write_file server.ts (214 chars)</text><text x="20" y="90" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#7fd1a3">  ✓ $ bun run server.ts</text><text x="36" y="114" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#8b8f98">Hello world di http://localhost:3000</text><text x="20" y="142" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#8b8f98">  128 token · $0.0004 · 2 langkah · 4s</text><text x="20" y="170" font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#e6e8ee">Server jalan. Mau saya tambah route /health?</text></svg>
 <figcaption>Transkrip asli yang dirender: receipt tiap tool, biaya sesi, tanpa layar khusus.</figcaption>
