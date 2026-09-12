@@ -20,7 +20,7 @@ import { c } from "../src/ui/render/theme.ts"
  * Return bila tidak ada update / tak layak / install gagal — REPL lanjut
  * dengan versi lama. Tak pernah melempar.
  */
-export async function maybeAutoUpdate(version: string): Promise<void> {
+export async function maybeAutoUpdate(version: string, signal?: AbortSignal): Promise<void> {
   let decision: ReturnType<typeof shouldAutoUpdate>
   try {
     decision = shouldAutoUpdate(process.argv.slice(2), {
@@ -31,12 +31,14 @@ export async function maybeAutoUpdate(version: string): Promise<void> {
     return
   }
   if (!decision.run) return
+  if (signal?.aborted) return
   let latest: string | null
   try {
-    latest = await checkForUpdateFresh(version)
+    latest = await checkForUpdateFresh(version, signal)
   } catch {
     return
   }
+  if (signal?.aborted) return
   if (!latest) return
   process.stderr.write(`\n${c.yellow(formatUpdateMessage(version, latest))}\n`)
   process.stderr.write(c.dim("Menginstall pembaruan otomatis…\n"))

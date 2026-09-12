@@ -54,18 +54,26 @@ async function writeCache(latest: string): Promise<void> {
   } catch {}
 }
 
-async function fetchLatest(): Promise<string | null> {
+async function fetchLatest(signal?: AbortSignal): Promise<string | null> {
   try {
     const ctrl = new AbortController()
     const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(PKG_NAME)}/latest`, {
-      signal: ctrl.signal,
-      headers: { accept: "application/json" },
-    })
-    clearTimeout(t)
-    if (!res.ok) return null
-    const j = (await res.json()) as { version?: string }
-    return typeof j.version === "string" ? j.version : null
+    const onAbort = () => ctrl.abort()
+    signal?.addEventListener("abort", onAbort, { once: true })
+    try {
+      const sig = signal ? AbortSignal.any([signal, ctrl.signal]) : ctrl.signal
+      const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(PKG_NAME)}/latest`, {
+        signal: sig,
+        headers: { accept: "application/json" },
+      })
+      clearTimeout(t)
+      if (!res.ok) return null
+      const j = (await res.json()) as { version?: string }
+      return typeof j.version === "string" ? j.version : null
+    } finally {
+      clearTimeout(t)
+      signal?.removeEventListener("abort", onAbort)
+    }
   } catch {
     return null
   }
@@ -153,8 +161,11 @@ export function shouldAutoUpdate(
  * Cek versi SELALU ke registry (abaikan cache 24 jam) khusus alur auto-update.
  * Offline/network-gagal = fallback cache lama; tetap tak ada = null.
  */
-export async function checkForUpdateFresh(currentVersion: string): Promise<string | null> {
-  const latest = await fetchLatest()
+export async function checkForUpdateFresh(
+  currentVersion: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const latest = await fetchLatest(signal)
   if (latest) await writeCache(latest)
   const eff = latest ?? (await readCache())?.latest ?? null
   if (!eff) return null

@@ -267,12 +267,15 @@ const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
 // REPL interaktif: cek update FRESH tiap dibuka → install + restart bila ada
 // versi baru (tak pernah kembali bila restart). One-shot/pipe tetap notif
-// async di atas. Tak pernah memblokir pemakaian bila gagal/offline.
+// async di atas. Budget 1.8 dtk — jangan bikin buka 7 dtk karena registry lambat.
 if (enterRepl) {
+  const ctrl = new AbortController()
+  const to = setTimeout(() => ctrl.abort(), 1800)
   try {
     const { maybeAutoUpdate } = await import("./auto-update.ts")
-    await maybeAutoUpdate(readVersion())
+    await maybeAutoUpdate(readVersion(), ctrl.signal)
   } catch {}
+  clearTimeout(to)
 }
 if (!prompt && !enterRepl) {
   process.stderr.write('usage: minicode "prompt"  |  minicode (interactive mode)\n')
