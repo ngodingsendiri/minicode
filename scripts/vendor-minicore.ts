@@ -21,7 +21,11 @@ import { dirname, join, relative, resolve } from "node:path"
 const repoRoot = resolve(import.meta.dir, "..")
 // Nama direktori, BUKAN spesifier import. Jangan pakai prefix "#" di sini —
 // itu hanya untuk subpath imports di package.json.
-const source = resolve(repoRoot, "..", "minicore")
+// MINICODE_MINICORE_SOURCE = seam uji: alihkan source tanpa menyentuh parent
+// asli (dipakai test untuk mensimulasikan checkout CI yang gagal → dir kosong).
+const source = process.env.MINICODE_MINICORE_SOURCE
+  ? resolve(process.env.MINICODE_MINICORE_SOURCE)
+  : resolve(repoRoot, "..", "minicore")
 const target = resolve(repoRoot, "vendor", "minicore")
 const checkOnly = process.argv.includes("--check")
 
@@ -75,6 +79,18 @@ if (!existsSync(source)) {
 
 const sourceFiles = collect(source)
 if (sourceFiles.length === 0) {
+  // Checkout sibling gagal (mis. repo minicore privat di CI) meninggalkan
+  // direktori KOSONG — existsSync lolos tapi tak ada yang bisa dibandingkan.
+  // Perlakukan sama seperti sumber tidak ada: vendor yang sudah ada tetap sah
+  // (pesan + exit 0), dan mode sync MENOLAK menimpa VENDOR.md dengan klaim
+  // 0 file (destruktif diam-diam). Regresi nyata: CI merah di tiap push
+  // padahal vendor sinkron — "[vendor] tidak ada file untuk disalin".
+  if (vendorFiles.length > 0) {
+    console.log(
+      `[vendor] source ${source} kosong — memakai vendor/minicore yang sudah ada (${vendorFiles.length} file, ${hashOf(target, vendorFiles)})`,
+    )
+    process.exit(0)
+  }
   console.error(`[vendor] tidak ada file untuk disalin dari ${source}`)
   process.exit(1)
 }

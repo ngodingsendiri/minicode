@@ -12,7 +12,8 @@
 // Test ini menjaga keduanya, plus memastikan tak ada sisa spesifier lama.
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { readFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 const repoRoot = process.cwd()
@@ -104,6 +105,27 @@ describe("konvensi import kernel", () => {
     expect(out).not.toContain("vendor/minicore kosong")
     // Tanpa sibling ../minicore script tetap lulus dengan pesan — keduanya sah.
     expect(r.status).toBe(0)
+  })
+
+  test("vendor:check lolos bila source ada tapi KOSONG (checkout CI gagal)", () => {
+    // Regresi nyata: checkout repo minicore privat di CI gagal → direktori
+    // sibling ADA tapi kosong → existsSync lolos → exit 1
+    // "[vendor] tidak ada file untuk disalin" di tiap push padahal vendor
+    // sinkron. Kode lama gagal di sini (status 1 + tanpa kata "kosong").
+    const empty = mkdtempSync(join(tmpdir(), "minicore-empty-"))
+    try {
+      const r = spawnSync("bun", ["scripts/vendor-minicore.ts", "--check"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        timeout: 60_000,
+        env: { ...process.env, MINICODE_MINICORE_SOURCE: empty },
+      })
+      const out = `${r.stdout}${r.stderr}`
+      expect(r.status).toBe(0)
+      expect(out).toContain("kosong")
+    } finally {
+      rmSync(empty, { recursive: true, force: true })
+    }
   })
 })
 
