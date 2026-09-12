@@ -96,21 +96,16 @@ function redactSecrets(s: string): string {
   // `=` termasuk agar nilai cookie berbentuk pasangan kunci-nilai utuh tersamarkan.
   const V = `(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/=-]*\\d[A-Za-z0-9_~+/=-]*|[A-Za-z0-9_~+/=-]{12,})`
   const V4 = `(?:"[^"]+"|'[^']+'|[A-Za-z0-9_~+/=-]*\\d[A-Za-z0-9_~+/=-]*|[A-Za-z0-9_~+/=-]{4,})`
-  return (
-    s
-      .replace(/\bbearer\s+["']?[A-Za-z0-9._~+/-]{6,}["']?/gi, "Bearer [redacted]")
-      .replace(
-        new RegExp(
-          `((?:api[_-]?key|token|authorization|secret|password|client[_-]?secret|cookie)\\s*[:=]\\s*)(?!\\[redacted\\])(${V})`,
-          "gi",
-        ),
-        "$1[redacted]",
-      )
-      .replace(
-        new RegExp(`(\\bsession[-_]?id\\s*[:=]\\s*)(${V4})`, "g"),
-        "$1[redacted]",
-      )
-  )
+  return s
+    .replace(/\bbearer\s+["']?[A-Za-z0-9._~+/-]{6,}["']?/gi, "Bearer [redacted]")
+    .replace(
+      new RegExp(
+        `((?:api[_-]?key|token|authorization|secret|password|client[_-]?secret|cookie)\\s*[:=]\\s*)(?!\\[redacted\\])(${V})`,
+        "gi",
+      ),
+      "$1[redacted]",
+    )
+    .replace(new RegExp(`(\\bsession[-_]?id\\s*[:=]\\s*)(${V4})`, "g"), "$1[redacted]")
 }
 
 // Mapping kategori formal -> pesan user-friendly. Detail provider disertakan

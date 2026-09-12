@@ -160,7 +160,10 @@ export async function runPicker(opts: PickerOptions): Promise<void> {
         resolve()
       }, 90_000)
       // jangan tahan process tetap hidup hanya karena timer ini
-      if (idleTimer && typeof (idleTimer as unknown as { unref?: () => void }).unref === "function") {
+      if (
+        idleTimer &&
+        typeof (idleTimer as unknown as { unref?: () => void }).unref === "function"
+      ) {
         ;(idleTimer as unknown as { unref: () => void }).unref!()
       }
     }

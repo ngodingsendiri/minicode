@@ -10,7 +10,7 @@
 // Bila skenario gagal di kode lama, ia menguji yang dikiranya (Prinsip 3).
 import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ProviderError } from "#minicore/core/errors.ts"

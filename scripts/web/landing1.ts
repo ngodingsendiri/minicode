@@ -1,9 +1,7 @@
 // Potongan konten landing (bagian 1): hero + install + proof + cara kerja.
 export function landingHero(version: string): string {
-  const install =
-    "npm install -g @miniroom/minicode"
-  const installRaw =
-    "npm install -g @miniroom/minicode"
+  const install = "npm install -g @miniroom/minicode"
+  const installRaw = "npm install -g @miniroom/minicode"
   return `<section class="hero">
 <div class="kicker">v${version} · MIT · zero-dep</div>
 <h1>Coding agent CLI yang menunjukkan semua kerjanya.</h1>
@@ -23,9 +21,18 @@ export function landingHero(version: string): string {
 
 export function landingHow(): string {
   const steps: [string, string][] = [
-    ["Perintah", "Tulis tujuan dalam bahasa Indonesia atau Inggris — sekali jalan, interaktif, atau via pipe."],
-    ["Izin", "Tiap aksi sensitif lewat mode izin Anda: baca saja, rencanakan dulu, setujui satu-satu, atau otonom penuh."],
-    ["Eksekusi", "File, shell, git, web, dan memori dijalankan lewat tool terjail di workspace Anda."],
+    [
+      "Perintah",
+      "Tulis tujuan dalam bahasa Indonesia atau Inggris — sekali jalan, interaktif, atau via pipe.",
+    ],
+    [
+      "Izin",
+      "Tiap aksi sensitif lewat mode izin Anda: baca saja, rencanakan dulu, setujui satu-satu, atau otonom penuh.",
+    ],
+    [
+      "Eksekusi",
+      "File, shell, git, web, dan memori dijalankan lewat tool terjail di workspace Anda.",
+    ],
     ["Hasil", "Receipt tiap langkah menempel di scrollback — bisa di-pipe, di-grep, di-copy."],
     ["Verifikasi", "Uji otomatis memastikan perubahan benar sebelum dianggap selesai."],
   ]

@@ -6,7 +6,7 @@
 // Bila test gagal di kode lama, ia menguji yang dikiranya (Prinsip 3 PLAN.md).
 import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { scrubSecrets } from "../src/policy/scrub.ts"

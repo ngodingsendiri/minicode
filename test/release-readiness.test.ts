@@ -2,7 +2,7 @@
 // Semua statis/offline — instalasi/eksekusi biner aktual dibuktikan manual
 // per rilis (lihat laporan audit), bukan di sini agar suite tetap hermetic.
 import { describe, expect, test } from "bun:test"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const repoRoot = join(import.meta.dir, "..")

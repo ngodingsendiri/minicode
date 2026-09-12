@@ -64,7 +64,7 @@ describe("web ssg", () => {
     expect(css).toContain(".nl.keep")
     expect(/@media[^{]*max-width:\s*520px[\s\S]*\.nl\.keep/.test(css)).toBe(true)
     const layout = readFileSync(join(repoRoot, "web", "layout.html"), "utf8")
-    for (const href of ['href="/docs/"', 'href="/#install"', "href=\"https://github.com/"]) {
+    for (const href of ['href="/docs/"', 'href="/#install"', 'href="https://github.com/']) {
       const tag = layout.split("\n").find((l) => l.includes(href)) ?? ""
       expect(tag).toContain("keep")
     }
@@ -80,7 +80,10 @@ describe("web ssg", () => {
       // A. biasa
       ["| A | B |\n|---|---|\n| foo | bar |\n", "<td>foo</td><td>bar</td>"],
       // B. pipe dalam code span
-      ["| A | B |\n|---|---|\n| `foo | bar` | baz |\n", "<td><code>foo | bar</code></td><td>baz</td>"],
+      [
+        "| A | B |\n|---|---|\n| `foo | bar` | baz |\n",
+        "<td><code>foo | bar</code></td><td>baz</td>",
+      ],
       // C. escaped delimiter
       ["| A | B |\n|---|---|\n| foo \\| bar | baz |\n", "<td>foo | bar</td><td>baz</td>"],
       // D+E. code span + beberapa span per sel (kasus nyata tools.md)
@@ -147,9 +150,20 @@ describe("web ssg", () => {
           }
         })
     }
-    const checkDirs = ["docs", "scripts/web", "web", "content/blog", "cli", "src", ".github/workflows"]
+    const checkDirs = [
+      "docs",
+      "scripts/web",
+      "web",
+      "content/blog",
+      "cli",
+      "src",
+      ".github/workflows",
+    ]
     for (const d of checkDirs) {
-      const files = readdirSync(join(repoRoot, d), { recursive: true, encoding: "utf8" }) as string[]
+      const files = readdirSync(join(repoRoot, d), {
+        recursive: true,
+        encoding: "utf8",
+      }) as string[]
       for (const f of files) {
         if (!/\.(md|html|ts|js|css|yml)$/.test(f)) continue
         readFileSync(join(repoRoot, d, f), "utf8")
@@ -175,9 +189,7 @@ describe("web ssg", () => {
     const agents = readFileSync(join(repoRoot, "docs", "agents.md"), "utf8")
     const task = readFileSync(join(repoRoot, "src", "tools", "task.ts"), "utf8")
     expect(task).toContain('"todo_write"')
-    const planRow = agents
-      .split("\n")
-      .find((l) => l.startsWith("| `plan`"))
+    const planRow = agents.split("\n").find((l) => l.startsWith("| `plan`"))
     expect(planRow).toBeTruthy()
     expect(planRow!).not.toMatch(/rencana tertulis/i)
     expect(planRow!).toMatch(/todo_read|tanpa.*todo_write|tanpa mutasi/i)
@@ -192,7 +204,12 @@ describe("web ssg", () => {
     expect(html).toContain('id="detail-a"')
     expect(html).not.toContain('id="bukan-heading"')
     // extractHeadings (dipakai TOC) identik dengan renderer.
-    expect(extractHeadings(src).map((h) => h.id)).toEqual(["t", "instalasi", "instalasi-2", "detail-a"])
+    expect(extractHeadings(src).map((h) => h.id)).toEqual([
+      "t",
+      "instalasi",
+      "instalasi-2",
+      "detail-a",
+    ])
     // TOC muncul di halaman panjang hasil build (tools.html punya ≥4 H2).
     const site = join(repoRoot, "site")
     if (!existsSync(site)) return
@@ -213,7 +230,8 @@ describe("web ssg", () => {
     )
     // List, quote, tabel, fence, heading dilewati.
     expect(
-      firstPara("# T\n\n- item satu dua tiga empat lima\n\n> kutipan cukup panjang di sini\n\nParagraf prose kedua yang valid dan cukup panjang.",
+      firstPara(
+        "# T\n\n- item satu dua tiga empat lima\n\n> kutipan cukup panjang di sini\n\nParagraf prose kedua yang valid dan cukup panjang.",
       ),
     ).toBe("Paragraf prose kedua yang valid dan cukup panjang.")
     expect(firstPara("| a | b |\n|---|---|\n| 1 | 2 |\n")).toBe("")
@@ -318,7 +336,8 @@ describe("web ssg", () => {
   test("design language flat: tanpa shadow/gradient, radius kecil, kartu flat", () => {
     // Audit desain: bahasa visual = flat. Guard level-source agar dekorasi
     // tak merayap kembali (bukan per halaman).
-    const css = readFileSync(join(repoRoot, "web", "part-01-base.css"), "utf8") +
+    const css =
+      readFileSync(join(repoRoot, "web", "part-01-base.css"), "utf8") +
       readFileSync(join(repoRoot, "web", "part-02-header.css"), "utf8") +
       readFileSync(join(repoRoot, "web", "part-03-hero.css"), "utf8") +
       readFileSync(join(repoRoot, "web", "part-04-sections.css"), "utf8") +

@@ -69,10 +69,7 @@ const idOf = (src: string): Set<string> =>
   new Set([...src.matchAll(/id="([^"]+)"/g)].map((m) => m[1]!))
 const byRel = new Map<string, string>()
 for (const f of files) {
-  byRel.set(
-    f.slice(siteDir.length).replaceAll("\\", "/"),
-    readFileSync(f, "utf8"),
-  )
+  byRel.set(f.slice(siteDir.length).replaceAll("\\", "/"), readFileSync(f, "utf8"))
 }
 const badAnchor: string[] = []
 for (const [relPath, src] of byRel) {
@@ -84,7 +81,8 @@ for (const [relPath, src] of byRel) {
     if (!frag) continue // href="#" pelengkap, bukan tautan section
     let target = href.slice(0, hash)
     if (!target) target = relPath
-    else if (!target.startsWith("/")) continue // relatif/eksternal di luar kontrak
+    else if (!target.startsWith("/"))
+      continue // relatif/eksternal di luar kontrak
     else if (target === "/") target = "/index.html"
     else if (target.endsWith("/")) target = `${target}index.html`
     // /docs/x -> /docs/x.html (pola sama seperti cek link).

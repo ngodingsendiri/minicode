@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { escAttr, firstPara } from "./fm.ts"
 import { extractHeadings, mdToHtml } from "./md.ts"
-import { docMeta, readDocNav, type DocEntry } from "./nav.ts"
+import { type DocEntry, docMeta, readDocNav } from "./nav.ts"
 import { mdLinksToHtml, renderPage } from "./page.ts"
 
 /** Render sidebar docs: kelompok SUMMARY + entri, halaman aktif di-highlight. */
