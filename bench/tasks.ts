@@ -10,6 +10,13 @@ export interface BenchTask {
   prompt: string
   verify(dir: string): Promise<{ passed: boolean; detail: string }>
   cleanup(dir: string): Promise<void>
+  /**
+   * Fakta yang di-seed ke memory global SEBELUM run (hanya bila eval jalan
+   * dengan memory on) — untuk mengukur nilai memory secara diferensial:
+   * task lolos HANYA bila agen membaca fakta ini. Tanpa seed (atau memory
+   * off), agen tak punya jalan mengetahuinya.
+   */
+  seedMemory?: string
 }
 
 const clean = (dir: string) => rm(dir, { recursive: true, force: true }).catch(() => {})
@@ -70,6 +77,29 @@ export const BENCH_TASKS: BenchTask[] = [
     async verify(dir) {
       const txt = await readFile(join(dir, "add.test.ts"), "utf8").catch(() => "")
       return { passed: /add\s*\(2\s*,\s*3\)|toBe\s*\(\s*5/.test(txt), detail: txt.slice(0, 160) }
+    },
+    cleanup: clean,
+  },
+  {
+    id: "follow-convention",
+    description: "Follow a project convention known only from memory",
+    async setup() {
+      const dir = await mkdtemp(join(tmpdir(), "minicode-bench-"))
+      await writeFile(join(dir, "greet.ts"), "", "utf8")
+      return dir
+    },
+    // Sengaja TAK menyebut nama fungsinya: satu-satunya jalan tahu adalah
+    // fakta seedMemory di bawah (dibaca via RAG bila memory on).
+    prompt:
+      "Create the standard project greeting function `f(name: string): string` in greet.ts. Use write_file. Write the full file.",
+    seedMemory:
+      "Project convention: the standard greeting function MUST be named `salam` (never `greet`, `hello`, or `hi`).",
+    async verify(dir) {
+      const txt = await readFile(join(dir, "greet.ts"), "utf8").catch(() => "")
+      return {
+        passed: /function\s+salam\s*\(/.test(txt) && !/function\s+greet\s*\(/.test(txt),
+        detail: txt.slice(0, 160),
+      }
     },
     cleanup: clean,
   },

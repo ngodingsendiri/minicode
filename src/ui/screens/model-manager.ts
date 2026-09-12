@@ -28,6 +28,13 @@ export interface ModelManagerViewOptions {
   onAdd(providerId: string, model: string): Promise<ModelRow[]>
   onDelete(id: string): Promise<ModelRow[]>
   onSetEffort?(id: string, effort: "default" | "low" | "medium" | "high"): Promise<ModelRow[]>
+  /**
+   * Opsi effort per model id ("provider::model" atau nama mentah) — untuk
+   * picker yang jujur: keluarga tanpa thinking hanya ["default"] sehingga
+   * picker dilewati dan effort tersimpan tak disentuh. Default (tanpa
+   * injeksi): semua opsi, perilaku lama.
+   */
+  getEfforts?: (id: string) => ("default" | "low" | "medium" | "high")[]
 }
 
 /** Saring baris berdasarkan substring id, case-insensitive. Murni agar bisa diuji. */
@@ -221,19 +228,19 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       })
     }
 
-    // Picker effort dipakai alur Enter (wajib) — satu-satunya jalan atur
-    // effort sejak tombol `t` dihapus. Dipanggil saat manager di-suspend,
-    // sehingga raw mode/lisener milik picker, bukan manager.
-    const pickEffort = (): Promise<"default" | "low" | "medium" | "high" | null> =>
-      new Promise<string | null>((resolvePick) => {
+    // Picker effort dipakai alur Enter — HANYA bila modelnya mendukung
+    // (lihat getEffortOptions): model tanpa thinking langsung select tanpa
+    // picker dan tanpa menyentuh effort tersimpan. Dipanggil saat manager
+    // di-suspend, sehingga raw mode/lisener milik picker, bukan manager.
+    const pickEffort = (
+      modelId: string,
+    ): Promise<"default" | "low" | "medium" | "high" | null | "skip"> => {
+      const options = opts.getEfforts?.(modelId) ?? ["default", "low", "medium", "high"]
+      if (options.length <= 1) return Promise.resolve("skip")
+      return new Promise<string | null>((resolvePick) => {
         void runPicker({
           title: "Thinking effort",
-          items: [
-            { name: "default", provider: "", value: "default" },
-            { name: "low", provider: "", value: "low" },
-            { name: "medium", provider: "", value: "medium" },
-            { name: "high", provider: "", value: "high" },
-          ],
+          items: options.map((name) => ({ name, provider: "", value: name })),
           onPick: (v) => resolvePick(v),
           onCancel: () => resolvePick(null),
         })
@@ -242,6 +249,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           ? (picked as "default" | "low" | "medium" | "high")
           : null,
       )
+    }
 
     const decoder: DecoderState = createDecoderState()
     const onData = (chunk: Buffer) => {
@@ -299,7 +307,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
             // Esc = batal total, kembali ke daftar tanpa select/simpan.
             ;(async () => {
               try {
-                const picked = await pickEffort()
+                const picked = await pickEffort(row.id)
                 if (!picked) {
                   busy = false
                   await loadRowsSafe()
@@ -308,7 +316,10 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
                 }
                 try {
                   await opts.onSelect(row.id)
-                  if (opts.onSetEffort) {
+                  // "skip" = model tanpa thinking: select langsung, effort
+                  // tersimpan tak disentuh (aman — pengiriman effort juga
+                  // di-gate per keluarga, jadi nilai basi tak pernah terkirim).
+                  if (picked !== "skip" && opts.onSetEffort) {
                     await opts.onSetEffort(row.id, picked)
                     console.log(`Thinking: ${picked} (next session)`)
                   }

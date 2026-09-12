@@ -69,6 +69,14 @@ untuk salinan ter-install (checkout source tidak disentuh) dan tidak pernah
 memblokir: install gagal/offline = lanjut versi lama + pesan manual.
 One-shot, `exec`, pipe, dan CI hanya menampilkan notifikasi (tanpa install).
 
+> Model ancaman yang jujur: auto-update mengeksekusi kode dari registry
+> tanpa verifikasi tanda tangan client-side (attestasi Sigstore npm butuh
+> infrastruktur verifikasi di luar jangkauan CLI zero-dep — sudah diteliti,
+> bundelnya tak membawa identitas repo yang bisa dicek offline). Percayakan
+> TLS registry + rilis hanya dari CI repo ini; yang butuh jaminan lebih,
+> matikan auto-update (`MINICODE_AUTO_UPDATE=0`) dan update manual setelah
+> memeriksa rilis di GitHub.
+
 ```bash
 npm update -g @miniroom/minicode   # manual, bila auto-update dimatikan
 minicode sync          # refresh model baru dari semua provider

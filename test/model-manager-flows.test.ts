@@ -34,6 +34,9 @@ beforeEach(async () => {
   await mkdir(join(workspace, ".minicode"), { recursive: true })
   const providers = [
     { id: "prov", baseUrl: "https://api.test/v1", apiKey: "k", models: ["m1", "m2"] },
+    // Provider kedua ber-model reasoning agar alur picker effort teruji;
+    // m1/m2 sengaja non-keluarga (picker effort dilewati untuknya).
+    { id: "cap", baseUrl: "https://cap.test/v1", apiKey: "k", models: ["o3-mini"] },
   ]
   await writeFile(
     join(workspace, ".minicode", "config.json"),
@@ -103,12 +106,13 @@ describe("model-manager: alur interactive", () => {
     })
     await tty.ready()
     await tty.send(KEY.down, 20) // highlight prov::m2
+    await tty.send(KEY.down, 20) // highlight cap::o3-mini (keluarga reasoning)
     await tty.send(KEY.enter, 30)
     // Enter sekarang membuka picker effort — pilih default
     await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
     await tty.send(KEY.enter, 30)
     await p
-    expect(overrideLog).toEqual(["prov::m2"])
+    expect(overrideLog).toEqual(["cap::o3-mini"])
     // default = hapus kunci (jangan simpan "default" harfiah)
     const cfg = await readConfig(localConfigPath())
     expect(cfg.providers[0]).not.toHaveProperty("reasoningEffort")
@@ -123,6 +127,7 @@ describe("model-manager: alur interactive", () => {
     })
     await tty.ready()
     await tty.send(KEY.down, 20) // highlight prov::m2
+    await tty.send(KEY.down, 20) // highlight cap::o3-mini
     await tty.send(KEY.enter, 30)
     await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
     await tty.send(KEY.down, 20) // low
@@ -130,24 +135,24 @@ describe("model-manager: alur interactive", () => {
     await tty.send(KEY.down, 20) // high
     await tty.send(KEY.enter, 30)
     await p
-    expect(overrideLog).toEqual(["prov::m2"])
+    expect(overrideLog).toEqual(["cap::o3-mini"])
     const cfg = await readConfig(localConfigPath())
-    expect(cfg.providers[0]?.models).toContain("m2")
-    const prov = (cfg.providers as { id: string; reasoningEffort?: string }[]).find(
-      (x) => x.id === "prov",
+    expect(cfg.providers[1]?.models).toContain("o3-mini")
+    const cap = (cfg.providers as { id: string; reasoningEffort?: string }[]).find(
+      (x) => x.id === "cap",
     )
-    expect(prov?.reasoningEffort).toBe("high")
+    expect(cap?.reasoningEffort).toBe("high")
   })
 
   test("Esc di picker effort = batal total (model tak jadi dipilih)", async () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({
       cwd: workspace,
-      currentModel: "prov::m1",
+      currentModel: "cap::o3-mini",
       setModelOverride: (m) => overrideLog.push(m),
     })
     await tty.ready()
-    await tty.send(KEY.enter, 30) // pilih prov::m1 → picker terbuka
+    await tty.send(KEY.enter, 30) // pilih cap::o3-mini → picker terbuka
     await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
     await tty.send(KEY.esc, 30) // batal: kembali ke daftar, tanpa select
     await tty.waitForListener(2000)
@@ -156,13 +161,33 @@ describe("model-manager: alur interactive", () => {
     expect(overrideLog).toEqual([])
   })
 
+  test("model tanpa thinking: Enter langsung select, picker dilewati", async () => {
+    // m1/m2 bukan keluarga reasoning apa pun → tak ada opsi effort, tak ada
+    // picker, effort tersimpan tak disentuh.
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      currentModel: "prov::m1",
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send(KEY.enter, 30) // pilih prov::m1 → langsung selesai
+    await p
+    expect(overrideLog).toEqual(["prov::m1"])
+    expect(visible()).not.toContain("Thinking effort")
+    const cfg = await readConfig(localConfigPath())
+    expect(cfg.providers[0]).not.toHaveProperty("reasoningEffort")
+  })
+
   test("effort tersimpan di scope asal provider (global), tanpa duplikat lokal", async () => {
     // Provider di global, config lokal ada (isi lain) — regresi shadowing:
     // effort wajib tertulis di file global, bukan salinan di lokal.
     await writeFile(
       globalPath,
       JSON.stringify({
-        providers: [{ id: "prov", baseUrl: "https://api.test/v1", apiKey: "k", models: ["m1"] }],
+        providers: [
+          { id: "prov", baseUrl: "https://api.test/v1", apiKey: "k", models: ["o3-mini"] },
+        ],
       }),
       "utf8",
     )
@@ -176,7 +201,7 @@ describe("model-manager: alur interactive", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({
       cwd: workspace,
-      currentModel: "prov::m1",
+      currentModel: "prov::o3-mini",
       setModelOverride: (m) => overrideLog.push(m),
     })
     await tty.ready()
@@ -186,7 +211,7 @@ describe("model-manager: alur interactive", () => {
     await tty.send(KEY.down, 20) // medium
     await tty.send(KEY.enter, 30)
     await p
-    expect(overrideLog).toEqual(["prov::m1"])
+    expect(overrideLog).toEqual(["prov::o3-mini"])
     const g = JSON.parse(await readFile(globalPath, "utf8")) as {
       providers: { id: string; reasoningEffort?: string }[]
     }
@@ -270,15 +295,17 @@ describe("model-manager: alur interactive", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({
       cwd: workspace,
-      currentModel: "prov::m1",
+      currentModel: "cap::o3-mini",
       setModelOverride: (m) => overrideLog.push(m),
+      initialFilter: "o3",
     })
     await tty.ready()
-    tty.clear()
-    await tty.send(KEY.up, 20) // sudah di atas: tidak melewati 0
+    await tty.send(KEY.up, 20) // sudah di atas (satu-satunya baris): tidak melewati 0
     await tty.send(KEY.enter, 30) // buka picker effort
     await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
     await tty.send(KEY.esc, 30) // batal total
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // keluar mode cari
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30) // tutup manager
     await p
@@ -414,7 +441,7 @@ describe("model-manager: cari/filter", () => {
     await tty.ready()
     await tty.send("m", 30)
     await tty.send("2", 30)
-    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/2)"), 2000)
+    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/3)"), 2000)
     expect(lastRender()).toContain("prov::m2")
     expect(lastRender()).not.toContain("prov::m1")
     // Esc keluar mode cari (manager tetap terbuka).
@@ -439,10 +466,11 @@ describe("model-manager: cari/filter", () => {
     await tty.send("x", 30) // tak cocok → "No models match"
     await tty.waitForOutput((out) => out.includes("No models match"), 2000)
     await tty.send(KEY.backspace, 30) // hapus x → "m" cocok keduanya
-    await tty.waitForOutput((out) => out.includes("(2/2)"), 2000)
+    await tty.waitForOutput((out) => out.includes("(3/3)"), 2000)
     await tty.send(KEY.backspace, 30) // query kosong → keluar mode cari
-    await tty.send("2", 30) // filter "2" → tinggal prov::m2
-    await tty.waitForOutput((out) => out.includes("(1/2)"), 2000)
+    await tty.send("o", 30)
+    await tty.send("3", 30) // filter "o3" → tinggal cap::o3-mini (keluarga reasoning)
+    await tty.waitForOutput((out) => out.includes("(1/3)"), 2000)
     expect(lastRender()).not.toContain("prov::m1")
     await tty.send(KEY.enter, 30) // pilih satu-satunya baris tersaring
     await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
@@ -463,7 +491,7 @@ describe("model-manager: cari/filter", () => {
       initialFilter: "m2",
     })
     await tty.ready()
-    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/2)"), 2000)
+    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/3)"), 2000)
     await tty.send(KEY.esc, 30) // keluar mode cari
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30) // tutup manager

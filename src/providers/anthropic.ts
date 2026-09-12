@@ -4,6 +4,7 @@ import type { ModelProvider, ProviderEvent, StreamRequest } from "#minicore/core
 import type { ToolSchema } from "#minicore/core/tool.ts"
 import type { Content, Message } from "#minicore/core/types.ts"
 import { LIMITS } from "../constants.ts"
+import { thinkingFamily } from "./effort.ts"
 
 export interface AnthropicConfig {
   id?: string
@@ -15,6 +16,17 @@ export interface AnthropicConfig {
   enablePromptCaching?: boolean
   /** Budget tokens for extended thinking — yields reasoning via extension event. */
   thinking?: number
+  /**
+   * Knob generik — dipetakan per MODEL per request: Claude ≤4.5 → budget
+   * legacy; Claude ≥4.6/5 (adaptive) → thinking adaptive + output effort;
+   * lainnya → diabaikan (default vendor). Menang atas `thinking` numerik.
+   */
+  reasoningEffort?: string
+}
+
+/** low/medium/high → budget token thinking legacy. Diekspor untuk test. */
+export function mapReasoningToThinking(effort?: string): number | undefined {
+  return effort === "high" ? 4096 : effort === "medium" ? 2048 : effort === "low" ? 1024 : undefined
 }
 
 interface AnthropicRaw {
@@ -69,8 +81,19 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         ? toAnthropicTools(request.tools, enableCache)
         : undefined
 
-      const effectiveMaxTokens = config.thinking
-        ? Math.max(config.maxTokens ?? 8192, config.thinking + 1024)
+      // Thinking per model: legacy budget (≤4.5), adaptive (≥4.6/5), atau
+      // omit (lainnya + default). `thinking` numerik = back-compat eksplisit.
+      const model = request.model ?? config.defaultModel ?? config.models[0]
+      const family = thinkingFamily(model ?? "")
+      const effortBudget =
+        config.reasoningEffort && family === "claude-legacy"
+          ? mapReasoningToThinking(config.reasoningEffort)
+          : undefined
+      const adaptiveEffort =
+        config.reasoningEffort && family === "claude-adaptive" ? config.reasoningEffort : undefined
+      const legacyBudget = effortBudget ?? config.thinking
+      const effectiveMaxTokens = legacyBudget
+        ? Math.max(config.maxTokens ?? 8192, legacyBudget + 1024)
         : (config.maxTokens ?? 8192)
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
@@ -78,17 +101,22 @@ export function createAnthropicProvider(config: AnthropicConfig): ModelProvider 
         system: systemPayload,
         messages: toAnthropicMessages(request.messages),
         tools: toolsPayload,
-        ...(config.thinking
-          ? { thinking: { type: "enabled", budget_tokens: config.thinking } }
+        ...(legacyBudget ? { thinking: { type: "enabled", budget_tokens: legacyBudget } } : {}),
+        // Adaptive: tanpa budget & tanpa beta thinking (dikelola model);
+        // depth dikendalikan output_config.effort (low/medium/high).
+        ...(adaptiveEffort
+          ? { thinking: { type: "adaptive" }, output_config: { effort: adaptiveEffort } }
           : {}),
         stream: true,
       })
 
+      // Beta thinking hanya untuk mode legacy (adaptive tak butuh header).
+      const betaThinking = legacyBudget ? ", thinking-2024-12-16" : ""
       const headers: Record<string, string> = {
         "content-type": "application/json",
         "x-api-key": config.apiKey,
         "anthropic-version": "2023-06-01",
-        "anthropic-beta": `prompt-caching-2024-07-31${config.thinking ? ", thinking-2024-12-16" : ""}`,
+        "anthropic-beta": `prompt-caching-2024-07-31${betaThinking}`,
         accept: "text/event-stream",
       }
 

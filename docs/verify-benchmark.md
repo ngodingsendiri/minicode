@@ -20,9 +20,13 @@ bun run bench:smoke                      # --fake, untuk CI
 bun run bench --tasks path/to/tasks.json # external tasks (SWE-bench-format)
 bun run audit:harness                    # 60 cek deterministik, tanpa API key
 bun run bench --runs 2                   # median 2 runs
+bun bench/runner.ts --fake --memory off  # tanpa RAG/auto-memory
+bun bench/runner.ts --fake --memory on   # dengan RAG + seed memory
 ```
 
-Metrik: resolve rate, steps, token, cost, durasi + delta vs run sebelumnya. Hasil `bench/results.json`.
+Metrik: resolve rate, steps, token, cost, durasi, memoryHits + delta vs run sebelumnya. Hasil `bench/results.json` (`--out` untuk path lain).
+
+Setiap run memakai `MINICODE_HOME` hermetic sendiri (DB/memory/sesi global tak bocor antar run dan tak menyentuh `~/.minicode` operator). Task boleh membawa `seedMemory`: fakta yang di-seed ke memory run itu — task `follow-convention` hanya lolos bila agen membaca fakta tersebut, sehingga `bun bench/runner.ts --memory on` vs `--memory off` mengukur nilai memory secara diferensial (bukan klaim).
 
 Format `tasks.json`:
 

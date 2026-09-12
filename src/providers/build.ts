@@ -3,6 +3,7 @@ import type { ModelProvider } from "#minicore/core/provider.ts"
 import { createOpenAICompatProvider } from "#minicore/providers/openai-compat.ts"
 import type { MinicodeConfig } from "../config.ts"
 import { createAnthropicProvider } from "./anthropic.ts"
+import { allowedEfforts, thinkingFamily, withEffortFallback } from "./effort.ts"
 import { getValidAccessToken } from "./oauth.ts"
 import { createResponsesProvider } from "./responses.ts"
 
@@ -10,12 +11,11 @@ import { createResponsesProvider } from "./responses.ts"
 // Dipakai CLI, sub-agent (task.ts), dan MCP server agar logika tidak terduplikasi.
 // PENTING: id identitas provider WAJIB diteruskan — kalau tidak, router byId
 // memetakan semua provider ke id generik "openai-compat" (provider terakhir menang).
-// P11 P1.2 — knob generik reasoningEffort dipetakan per-wire: OpenAI/
-// Responses meneruskan string effort, Anthropic butuh budget token thinking.
+// Thinking effort: default universal = omit (tanpa param). Knob hanya dikirim
+// ke keluarga terbukti (OpenAI reasoning, Claude legacy/adaptive); jalur
+// openai-compat yang campur dibungkus fail-soft (strip saat 400/500).
 // Diekspor agar teruji tanpa membangun provider sungguhan.
-export function mapReasoningToThinking(effort?: string): number | undefined {
-  return effort === "high" ? 4096 : effort === "medium" ? 2048 : effort === "low" ? 1024 : undefined
-}
+export { mapReasoningToThinking } from "./anthropic.ts"
 
 export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
   const out: ModelProvider[] = []
@@ -32,8 +32,8 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
         }),
       )
     } else if (p.providerHint === "anthropic" || p.baseUrl.includes("anthropic")) {
-      // Map generic reasoningEffort to anthropic thinking budget
-      const thinking = mapReasoningToThinking(p.reasoningEffort)
+      // String effort diteruskan mentah; adapter memilih bentuk wire per
+      // MODEL per request (legacy budget vs adaptive vs omit).
       out.push(
         createAnthropicProvider({
           id: p.id,
@@ -41,23 +41,42 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
           baseUrl: p.baseUrl,
           models: p.models,
           defaultModel: p.models[0],
-          ...(thinking ? { thinking } : {}),
+          ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
         }) as unknown as ModelProvider,
       )
     } else {
       const isZen =
         p.baseUrl.includes("opencode.ai/zen") || p.id.includes("opencode") || p.id.includes("zen")
       const zenHeaders = isZen ? { "x-opencode-session": randomUUID() } : undefined
+      const base = {
+        id: p.id,
+        baseUrl: p.baseUrl,
+        apiKey: p.apiKey,
+        models: p.models,
+        defaultModel: p.models[0],
+        ...(zenHeaders ? { headers: zenHeaders } : {}),
+      }
+      // Jalur openai-compat melayani semua keluarga (DeepSeek, free-tier,
+      // custom gateway) — effort hanya untuk model reasoning yang levelnya
+      // didukung; sisanya langsung tanpa effort + fail-soft bila ditolak.
+      if (!p.reasoningEffort) {
+        out.push(createOpenAICompatProvider(base))
+        continue
+      }
+      const effort = p.reasoningEffort
       out.push(
-        createOpenAICompatProvider({
-          id: p.id,
-          baseUrl: p.baseUrl,
-          apiKey: p.apiKey,
-          models: p.models,
-          defaultModel: p.models[0],
-          ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
-          ...(zenHeaders ? { headers: zenHeaders } : {}),
-        }),
+        withEffortFallback(
+          createOpenAICompatProvider({ ...base, reasoningEffort: effort }),
+          createOpenAICompatProvider(base),
+          {
+            providerId: p.id,
+            effort,
+            shouldSend: (model: string): boolean => {
+              if (thinkingFamily(model) !== "openai-reasoning") return false
+              return allowedEfforts(model).includes(effort as "low" | "medium" | "high")
+            },
+          },
+        ),
       )
     }
   }
@@ -74,9 +93,24 @@ export function buildProviderList(cfg: MinicodeConfig): ModelProvider[] {
  * dari daftar daripada mengirim header Authorization tanpa token.
  */
 export async function buildProviderListAsync(cfg: MinicodeConfig): Promise<ModelProvider[]> {
+  const { getSecret } = await import("../lib/keystore.ts")
   const resolved: MinicodeConfig = { ...cfg, providers: [] }
   for (const p of cfg.providers) {
     if (p.auth !== "oauth") {
+      // Referensi keystore (`keystore:<nama>`) di-resolve ke secret OS di
+      // sini (lapisan provisioning) — config.ts tetap IO murni. Gagal =
+      // skip dengan peringatan, sama seperti OAuth yang belum login.
+      if (p.apiKey.startsWith("keystore:")) {
+        const secret = await getSecret(p.apiKey.slice("keystore:".length)).catch(() => null)
+        if (!secret) {
+          process.stderr.write(
+            `[auth] provider "${p.id}" keystore entry missing/unreadable — skipped. Run: minicode config set-key ${p.id}\n`,
+          )
+          continue
+        }
+        resolved.providers.push({ ...p, apiKey: secret })
+        continue
+      }
       resolved.providers.push(p)
       continue
     }

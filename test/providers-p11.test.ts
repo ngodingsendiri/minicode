@@ -120,6 +120,36 @@ test("responses: 429 meneruskan retryAfterMs", async () => {
   }
 })
 
+test("responses: effort hanya untuk keluarga openai-reasoning", async () => {
+  clearResponsesChain()
+  const bodies: string[] = []
+  const srv = Bun.serve({
+    port: 0,
+    fetch: async (req) => {
+      bodies.push(await req.text())
+      return new Response(
+        sseBody([JSON.stringify({ type: "response.output_text.delta", delta: "ok" })]),
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    },
+  })
+  try {
+    const p = createResponsesProvider({
+      baseUrl: `http://127.0.0.1:${srv.port}/v1`,
+      models: ["gpt-5.4", "mimo-v2.5-free"],
+      reasoningEffort: "medium",
+    })
+    await collect(p, "gpt-5.4")
+    await collect(p, "mimo-v2.5-free")
+    const gpt = JSON.parse(bodies[0]!) as { reasoning?: { effort?: string } }
+    const mimo = JSON.parse(bodies[1]!) as Record<string, unknown>
+    expect(gpt.reasoning).toMatchObject({ effort: "medium" })
+    expect("reasoning" in mimo).toBe(false)
+  } finally {
+    srv.stop(true)
+  }
+})
+
 test("detect: path /responses → hint responses (wire dari probe)", async () => {
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ data: [{ id: "gpt-5" }] }), {

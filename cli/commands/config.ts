@@ -18,6 +18,8 @@ const CONFIG_HELP = `minicode config — provider, MCP, and LSP
   minicode config list
   minicode config remove <id> [--global|--local]
   minicode config detect --baseUrl <url> --apiKey <key>
+  minicode config set-key <id> [--global|--local]      move API key to OS store (DPAPI on Windows)
+  minicode config delete-key <id>                      forget stored key (provider stays disabled)
 
   minicode config mcp <add|list|remove>    MCP servers used by minicode
   minicode config lsp <add|list|remove>    language servers per extension
@@ -126,6 +128,55 @@ export async function handleConfig(
     await removeProvider(id, { global: !args.includes("--local"), cwd: getArg("--cwd") })
     console.log(
       `${c.green(glyphs.check)} Removed provider ${id} (${!args.includes("--local") ? "global" : "local"})`,
+    )
+    process.exit(0)
+  } else if (sub === "set-key" || sub === "delete-key") {
+    // Pindahkan API key provider dari config plaintext ke penyimpanan OS
+    // (Windows: DPAPI user-scope; selain itu: berkas chmod 600 + peringatan
+    // jujur). Config hanya menyimpan referensi `keystore:provider:<id>`.
+    const id = positionalArg(args, 2)
+    if (!id) {
+      console.error("usage: minicode config set-key <id> [--global|--local] [--cwd <dir>]")
+      process.exit(1)
+    }
+    const { deleteSecret, setSecret } = await import("../../src/lib/keystore.ts")
+    const key = `provider:${id}`
+    if (sub === "delete-key") {
+      await deleteSecret(key)
+      console.log(
+        `${c.green(glyphs.check)} Removed stored key for ${c.bold(id)} — update config apiKey manually (provider stays disabled until re-set)`,
+      )
+      process.exit(0)
+    }
+    if (!process.stdin.isTTY) {
+      console.error(
+        "config set-key needs an interactive terminal (refusing to read secret from pipe)",
+      )
+      process.exit(1)
+    }
+    const { askSecret } = await import("../../src/ui/input/input.ts")
+    const secret = await askSecret(`API key for ${id} (hidden, empty = cancel) > `)
+    if (!secret) {
+      console.log(c.yellow("canceled"))
+      process.exit(1)
+    }
+    const backend = await setSecret(key, secret)
+    if (!backend) {
+      console.error("could not store secret (keystore unavailable and file unwritable)")
+      process.exit(1)
+    }
+    const { loadConfig } = await import("../../src/config.ts")
+    const { saveProvider } = await import("../../src/providers/provision.ts")
+    const global = !args.includes("--local")
+    const cfg = await loadConfig(getArg("--cwd"), { allowLocal: allowLocalHere(args) })
+    const entry = cfg.providers.find((p) => p.id === id)
+    if (!entry) {
+      console.error(`provider "${id}" not found - secret stored, but no provider points at it yet`)
+      process.exit(1)
+    }
+    await saveProvider({ ...entry, apiKey: `keystore:${key}` }, { global, cwd: getArg("--cwd") })
+    console.log(
+      `${c.green(glyphs.check)} Stored key for ${c.bold(id)} via ${backend} (${global ? "global" : "local"} config now references it)`,
     )
     process.exit(0)
   } else if (sub === "detect") {

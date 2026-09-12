@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.11] - 2026-09-12 — Eval, keyring, effort keluarga, VCR
+
+### Added
+- **Eval keberhasilan tugas**: `bench/runner.ts --memory on|off --out <path>`, HOME hermetic per run, RAG seperti jalur CLI + `memHits` di laporan, task `follow-convention` yang hanya lolos bila agen membaca fakta seed (ukur nilai memory diferensial, bukan klaim). Test `bench-eval`.
+- **Keyring OS**: `config set-key/delete-key` — Windows DPAPI user-scope (terbukti live: roundtrip OK, disk bebas plaintext), selain itu berkas chmod 600 berlabel jujur; referensi `keystore:` di-resolve di lapisan provisioning, hilang = skip fail-closed. Test hermetic (mocked).
+- **Fail-soft thinking generik** (`withStrippedRetry`): 400 diingat per sesi, 500 dicoba-ulang tanpa ingatan; kategori lain + abort diteruskan.
+
+### Fixed
+- **Thinking effort berbasis keluarga + default universal**: knob low/medium/high generik yang ditembak ke semua model terbukti salah alamat di lapangan (param beda tiap keluarga/versi; model non-reasoning 400/500; default vendor justru sudah tuned). Kini: default = omit total; effort hanya dikirim ke OpenAI reasoning (level tervalidasi per model), Claude ≤4.5 (budget), Claude ≥4.6/5 (adaptive — sebelumnya format legacy yang pasti 400); sisanya tak pernah dikirimi param. Penolakan 400/500 → ulangi sekali tanpa param + ingat per sesi + catat `[thinking]`. Picker effort hanya muncul untuk model yang mendukung. Test `effort*` + adapter.
+- **VCR wire-contract** (`test/vcr/`): rekaman respons asli (zen 429, openrouter 402) di-replay lewat adapter sungguhan — drift API ketahuan mesin, bukan user.
+
 ## [0.9.10] - 2026-09-12 — Pin model, indikator, picker cari, redirect guard
 
 ### Fixed

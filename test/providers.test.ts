@@ -320,6 +320,53 @@ test("anthropic thinking: adds thinking block + beta header, emits reasoning", a
   expect(events.join("")).toContain("Let me think")
 })
 
+async function anthropicBody(
+  config: Record<string, unknown>,
+  model?: string,
+): Promise<{ body: any; beta: string }> {
+  let body: any = null
+  let beta = ""
+  const origFetch = globalThis.fetch
+  ;(globalThis as unknown as { fetch: unknown }).fetch = async (_url: unknown, init: any) => {
+    body = JSON.parse(init.body)
+    beta = init.headers["anthropic-beta"] ?? ""
+    const sse =
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\n'
+    return new Response(sse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }) as unknown as Response
+  }
+  const p = createAnthropicProvider({ apiKey: "k", models: ["m"], ...(config as object) } as never)
+  try {
+    for await (const _ of p.stream(
+      { messages: [{ role: "user", content: "hi" }], ...(model ? { model } : {}) },
+      new AbortController().signal,
+    )) {
+    }
+  } catch {}
+  globalThis.fetch = origFetch
+  return { body, beta }
+}
+
+test("anthropic effort: legacy (4.5) = budget + beta; adaptive (opus-5) = adaptive tanpa beta", async () => {
+  const legacy = await anthropicBody({ reasoningEffort: "medium" }, "claude-sonnet-4-5")
+  expect(legacy.body.thinking).toMatchObject({ type: "enabled", budget_tokens: 2048 })
+  expect(legacy.beta).toContain("thinking-2024-12-16")
+
+  const adaptive = await anthropicBody({ reasoningEffort: "high" }, "claude-opus-5")
+  expect(adaptive.body.thinking).toMatchObject({ type: "adaptive" })
+  expect(adaptive.body.output_config).toMatchObject({ effort: "high" })
+  expect(adaptive.beta).not.toContain("thinking-2024-12-16")
+  expect(adaptive.beta).toContain("prompt-caching")
+})
+
+test("anthropic effort: model non-claude = omit total (tanpa thinking, tanpa beta)", async () => {
+  const r = await anthropicBody({ reasoningEffort: "medium" }, "deepseek-chat")
+  expect("thinking" in r.body).toBe(false)
+  expect(r.beta).not.toContain("thinking")
+})
+
 test("anthropic vision: user image content dikirim base64", async () => {
   let body: any = null
   const origFetch = globalThis.fetch

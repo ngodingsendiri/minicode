@@ -11,6 +11,7 @@ import {
   type ProviderEntry,
   writeConfigAtomic,
 } from "../src/config.ts"
+import { effortOptionsForModel } from "../src/providers/effort.ts"
 import { type ModelRow, runModelManagerView } from "../src/ui/screens/model-manager.ts"
 
 /** Minimal model registry: list, select, add, and remove. */
@@ -70,6 +71,12 @@ export async function runModelManager(opts: {
   return runModelManagerView({
     initialRows: rowsOf(cfg.providers),
     ...(opts.initialFilter ? { initialFilter: opts.initialFilter } : {}),
+    // Opsi effort jujur per model: keluarga tanpa thinking hanya "default"
+    // (view melewati picker dan tak menyentuh effort tersimpan).
+    getEfforts: (id: string) => {
+      const sep = id.indexOf("::")
+      return effortOptionsForModel(sep === -1 ? id : id.slice(sep + 2))
+    },
     onSelect: async (id) => {
       // Reload providers agar router langsung kenal provider baru tanpa restart
       const { reloadProviders } = await import("../src/app/provider-layer.ts")

@@ -1,10 +1,17 @@
 // Benchmark runner: jalankan tugas sample terhadap minicode, ukur resolve rate,
 // steps, token, durasi. `--fake` untuk smoke tanpa API key (dipakai CI).
 // `--runs <n>`: jumlah run per task (default 1; 2 = stabil/median).
+// `--memory on|off`: RAG + auto-memory nyala/mati (ukur nilai memory diferensial).
+// `--out <path>`: file laporan JSON (default bench/results.json).
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { ModelProvider } from "#minicore"
+import { createRagLayer } from "../src/app/rag-layer.ts"
 import { createMinicodeSession } from "../src/app/session.ts"
 import { loadConfig } from "../src/config.ts"
+import { addMemory } from "../src/memory/vector.ts"
 import { createUsageCollector } from "../src/policy/usage.ts"
 import { buildProviderList } from "../src/providers/build.ts"
 import { createRouterProvider } from "../src/providers/router.ts"
@@ -17,6 +24,11 @@ const runs =
   runsArgIdx !== -1 && Number(process.argv[runsArgIdx + 1]) > 0
     ? Number(process.argv[runsArgIdx + 1])
     : 1
+const memIdx = process.argv.indexOf("--memory")
+const memoryOn = memIdx === -1 || (process.argv[memIdx + 1] ?? "on").toLowerCase() !== "off"
+const outIdx = process.argv.indexOf("--out")
+const outPath =
+  outIdx !== -1 && process.argv[outIdx + 1] ? process.argv[outIdx + 1]! : "bench/results.json"
 
 async function main(): Promise<void> {
   let provider: ModelProvider
@@ -48,42 +60,88 @@ async function main(): Promise<void> {
 
   // aggregator per task: median dari n run agar outlier provider tidak menyesatkan
   const results: Record<string, unknown>[] = []
-  const perTask = new Map<string, { passed: number; durations: number[]; tokens: number[] }>()
+  const perTask = new Map<
+    string,
+    { passed: number; durations: number[]; tokens: number[]; memoryHits: number[] }
+  >()
+  // HOME hermetic per run: DB/memory/sesi global tak bocor antar run dan tak
+  // menyentuh ~/.minicode operator. Disimpan per run agar seed memory terisolasi.
+  const prevHome = process.env.MINICODE_HOME
+  const prevAutoMem = process.env.MINICODE_AUTO_MEMORY
+  if (!memoryOn) process.env.MINICODE_AUTO_MEMORY = "0"
   for (const task of tasks) {
-    const stats = { passed: 0, durations: [] as number[], tokens: [] as number[] }
+    const stats = {
+      passed: 0,
+      durations: [] as number[],
+      tokens: [] as number[],
+      memoryHits: [] as number[],
+    }
     for (let r = 0; r < runs; r++) {
       const dir = await task.setup()
-      const session = await createMinicodeSession({
-        provider,
-        tools: allTools,
-        cwd: dir,
-        permissionMode: "auto",
-      })
-      const usage = createUsageCollector(session.events)
-      const t0 = Date.now()
+      const homeTmp = await mkdtemp(join(tmpdir(), "minicode-bench-home-"))
+      process.env.MINICODE_HOME = homeTmp
+      let memoryHits = 0
       let steps = 0
       let error: string | undefined
       try {
-        const res = await session.run(task.prompt, {})
-        steps = res.usage.steps
+        // Seed memory global run ini (hanya bila memory on + task memintanya).
+        if (memoryOn && task.seedMemory) {
+          await addMemory(task.seedMemory, { cwd: homeTmp }).catch(() => {})
+        }
+        // RAG seperti jalur CLI asli (bukan sesi telanjang) agar memoryHits
+        // terukur; mode off = tanpa systemExtra sama sekali.
+        let systemExtra: string | undefined
+        if (memoryOn) {
+          try {
+            const rag = await createRagLayer({
+              cfg: { providers: [] },
+              prompt: task.prompt,
+              cwd: dir,
+            })
+            systemExtra = rag.systemExtra
+            memoryHits = rag.memoryHits
+          } catch {}
+        }
+        const session = await createMinicodeSession({
+          provider,
+          tools: allTools,
+          cwd: dir,
+          permissionMode: "auto",
+          ...(systemExtra ? { systemExtra } : {}),
+        })
+        const usage = createUsageCollector(session.events)
+        const t0 = Date.now()
+        try {
+          const res = await session.run(task.prompt, {})
+          steps = res.usage.steps
+        } catch (e) {
+          error = (e as Error).message
+        }
+        const durationMs = Date.now() - t0
+        const u = usage.get()
+        const rawVerify = await task.verify(dir)
+        // --fake: provider palsu tak pernah benar-benar mengedit file → anggap passed bila harness jalan tanpa error
+        const verify = fake ? { ...rawVerify, passed: true } : rawVerify
+        await task.cleanup(dir)
+        const passed = verify.passed && !error
+        stats.passed += passed ? 1 : 0
+        stats.durations.push(durationMs)
+        stats.tokens.push(u.totalTokens)
+        stats.memoryHits.push(memoryHits)
+        process.stdout.write(
+          `${passed ? "PASS" : "FAIL"} ${task.id} run=${r + 1}/${runs} steps=${steps} tokens=${u.totalTokens} memHits=${memoryHits} ${durationMs}ms${error ? ` error=${error.slice(0, 80)}` : ""}\n`,
+        )
+        // jeda antar task untuk hindari rate limit (provider gratis/quota)
+        if (!fake && error?.includes("429")) await new Promise((r) => setTimeout(r, 10000))
       } catch (e) {
-        error = (e as Error).message
+        // Setup/session gagal total (bukan model error): catat, bersih, lanjut.
+        process.stdout.write(
+          `ERROR ${task.id} run=${r + 1}/${runs} ${(e as Error).message.slice(0, 80)}\n`,
+        )
+        await task.cleanup(dir).catch(() => {})
+      } finally {
+        await rm(homeTmp, { recursive: true, force: true }).catch(() => {})
       }
-      const durationMs = Date.now() - t0
-      const u = usage.get()
-      const rawVerify = await task.verify(dir)
-      // --fake: provider palsu tak pernah benar-benar mengedit file → anggap passed bila harness jalan tanpa error
-      const verify = fake ? { ...rawVerify, passed: true } : rawVerify
-      await task.cleanup(dir)
-      const passed = verify.passed && !error
-      stats.passed += passed ? 1 : 0
-      stats.durations.push(durationMs)
-      stats.tokens.push(u.totalTokens)
-      process.stdout.write(
-        `${passed ? "PASS" : "FAIL"} ${task.id} run=${r + 1}/${runs} steps=${steps} tokens=${u.totalTokens} ${durationMs}ms${error ? ` error=${error.slice(0, 80)}` : ""}\n`,
-      )
-      // jeda antar task untuk hindari rate limit (provider gratis/quota)
-      if (!fake && error?.includes("429")) await new Promise((r) => setTimeout(r, 10000))
     }
     perTask.set(task.id, stats)
     const median = (a: number[]) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)]!
@@ -94,8 +152,13 @@ async function main(): Promise<void> {
       passedCount: stats.passed,
       medianDurationMs: median(stats.durations),
       medianTokens: median(stats.tokens),
+      medianMemoryHits: median(stats.memoryHits),
     })
   }
+  if (prevHome === undefined) delete process.env.MINICODE_HOME
+  else process.env.MINICODE_HOME = prevHome
+  if (prevAutoMem === undefined) delete process.env.MINICODE_AUTO_MEMORY
+  else process.env.MINICODE_AUTO_MEMORY = prevAutoMem
 
   const resolved = results.filter((r) => (r as { passedCount: number }).passedCount === runs).length
   const partial = results.filter(
@@ -107,6 +170,7 @@ async function main(): Promise<void> {
     timestamp: new Date().toISOString(),
     fake,
     runsPerTask: runs,
+    memory: memoryOn ? "on" : "off",
     total: results.length,
     resolved,
     partial,
@@ -115,8 +179,8 @@ async function main(): Promise<void> {
   // Delta vs run sebelumnya
   let deltaLine = ""
   try {
-    if (existsSync("bench/results.json")) {
-      const prev = JSON.parse(readFileSync("bench/results.json", "utf8")) as {
+    if (existsSync(outPath)) {
+      const prev = JSON.parse(readFileSync(outPath, "utf8")) as {
         resolveRate?: number
         timestamp?: string
       }
@@ -127,7 +191,7 @@ async function main(): Promise<void> {
       }
     }
   } catch {}
-  writeFileSync("bench/results.json", JSON.stringify({ ...summary, results }, null, 2))
+  writeFileSync(outPath, JSON.stringify({ ...summary, results }, null, 2))
   process.stdout.write(
     `\nresolve rate: ${resolved}/${results.length} (${summary.resolveRate})${partial ? ` (${partial} partial)` : ""}\n${deltaLine}`,
   )

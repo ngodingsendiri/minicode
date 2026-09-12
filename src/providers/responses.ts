@@ -1,5 +1,6 @@
 import { ProviderError } from "#minicore/core/errors.ts"
 import type { ModelProvider, ProviderEvent, StreamRequest } from "#minicore/core/provider.ts"
+import { allowedEfforts, thinkingFamily } from "./effort.ts"
 
 export interface ResponsesConfig {
   id?: string
@@ -85,6 +86,16 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       const modelKey = request.model ?? config.defaultModel ?? config.models[0] ?? "default"
       const prev = lastResponseByModel.get(modelKey)
+      // Effort hanya untuk keluarga OpenAI reasoning dengan level yang
+      // didukung model itu (mis. pro = high saja); sisanya omit — default
+      // bawaan model yang berlaku. Tanpa ini model non-reasoning 400.
+      const wantEffort = config.reasoningEffort
+      const sendEffort =
+        wantEffort &&
+        thinkingFamily(modelKey) === "openai-reasoning" &&
+        allowedEfforts(modelKey).includes(wantEffort as "low" | "medium" | "high")
+          ? wantEffort
+          : undefined
       const body = JSON.stringify({
         model: request.model ?? config.defaultModel ?? config.models[0],
         input: toResponsesInput(request.messages),
@@ -102,7 +113,7 @@ export function createResponsesProvider(config: ResponsesConfig): ModelProvider 
         ...(request.system?.trim() ? { instructions: request.system } : {}),
         stream: true,
         store: false,
-        ...(config.reasoningEffort ? { reasoning: { effort: config.reasoningEffort } } : {}),
+        ...(sendEffort ? { reasoning: { effort: sendEffort } } : {}),
         // Rantai konteks antar turn; tanpa ini server memperlakukan tiap
         // request sebagai sesi baru (biaya konteks + hilang ingatan server).
         ...(prev ? { previous_response_id: prev } : {}),
