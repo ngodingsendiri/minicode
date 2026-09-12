@@ -181,6 +181,20 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     }
   } catch {}
 
+  // Turn sebelumnya mati tak wajar (segfault/hang/kill): marker yatim masih
+  // ada. Laporkan sekali + bersihkan — tanpa ini berhentinya "hilang" tanpa
+  // jejak dan user tak tahu harus /resume atau mulai baru.
+  try {
+    const { checkStaleTurn, clearStaleTurn, formatStaleNotice } = await import(
+      "../src/session/turn-marker.ts"
+    )
+    const stale = checkStaleTurn(cwd, sessionId)
+    if (stale) {
+      process.stderr.write(`${c.yellow(formatStaleNotice(stale))}\n`)
+      clearStaleTurn(cwd, sessionId)
+    }
+  } catch {}
+
   const { cfg, router } = await createProviderLayer({
     cwd,
     prompt,
@@ -469,7 +483,25 @@ export async function createCliSession(opts: CliSessionOptions): Promise<CliSess
     // Bersihkan state garis status turn SEBELUMNYA bila kernel tidak sempat
     // emit turn:completed (gagal/abort) — lihat lifecycle turn-status.ts.
     turnStatus.endTurn()
-    await runHooksGated("pre", { phase: "pre", prompt: p, cwd }, signal)
+    // Tandai turn aktif: bila proses mati di tengah (segfault/kill), sesi
+    // berikutnya menemukan marker yatim dan memberi tahu (bukan hilang bisu).
+    // Dihapus di finally di bawah pada SEMUA jalur settle.
+    const { clearTurnActive, markTurnActive } = await import("../src/session/turn-marker.ts").catch(
+      () => ({}) as { clearTurnActive?: unknown; markTurnActive?: unknown },
+    )
+    try {
+      ;(markTurnActive as ((cwd?: string, id?: string) => void) | undefined)?.(cwd, sessionId)
+    } catch {}
+    try {
+      await runPromptWithVerifyInner(p, signal)
+    } finally {
+      try {
+        ;(clearTurnActive as ((cwd?: string, id?: string) => void) | undefined)?.(cwd, sessionId)
+      } catch {}
+    }
+  }
+
+  async function runPromptWithVerifyInner(p: string, signal?: AbortSignal): Promise<void> {
     // Semua session.run settle lewat sini: finally memastikan garis status
     // berhenti pada sukses MAUPUN gagal/abort (kernel hanya emit
     // turn:completed di jalur sukses — tanpa ini painter basi menimpa prompt).

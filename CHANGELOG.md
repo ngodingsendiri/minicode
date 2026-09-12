@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.13] - 2026-09-12 — Heartbeat + crash recovery
+
+### Added
+- **Heartbeat elapsed di garis status**: `Thinking···` kini selalu membawa timer (`12s`, `1m23s`, `2h05m`) yang update tiap tick — bedakan "masih jalan" dari "mati diam-diam" saat provider stall/hang. Tidak pernah bare, tetap transient, non-TTY tetap mati.
+
+### Fixed
+- **Marker turn + notice crash**: turn meninggalkan `.minicode/turn.active.json` (pid+sessionId) dan menghapusnya saat settle; startup berikutnya yang menemukan marker yatim (pid mati) menampilkan `[recovery] previous turn did not settle…` + hint `/resume`/`/undo` sekali lalu membersihkan. Pid hidup dihormati (sesi paralel tak saling menghapus). Test `turn-marker` + `turn-status` heartbeat.
+
 ## [0.9.12] - 2026-09-12 — Provider jujur, harga free, hint shell
 
 ### Fixed

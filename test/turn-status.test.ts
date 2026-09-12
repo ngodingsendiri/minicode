@@ -122,3 +122,39 @@ describe("turn-status: lifecycle deterministik", () => {
     status.detach()
   }, 4000)
 })
+
+describe("turn-status: heartbeat elapsed", () => {
+  test("formatElapsed: detik, menit, jam", async () => {
+    const { formatElapsed } = await import("../src/ui/assistant/turn-status.ts")
+    expect(formatElapsed(0)).toBe("0s")
+    expect(formatElapsed(5900)).toBe("5s")
+    expect(formatElapsed(59999)).toBe("59s")
+    expect(formatElapsed(60000)).toBe("1m00s")
+    expect(formatElapsed(83000)).toBe("1m23s")
+    expect(formatElapsed(3599999)).toBe("59m59s")
+    expect(formatElapsed(3600000)).toBe("1h00m")
+    expect(formatElapsed(-500)).toBe("0s")
+  })
+
+  test("garis status selalu membawa elapsed sejak turn:started", async () => {
+    const { bus, status } = setup()
+    bus.emit("turn:started", { turn: 1 })
+    bus.emit("provider:extension", { kind: "reasoning", data: {} })
+    await sleep(1200) // lewati batas 1 detik agar timer terbaca
+    // Heartbeat: label hidup + timer — bedakan turn jalan vs mati diam.
+    expect(err()).toMatch(/Thinking·{1,3} · \d+s/)
+    status.detach()
+  }, 5000)
+
+  test("elapsed berhenti (reset) saat turn selesai", async () => {
+    const { bus, status } = setup()
+    bus.emit("turn:started", { turn: 1 })
+    bus.emit("provider:extension", { kind: "reasoning", data: {} })
+    await sleep(60)
+    status.endTurn()
+    tty!.clear()
+    await sleep(300)
+    expect(err()).toBe("")
+    status.detach()
+  }, 4000)
+})
