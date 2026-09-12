@@ -291,9 +291,10 @@ export const glyphs = {
     return supportsUtf8() ? ["·", "··", "···"] : [".", "..", "..."]
   },
   get thinkingIcon() {
-    // Google Material Symbols: "psychology" (otak) — dipakai di ARCHITECTURE.html
-    // sebagai ikon thinking. Di terminal dirender sebagai emoji 🧠 (fallback *).
-    return supportsUtf8() ? "🧠" : "*"
+    // Google Material Symbols: "emoji_objects" (lampu) — sesuai link
+    // https://fonts.googleapis.com/...&icon_names=emoji_objects
+    // Di terminal dirender sebagai emoji 💡 (fallback *).
+    return supportsUtf8() ? "💡" : "*"
   },
 }
 
