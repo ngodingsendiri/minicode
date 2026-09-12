@@ -837,13 +837,13 @@ describe("simple logger (one-shot)", () => {
       await new Promise((r) => setTimeout(r, 900))
       status.detach()
       const raw = chunks.join("")
-      expect(stripAnsi(raw)).toContain("💡")
+      expect(stripAnsi(raw)).toContain("🧠")
       expect(raw).not.toContain("model-rahasia-xyz")
       // Animasi titik eksplisit · → ·· → ··· (±300ms): minimal dua wujud
       // berbeda dalam 900ms, dan tak pernah bare tanpa titik.
-      const frames = new Set(stripAnsi(raw).match(/💡(·{1,3})/g) ?? [])
+      const frames = new Set(stripAnsi(raw).match(/🧠(·{1,3})/g) ?? [])
       expect(frames.size).toBeGreaterThan(1)
-      expect(stripAnsi(raw)).not.toMatch(/💡(?!·)/)
+      expect(stripAnsi(raw)).not.toMatch(/🧠(?!·)/)
     } finally {
       ;(process.stderr as unknown as { write: unknown }).write = prevWrite
     }

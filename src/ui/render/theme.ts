@@ -291,7 +291,9 @@ export const glyphs = {
     return supportsUtf8() ? ["·", "··", "···"] : [".", "..", "..."]
   },
   get thinkingIcon() {
-    return supportsUtf8() ? "💡" : "*"
+    // Google Material Symbols: "psychology" (otak) — dipakai di ARCHITECTURE.html
+    // sebagai ikon thinking. Di terminal dirender sebagai emoji 🧠 (fallback *).
+    return supportsUtf8() ? "🧠" : "*"
   },
 }
 
