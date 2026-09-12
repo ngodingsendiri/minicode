@@ -1,1 +1,5 @@
-{"status":402,"headers":{"content-type":"application/json"},"body":{"error":{"message":"This request requires more credits, or fewer max_tokens."}}}
+{
+  "status": 402,
+  "headers": { "content-type": "application/json" },
+  "body": { "error": { "message": "This request requires more credits, or fewer max_tokens." } }
+}

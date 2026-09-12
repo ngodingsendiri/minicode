@@ -1,1 +1,12 @@
-{"status":429,"headers":{"content-type":"application/json"},"body":{"type":"error","error":{"type":"FreeUsageLimitError","message":"Rate limit exceeded. Please try again later."},"metadata":{}}}
+{
+  "status": 429,
+  "headers": { "content-type": "application/json" },
+  "body": {
+    "type": "error",
+    "error": {
+      "type": "FreeUsageLimitError",
+      "message": "Rate limit exceeded. Please try again later."
+    },
+    "metadata": {}
+  }
+}
