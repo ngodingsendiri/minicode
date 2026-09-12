@@ -207,9 +207,16 @@ export async function handleBuiltinCommand(
     case "status": {
       // Kumulatif sesi, bukan turn terakhir — judulnya menjanjikan "biaya sesi".
       const u = ctx.usage.getSession(ctx.currentModel)
+      // Provider EFEKTIF dulu (hasil routing/fallback), lalu id dari pin
+      // `provider::model`, terakhir hint wire. Sebelumnya selalu hint wire
+      // ("openai") walau yang dipakai opencode-zen — label bohong.
+      const pinned = ctx.currentModel?.includes("::")
+        ? ctx.currentModel.slice(0, ctx.currentModel.indexOf("::"))
+        : undefined
+      const provider = ctx.usage.modelUsed().provider ?? pinned ?? ctx.providerHint ?? "-"
       console.log(`\nSession ${ctx.sessionId}`)
       console.log(`  Model:    ${ctx.currentModel ?? "default"}`)
-      console.log(`  Provider: ${ctx.providerHint ?? "-"}`)
+      console.log(`  Provider: ${provider}`)
       console.log(`  Tools:    ${ctx.toolsCount}`)
       console.log(`  Input:    ${u.inputTokens.toLocaleString()}`)
       console.log(`  Output:   ${u.outputTokens.toLocaleString()}`)

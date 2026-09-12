@@ -60,7 +60,7 @@ export async function buildSystemPrompt(
     [
       "\n# Environment",
       `- Working directory: ${cwd}`,
-      `- Platform: ${process.platform}`,
+      `- Platform: ${process.platform}${process.platform === "win32" ? " (shell for bash tool: cmd.exe — use dir/echo %VAR%, not ls/pwd)" : ""}`,
       "- Relative paths in tools resolve against the working directory above.",
     ].join("\n"),
   )

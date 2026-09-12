@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.12] - 2026-09-12 — Provider jujur, harga free, hint shell
+
+### Fixed
+- **`/status` tampilkan provider efektif** (bukan hint wire): sesi opencode-zen selalu tertulis "Provider: openai". Kini: provider hasil routing → id dari pin `provider::model` → hint.
+- **Model `-free` gaya Zen $0**: `findPrice` hanya kenal sufiks `:free`; `deepseek-v4-flash-free` cocok segmen berbayar ($0,14/M → sesi gratis 919rb token dilaporkan $0,13). Kini sufiks `-free` juga $0 kecuali entri eksplisit.
+- **System prompt sebut shell Windows** (`cmd.exe`, bukan `ls`/`pwd`) agar model tak menebak perintah Unix di win32.
+
 ## [0.9.11] - 2026-09-12 — Eval, keyring, effort keluarga, VCR
 
 ### Added

@@ -340,6 +340,19 @@ test("audit: system prompt menandai data tak-terpercaya", async () => {
   }
 })
 
+test("audit: environment menyebut shell per platform (anti tebak ls/pwd)", async () => {
+  // Regresi live: di win32 model mencoba `pwd`/`ls -la` (Unix) karena prompt
+  // hanya bilang Platform tanpa shell-nya (padahal bash tool = cmd.exe).
+  const dir = tmpRoot()
+  try {
+    const sys = await buildSystemPrompt({ cwd: dir })
+    if (process.platform === "win32") expect(sys).toContain("cmd.exe")
+    else expect(sys).toContain(`Platform: ${process.platform}`)
+  } finally {
+    await cleanup(dir)
+  }
+})
+
 test("audit: summary bertahan save/load (resume merekonstruksi sama)", async () => {
   const dir = tmpRoot()
   try {

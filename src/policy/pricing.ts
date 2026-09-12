@@ -297,7 +297,10 @@ export function findPrice(
   // menyatakan prompt=0 completion=0. Terverifikasi lewat /api/v1/models.
   // Kunci eksplisit di overlay tetap didahulukan (bila models.dev punya entri
   // untuk id ber-`:free`, itu lebih otoritatif).
-  if (m.endsWith(":free")) {
+  // Bentuk Zen (`-free`, mis. `deepseek-v4-flash-free`) diperlakukan sama:
+  // tanpa ini ia cocok segmen `deepseek` dan sesi gratis 919rb token
+  // dilaporkan $0,13 — merusak `--budget` dan angka /status.
+  if (m.endsWith(":free") || /-free$/.test(m)) {
     const explicit = overlayMap[m] ?? BUILTIN_PRICING[m]
     if (explicit) return explicit
     return { input: 0, output: 0 }

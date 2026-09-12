@@ -555,6 +555,18 @@ describe("pricing: pencocokan nama model", () => {
     expect(findPrice("vendor/model:free", overlay)).toEqual({ input: 0.01, output: 0.02 })
   })
 
+  // Varian `-free` gaya Zen (bukan `:free` OpenRouter) juga $0. Regresi
+  // nyata: `deepseek-v4-flash-free` cocok segmen `deepseek` ($0,14/M)
+  // sehingga sesi gratis 919rb token dilaporkan $0,13 di /status.
+  test("-free selalu gratis, bukan mewarisi harga segmen", () => {
+    expect(findPrice("deepseek-v4-flash-free", {})).toEqual({ input: 0, output: 0 })
+    expect(findPrice("opencode-zen::deepseek-v4-flash-free", {})).toEqual({ input: 0, output: 0 })
+    expect(findPrice("mimo-v2.5-free", {})).toEqual({ input: 0, output: 0 })
+    // Berbayar tanpa sufiks tetap berharga; nama mirip tanpa strip tak kena.
+    expect(findPrice("deepseek/deepseek-chat", {})).toEqual(BUILTIN_PRICING["deepseek-chat"])
+    expect(findPrice("model-tak-dikenal", {})).toBeUndefined()
+  })
+
   test("nama wrapper TIDAK cocok (bukan substring)", () => {
     expect(findPrice("my-gpt-4o-wrapper", {})).toBeUndefined()
     expect(findPrice("gpt-4o1-preview", {})).toBeUndefined()

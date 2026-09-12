@@ -121,6 +121,28 @@ describe("konsistensi bahasa keluaran", () => {
     expect(teks).toContain("Session")
     expect(teks).toContain("Cost")
   })
+
+  test("/status Provider = efektif, lalu pin, terakhir hint wire", async () => {
+    // Regresi: sesi opencode-zen selalu tampil "Provider: openai" karena
+    // yang dicetak hint wire, bukan provider yang dipakai.
+    const providerLine = (lines: string[]): string =>
+      lines.find((l) => stripAnsi(l).startsWith("Provider:")) ?? ""
+    // 1. Pin tanpa event fallback → id dari pin, bukan hint.
+    expect(providerLine(await run("/status"))).toContain("prov")
+    // 2. Provider efektif (hasil fallback) menang atas pin maupun hint.
+    const ctx2 = {
+      ...ctx,
+      currentModel: "opencode-zen::deepseek-v4-flash-free",
+      usage: {
+        ...ctx.usage,
+        modelUsed: () => ({ effective: "deepseek-v4-flash-free", provider: "opencode-zen" }),
+      },
+      providerHint: "openai",
+    } as unknown as Parameters<typeof handleBuiltinCommand>[1]
+    const { lines: lines2 } = await captureOutput(() => handleBuiltinCommand("/status", ctx2))
+    expect(providerLine(lines2)).toContain("opencode-zen")
+    expect(providerLine(lines2)).not.toContain("openai")
+  })
 })
 
 describe("glyphs: menghormati dukungan UTF-8", () => {
