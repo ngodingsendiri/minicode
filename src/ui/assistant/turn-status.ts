@@ -72,6 +72,11 @@ export function attachTurnStatus(
   let turnOn = false
   let textOn = false
   let label = "Thinking"
+  // Kecepatan reasoning: diukur dari frekuensi chunk reasoning yang masuk.
+  // Interval animasi mengikuti — cepat bila model berpikir cepat.
+  let intervalMs = 150
+  let lastReasoningMs: number | null = null
+  const recentDeltas: number[] = []
   // Kepemilikan transient stderr selama interval hidup — lihat statusline.ts.
   let owned: { release(): void } | null = null
 
@@ -84,11 +89,16 @@ export function attachTurnStatus(
     } catch {}
     // Titik animasi eksplisit · → ·· → ···, ganti tiap 2 tick (~300ms):
     // sinyal "masih hidup" yang tak ambigu. Tak pernah bare: selalu ≥1 titik.
+    // Ikon thinking berkilau: kuning ↔ kuning-terang bergantian tiap tick
+    // (Google emoji_objects) — kecepatan kilau mengikuti intervalMs yang
+    // adaptif terhadap kecepatan reasoning model.
     const dots = glyphs.dot.repeat(1 + (Math.floor(fi / 2) % 3))
     const cols = process.stdout.columns || 80
+    const thinkingIcon =
+      fi % 2 === 0 ? c.yellow(glyphs.thinkingIcon) : c.brightYellow(glyphs.thinkingIcon)
     const body =
       label === "Thinking"
-        ? `${c.yellow(glyphs.thinkingIcon)}${dots}`
+        ? `${thinkingIcon}${dots}`
         : `${c.info(glyphs.spinnerFrames[fi % glyphs.spinnerFrames.length]!)} ${label}${dots}`
     const full = body + extra
     // Terminal sangat sempit: potongan label bisa tinggal 1 huruf ("t") —
@@ -111,6 +121,12 @@ export function attachTurnStatus(
     }
     paintWrite("\r\x1b[2K")
   }
+  const restartInterval = () => {
+    if (!intervalId) return
+    clearInterval(intervalId)
+    intervalId = setInterval(paint, intervalMs)
+  }
+
   const startPaint = (next: string) => {
     label = next
     if (!shouldPaint()) return
@@ -121,13 +137,16 @@ export function attachTurnStatus(
         if (shouldPaint()) startPaint(label)
       })
       paint()
-      intervalId = setInterval(paint, 150)
+      intervalId = setInterval(paint, intervalMs)
     } else paint()
   }
   const resetTurn = () => {
     turnOn = false
     textOn = false
     label = "Thinking"
+    intervalMs = 150
+    lastReasoningMs = null
+    recentDeltas.length = 0
     stopPaint()
   }
 
@@ -176,6 +195,22 @@ export function attachTurnStatus(
     }),
     bus.on("provider:extension", (e: { kind: string }) => {
       if (e.kind === "reasoning") {
+        // Adaptasi kecepatan: ukur jarak antar chunk reasoning
+        const now = Date.now()
+        if (lastReasoningMs != null) {
+          const d = now - lastReasoningMs
+          if (d > 10 && d < 2000) {
+            recentDeltas.push(d)
+            if (recentDeltas.length > 6) recentDeltas.shift()
+            const avg = recentDeltas.reduce((a, b) => a + b, 0) / recentDeltas.length
+            const nextMs = avg < 80 ? 80 : avg < 180 ? 110 : avg < 350 ? 150 : avg < 700 ? 220 : 320
+            if (nextMs !== intervalMs) {
+              intervalMs = nextMs
+              restartInterval()
+            }
+          }
+        }
+        lastReasoningMs = now
         textOn = false
         startPaint("Thinking")
       } else if (e.kind === "error") stopPaint()
