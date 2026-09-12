@@ -366,6 +366,9 @@ test("mcp-server: restart + id sama argumen BEDA = operasi baru (jalan)", async 
 })
 
 test("mcp-server: kill tengah eksekusi → restart + id sama = status unknown (bukan replay)", async () => {
+  // Timeout eksplisit: test ini mem-boot DUA server penuh + sleep 20 dtk —
+  // default 5 dtk bun terlalu ketat untuk runner CI berbeban (flake timeout
+  // deterministik di Linux, hijau lokal).
   // Audit #08 §5: outcome unknown ≠ failed ≠ success. Intent kini membawa
   // note sejak awal, jadi crash tanpa terminal tetap terdeteksi — retry
   // id-sama wajib verifikasi manual, bukan eksekusi ulang buta.
@@ -405,7 +408,7 @@ test("mcp-server: kill tengah eksekusi → restart + id sama = status unknown (b
   } finally {
     await cleanup(dir)
   }
-})
+}, 30000)
 
 // ── 4. Cancel + jurnal + secrets ──
 
