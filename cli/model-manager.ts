@@ -21,6 +21,8 @@ export async function runModelManager(opts: {
   /** Flag --allow-local-config sesi (default deny — daftar model tak memuat
    * endpoint repo tanpa opt-in). */
   allowLocalConfig?: boolean
+  /** Filter awal daftar (dari `/model <cari>`). */
+  initialFilter?: string
 }): Promise<void> {
   const cfg = await loadConfig(opts.cwd, { allowLocal: opts.allowLocalConfig })
   if (!process.stdin.isTTY) {
@@ -67,6 +69,7 @@ export async function runModelManager(opts: {
 
   return runModelManagerView({
     initialRows: rowsOf(cfg.providers),
+    ...(opts.initialFilter ? { initialFilter: opts.initialFilter } : {}),
     onSelect: async (id) => {
       // Reload providers agar router langsung kenal provider baru tanpa restart
       const { reloadProviders } = await import("../src/app/provider-layer.ts")

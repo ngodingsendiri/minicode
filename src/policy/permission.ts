@@ -190,7 +190,9 @@ export function createPermissionHandler(
   }
 
   function bashDenied(cmd: string): boolean {
-    return inspectBashCommand(cmd).denied
+    // Teruskan root workspace: tanpa ini guard tak bisa membedakan
+    // `> local.txt` (sah) dari `> ..\evil` (escape) — temuan audit eksternal.
+    return inspectBashCommand(cmd, root).denied
   }
 
   function saveAlways(call: ToolCall): Promise<void> {

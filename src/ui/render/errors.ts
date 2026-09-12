@@ -172,6 +172,36 @@ export function friendlyFromCategory(category: string, detail: string): Friendly
         fix: hint ?? "Rewrite the prompt, or switch provider via /model.",
       }
     default: {
+      // Kategori "unknown" menampung status HTTP lain (mis. 402 dari vendor
+      // yang frozen) — kenali pola tagihan/limit dari TEKS agar pesannya
+      // tetap actionable, bukan dump mentah.
+      const low = truth.toLowerCase()
+      if (
+        low.includes("insufficient balance") ||
+        low.includes("credits") ||
+        low.includes("billing") ||
+        low.includes("quota") ||
+        low.includes("credit limit") ||
+        low.includes("requires more credits") ||
+        low.includes("fewer max_tokens")
+      ) {
+        return {
+          message: withDetail("API key balance or quota is exhausted"),
+          fix: hint ?? "Switch provider via /model, or top up credits.",
+        }
+      }
+      if (
+        low.includes("rate limit") ||
+        low.includes("rate_limit") ||
+        low.includes("429") ||
+        low.includes("freeusagelimit") ||
+        low.includes("try again later")
+      ) {
+        return {
+          message: withDetail("Provider is rate-limiting requests"),
+          fix: hint ?? "Wait a moment and try again, or use --ratelimit to throttle requests.",
+        }
+      }
       if (providerDetail) return { message: providerDetail, ...(hint ? { fix: hint } : {}) }
       const cut = truth.length > 160 ? `${truth.slice(0, 157)}…` : truth
       return { message: cut }

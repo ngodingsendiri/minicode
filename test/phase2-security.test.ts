@@ -1,6 +1,10 @@
 // Fase 2 — keamanan: bash-guard ternormalisasi, resolusi sandbox, env scrub.
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
+  findRedirectTargets,
   inlineSimpleVars,
   inspectBashCommand,
   normalizeCommand,
@@ -173,6 +177,63 @@ describe("bash-guard: alasan penolakan informatif", () => {
     expect(inspectBashCommand("env").reason).toBe("environment dump")
     expect(inspectBashCommand("rm -rf /").reason).toBe("destructive rm")
     expect(inspectBashCommand("bash <(curl x)").reason).toBe("process substitution")
+  })
+})
+
+describe("bash-guard: redirect keluar workspace (temuan audit eksternal)", () => {
+  // PoC nyata: `echo test > ..\minicode_escape_probe.txt` lolos guard +
+  // allowlist `echo *` lalu menulis DI LUAR workspace (file tercipta di D:\).
+  // Akar: matchBashAllowlist hanya menolak chaining `[;&|]` (tanpa `< >`)
+  // dan guard tak punya aturan redirect sama sekali.
+  test("findRedirectTargets: kutip/heredoc/fd dilewati, target path ditangkap", () => {
+    expect(findRedirectTargets("echo hi > local.txt")).toEqual(["local.txt"])
+    expect(findRedirectTargets("echo a >> b.txt 2> err.txt")).toEqual(["b.txt", "err.txt"])
+    expect(findRedirectTargets('echo "a > b"')).toEqual([])
+    expect(findRedirectTargets("cat << EOF")).toEqual([])
+    expect(findRedirectTargets("cmd 2>&1")).toEqual([])
+    expect(findRedirectTargets("echo x > ..\\evil.txt")).toEqual(["..\\evil.txt"])
+  })
+
+  test("PoC audit: redirect tulis keluar workspace ditolak (cwd-aware)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "redir-"))
+    try {
+      expect(inspectBashCommand("echo test > ..\\escape_probe.txt", dir).denied).toBe(true)
+      expect(inspectBashCommand("echo test > ../escape_probe.txt", dir).denied).toBe(true)
+      expect(inspectBashCommand("cat < ..\\secret.txt", dir).denied).toBe(true)
+      expect(inspectBashCommand("echo x > .env", dir).denied).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("redirect di DALAM workspace tetap jalan (tanpa over-block)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "redir-ok-"))
+    try {
+      expect(inspectBashCommand("echo hi > local.txt", dir).denied).toBe(false)
+      expect(inspectBashCommand('echo "a > b"', dir).denied).toBe(false)
+      expect(inspectBashCommand("cat << EOF", dir).denied).toBe(false)
+      expect(inspectBashCommand("dir", dir).denied).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("heuristic tanpa cwd: .. dan absolut ditolak, relatif lolos", () => {
+    expect(inspectBashCommand("echo x > ..\\e").denied).toBe(true)
+    expect(inspectBashCommand("echo hi > local.txt").denied).toBe(false)
+  })
+
+  test("allowlist: echo redirect keluar ditolak, di dalam allow", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "redir-perm-"))
+    try {
+      const h = createPermissionHandler({ mode: "allowlist", root: dir })
+      const check = (cmd: string) =>
+        h.check({ id: "1", name: "bash", args: { cmd } } as never, {} as never)
+      expect(await check("echo hi > local.txt")).toBe("allow")
+      expect(await check("echo test > ..\\escape_probe.txt")).toBe("deny")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

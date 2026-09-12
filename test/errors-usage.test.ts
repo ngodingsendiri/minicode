@@ -43,6 +43,23 @@ test("friendlyFromCategory: unknown mengambil field message dari JSON", () => {
   expect(cut.message.length).toBeLessThanOrEqual(161)
 })
 
+test("friendlyFromCategory: unknown 402 dikenali sebagai saldo habis", () => {
+  const f = friendlyFromCategory(
+    "unknown",
+    '402: {"error":{"message":"This request requires more credits, or fewer max_tokens."}}',
+  )
+  expect(f.message).toContain("balance or quota")
+  expect(f.fix ?? "").toContain("/model")
+})
+
+test("friendlyFromCategory: unknown FreeUsageLimit dikenali sebagai limit", () => {
+  const f = friendlyFromCategory(
+    "unknown",
+    '{"type":"error","error":{"type":"FreeUsageLimitError","message":"Rate limit exceeded. Please try again later."}}',
+  )
+  expect(f.message).toContain("rate-limiting")
+})
+
 test("friendlyError: string bergaya AgentError", () => {
   expect(friendlyError("timeout: run exceeded 600000ms").message).toContain("timeout")
   expect(friendlyError("max_steps_exceeded: 50 steps").message).toContain("Tool step limit")

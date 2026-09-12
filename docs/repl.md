@@ -10,7 +10,7 @@ Ketik `/` di prompt → floating dropdown (max 10 item + `… N more`). `↑`/`�
 | `/help` | Daftar perintah + skill + tombol penting |
 | `/help tombol` | Pintasan papan tombol lengkap |
 | `/provider` | Kelola provider: tambah (`a`), hapus (`d`), ubah (`e`). Aktif ditandai `(aktif)`; hapus menyebut jumlah model yang ikut hilang |
-| `/model [cari]` | Picker semua `provider::model`. Enter = pilih + atur thinking effort (`default/low/medium/high`, tersimpan di provider, berlaku sesi berikutnya; Esc = batal total). Effort non-default tampil badge `[low|medium|high]` |
+| `/model [cari]` | Picker semua `provider::model` (argumen = filter awal; di dalam ketik langsung untuk cari live, Esc keluar filter). Tambah = Ctrl+N, hapus = tombol Del. Enter = pilih + atur thinking effort (`default/low/medium/high`, tersimpan di provider, berlaku sesi berikutnya; Esc = batal total). Effort non-default tampil badge `[low|medium|high]` |
 | `/sync` | Segarkan daftar model semua provider (hanya bilang restart bila benar ada model baru) |
 | `/undo` | Batalkan perubahan berkas turn terakhir |
 | `/redo` | Terapkan ulang yang dibatalkan |

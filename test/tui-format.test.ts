@@ -818,10 +818,7 @@ describe("simple logger (one-shot)", () => {
     expect(stripAnsi(tty!.combined())).toContain("5 tok")
   })
 
-  test("statusline: Thinking berdenyut, tanpa nama model", async () => {
-    // Warna deterministik: NO_COLOR mematikan denyut (attr jadi identity).
-    const prevNoColor = process.env.NO_COLOR
-    delete process.env.NO_COLOR
+  test("statusline: Thinking + titik animasi, tanpa nama model", async () => {
     tty = installFakeTty({ columns: 80, rows: 24 })
     const bus = createFakeBus()
     const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
@@ -840,17 +837,15 @@ describe("simple logger (one-shot)", () => {
       await new Promise((r) => setTimeout(r, 900))
       status.detach()
       const raw = chunks.join("")
-      const ESC = String.fromCharCode(27)
       expect(stripAnsi(raw)).toContain("Thinking")
       expect(raw).not.toContain("model-rahasia-xyz")
-      // Denyut: ada frame redup DAN frame terang dalam satu siklus.
-      expect(raw).toContain(`${ESC}[2mThinking`)
-      const tanpaRedup = raw.split(`${ESC}[2mThinking${ESC}[22m`).join("")
-      expect(tanpaRedup).toContain("Thinking")
+      // Animasi titik eksplisit · → ·· → ··· (±300ms): minimal dua wujud
+      // berbeda dalam 900ms, dan tak pernah bare "Thinking" tanpa titik.
+      const frames = new Set(stripAnsi(raw).match(/Thinking(·{1,3})/g) ?? [])
+      expect(frames.size).toBeGreaterThan(1)
+      expect(stripAnsi(raw)).not.toMatch(/Thinking(?!·)/)
     } finally {
       ;(process.stderr as unknown as { write: unknown }).write = prevWrite
-      if (prevNoColor === undefined) delete process.env.NO_COLOR
-      else process.env.NO_COLOR = prevNoColor
     }
   })
 

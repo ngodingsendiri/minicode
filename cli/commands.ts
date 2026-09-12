@@ -182,11 +182,14 @@ export async function handleBuiltinCommand(
 
     case "model": {
       const { runModelManager } = await import("./model-manager.ts")
+      // `/model mimo` = buka manager dengan filter awal (tanpa ini query
+      // diabaikan diam-diam).
       await runModelManager({
         cwd: ctx.cwd,
         currentModel: ctx.currentModel,
         setModelOverride: ctx.setModelOverride,
         allowLocalConfig: ctx.allowLocalConfig,
+        ...(args ? { initialFilter: args } : {}),
       })
       return { handled: true }
     }

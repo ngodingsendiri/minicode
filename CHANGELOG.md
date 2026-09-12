@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.10] - 2026-09-12 — Pin model, indikator, picker cari, redirect guard
+
+### Fixed
+- **Pin `provider::model` = kontrak, tanpa auto-switch**: request pin hanya ke provider itu — tanpa fallback lintas provider dan tanpa substitusi diam-diam (yang pernah melempar user dari model gratis ke model berbayar + 402). Gagal = error jujur provider yang dipilih; model tak dikenal / provider tak dikenal = `invalid_request` + daftar kandidat. Pesan substitusi jalur bare menampilkan nama ter-strip (tak lagi prefix basi). Test `test/router-pinned.test.ts` (gagal di kode lama).
+- **Error 402/429-free dikenali**: kategori `unknown` ber-teks tagihan/limit dipetakan ke pesan saldo/limit + saran `/model` (sebelumnya dump mentah).
+- **Indikator proses `Thinking···`**: ganti denyut redup (terbaca beku, terpotong jadi "t" di terminal sempit) dengan animasi titik eksplisit ·→··→··· ±300ms + fallback titik-saja di terminal sangat sempit. Test kontrak diperbarui.
+- **Redirect shell keluar workspace ditolak (temuan audit eksternal, KRITIS)**: `echo x > ..\evil` lolos guard + allowlist `echo *` lalu menulis di luar workspace — allowlist hanya menolak chaining `[;&|]` dan guard tak punya aturan redirect. Kini `findRedirectTargets` mengekstrak target `>`/`>>`/`<` quote-aware (heredoc/fd/null-sink dikecualikan) dan menolak target di luar cwd/sensitif/owned-state. Test PoC + over-block guard.
+
 ## [0.9.9] - 2026-09-11 — Auto-update + Bun Windows TTY fix
 
 ### Added
@@ -28,6 +36,7 @@
 
 ### Fixed
 - **Tiap turn TTY gagal `kWriteMonkeyPatchDefense` di Bun Windows**: `paintWrite` (`src/ui/runtime/statusline.ts`) memanggil `stderr.write` detached — selalu method-call sekarang; transient self-disable permanen + restore write asli begitu marker terlihat (agen tetap jalan tanpa spinner). Test `test/statusline-bun-guard.test.ts` (gagal di kode lama) + residual risk di `docs/TERMINAL_CONTRACT.md`.
+- **Cari di picker `/model`**: ketik langsung menyaring live (substring, case-insensitive, tanpa awalan — termasuk huruf `a`/`d`), backspace/Del edit query, Esc keluar filter; `/model <cari>` jadi filter awal (sebelumnya argumen diabaikan diam-diam padahal docs menjanjikan "bisa difilter"). Shortcut tambah/hapus pindah ke **Ctrl+N / tombol Del** (non-ketik, aman di Windows & Linux) agar tak bertabrakan dengan pencarian. Test `model-manager: cari/filter` + hardening sinkronisasi hasil tulis (tunggu marker, bukan cuma jawaban terkirim).
 
 ### Docs
 - **Redesign `docs/ARCHITECTURE.html`** — palet developer-docs terang yang bersih (tokoh token, tipografi system-ui + mono untuk kode), doc-bar tautan dokumen pendamping, sidebar + link §9, dan **§09 "UI/UX untuk Developer — Rendering Terminal"**: lima primitif tampilan, stream contract, ownership transient, tabel 12 invariant + peta test pelindung, residual risk. Kartu modul `src/ui/` (statusline/spinner/simple/turn-status/theme) diselaraskan dengan arbitrase & color-gate terkini.

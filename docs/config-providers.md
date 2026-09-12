@@ -62,6 +62,16 @@ minicode models --match gemini
 
 `MINICODE_PROVIDER_ORDER=openai,anthropic,deepseek` mengurutkan provider agnostik tanpa edit config.
 
+## Pin eksplisit `provider::model` (kontrak)
+
+Model berformat `providerId::modelName` = PIN: request hanya ke provider
+itu — **tanpa fallback lintas provider dan tanpa substitusi diam-diam**.
+Gagal = error jujur dari provider yang dipilih (limit/saldo/error server),
+user memilih model lanjutannya sendiri via `/model`. Alasan: fallback
+otomatis pernah melempar user dari model gratis ke model berbayar provider
+lain (tagihan tak terduga). Model bare (tanpa `::`) tetap perilaku lama
+(first-match + substitusi + fallback rate_limit/server/network).
+
 ## Build & router
 
 Build provider terpusat di `src/providers/build.ts`. Router fallback untuk rate_limit/server/network (clone-error + base64 fix + retryAfter cap). Deteksi wire dari probe path `/responses` → hint `responses`; substring host hanya fallback. `max_tokens` 8192; stop `length` = peringatan eksplisit, bukan teks sunyi.

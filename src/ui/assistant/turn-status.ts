@@ -1,6 +1,6 @@
 import type { UiBus } from "../contract.ts"
 import { c, glyphs } from "../render/theme.ts"
-import { truncateToWidth } from "../render/width.ts"
+import { displayWidth, truncateToWidth } from "../render/width.ts"
 import { acquireTransientPaint, paintWrite, registerStatusLine } from "../runtime/statusline.ts"
 
 // Turn status line — satu baris transient di stderr, hidup hanya pada fase
@@ -70,17 +70,23 @@ export function attachTurnStatus(
       const s = opts.getStats?.()
       if (s) extra = ` · ${s}`
     } catch {}
-    // Thinking berdenyut redup-terang; label tool memakai frame animasi.
+    // Titik animasi eksplisit · → ·· → ···, ganti tiap 2 tick (~300ms):
+    // sinyal "masih hidup" yang tak ambigu. Denyut redup sebelumnya terbaca
+    // beku/mati di sebagian terminal. Tak pernah bare: selalu ≥1 titik.
+    const dots = glyphs.dot.repeat(1 + (Math.floor(fi / 2) % 3))
     const cols = process.stdout.columns || 80
     const body =
       label === "Thinking"
-        ? fi % 8 < 4
-          ? c.muted("Thinking")
-          : "Thinking"
-        : `${c.info(glyphs.spinnerFrames[fi % glyphs.spinnerFrames.length]!)} ${label}`
-    // Potong per PAINT dengan lebar SAAT INI — resize tidak boleh meninggalkan
-    // label yang terpotong oleh lebar lama.
-    paintWrite(`\r\x1b[2K${truncateToWidth(body + extra, Math.max(8, cols - 1))}`)
+        ? `Thinking${dots}`
+        : `${c.info(glyphs.spinnerFrames[fi % glyphs.spinnerFrames.length]!)} ${label}${dots}`
+    const full = body + extra
+    // Terminal sangat sempit: potongan label bisa tinggal 1 huruf ("t") —
+    // dalam kasus itu tampilkan titiknya saja daripada label rusak.
+    // Terminal normal: potong biasa (label terpotong tetap informatif).
+    const maxW = Math.max(4, cols - 1)
+    const shown =
+      displayWidth(full) <= maxW ? full : maxW <= 12 ? dots : truncateToWidth(full, maxW)
+    paintWrite(`\r\x1b[2K${shown}`)
     fi++
   }
   const stopPaint = () => {

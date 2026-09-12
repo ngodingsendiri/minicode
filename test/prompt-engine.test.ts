@@ -2,8 +2,10 @@ import { expect, test } from "bun:test"
 import {
   applyKey,
   buildRenderSpec,
+  createDecoderState,
   createState,
   decodeKeys,
+  decodeKeysStream,
   MAX_VISIBLE,
   type PromptKey,
   pointLength,
@@ -433,13 +435,27 @@ test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
     [0x02, "ctrl+b"],
     [0x06, "ctrl+f"],
     [0x10, "ctrl+p"],
-    [0x0e, "ctrl+n"],
   ]
   for (const [code, nama] of kontrol) {
     const keys = decodeKeys(new Uint8Array([code]))
     expect(keys.length, nama).toBe(1)
     expect(keys[0]?.key.type, nama).toBe(nama === "ctrl+t" ? "ctrl-t" : "ignore")
   }
+})
+
+test("decodeKey: Ctrl+N punya tipe sendiri (tambah model)", () => {
+  const keys = decodeKeys(new Uint8Array([0x0e]))
+  expect(keys.length).toBe(1)
+  expect(keys[0]?.key.type).toBe("ctrl-n")
+  // Jalur streaming (dipakai view sungguhan) harus sama — dulu 0x0e jatuh
+  // ke "ignore" di asciiKey walau decodeKeys sudah benar.
+  const streamed = decodeKeysStream(new Uint8Array([0x0e]), createDecoderState())
+  expect(streamed.length).toBe(1)
+  expect(streamed[0]?.key.type).toBe("ctrl-n")
+  // Di prompt teks biasa ia no-op (tak masuk baris input).
+  let s = typeAll("teks")
+  s = applyKey(s, keys[0]!.key, hints).state
+  expect(s.line).toBe("teks")
 })
 
 test("decodeKey: kontrol yang PUNYA arti tetap dipetakan", () => {

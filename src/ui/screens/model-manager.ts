@@ -20,6 +20,8 @@ export interface ModelRow {
 
 export interface ModelManagerViewOptions {
   initialRows: ModelRow[]
+  /** Filter awal (dari `/model <cari>`) — null/"" = tanpa filter. */
+  initialFilter?: string
   onSelect(id: string): void | Promise<void>
   /** Ambil baris terbaru setelah mutasi (atau saat add batal). */
   loadRows(): Promise<ModelRow[]>
@@ -28,12 +30,31 @@ export interface ModelManagerViewOptions {
   onSetEffort?(id: string, effort: "default" | "low" | "medium" | "high"): Promise<ModelRow[]>
 }
 
+/** Saring baris berdasarkan substring id, case-insensitive. Murni agar bisa diuji. */
+export function filterModelRows(rows: ModelRow[], q: string): ModelRow[] {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return rows
+  return rows.filter((r) => r.id.toLowerCase().includes(needle))
+}
+
 export async function runModelManagerView(opts: ModelManagerViewOptions): Promise<void> {
   let rows = opts.initialRows
+  // Mode cari: ketikan apa pun langsung jadi query (termasuk a/d — tidak ada
+  // lagi shortcut huruf agar mengetik selalu menyaring di semua OS). Tambah =
+  // Ctrl+N, hapus = tombol Del. Esc keluar dari mode cari, bukan tutup
+  // manager. null = tak memfilter.
+  let filter: string | null = null
+  const initial = opts.initialFilter?.trim()
+  if (initial) filter = initial
+  const viewRows = (): ModelRow[] => (filter == null ? rows : filterModelRows(rows, filter))
+  const clampSel = () => {
+    sel = Math.min(Math.max(0, sel), Math.max(0, viewRows().length - 1))
+  }
   let sel = Math.max(
     0,
     rows.findIndex((r) => r.active),
   )
+  clampSel()
   let scroll = 0
   let prevRows = 0
 
@@ -44,20 +65,30 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
     const width = () => Math.max(8, (process.stdout.columns || 80) - 2)
 
     const buildLines = (): string[] => {
+      const list = viewRows()
       const v = visibleRows()
       if (sel < scroll) scroll = sel
       if (sel >= scroll + v) scroll = sel - v + 1
       const w = width()
       const cut = (s: string) => truncateToWidth(s, w)
-      const view = rows.slice(scroll, scroll + v)
+      const view = list.slice(scroll, scroll + v)
       const lines: string[] = []
       lines.push(
         cut(
           `${DIM}─ ${c.accent(c.bold("Models"))}${rows.length ? ` ${DIM}(${rows.length})${RESTORE}` : ""} ${DIM}─${RESTORE}`,
         ),
       )
-      if (!rows.length) {
-        lines.push(cut(`${DIM}  No models configured${RESTORE}`))
+      if (filter != null) {
+        lines.push(
+          cut(
+            `${DIM}  Filter:${RESTORE} ${filter}█ ${DIM}(${list.length}/${rows.length})${RESTORE}`,
+          ),
+        )
+      }
+      if (!list.length) {
+        lines.push(
+          cut(`${DIM}  ${filter == null ? "No models configured" : "No models match"}${RESTORE}`),
+        )
       } else {
         for (let i = 0; i < view.length; i++) {
           const row = view[i]!
@@ -72,14 +103,14 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           if (picked) lines.push(`  ${c.accent("›")} ${c.accent(c.bold(label))}${RESTORE}`)
           else lines.push(`   ${DIM}${label}${RESTORE}`)
         }
-        if (rows.length > scroll + v) {
-          lines.push(cut(`${DIM}… ${c.accent(String(rows.length - scroll - v))} more${RESTORE}`))
+        if (list.length > scroll + v) {
+          lines.push(cut(`${DIM}… ${c.accent(String(list.length - scroll - v))} more${RESTORE}`))
         }
       }
       lines.push("")
       lines.push(
         cut(
-          `${DIM}Enter:${RESTORE}${c.accent("select+thinking")}  ${DIM}a:${RESTORE}${c.accent("add")}  ${DIM}d:${RESTORE}${c.accent("delete")}  ${DIM}Esc:${RESTORE}${c.accent("close")}${RESTORE}`,
+          `${DIM}Enter:${RESTORE}${c.accent("select+thinking")}  ${DIM}Ctrl+N:${RESTORE}${c.accent("add")}  ${DIM}Del:${RESTORE}${c.accent("delete")}  ${DIM}ketik:${RESTORE}${c.accent("cari")}  ${DIM}Esc:${RESTORE}${c.accent(filter == null ? "close" : "clear filter")}${RESTORE}`,
         ),
       )
       return lines
@@ -138,7 +169,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       try {
         rows = await opts.loadRows()
       } catch {}
-      sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+      clampSel()
     }
 
     const addModel = () =>
@@ -168,12 +199,11 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
         if (rows.length === prevCount)
           console.log(`${glyphs.dot} ${providerId.trim()}::${model.trim()} already exists`)
         else console.log(`${glyphs.check} added ${providerId.trim()}::${model.trim()}`)
-        sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+        clampSel()
       })
 
     const deleteModel = () => {
-      if (rows.length === 0) return
-      const row = rows[sel]
+      const row = viewRows()[sel]
       if (!row) return
       return runAction(async () => {
         // Model AKTIF yang dihapus membuat prompt berikutnya kehilangan model
@@ -187,7 +217,7 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
           console.log("Canceled")
           rows = await opts.loadRows()
         }
-        sel = Math.min(Math.max(0, sel), Math.max(0, rows.length - 1))
+        clampSel()
       })
     }
 
@@ -218,15 +248,48 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
       if (busy) return
       try {
         for (const item of decodeKeysStream(chunk, decoder)) {
-          if (item.key.type === "esc" || item.key.type === "ctrl-c" || item.key.type === "ctrl-d") {
+          // Mode cari: semua ketikan masuk ke query, Esc keluar dari mode
+          // cari — bukan tutup manager.
+          if (filter != null) {
+            if (
+              item.key.type === "esc" ||
+              item.key.type === "ctrl-c" ||
+              item.key.type === "ctrl-d"
+            ) {
+              filter = null
+              sel = 0
+              scroll = 0
+              continue
+            }
+            if (item.key.type === "char") {
+              filter += item.key.ch
+              sel = 0
+              scroll = 0
+              continue
+            }
+            // Backspace & Del sama-sama memangkas query (tanpa kursor,
+            // Del maju = grapheme terakhir juga). Query habis = keluar mode.
+            if (item.key.type === "backspace" || item.key.type === "delete") {
+              filter = Array.from(filter).slice(0, -1).join("")
+              if (!filter) filter = null
+              sel = 0
+              scroll = 0
+              continue
+            }
+          } else if (
+            item.key.type === "esc" ||
+            item.key.type === "ctrl-c" ||
+            item.key.type === "ctrl-d"
+          ) {
             finish()
             return
           }
           if (item.key.type === "up") sel = Math.max(0, sel - 1)
-          else if (item.key.type === "down")
-            sel = rows.length ? Math.min(rows.length - 1, sel + 1) : 0
-          else if (item.key.type === "enter") {
-            const row = rows[sel]
+          else if (item.key.type === "down") {
+            const n = viewRows().length
+            sel = n ? Math.min(n - 1, sel + 1) : 0
+          } else if (item.key.type === "enter") {
+            const row = viewRows()[sel]
             if (!row) return // daftar kosong: jangan tutup (footer bilang select)
             if (busy) return
             busy = true
@@ -261,12 +324,21 @@ export async function runModelManagerView(opts: ModelManagerViewOptions): Promis
               }
             })()
             return
-          } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "a") {
+          } else if (item.key.type === "ctrl-n") {
+            // Tambah model — shortcut non-ketik agar ketikan huruf apa pun
+            // (termasuk a/d) selalu jadi query cari, di Windows & Linux.
             void addModel()
             return
-          } else if (item.key.type === "char" && item.key.ch.toLowerCase() === "d") {
+          } else if (item.key.type === "delete") {
+            // Di sini filter selalu null (mode cari ditangani di atas):
+            // hapus model ter-highlight (dengan konfirmasi di deleteModel).
             void deleteModel()
             return
+          } else if (item.key.type === "char") {
+            // Ketik langsung menyaring — tanpa awalan apa pun.
+            filter = item.key.ch
+            sel = 0
+            scroll = 0
           }
         }
         render()

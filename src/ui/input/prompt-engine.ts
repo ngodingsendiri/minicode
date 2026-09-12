@@ -53,6 +53,7 @@ export type PromptKey =
   | { type: "ctrl-o" } // expand detail (TUI)
   | { type: "ctrl-r" } // reverse-i-search history
   | { type: "ctrl-t" } // reserved (dulu toggle reasoning; /thinking dihapus, kini no-op)
+  | { type: "ctrl-n" } // tambah (model-manager: Ctrl+N = add model)
   | { type: "ctrl-j" } // sisipkan newline (multiline opt-in; Enter=\r tetap submit)
   | { type: "shift-tab" } // cycle mode (REPL linier) — ESC[Z didekode decodeKey
   | { type: "ignore" } // sekuens yang sengaja dibuang (mis. byte mouse)
@@ -256,6 +257,7 @@ export function applyKey(
     case "ctrl-o": // toggle compact — ditangani REPL lewat onKey askLine
     case "ctrl-r": // reverse-i-search — ditangani askLine (input.ts) sebelum applyKey
     case "ctrl-t": // reserved no-op (/thinking dihapus; tidak lagi ditangani REPL)
+    case "ctrl-n": // tambah model — ditangani view yang membutuhkan (model-manager); di prompt teks diabaikan
     case "shift-tab": // cycle mode — ditangani REPL lewat onKey askLine
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks
       return { state, action: "none" }
@@ -382,6 +384,8 @@ function asciiKey(b: number): DecodedKey | null {
       return { key: { type: "ctrl-r" }, width: 0 }
     case 0x14:
       return { key: { type: "ctrl-t" }, width: 0 }
+    case 0x0e:
+      return { key: { type: "ctrl-n" }, width: 0 }
     case 0x7f:
     case 0x08:
       return { key: { type: "backspace" }, width: 0 }
@@ -571,6 +575,7 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (code === 0x0f) return { key: { type: "ctrl-o" }, width: 1 }
   if (code === 0x12) return { key: { type: "ctrl-r" }, width: 1 }
   if (code === 0x14) return { key: { type: "ctrl-t" }, width: 1 }
+  if (code === 0x0e) return { key: { type: "ctrl-n" }, width: 1 } // Ctrl+N
   if (code === 0x7f || code === 0x08) return { key: { type: "backspace" }, width: 1 }
   // Sinkron dengan asciiKey di atas: LF = newline, CR = submit.
   if (c === "\n") return { key: { type: "ctrl-j" }, width: 1 }
@@ -580,8 +585,8 @@ export function decodeKey(s: string, i: number): DecodedKey | null {
   if (code === 0x04) return { key: { type: "ctrl-d" }, width: 1 }
   if (code === 0x15) return { key: { type: "ctrl-u" }, width: 1 }
   if (code === 0x17) return { key: { type: "ctrl-w" }, width: 1 }
-  // Kontrol C0 lain yang tidak punya arti di sini (Ctrl+L, Ctrl+K, Ctrl+T,
-  // Ctrl+Z, dst.) DIBUANG, bukan diteruskan sebagai karakter.
+  // Kontrol C0 lain yang tidak punya arti di sini (Ctrl+L, Ctrl+K, Ctrl+Z,
+  // dst.) DIBUANG, bukan diteruskan sebagai karakter.
   //
   // Sebelumnya semuanya jatuh ke cabang "char" di bawah dan masuk ke baris
   // input sebagai byte tak tampak — Ctrl+L+Ctrl+K+Ctrl+T pada "teks"

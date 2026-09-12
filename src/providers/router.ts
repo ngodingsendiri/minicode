@@ -93,14 +93,25 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
     },
     async *stream(request: StreamRequest, signal: AbortSignal): AsyncIterable<ProviderEvent> {
       // route by model name — first match wins (default/daftar urutan provider)
-      // Format "providerId::modelName" → paksa provider spesifik
+      // Format "providerId::modelName" = PIN eksplisit (kontrak): provider itu
+      // saja, tanpa fallback lintas provider dan tanpa substitusi diam-diam.
+      // Gagal = error jujur dari provider yang dipilih agar user memilih
+      // model lanjutannya sendiri (keputusan: no-auto-switch, terutama ke
+      // model berbayar). Model bare (tanpa `::`) tetap perilaku lama.
       let target: ModelProvider | undefined
       let model: string | undefined = request.model
+      let pinned = false
       if (model?.includes("::")) {
         const sep = model.indexOf("::")
         const pid = model.slice(0, sep)
         const m = model.slice(sep + 2)
         target = getById().get(pid)
+        if (!target)
+          throw new ProviderError(
+            "invalid_request",
+            `unknown provider "${pid}" in model "${request.model}" — see: minicode providers`,
+          )
+        pinned = true
         model = m || undefined
       }
       if (!target && model) {
@@ -112,6 +123,17 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
       }
       target ??= getById().get(getDefaultId()) ?? config.providers[0]
       if (!target) throw new ProviderError("unknown", "no provider configured")
+
+      // Pin: model harus ada di provider itu — bukan substitusi diam-diam
+      // (yang dulu melempar user ke model berbayar provider lain).
+      if (pinned && model && !target.models.includes(model)) {
+        const avail = target.models.slice(0, 8).join(", ")
+        const more = target.models.length > 8 ? ` (+${target.models.length - 8} more)` : ""
+        throw new ProviderError(
+          "invalid_request",
+          `model "${model}" not on ${target.id} (${target.models.length} models: ${avail}${more}) — pick one via /model`,
+        )
+      }
 
       // fallback on rate_limit/server/network
       const tried = new Set<string>()
@@ -126,8 +148,11 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
           const withSys = needsSystemMessage(current) ? withSystemMessage(fixed) : fixed
           const { req, effectiveModel, substituted } = requestFor(current, { ...withSys, model })
           if (substituted && effectiveModel) {
+            // Tampilkan nama model SETELAH strip prefix `provider::` — versi
+            // lama mencetak request.model mentah sehingga terbaca seolah user
+            // yang memilih provider fallback ("not on openrouter").
             process.stderr.write(
-              `[router] model "${request.model}" not on ${current.id} → substituting "${effectiveModel}"\n`,
+              `[router] model "${model}" not on ${current.id} → substituting "${effectiveModel}"\n`,
             )
             yield {
               type: "extension",
@@ -181,6 +206,9 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
               } finally {
                 if (onAbort) signal.removeEventListener("abort", onAbort)
               }
+              // Pin: tetap di provider yang dipilih (tunggu lalu ulangi di
+              // tempat) — jangan pindah ke provider lain.
+              if (pinned) continue
               const next = config.providers.find((p) => !tried.has(p.id))
               if (next) {
                 current = next
@@ -190,10 +218,12 @@ export function createRouterProvider(config: RouterConfig): ModelProvider {
               continue
             }
             const canFallback =
+              !pinned &&
               (err.category === "server" || err.category === "network") &&
               tried.size < config.providers.length
             // rate_limit tanpa retryAfter → fallback ke provider lain (bakar-daftar hanya bila tanpa retryAfter)
             const canFallbackRateLimit =
+              !pinned &&
               err.category === "rate_limit" &&
               err.retryAfterMs == null &&
               tried.size < config.providers.length

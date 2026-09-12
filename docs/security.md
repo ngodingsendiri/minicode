@@ -27,6 +27,7 @@
    | `bash <(curl x)` | tak ada aturan process substitution | ditolak |
    | `rm -rf ..`, `rm --recursive --force /`, `rm -rf /; :` | pola lama hanya kenal `/` dan `~` | ditolak |
    | `command env`, `nice env`, dkk. (wrapper) | deteksi env-dump ter-anchor ke awal | ditolak via `stripCommandWrappers` (14 wrapper, 4 lapis) |
+   | `echo x > ..\\evil` (redirect keluar workspace) | allowlist `echo *` + guard tanpa aturan redirect | ditolak via `findRedirectTargets` (target di-resolve ke cwd; heredoc/fd/`/dev/null` dikecualikan) |
 
 2. **Allowlist** (`--allowlist`, dan default bila tanpa sandbox OS): hanya bentuk read/build — `git status/diff/log/branch/show`, `bun test/run/x tsc`, `npm run/exec`, `npx`, `ls cat head tail wc grep rg find which echo pwd`. Tulis via shell ditahan; pakai `write_file`/`edit` yang ter-jail. `npm exec`/`npx`/`bun run`/`bun x` tak boleh ekspansi shell/redirection.
 3. **Path jail** realpath-based + symlink check + TOCTOU `O_NOFOLLOW`; `.env`/`.git/config`/`node_modules` deny; berlaku bahkan `--allow-all`.

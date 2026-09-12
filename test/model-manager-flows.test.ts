@@ -202,8 +202,11 @@ describe("model-manager: alur interactive", () => {
     const seq = tty.answerSequence(["prov", "m3"], {
       expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
     })
-    await tty.send("a", 30)
+    await tty.send(KEY.ctrlN, 30)
     await seq
+    // Tunggu hasil tulis selesai (bukan cuma jawaban terkirim) — di mesin
+    // berbeban IO config belum tentu flush saat seq resolve.
+    await tty.waitForOutput((out) => out.includes("added prov::m3"), 5000)
     // Model baru harus tersimpan meski output terminal bisa berbeda antar host.
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m3")
     await tty.waitForListener(2000)
@@ -218,8 +221,9 @@ describe("model-manager: alur interactive", () => {
     const seq = tty.answerSequence(["", ""], {
       expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
     })
-    await tty.send("a", 30)
+    await tty.send(KEY.ctrlN, 30)
     await seq
+    await tty.waitForOutput((out) => out.includes("Canceled"), 5000)
     expect((await readConfig(localConfigPath())).providers[0]?.models).not.toContain("m3")
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
@@ -233,8 +237,9 @@ describe("model-manager: alur interactive", () => {
     const seq = tty.answerSequence(["y"], {
       expect: [(out) => out.includes("[y/N]")],
     })
-    await tty.send("d", 30)
+    await tty.send(KEY.del, 30)
     await seq
+    await tty.waitForOutput((out) => out.includes("deleted prov::m1"), 5000)
     expect((await readConfig(localConfigPath())).providers[0]?.models).not.toContain("m1")
     // Render terakhir tidak lagi menampilkan m1 (hanya m2 yang tersisa).
     const lastRender = visible().split("Models").at(-1) ?? ""
@@ -252,8 +257,9 @@ describe("model-manager: alur interactive", () => {
     const seq = tty.answerSequence(["n"], {
       expect: [(out) => out.includes("[y/N]")],
     })
-    await tty.send("d", 30)
+    await tty.send(KEY.del, 30)
     await seq
+    await tty.waitForOutput((out) => out.includes("Canceled"), 5000)
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m1")
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
@@ -323,8 +329,9 @@ describe("model-manager: daftar kosong", () => {
     const seq = tty.answerSequence(["prov-typo", "m9"], {
       expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
     })
-    await tty.send("a", 30)
+    await tty.send(KEY.ctrlN, 30)
     await seq
+    await tty.waitForOutput((out) => out.includes("provider not found: prov-typo"), 5000)
     expect(visible()).toContain("provider not found: prov-typo")
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
@@ -338,8 +345,9 @@ describe("model-manager: daftar kosong", () => {
     const seq = tty.answerSequence(["prov", "m1"], {
       expect: [(out) => out.includes("Provider > "), (out) => out.includes("Model > ")],
     })
-    await tty.send("a", 30)
+    await tty.send(KEY.ctrlN, 30)
     await seq
+    await tty.waitForOutput((out) => out.includes("already exists"), 5000)
     expect(visible()).toContain("already exists")
     expect(visible()).not.toContain("added prov::m1")
     await tty.waitForListener(2000)
@@ -351,7 +359,7 @@ describe("model-manager: daftar kosong", () => {
     tty = installFakeTty({ rows: 24 })
     const p = runModelManager({ cwd: workspace })
     await tty.ready()
-    await tty.send("a", 30)
+    await tty.send(KEY.ctrlN, 30)
     await tty.waitForOutput((out) => out.includes("Provider > "), 2000)
     await tty.send(KEY.esc, 30) // batal prompt (baris kosong)
     await tty.waitForOutput((out) => out.includes("Canceled"), 2000)
@@ -368,11 +376,121 @@ describe("model-manager: daftar kosong", () => {
     const seq = tty.answerSequence(["n"], {
       expect: [(out) => out.includes("Delete ACTIVE model prov::m1")],
     })
-    await tty.send("d", 30)
+    await tty.send(KEY.del, 30)
     await seq
     expect((await readConfig(localConfigPath())).providers[0]?.models).toContain("m1")
     await tty.waitForListener(2000)
     await tty.send(KEY.esc, 30)
     await p
   })
+})
+
+describe("model-manager: cari/filter", () => {
+  // Buffer harness kumulatif — potong dari header render terakhir ("Models").
+  const lastRender = () => {
+    const a = stripAnsi(tty!.all())
+    return a.slice(a.lastIndexOf("Models"))
+  }
+
+  test("filterModelRows: substring case-insensitive, kosong = semua", async () => {
+    const { filterModelRows } = await import("../src/ui/screens/model-manager.ts")
+    const rows = [
+      { id: "openrouter::gpt-4o-mini", active: false },
+      { id: "opencode-zen::mimo-v2.5-free", active: false },
+      { id: "opencode-zen::Muse-Spark", active: true },
+    ]
+    expect(filterModelRows(rows, "").map((r) => r.id)).toHaveLength(3)
+    expect(filterModelRows(rows, "mimo").map((r) => r.id)).toEqual(["opencode-zen::mimo-v2.5-free"])
+    expect(filterModelRows(rows, "ZEN").map((r) => r.id)).toHaveLength(2)
+    expect(filterModelRows(rows, "tak-ada")).toEqual([])
+  })
+
+  test("ketik langsung menyempitkan daftar; Esc keluar filter; Esc tutup", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send("m", 30)
+    await tty.send("2", 30)
+    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/2)"), 2000)
+    expect(lastRender()).toContain("prov::m2")
+    expect(lastRender()).not.toContain("prov::m1")
+    // Esc keluar mode cari (manager tetap terbuka).
+    await tty.send(KEY.esc, 30)
+    await tty.send(KEY.up, 30) // paksa render ulang tanpa mengubah state
+    expect(lastRender()).not.toContain("Filter:")
+    expect(lastRender()).toContain("prov::m1")
+    // Esc kedua menutup manager tanpa memilih.
+    await tty.send(KEY.esc, 30)
+    await p
+    expect(overrideLog).toEqual([])
+  }, 8000)
+
+  test("backspace mengedit query; Enter di filter memilih baris tersaring", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    await tty.send("m", 30)
+    await tty.send("x", 30) // tak cocok → "No models match"
+    await tty.waitForOutput((out) => out.includes("No models match"), 2000)
+    await tty.send(KEY.backspace, 30) // hapus x → "m" cocok keduanya
+    await tty.waitForOutput((out) => out.includes("(2/2)"), 2000)
+    await tty.send(KEY.backspace, 30) // query kosong → keluar mode cari
+    await tty.send("2", 30) // filter "2" → tinggal prov::m2
+    await tty.waitForOutput((out) => out.includes("(1/2)"), 2000)
+    expect(lastRender()).not.toContain("prov::m1")
+    await tty.send(KEY.enter, 30) // pilih satu-satunya baris tersaring
+    await tty.waitForOutput((out) => out.includes("Thinking effort"), 2000)
+    await tty.send(KEY.esc, 30) // batal effort = batal total
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // keluar mode cari
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // tutup manager
+    await p
+    expect(overrideLog).toEqual([])
+  }, 10000)
+
+  test("/model <cari> membuka manager dengan filter awal", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      setModelOverride: (m) => overrideLog.push(m),
+      initialFilter: "m2",
+    })
+    await tty.ready()
+    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("(1/2)"), 2000)
+    await tty.send(KEY.esc, 30) // keluar mode cari
+    await tty.waitForListener(2000)
+    await tty.send(KEY.esc, 30) // tutup manager
+    await p
+    expect(overrideLog).toEqual([])
+  }, 8000)
+
+  test("ketik diawali a/d juga menyaring (bukan shortcut tambah/hapus)", async () => {
+    tty = installFakeTty({ rows: 24 })
+    const p = runModelManager({
+      cwd: workspace,
+      setModelOverride: (m) => overrideLog.push(m),
+    })
+    await tty.ready()
+    // "a1": a/d kecil BUKAN lagi shortcut — langsung jadi query.
+    // Regresi laporan user: ketik huruf malah membuka prompt "Provider > ".
+    await tty.send("a", 30)
+    await tty.send("1", 30)
+    await tty.waitForOutput((out) => out.includes("Filter:") && out.includes("a1"), 2000)
+    expect(lastRender()).not.toContain("Provider > ")
+    expect(lastRender()).toContain("No models match")
+    // Ctrl+N tetap membuka tambah, Del tetap menghapus (lihat test lain).
+    await tty.send(KEY.esc, 30) // keluar mode cari
+    await tty.send(KEY.up, 30)
+    expect(lastRender()).not.toContain("Filter:")
+    await tty.send(KEY.esc, 30) // tutup manager
+    await p
+    expect(overrideLog).toEqual([])
+  }, 8000)
 })

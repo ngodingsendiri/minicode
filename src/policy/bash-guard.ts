@@ -18,6 +18,9 @@
 // isolasi sungguhan tetap perlu sandbox OS/container — modul ini menaikkan
 // biaya serangan, bukan menghilangkannya.
 
+import { isAbsolute, resolve } from "node:path"
+import { isOwnedState, isRealPathOutsideRoot, isSensitive } from "./jail.ts"
+
 export interface BashVerdict {
   /** true = tolak */
   denied: boolean
@@ -149,6 +152,73 @@ const DOWNLOAD_THEN_RUN =
 const CONTAINER_ESCAPE =
   /\b(?:docker|podman|nerdctl)\b[^\n]*(?:--privileged|--pid[= ]host|--net(?:work)?[= ]host|-v\s*\/:|--volume\s*\/:|-v\s*\/etc|--cap-add[= ](?:ALL|SYS_ADMIN))/i
 
+/**
+ * Target redirect shell (`>`, `>>`, `<`) di luar quote. Heredoc `<<`/`<<-`
+ * dilewati (kata berikutnya delimiter, bukan path); target fd (`>&2`, `&-`)
+ * dilewati (bukan path). Diekspor untuk test.
+ *
+ * Kenapa scan RAW quote-aware, bukan bentuk ternormalisasi: stripQuotes
+ * membuat `echo "a > b"` (aman — shell tak me-redirect isi quote) terlihat
+ * persis seperti `echo a > b` (redirect nyata).
+ */
+export function findRedirectTargets(rawCmd: string): string[] {
+  const out: string[] = []
+  let sq = false
+  let dq = false
+  let i = 0
+  const n = rawCmd.length
+  const isTerm = (c: string): boolean => /[\s;|&<>()]/.test(c)
+  while (i < n) {
+    const c = rawCmd[i]!
+    if (c === "\\" && i + 1 < n) {
+      i += 2
+      continue
+    }
+    if (c === "'" && !dq) {
+      sq = !sq
+      i++
+      continue
+    }
+    if (c === '"' && !sq) {
+      dq = !dq
+      i++
+      continue
+    }
+    if (sq || dq || (c !== ">" && c !== "<")) {
+      i++
+      continue
+    }
+    // Operator: serakah makan [<>|] (>, >>, >|, <>, <). `<<` = heredoc.
+    let j = i
+    let heredoc = false
+    while (j < n && (rawCmd[j] === ">" || rawCmd[j] === "<" || rawCmd[j] === "|")) {
+      j++
+      if (j - i > 3) break
+    }
+    const op = rawCmd.slice(i, j)
+    if (op.includes("<<")) heredoc = true
+    // Lewati spasi, baca satu kata target.
+    let k = j
+    while (k < n && /\s/.test(rawCmd[k]!)) k++
+    if (heredoc || (k < n && rawCmd[k] === "&")) {
+      // Delimiter heredoc / target fd (`>&2`, `&-`): bukan path.
+      while (k < n && !isTerm(rawCmd[k]!)) k++
+      i = k
+      continue
+    }
+    let e = k
+    while (e < n && !isTerm(rawCmd[e]!)) e++
+    if (e > k) out.push(rawCmd.slice(k, e))
+    i = e
+  }
+  return out
+}
+
+/** Null sink lintas-OS — redirect ke sini selalu aman, jangan dihitung. */
+function isNullSink(t: string): boolean {
+  return t === "/dev/null" || t.toUpperCase() === "NUL"
+}
+
 /** Pencarian rekursif dari root filesystem. */
 const ROOT_SCAN = /\b(?:find|fd|ls|dir|du|tree|grep|rg)\b[^\n]*\s\/(?:\s|$)/i
 
@@ -205,7 +275,7 @@ const STATIC_DENY: [RegExp, string][] = [
  * menutup bypass, sementara bentuk mentah menangkap pola yang justru hilang
  * saat quote dibuang (mis. `--upload-file "x"`).
  */
-export function inspectBashCommand(rawCmd: string): BashVerdict {
+export function inspectBashCommand(rawCmd: string, cwd?: string): BashVerdict {
   const raw = rawCmd
   const norm = normalizeCommand(rawCmd)
   const both = (re: RegExp): boolean => re.test(norm) || re.test(raw)
@@ -225,6 +295,34 @@ export function inspectBashCommand(rawCmd: string): BashVerdict {
   if (both(ENV_SECRET_REF)) return { denied: true, reason: "credential env reference" }
   if (both(UPLOAD_FLAG)) return { denied: true, reason: "file upload to network" }
   if (both(ROOT_SCAN)) return { denied: true, reason: "filesystem-root scan" }
+
+  // Redirect keluar workspace (temuan audit eksternal: `echo x > ..\evil`
+  // lolos karena allowlist hanya menolak chaining `[;&|]` dan guard tak
+  // punya aturan redirect). Target di-resolve terhadap cwd pemanggil agar
+  // presisi (`> local.txt` dan `> /dev/null` tetap jalan); tanpa cwd,
+  // heuristik konservatif (`..`/absolut/sensitif) berlaku.
+  for (const t of findRedirectTargets(raw)) {
+    if (isNullSink(t)) continue
+    if (cwd != null) {
+      const abs = isAbsolute(t) ? resolve(t) : resolve(cwd, t)
+      // Owned-state (.minicode/config dkk) simetris dengan jail file tools:
+      // tulis lewat shell tak boleh lebih longgar dari write_file.
+      if (
+        isRealPathOutsideRoot(abs, cwd) ||
+        isSensitive(t) ||
+        isSensitive(abs) ||
+        isOwnedState(t) ||
+        isOwnedState(abs)
+      )
+        return { denied: true, reason: "redirect outside workspace" }
+    } else if (
+      /(^|[\\/])\.\.(?:[\\/]|$)|\b[a-zA-Z]:[\\/]|^\/(?!dev\/null$)|^~(?:[\\/]|$)/.test(t) ||
+      isSensitive(t) ||
+      isOwnedState(t)
+    ) {
+      return { denied: true, reason: "redirect outside workspace" }
+    }
+  }
 
   // Berkas sensitif: berbahaya bila dibaca/disalin ATAU dijadikan argumen
   // perintah jaringan. Menyebut `.env` dalam `echo` saja tidak diblokir.
