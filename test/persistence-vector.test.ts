@@ -145,22 +145,25 @@ test("persistence compaction (history menyusut) tulis ulang penuh", async () => 
 })
 
 test("vector hybrid keyword fallback (no embedding key)", async () => {
-  const marker = `vec-test-${randomUUID().slice(0, 6)}`
-  await addMemory(`unique ${marker} content about persistence`, {})
-  const hits = (await searchHybrid("persistence", {})) as unknown as {
-    text: string
-    score: number
-  }[]
-  expect(hits.some((h) => h.text.includes(marker))).toBe(true)
-  expect(hits[0]?.score).toBeGreaterThanOrEqual(0)
-  expect(hits[0]?.score).toBeLessThanOrEqual(1)
-  // cleanup
-  const { Database } = await import("bun:sqlite")
-  const { homedir } = await import("node:os")
-  const { join } = await import("node:path")
-  const db = new Database(join(homedir(), ".minicode", "vector.db"))
-  db.prepare("DELETE FROM memory WHERE text LIKE ?").run(`%${marker}%`)
-  db.close()
+  // Hermetic: tmp cwd DENGAN .minicode/ agar resolveDbPath lokal — versi lama
+  // memakai cwd global ({}), lalu cleanup membuka ulang ~/.minicode/vector.db
+  // yang di CI tidak ada → SQLITE_CANTOPEN (lolos di mesin dev karena DB
+  // global sudah ada dari pemakaian nyata). Fallback keyword tak peduli cwd.
+  const dir = await mkdtemp(join(tmpdir(), "vec-kw-"))
+  await mkdir(join(dir, ".minicode"), { recursive: true })
+  try {
+    const marker = `vec-test-${randomUUID().slice(0, 6)}`
+    await addMemory(`unique ${marker} content about persistence`, { cwd: dir })
+    const hits = (await searchHybrid("persistence", { cwd: dir })) as unknown as {
+      text: string
+      score: number
+    }[]
+    expect(hits.some((h) => h.text.includes(marker))).toBe(true)
+    expect(hits[0]?.score).toBeGreaterThanOrEqual(0)
+    expect(hits[0]?.score).toBeLessThanOrEqual(1)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
 })
 
 test("deleteMemoryByQuery SQL removes matching memories", async () => {

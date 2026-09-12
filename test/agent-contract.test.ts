@@ -677,6 +677,12 @@ describe("audit #12: delegation behavior", () => {
     })
     const prevTty = process.stdin.isTTY
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true })
+    // delegate_task membangun provider ANAK dari config global/ENV nyata
+    // (bukan FakeProvider parent) — tanpa ini getProvider melempar di CI
+    // (HOME bersih) dan factory tak pernah dipanggil. Fake key tak menyentuh
+    // jaringan: factory di-inject dan tak pernah streaming.
+    const prevKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-hermetic-fake"
     try {
       const { delegateTaskTool } = await import("../src/tools/task.ts")
       const provider = new FakeProvider([
@@ -708,6 +714,8 @@ describe("audit #12: delegation behavior", () => {
       }
     } finally {
       clearSubAgentSessionFactory()
+      if (prevKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prevKey
       Object.defineProperty(process.stdin, "isTTY", { value: prevTty, configurable: true })
     }
   })
@@ -763,6 +771,9 @@ describe("audit #12: delegation behavior", () => {
     })
     const prevTty = process.stdin.isTTY
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true })
+    // Lihat §22: provider anak dari config/ENV nyata — fake key hermetic.
+    const prevKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-hermetic-fake"
     try {
       const dir = await mkdtemp(join(tmpdir(), "beh-"))
       try {
@@ -792,6 +803,8 @@ describe("audit #12: delegation behavior", () => {
       }
     } finally {
       clearSubAgentSessionFactory()
+      if (prevKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prevKey
       Object.defineProperty(process.stdin, "isTTY", { value: prevTty, configurable: true })
     }
   })

@@ -44,6 +44,11 @@ async function cleanup(dir: string): Promise<void> {
 describe("audit #13 chain 4: delegasi nyata + parent gagal", () => {
   test("efek anak committed berdiri tepat sekali; jurnal menautkan", async () => {
     const dir = await tmpRoot("final-delegate-")
+    // delegate_task membangun provider ANAK dari config global/ENV nyata —
+    // tanpa fake key, getProvider melempar di CI (HOME bersih) dan factory
+    // nyata tak pernah dipanggil (lolos di mesin dev yang punya provider).
+    const prevKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = "test-hermetic-fake"
     try {
       todoSession.id = "parent1"
       todoSession.cwd = dir
@@ -113,6 +118,8 @@ describe("audit #13 chain 4: delegasi nyata + parent gagal", () => {
       const cj = await loadJournal(dlg!.childSessionId!, dir)
       expect(cj.records.some((r) => r.tool === "write_file" && r.state === "committed")).toBe(true)
     } finally {
+      if (prevKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = prevKey
       await cleanup(dir)
     }
   })
