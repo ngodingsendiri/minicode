@@ -68,8 +68,10 @@ Non-TTY (pipe/redirect/CI/file): **0 cursor control, 0 animasi spinner,
 
 ## Grammar (ringkas)
 
-prompt `minicode <mode> ›` · activity: garis transient stderr (`Thinking···`
-animasi titik ·→··→··· ±300ms + `label-tool···`, tak pernah bare) ·
+prompt `minicode <mode> ›` · activity: garis transient stderr (`💡···`
+kuning berkilau ·→··→··· ±300ms adaptif + `label-tool···`, tak pernah bare;
+kilau mengikuti kecepatan reasoning) · startup: `⠋ Checking for updates…`
+(TTY, max 1.8s, hilang tanpa jejak) ·
 ledger tool `  ✓ name target` / `  ✗ name: …` (stderr, indent 2) ·
 model text (stdout, wrapped per baris, fence 2-spasi) ·
 error: `✗ pesan actionable` sekali per kegagalan (`takePendingError`).
