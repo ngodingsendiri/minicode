@@ -266,16 +266,33 @@ if (ratelimitRaw) {
 const prompt = promptFromArgs(args) || (await readPrompt())
 const enterRepl = interactive || (!prompt && process.stdin.isTTY)
 // REPL interaktif: cek update FRESH tiap dibuka → install + restart bila ada
-// versi baru (tak pernah kembali bila restart). One-shot/pipe tetap notif
-// async di atas. Budget 1.8 dtk — jangan bikin buka 7 dtk karena registry lambat.
+// versi baru (tak pernah kembali bila restart). Tampilkan spinner 1.8 dtk
+// agar tidak terlihat hang — budget tetap, hanya UX.
 if (enterRepl) {
   const ctrl = new AbortController()
   const to = setTimeout(() => ctrl.abort(), 1800)
+  let spin: ReturnType<typeof setInterval> | undefined
+  let showTimer: ReturnType<typeof setTimeout> | undefined
+  let fi = 0
+  if (process.stderr.isTTY) {
+    const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    showTimer = setTimeout(() => {
+      spin = setInterval(() => {
+        const f = frames[fi++ % frames.length]!
+        process.stderr.write(`\r\x1b[2K${c.dim(`${f} Checking for updates…`)}`)
+      }, 80)
+    }, 120)
+  }
   try {
     const { maybeAutoUpdate } = await import("./auto-update.ts")
     await maybeAutoUpdate(readVersion(), ctrl.signal)
   } catch {}
   clearTimeout(to)
+  if (showTimer) clearTimeout(showTimer)
+  if (spin) {
+    clearInterval(spin)
+    process.stderr.write("\r\x1b[2K")
+  }
 }
 if (!prompt && !enterRepl) {
   process.stderr.write('usage: minicode "prompt"  |  minicode (interactive mode)\n')
