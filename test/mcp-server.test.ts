@@ -399,7 +399,18 @@ test("mcp-server: kill tengah eksekusi → restart + id sama = status unknown (b
     }
     const c2 = await startServer(["--cwd", dir, "--allow-all"])
     try {
-      const r = await call(c2, 401, "bash", args)
+      // Diagnostik CI: bila c2 bungkam, sertakan stderr + journal agar
+      // penyebab (crash startup vs evidence miss) terbaca di log.
+      const jf2 = join(dir, ".minicode", "journal-mcp-server.jsonl")
+      const r = await call(c2, 401, "bash", args).catch((e) => {
+        let journal = "(journal hilang)"
+        try {
+          journal = readFileSync(jf2, "utf8")
+        } catch {}
+        throw new Error(
+          `c2 bungkam: ${(e as Error).message} | stderr=[${c2.stderrText().slice(-600)}] | journal=[${journal.slice(-600)}]`,
+        )
+      })
       expect((r.error as { code: number }).code).toBe(-32603)
       expect(JSON.stringify(r.error)).toContain("status unknown")
     } finally {
