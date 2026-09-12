@@ -27,8 +27,12 @@ interface RpcClient {
 }
 
 async function startServer(args: string[] = []): Promise<RpcClient> {
-  const proc = Bun.spawn([process.execPath, "cli/index.ts", "mcp", "serve", ...args], {
-    cwd: resolve("C:/Users/x/Documents/GitHub/minicode"),
+  // process.execPath tak selalu ada sebagai file (mis. layout setup-bun di
+  // CI) — fallback ke `bun` di PATH. cwd JANGAN hardcode path mesin dev;
+  // repo root = parent direktori file test ini.
+  const bunBin = existsSync(process.execPath) ? process.execPath : "bun"
+  const proc = Bun.spawn([bunBin, "cli/index.ts", "mcp", "serve", ...args], {
+    cwd: resolve(import.meta.dir, ".."),
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",

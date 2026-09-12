@@ -3,7 +3,7 @@
 // Linux CI: jalan penuh) — kecuali junction direktori yang bebas privilege.
 
 import { expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs"
 import { rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -134,6 +134,12 @@ test("instruksi: AGENTS symlink keluar ditolak; precedence deterministik", async
     // (deterministik). Catatan: CLAUDE.md tetap terbaca lewat jalur MEMORI
     // (hierarki global→lokal→root→CLAUDE, by design) — yang dihentikan
     // hanyalah duplikatnya di seksi agent-files (`# CLAUDE.md` persis).
+    // Hapus symlink DULU: writeFileSync mengikuti link dan akan menulis ke
+    // target LUAR workspace (di Linux link-nya jadi; di Windows link gagal
+    // dibuat sehingga tulis di bawah selalu ke file nyata).
+    try {
+      unlinkSync(join(dir, "AGENTS.md"))
+    } catch {}
     writeFileSync(join(dir, "AGENTS.md"), "MENANG-UNIK-4")
     writeFileSync(join(dir, "CLAUDE.md"), "KALAH-UNIK-5")
     const sys2 = await buildSystemPrompt({ cwd: dir })

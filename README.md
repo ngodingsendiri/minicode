@@ -34,7 +34,7 @@ minicode (coding-agent — self-contained, tanpa sibling clone)
 
 ## Quickstart
 ```bash
-# 0. Bun dulu (sekali, tutup-buka terminal lagi):
+# 0. Bun dulu (butuh bun >= 1.0; sekali, tutup-buka terminal lagi):
 # Windows: powershell -c "irm bun.sh/install.ps1 | iex"  (atau npm i -g bun)
 # macOS/Linux: curl -fsSL https://bun.sh/install | bash
 # cek: bun --version  -> 1.4.x
