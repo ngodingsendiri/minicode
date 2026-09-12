@@ -462,12 +462,15 @@ test("§22 2 provider kedaluwarsa refresh bersamaan: tak ada yang hilang (P1 fix
       getValidAccessToken("test-conc-a9"),
       getValidAccessToken("test-conc-b9"),
     ])
-    expect(a).toBe("AT-1")
-    expect(b).toBe("AT-2")
+    // Urutan kedatangan request tak deterministik (terutama di CI berbeban):
+    // yang dijamin = tiap id dapat token SEGAR yang berbeda, bukan asumsi
+    // a=AT-1/b=AT-2. Invarian P1: tak ada yang hilang (dulu rec-b=OLD).
+    expect(posts).toBe(2)
+    expect(new Set([a, b])).toEqual(new Set(["AT-1", "AT-2"]))
     // Tanpa withAuthLock: tulisan terakhir menelan yang pertama (rec-b=OLD).
     const store = await loadAuthStore()
-    expect(store["test-conc-a9"]?.accessToken).toBe("AT-1")
-    expect(store["test-conc-b9"]?.accessToken).toBe("AT-2")
+    const got = new Set([store["test-conc-a9"]?.accessToken, store["test-conc-b9"]?.accessToken])
+    expect(got).toEqual(new Set(["AT-1", "AT-2"]))
   } finally {
     await removeAuth("test-conc-a9").catch(() => {})
     await removeAuth("test-conc-b9").catch(() => {})
