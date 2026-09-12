@@ -33,6 +33,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s1",
       prompt: "hi",
       enterRepl: false,
@@ -52,6 +53,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s2",
       prompt: "hi",
       enterRepl: false,
@@ -70,6 +72,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s3",
       prompt: "hi",
       enterRepl: false,
@@ -88,6 +91,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s4",
       prompt: "hi",
       enterRepl: false,
@@ -106,6 +110,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s5",
       prompt: "hi",
       enterRepl: false,
@@ -124,6 +129,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s6",
       prompt: "hi",
       enterRepl: false,
@@ -148,6 +154,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s7",
       prompt: "hi",
       enterRepl: false,
@@ -170,6 +177,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     process.env.MINICODE_TIMEOUT_MS = "7777"
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s8",
       prompt: "hi",
       enterRepl: false,
@@ -190,6 +198,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s9",
       resumeId: "tidak-ada",
       prompt: "hi",
@@ -209,6 +218,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s10",
       prompt: "hi",
       enterRepl: false,
@@ -228,6 +238,7 @@ describe("cli/setup: permissionMode & timeout & budget", () => {
     const cwd = makeWorkspace()
     const s = await createCliSession({
       cwd,
+      allowLocalConfig: true,
       sessionId: "s11",
       prompt: "hi",
       enterRepl: false,
