@@ -7,9 +7,8 @@ import { acquireTransientPaint, paintWrite, registerStatusLine } from "../runtim
 // turn yang TIDAK memproduksi teks (berpikir / tool berjalan). Teks model
 // adalah output utama; garis status tidak pernah menimpa area teks.
 //
-// Garis SELALU membawa elapsed timer (`Thinking··· 1m23s`) — heartbeat yang
-// membedakan "masih jalan" dari "mati diam-diam" (provider stall, hang,
-// atau crash proses). Tanpa ini user tak bisa bedakan turn lambat vs mati.
+// Garis memakai ikon + titik animasi sebagai heartbeat — sinyal "masih
+// hidup" tanpa teks panjang. Tanpa ini turn yang stall terlihat mati diam.
 //
 // Lifecycle deterministik:
 //   turn:started          → state nyala, BELUM melukis. Lukisan baru mulai
@@ -34,7 +33,7 @@ export interface TurnStatusHandle {
   endTurn(): void
 }
 
-/** Durasi ringkas untuk heartbeat (`12s`, `1m23s`, `2h05m`). Murni, teruji. */
+/** Durasi ringkas — dipertahankan untuk kompatibilitas test eksternal. */
 export function formatElapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   if (s < 60) return `${s}s`
@@ -73,8 +72,6 @@ export function attachTurnStatus(
   let turnOn = false
   let textOn = false
   let label = "Thinking"
-  // Awal turn untuk heartbeat elapsed. Null = tak ada turn aktif.
-  let turnStartMs: number | null = null
   // Kepemilikan transient stderr selama interval hidup — lihat statusline.ts.
   let owned: { release(): void } | null = null
 
@@ -86,16 +83,14 @@ export function attachTurnStatus(
       if (s) extra = ` · ${s}`
     } catch {}
     // Titik animasi eksplisit · → ·· → ···, ganti tiap 2 tick (~300ms):
-    // sinyal "masih hidup" yang tak ambigu. Denyut redup sebelumnya terbaca
-    // beku/mati di sebagian terminal. Tak pernah bare: selalu ≥1 titik.
+    // sinyal "masih hidup" yang tak ambigu. Tak pernah bare: selalu ≥1 titik.
     const dots = glyphs.dot.repeat(1 + (Math.floor(fi / 2) % 3))
     const cols = process.stdout.columns || 80
     const body =
       label === "Thinking"
-        ? `Thinking${dots}`
+        ? `${c.yellow(glyphs.thinkingIcon)}${dots}`
         : `${c.info(glyphs.spinnerFrames[fi % glyphs.spinnerFrames.length]!)} ${label}${dots}`
-    const full =
-      body + (turnStartMs != null ? ` · ${formatElapsed(Date.now() - turnStartMs)}` : "") + extra
+    const full = body + extra
     // Terminal sangat sempit: potongan label bisa tinggal 1 huruf ("t") —
     // dalam kasus itu tampilkan titiknya saja daripada label rusak.
     // Terminal normal: potong biasa (label terpotong tetap informatif).
@@ -133,7 +128,6 @@ export function attachTurnStatus(
     turnOn = false
     textOn = false
     label = "Thinking"
-    turnStartMs = null
     stopPaint()
   }
 
@@ -173,7 +167,6 @@ export function attachTurnStatus(
       turnOn = true
       textOn = false
       label = "Thinking"
-      turnStartMs = Date.now()
       // Sengaja tidak langsung melukis — lihat komentar lifecycle di atas.
     }),
     bus.on("provider:text", () => {

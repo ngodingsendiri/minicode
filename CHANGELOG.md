@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.14] - 2026-09-12 — Ikon kuning tanpa timer
+
+### Changed
+- **Status line: ikon 💡 kuning animasi tanpa teks/timer**: `Thinking··· 1m23s` → `💡···` (titik animasi tetap). Timer dihapus sesuai permintaan; teks panjang dihapus agar tidak membingungkan.
+
 ## [0.9.13] - 2026-09-12 — Heartbeat + crash recovery
 
 ### Added

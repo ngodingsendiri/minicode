@@ -818,7 +818,7 @@ describe("simple logger (one-shot)", () => {
     expect(stripAnsi(tty!.combined())).toContain("5 tok")
   })
 
-  test("statusline: Thinking + titik animasi, tanpa nama model", async () => {
+  test("statusline: ikon kuning + titik animasi, tanpa nama model", async () => {
     tty = installFakeTty({ columns: 80, rows: 24 })
     const bus = createFakeBus()
     const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")
@@ -837,13 +837,13 @@ describe("simple logger (one-shot)", () => {
       await new Promise((r) => setTimeout(r, 900))
       status.detach()
       const raw = chunks.join("")
-      expect(stripAnsi(raw)).toContain("Thinking")
+      expect(stripAnsi(raw)).toContain("💡")
       expect(raw).not.toContain("model-rahasia-xyz")
       // Animasi titik eksplisit · → ·· → ··· (±300ms): minimal dua wujud
-      // berbeda dalam 900ms, dan tak pernah bare "Thinking" tanpa titik.
-      const frames = new Set(stripAnsi(raw).match(/Thinking(·{1,3})/g) ?? [])
+      // berbeda dalam 900ms, dan tak pernah bare tanpa titik.
+      const frames = new Set(stripAnsi(raw).match(/💡(·{1,3})/g) ?? [])
       expect(frames.size).toBeGreaterThan(1)
-      expect(stripAnsi(raw)).not.toMatch(/Thinking(?!·)/)
+      expect(stripAnsi(raw)).not.toMatch(/💡(?!·)/)
     } finally {
       ;(process.stderr as unknown as { write: unknown }).write = prevWrite
     }

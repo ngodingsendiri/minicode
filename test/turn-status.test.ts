@@ -54,11 +54,11 @@ describe("turn-status: lifecycle deterministik", () => {
     bus.emit("turn:started", { turn: 1 })
     bus.emit("provider:extension", { kind: "reasoning", data: {} })
     await sleep(40)
-    expect(err()).toContain("Thinking")
+    expect(err()).toContain("💡")
     tty!.clear()
     bus.emit("provider:text", { text: "menjawab\n" })
     await sleep(60)
-    expect(err()).not.toContain("Thinking")
+    expect(err()).not.toContain("💡")
     // Tool baru dimulai SETELAH teks → garis harus hidup kembali (regresi:
     // dulu onText menghentikan interval dan tak pernah restart).
     bus.emit("execution:started", {
@@ -123,8 +123,8 @@ describe("turn-status: lifecycle deterministik", () => {
   }, 4000)
 })
 
-describe("turn-status: heartbeat elapsed", () => {
-  test("formatElapsed: detik, menit, jam", async () => {
+describe("turn-status: heartbeat", () => {
+  test("formatElapsed: detik, menit, jam (kompat)", async () => {
     const { formatElapsed } = await import("../src/ui/assistant/turn-status.ts")
     expect(formatElapsed(0)).toBe("0s")
     expect(formatElapsed(5900)).toBe("5s")
@@ -136,17 +136,19 @@ describe("turn-status: heartbeat elapsed", () => {
     expect(formatElapsed(-500)).toBe("0s")
   })
 
-  test("garis status selalu membawa elapsed sejak turn:started", async () => {
+  test("garis status ikon kuning + titik animasi, tanpa timer", async () => {
     const { bus, status } = setup()
     bus.emit("turn:started", { turn: 1 })
     bus.emit("provider:extension", { kind: "reasoning", data: {} })
-    await sleep(1200) // lewati batas 1 detik agar timer terbaca
-    // Heartbeat: label hidup + timer — bedakan turn jalan vs mati diam.
-    expect(err()).toMatch(/Thinking·{1,3} · \d+s/)
+    await sleep(200)
+    // Ikon 💡 + titik animasi, tidak ada timer detik
+    expect(err()).toContain("💡")
+    expect(err()).toMatch(/💡·{1,3}/)
+    expect(err()).not.toMatch(/\d+s/)
     status.detach()
   }, 5000)
 
-  test("elapsed berhenti (reset) saat turn selesai", async () => {
+  test("ikon hilang saat turn selesai", async () => {
     const { bus, status } = setup()
     bus.emit("turn:started", { turn: 1 })
     bus.emit("provider:extension", { kind: "reasoning", data: {} })

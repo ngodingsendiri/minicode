@@ -290,6 +290,9 @@ export const glyphs = {
   get spinnerFrames() {
     return supportsUtf8() ? ["·", "··", "···"] : [".", "..", "..."]
   },
+  get thinkingIcon() {
+    return supportsUtf8() ? "💡" : "*"
+  },
 }
 
 // ── Section separator ──
