@@ -26,19 +26,24 @@ interface RpcClient {
   exited(): Promise<number | null>
 }
 
-/** Runtime bun untuk perintah `sleep` di dalam server: sama seperti binary
- * server (fallback PATH bila execPath tak ada sebagai file). Tanpa ini,
- * di runner tanpa binary tersebut sleep gagal instan (bukan 20 dtk) dan
- * skenario kill-mid-execution kehilangan premisnya. */
-function testSleepBin(): string {
+/** Runtime bun untuk men-spawn server: fallback PATH bila execPath tak ada
+ * sebagai file (layout setup-bun di CI). */
+function testServerBin(): string {
   return existsSync(process.execPath) ? process.execPath : "bun"
+}
+
+/** Perintah tidur ~20 dtk yang LOLOS bash-guard di semua OS: `X -e/-c`
+ * interpreter inline DITOLAK guard (termasuk `bun -e`), jadi sleep harus
+ * perintah biasa — `ping -n` di cmd Windows, `sleep` di shell POSIX. */
+function testSleepCmd(): string {
+  return process.platform === "win32" ? "ping -n 20 127.0.0.1 >NUL" : "sleep 20"
 }
 
 async function startServer(args: string[] = []): Promise<RpcClient> {
   // process.execPath tak selalu ada sebagai file (mis. layout setup-bun di
   // CI) — fallback ke `bun` di PATH. cwd JANGAN hardcode path mesin dev;
   // repo root = parent direktori file test ini.
-  const bunBin = testSleepBin()
+  const bunBin = testServerBin()
   const proc = Bun.spawn([bunBin, "cli/index.ts", "mcp", "serve", ...args], {
     cwd: resolve(import.meta.dir, ".."),
     stdin: "pipe",
@@ -373,7 +378,7 @@ test("mcp-server: kill tengah eksekusi → restart + id sama = status unknown (b
   // note sejak awal, jadi crash tanpa terminal tetap terdeteksi — retry
   // id-sama wajib verifikasi manual, bukan eksekusi ulang buta.
   const dir = tmpRoot()
-  const sleepCmd = `"${testSleepBin()}" -e "await Bun.sleep(20000)"`
+  const sleepCmd = testSleepCmd()
   const args = { cmd: sleepCmd }
   try {
     const c1 = await startServer(["--cwd", dir, "--allow-all"])
@@ -427,7 +432,7 @@ test("mcp-server: notifications/cancelled menghentikan bash panjang", async () =
   const dir = tmpRoot()
   const c = await startServer(["--cwd", dir, "--allow-all"])
   try {
-    const sleepCmd = `"${testSleepBin()}" -e "await Bun.sleep(20000)"`
+    const sleepCmd = testSleepCmd()
     c.send({
       jsonrpc: "2.0",
       id: 81,
