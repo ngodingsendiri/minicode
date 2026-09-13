@@ -161,7 +161,8 @@ export function attachSimpleLogger(bus: UiBus, opts: SimpleOptions = {}): () => 
   offs.push(
     bus.on("provider:extension", (e) => {
       if (e.kind === "reasoning") {
-        // Tampilkan bila --verbose ATAU MINICODE_SHOW_THINKING=1 (/thinking dihapus).
+        // Tampilkan bila --verbose ATAU MINICODE_SHOW_THINKING=1. Toggle
+        // runtime /thinking (atau Ctrl+T) memakai setReasoningVisible.
         if (!opts.verbose && !reasoning.visible) return
         const d = e.data as { text?: string }
         if (d.text) wErr(c.muted(`\n${d.text}\n`))

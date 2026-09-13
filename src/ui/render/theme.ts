@@ -293,7 +293,7 @@ export const glyphs = {
   get thinkingIcon() {
     // Google Material Symbols: "emoji_objects" (lampu) — sesuai link
     // https://fonts.googleapis.com/...&icon_names=emoji_objects
-    // Di terminal dirender sebagai emoji 💡 (fallback *).
+    // Di terminal dirender sebagai emoji 💡 putih (fallback *).
     return supportsUtf8() ? "💡" : "*"
   },
 }

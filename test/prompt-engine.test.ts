@@ -428,8 +428,8 @@ test("decodeKey: kontrol C0 tak dikenal dibuang, bukan jadi karakter", () => {
   const kontrol: [number, string][] = [
     [0x0c, "ctrl+l"],
     [0x0b, "ctrl+k"],
-    // Ctrl+T di-decode sebagai tipe sendiri (reserved no-op sejak /thinking
-    // dihapus) — tidak boleh jatuh ke "char" atau "ignore" diam-diam.
+    // Ctrl+T di-decode sebagai tipe sendiri (toggle expand/minimize
+    // reasoning di REPL) — tidak boleh jatuh ke "char" atau "ignore".
     [0x14, "ctrl+t"],
     [0x1a, "ctrl+z"],
     [0x02, "ctrl+b"],

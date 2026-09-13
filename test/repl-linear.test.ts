@@ -363,6 +363,18 @@ describe("REPL linier: mode & toggle", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
+  test("/thinking toggle expand/minimize reasoning", async () => {
+    tty = installFakeTty()
+    const h = makeHarness()
+    const p = start(h)
+    await typeLine("/thinking")
+    expect(visible(tty)).toContain("expanded")
+    await typeLine("/thinking off")
+    expect(visible(tty)).toContain("minimized")
+    await typeLine("/exit")
+    await expect(p).rejects.toBeInstanceOf(ExitSentinel)
+  })
+
   test("/copy tanpa output turn memberitahu, bukan gagal sunyi", async () => {
     tty = installFakeTty()
     const h = makeHarness()
@@ -559,12 +571,14 @@ describe("REPL linier: did-you-mean & thinking", () => {
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })
 
-  test("/thinking dihapus — jadi unknown command (diganti picker Enter di /model)", async () => {
+  test("/thinking toggle expand/minimize reasoning (dari dropdown)", async () => {
     tty = installFakeTty()
     const h = makeHarness()
     const p = start(h)
     await typeLine("/thinking on")
-    expect(visible(tty)).toContain("Unknown command")
+    expect(visible(tty)).toContain("thinking: expanded")
+    await typeLine("/thinking")
+    expect(visible(tty)).toContain("thinking: minimized")
     await typeLine("/exit")
     await expect(p).rejects.toBeInstanceOf(ExitSentinel)
   })

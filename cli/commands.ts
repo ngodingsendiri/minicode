@@ -59,7 +59,8 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
  * ditampilkan di /help agar bisa ditemukan, tapi sengaja TIDAK masuk dropdown
  * completion (di dropdown cukup /compact + builtin; /mode tak perlu
  * karena Tab/Shift+Tab sudah memutar mode tanpa baris baru).
- * /thinking dihapus — diganti picker effort di /model (Enter).
+ * /thinking = toggle TAMPILAN reasoning (expand/minimize), bukan effort;
+ * effort diatur lewat picker /model (Enter).
  * Opsi A audit UX: undo/redo/clear/copy/history tidak punya duplikat lain. */
 export const DRIVER_HELP_COMMANDS: BuiltinCommand[] = [
   { name: "mode", args: "[name]", desc: "Show or set permission mode" },
@@ -85,6 +86,7 @@ const KEYBOARD_HELP: [string, string][] = [
   ["ctrl+w", "delete previous word"],
   ["ctrl+u", "clear line"],
   ["ctrl+o", "toggle compact/expanded tool output"],
+  ["ctrl+t", "toggle expand/minimize thinking output"],
   ["esc", "close dropdown / picker / cancel empty prompt"],
   ["ctrl+c", "stop turn when busy; cancel prompt when idle (twice = exit)"],
   ["ctrl+d", "cancel prompt like ctrl+c"],

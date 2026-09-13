@@ -818,7 +818,7 @@ describe("simple logger (one-shot)", () => {
     expect(stripAnsi(tty!.combined())).toContain("5 tok")
   })
 
-  test("statusline: ikon kuning + titik animasi, tanpa nama model", async () => {
+  test("statusline: ikon putih + titik animasi, tanpa nama model", async () => {
     tty = installFakeTty({ columns: 80, rows: 24 })
     const bus = createFakeBus()
     const { attachTurnStatus } = await import("../src/ui/assistant/turn-status.ts")

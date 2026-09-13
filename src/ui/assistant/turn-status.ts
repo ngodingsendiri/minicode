@@ -89,13 +89,12 @@ export function attachTurnStatus(
     } catch {}
     // Titik animasi eksplisit · → ·· → ···, ganti tiap 2 tick (~300ms):
     // sinyal "masih hidup" yang tak ambigu. Tak pernah bare: selalu ≥1 titik.
-    // Ikon thinking berkilau: kuning ↔ kuning-terang bergantian tiap tick
-    // (Google emoji_objects) — kecepatan kilau mengikuti intervalMs yang
-    // adaptif terhadap kecepatan reasoning model.
+    // Ikon thinking PUTIH (Google emoji_objects, fill #e3e3e3 sesuai SVG
+    // user) — titik animasi yang memberi sinyal hidup; kecepatan refresh
+    // mengikuti intervalMs yang adaptif terhadap kecepatan reasoning model.
     const dots = glyphs.dot.repeat(1 + (Math.floor(fi / 2) % 3))
     const cols = process.stdout.columns || 80
-    const thinkingIcon =
-      fi % 2 === 0 ? c.yellow(glyphs.thinkingIcon) : c.brightYellow(glyphs.thinkingIcon)
+    const thinkingIcon = c.white(glyphs.thinkingIcon)
     const body =
       label === "Thinking"
         ? `${thinkingIcon}${dots}`

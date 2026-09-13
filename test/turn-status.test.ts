@@ -136,7 +136,7 @@ describe("turn-status: heartbeat", () => {
     expect(formatElapsed(-500)).toBe("0s")
   })
 
-  test("garis status ikon kuning + titik animasi, tanpa timer", async () => {
+  test("garis status ikon putih + titik animasi, tanpa timer", async () => {
     const { bus, status } = setup()
     bus.emit("turn:started", { turn: 1 })
     bus.emit("provider:extension", { kind: "reasoning", data: {} })

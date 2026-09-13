@@ -52,7 +52,7 @@ export type PromptKey =
   | { type: "ctrl-w" } // delete previous word
   | { type: "ctrl-o" } // expand detail (TUI)
   | { type: "ctrl-r" } // reverse-i-search history
-  | { type: "ctrl-t" } // reserved (dulu toggle reasoning; /thinking dihapus, kini no-op)
+  | { type: "ctrl-t" } // toggle expand/minimize reasoning di REPL
   | { type: "ctrl-n" } // tambah (model-manager: Ctrl+N = add model)
   | { type: "ctrl-j" } // sisipkan newline (multiline opt-in; Enter=\r tetap submit)
   | { type: "shift-tab" } // cycle mode (REPL linier) — ESC[Z didekode decodeKey
@@ -256,7 +256,7 @@ export function applyKey(
       return { state, action: "cancel" }
     case "ctrl-o": // toggle compact — ditangani REPL lewat onKey askLine
     case "ctrl-r": // reverse-i-search — ditangani askLine (input.ts) sebelum applyKey
-    case "ctrl-t": // reserved no-op (/thinking dihapus; tidak lagi ditangani REPL)
+    case "ctrl-t": // toggle expand/minimize reasoning di REPL (onKey)
     case "ctrl-n": // tambah model — ditangani view yang membutuhkan (model-manager); di prompt teks diabaikan
     case "shift-tab": // cycle mode — ditangani REPL lewat onKey askLine
     case "ignore": // byte mouse dsb: dibuang, tidak boleh jadi teks

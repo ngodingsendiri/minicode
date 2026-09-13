@@ -65,7 +65,7 @@ Options:
   --budget-strict     fail-closed: unknown cost counts as over budget
   --tool-scope <s>    full (default) | explore (read-only subset)
 
-REPL: /help /provider /model /sync /status /sessions /init /exit /mode /undo /redo /clear /copy /history /compact
+REPL: /help /provider /model /sync /status /sessions /init /exit /mode /undo /redo /clear /copy /history /compact /thinking
 Keys: Enter submit · Tab complete (empty: cycle mode) · Up/Down history · Shift+Tab mode · Ctrl+R search · Ctrl+C stop (2x exit)
 `
 
