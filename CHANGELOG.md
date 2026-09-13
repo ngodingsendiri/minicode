@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.16] - 2026-09-13 — Ikon putih + toggle thinking
+
+### Changed
+- **Ikon thinking putih 💡**: ganti kuning → putih (`c.white`, fill #e3e3e3 sesuai SVG Material emoji_objects). Titik animasi tetap jadi sinyal hidup.
+
+### Added
+- **Toggle reasoning expand/minimize**: `/thinking` (dropdown) atau `Ctrl+T` — `thinking: expanded` ⇄ `thinking: minimized`, setara `/compact` untuk tool. Default tetap minimized (hanya `--verbose` atau `MINICODE_SHOW_THINKING=1` yang menampilkan).
+- **Spinner startup**: `⠋ Checking for updates…` (TTY-only, delay 120ms, interval 80ms) hilang tanpa jejak.
+
+## [0.9.15] - 2026-09-12 — Startup hemat waktu + kilau adaptif
+
+### Changed
+- **Auto-update tak pernah hang 7s**: dibatasi budget 1.8s abortable (`AbortSignal`).
+- **Kilau mengikuti kecepatan reasoning**: ikon berkedip kuning ↔ kuning-terang dengan interval adaptif 80-320ms dari frekuensi chunk reasoning (bukan denyut tetap).
+
 ## [0.9.14] - 2026-09-12 — Ikon kuning tanpa timer
 
 ### Changed
