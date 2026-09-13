@@ -106,8 +106,10 @@ export function formatStaleNotice(info: TurnMarker): string {
   const ageMs = Math.max(0, Date.now() - info.startedAt)
   let age: string
   if (ageMs < 60_000) age = `${Math.floor(ageMs / 1000)}s`
-  else if (ageMs < 3600_000) age = `${Math.floor(ageMs / 60000)}m${String(Math.floor((ageMs % 60000) / 1000)).padStart(2, "0")}s`
-  else age = `${Math.floor(ageMs / 3600000)}h${String(Math.floor((ageMs % 3600000) / 60000)).padStart(2, "0")}m`
+  else if (ageMs < 3600_000)
+    age = `${Math.floor(ageMs / 60000)}m${String(Math.floor((ageMs % 60000) / 1000)).padStart(2, "0")}s`
+  else
+    age = `${Math.floor(ageMs / 3600000)}h${String(Math.floor((ageMs % 3600000) / 60000)).padStart(2, "0")}m`
   return (
     `[recovery] previous turn (session ${info.sessionId}, started ${age} ago) ` +
     `did not settle cleanly — possible crash or kill. ` +
